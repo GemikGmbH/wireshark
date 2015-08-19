@@ -4994,31 +4994,35 @@ heuristic_as2_or_4_from_as_path(tvbuff_t *tvb, gint as_path_offset, gint end_att
     /* case of AS_PATH type being explicitly 4 bytes ASN */
     if (bgpa_type == BGPTYPE_AS4_PATH) {
         /* We calculate numbers of segments and return the as length */
+        assumed_as_len = 4;
         while (k < end_attr_offset)
         {
+            /* we skip segment type and point to length */
+            k++;
             length = tvb_get_guint8(tvb, k);
+            /* length read let's move to first ASN */
+            k++;
             /* we move to the next segment */
             k = k + (length*assumed_as_len);
-            /* if I am not facing the last segment k need to point to next length */
-            if(k < end_attr_offset)
-                k++;
             counter_as_segment++;
         }
         *number_as_segment = counter_as_segment;
-        bgp_asn_len = 4;
         return(4);
     }
     /* case of user specified ASN length */
     if (bgp_asn_len != 0) {
         /* We calculate numbers of segments and return the as length */
+        assumed_as_len = bgp_asn_len;
         while (k < end_attr_offset)
         {
+            /* we skip segment type and point to length */
+            k++;
             length = tvb_get_guint8(tvb, k);
+            /* length read let's move to first ASN */
+            k++;
             /* we move to the next segment */
             k = k + (length*assumed_as_len);
             /* if I am not facing the last segment k need to point to next length */
-            if(k < end_attr_offset)
-                k++;
             counter_as_segment++;
         }
         *number_as_segment = counter_as_segment;
@@ -5635,7 +5639,6 @@ dissect_bgp_update(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo)
                     if(tlen == 0) {
                         proto_item_append_text(ti_pa,"empty");
                     }
-
                     q = o + i + aoff;
                     for (k=0; k < number_as_segment; k++)
                     {
@@ -5825,12 +5828,12 @@ dissect_bgp_update(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo)
                                                 tvb, q - 3 + aoff, 2, ENC_BIG_ENDIAN);
                             proto_tree_add_item(community_tree, hf_bgp_update_path_attribute_community_value,
                                                 tvb, q - 1 + aoff, 2, ENC_BIG_ENDIAN);
-                            proto_item_append_text(ti_pa, "%u:%u ",tvb_get_ntohs(tvb, q - 3),
-                                                      tvb_get_ntohs(tvb, q -1));
-                            proto_item_append_text(ti_communities, "%u:%u ",tvb_get_ntohs(tvb, q - 3),
-                                                      tvb_get_ntohs(tvb, q -1));
-                            proto_item_append_text(ti_community, ": %u:%u ",tvb_get_ntohs(tvb, q - 3),
-                                                      tvb_get_ntohs(tvb, q -1));
+                            proto_item_append_text(ti_pa, "%u:%u ",tvb_get_ntohs(tvb, q - 3 + aoff),
+                                                      tvb_get_ntohs(tvb, q -1 + aoff));
+                            proto_item_append_text(ti_communities, "%u:%u ",tvb_get_ntohs(tvb, q - 3 + aoff),
+                                                      tvb_get_ntohs(tvb, q -1 + aoff));
+                            proto_item_append_text(ti_community, ": %u:%u ",tvb_get_ntohs(tvb, q - 3 + aoff),
+                                                      tvb_get_ntohs(tvb, q -1 + aoff));
                         }
 
                         q += 4;
@@ -6908,7 +6911,7 @@ proto_register_bgp(void)
         { "Withdrawn Routes Length", "bgp.update.withdrawn_routes.length", FT_UINT16, BASE_DEC,
           NULL, 0x0, NULL, HFILL}},
       { &hf_bgp_update_withdrawn_routes,
-        { "Withdrawn Routes", "bgp.update.withdrawn_routes.length", FT_NONE, BASE_NONE,
+        { "Withdrawn Routes", "bgp.update.withdrawn_routes", FT_NONE, BASE_NONE,
           NULL, 0x0, NULL, HFILL}},
 
       { &hf_bgp_update_path_attribute_aggregator_as,
@@ -7034,7 +7037,7 @@ proto_register_bgp(void)
         {"mLDP P2MP FEC element root node address", "bgp.update.path_attribute.pmsi.mldp.fec.root_nodev4", FT_IPv4, BASE_NONE,
          NULL, 0x0, NULL, HFILL}},
       { &hf_bgp_pmsi_tunnel_mldp_fec_el_root_nodev6,
-        {"mLDP P2MP FEC element root node address", "bgp.update.path_attribute.pmsi.mldp.fec.root_nodev4", FT_IPv6, BASE_NONE,
+        {"mLDP P2MP FEC element root node address", "bgp.update.path_attribute.pmsi.mldp.fec.root_nodev6", FT_IPv6, BASE_NONE,
          NULL, 0x0, NULL, HFILL}},
       { &hf_bgp_pmsi_tunnel_mldp_fec_el_opa_len,
         {"mLDP P2MP FEC element opaque length", "bgp.update.path_attribute.pmsi.mldp.fec.opaque_length", FT_UINT16, BASE_DEC,
@@ -7652,7 +7655,7 @@ proto_register_bgp(void)
         { "Administrative group (color) TLV", "bgp.ls.tlv.administrative_group_color", FT_NONE,
           BASE_NONE, NULL, 0x0, NULL, HFILL}},
       { &hf_bgp_ls_tlv_administrative_group_color_value,
-        { "Group Mask", "bgp.ls.tlv.administrative_group_color", FT_UINT32,
+        { "Group Mask", "bgp.ls.tlv.administrative_group_color_value", FT_UINT32,
          BASE_DEC, NULL, 0xffff, NULL, HFILL}},
       { &hf_bgp_ls_tlv_max_link_bandwidth,
         { "Maximum link bandwidth TLV", "bgp.ls.tlv.maximum_link_bandwidth", FT_NONE,

@@ -329,8 +329,7 @@ WSLUA_METAMETHOD Prefs__newindex(lua_State* L) {
          * underscores, and dots appear in the preference name.
          */
         for (c = name; *c != '\0'; c++) {
-            if (!isascii((guchar)*c) ||
-               (!islower((guchar)*c) && !isdigit((guchar)*c) && *c != '_' && *c != '.'))
+            if (!g_ascii_islower(*c) && !g_ascii_isdigit(*c) && *c != '_' && *c != '.')
             {
                 luaL_error(L,"illegal preference name \"%s\", only lower-case ASCII letters, "
                              "numbers, underscores and dots may be used", name);
@@ -1588,6 +1587,7 @@ WSLUA_FUNCTION wslua_register_postdissector(lua_State* L) {
         }
 
         register_postdissector(proto->handle);
+        proto->is_postdissector = TRUE;
     } else {
         luaL_argerror(L,1,"this protocol is already registered as postdissector");
     }

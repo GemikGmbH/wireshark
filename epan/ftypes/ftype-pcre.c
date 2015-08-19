@@ -56,12 +56,9 @@ raw_flag_needed(const gchar *pattern)
     /* find any character whose hex value is two letters */
     len = strlen(s);
     for (i = 0; i < len; i++) {
-        if ((s[i] >= '\xAA' && s[i] <= '\xAF') ||
-            (s[i] >= '\xBA' && s[i] <= '\xBF') ||
-            (s[i] >= '\xCA' && s[i] <= '\xCF') ||
-            (s[i] >= '\xDA' && s[i] <= '\xDF') ||
-            (s[i] >= '\xEA' && s[i] <= '\xEF') ||
-            (s[i] >= '\xFA' && s[i] <= '\xFF'))
+        /* Upper and lower-nibble must be >= 0xA */
+        if ((guchar)(s[i] & 0xF0) >= 0xA0 &&
+            (guchar)(s[i] & 0x0F) >= 0x0A)
         {
             found = TRUE;
             break;

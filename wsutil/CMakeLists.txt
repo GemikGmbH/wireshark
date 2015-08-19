@@ -28,7 +28,6 @@ IF(WIN32)
     inet_ntop.c
     inet_pton.c
     strptime.c
-    wsgetopt.c
   )
 ENDIF(WIN32)
 
@@ -72,6 +71,10 @@ set(WSUTIL_FILES
   ${WSUTIL_PLATFORM_FILES}
 )
 
+if(NOT HAVE_GETOPT_LONG)
+	set(WSUTIL_FILES ${WSUTIL_FILES} wsgetopt.c)
+endif()
+
 set(wsutil_LIBS
   ${GMODULE2_LIBRARIES}
   ${GLIB2_LIBRARIES}
@@ -98,7 +101,7 @@ add_library(wsutil ${LINK_MODE_LIB}
   ${WSUTIL_FILES}
 )
 
-set(FULL_SO_VERSION "4.0.0")
+set(FULL_SO_VERSION "4.1.0")
 
 set_target_properties(wsutil PROPERTIES COMPILE_DEFINITIONS "WS_BUILD_DLL")
 set_target_properties(wsutil PROPERTIES LINK_FLAGS "${WS_LINK_FLAGS}")

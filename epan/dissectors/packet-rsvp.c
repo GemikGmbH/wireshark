@@ -4440,7 +4440,7 @@ dissect_rsvp_ero_rro_subobjects(proto_tree *ti, proto_tree *rsvp_object_tree,
             }
             if (rsvp_class == RSVP_CLASS_RECORD_ROUTE) {
                 flags = tvb_get_guint8(tvb, offset+l+7);
-                if (flags&0x10) {
+                if (flags&0x20) {
                     proto_item_append_text(ti,  " (Node-id)");
                     proto_item_append_text(ti2, " (Node-id)");
                 }
@@ -4485,7 +4485,7 @@ dissect_rsvp_ero_rro_subobjects(proto_tree *ti, proto_tree *rsvp_object_tree,
             }
             if (rsvp_class == RSVP_CLASS_RECORD_ROUTE) {
                 flags = tvb_get_guint8(tvb, offset+l+19);
-                if (flags&0x10) {
+                if (flags&0x20) {
                     proto_item_append_text(ti,  " (Node-id)");
                     proto_item_append_text(ti2, " (Node-id)");
                 }
@@ -8306,7 +8306,7 @@ proto_register_rsvp(void)
 
         {&hf_rsvp_rro_flags_node_address,
          { "Address Specifies a Node-id Address", "rsvp.rro.flags.node_address",
-           FT_BOOLEAN, 8, TFS(&tfs_yes_no), 0x10,
+           FT_BOOLEAN, 8, TFS(&tfs_yes_no), 0x20,
            NULL, HFILL }
         },
 
@@ -9189,7 +9189,7 @@ proto_register_rsvp(void)
       { &hf_rsvp_lsp_tunnel_if_id_ipv6_interface_address, { "IPv6 interface address", "rsvp.lsp_tunnel_if_id.ipv6_interface_address", FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_rsvp_lsp_tunnel_if_id_data, { "Data", "rsvp.lsp_tunnel_if_id.data", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_rsvp_notify_request_notify_node_address_ipv4, { "Notify node address", "rsvp.notify_request.notify_node_address_ipv4", FT_IPv4, BASE_NONE, NULL, 0x0, NULL, HFILL }},
-      { &hf_rsvp_notify_request_notify_node_address_ipv6, { "Notify node address", "rsvp.notify_request.notify_node_address_ipv4", FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsvp_notify_request_notify_node_address_ipv6, { "Notify node address", "rsvp.notify_request.notify_node_address_ipv6", FT_IPv6, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_rsvp_notify_request_data, { "Data", "rsvp.notify_request.data", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_rsvp_call_id_data, { "Data", "rsvp.call_id.data", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
       { &hf_rsvp_call_id_address_type, { "Address type", "rsvp.call_id.address_type", FT_UINT8, BASE_DEC, VALS(address_type_vals), 0x0, NULL, HFILL }},

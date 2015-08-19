@@ -2648,6 +2648,7 @@ dissect_tcpopt_mptcp(const ip_tcp_opt *optp _U_, tvbuff_t *tvb,
     guint8 indx;
     guint8 flags;
     guint8 ipver;
+    int start_offset = offset;
 
     ti = proto_tree_add_text(opt_tree, tvb, offset, optlen, "Multipath TCP");
     mptcp_tree = proto_item_add_subtree(ti, ett_tcp_option_mptcp);
@@ -2821,9 +2822,12 @@ dissect_tcpopt_mptcp(const ip_tcp_opt *optp _U_, tvbuff_t *tvb,
                             2, ENC_BIG_ENDIAN);
                 offset += 2;
 
-                proto_tree_add_item(mptcp_tree,
-                            hf_tcp_option_mptcp_checksum, tvb, offset,
-                            2, ENC_BIG_ENDIAN);
+                if ((int)optlen >= offset-start_offset+4)
+                {
+                    proto_tree_add_item(mptcp_tree,
+                                hf_tcp_option_mptcp_checksum, tvb, offset,
+                                2, ENC_BIG_ENDIAN);
+                }
             }
             break;
 
@@ -4729,24 +4733,6 @@ dissect_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     }
 
     tcph->num_sack_ranges = 0;
-    if(!pinfo->fd->flags.visited) {
-        if((tcph->th_flags & TH_SYN)==TH_SYN) {
-            /* Check the validity of the window scale value
-             */
-            verify_tcp_window_scaling((tcph->th_flags&TH_ACK)==TH_ACK,tcpd);
-        }
-
-        if((tcph->th_flags & (TH_SYN|TH_ACK))==(TH_SYN|TH_ACK)) {
-            /* If the SYN or the SYN+ACK offered SCPS capabilities,
-             * validate the flow's bidirectional scps capabilities.
-             * The or protects against broken implementations offering
-             * SCPS capabilities on SYN+ACK even if it wasn't offered with the SYN
-             */
-            if(tcpd && ((tcpd->rev->scps_capable) || (tcpd->fwd->scps_capable))) {
-                verify_scps(pinfo, tf_syn, tcpd);
-            }
-        }
-    }
 
     /* handle TCP seq# analysis, print any extra SEQ/ACK data for this segment*/
     if(tcp_analyze_seq) {
@@ -4773,6 +4759,25 @@ dissect_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                                TCPOPT_EOL, &TCP_OPT_TYPES,
                                &ei_tcp_opt_len_invalid, pinfo, options_tree,
                                options_item, tcph);
+    }
+
+    if(!pinfo->fd->flags.visited) {
+        if((tcph->th_flags & TH_SYN)==TH_SYN) {
+            /* Check the validity of the window scale value
+             */
+            verify_tcp_window_scaling((tcph->th_flags&TH_ACK)==TH_ACK,tcpd);
+        }
+
+        if((tcph->th_flags & (TH_SYN|TH_ACK))==(TH_SYN|TH_ACK)) {
+            /* If the SYN or the SYN+ACK offered SCPS capabilities,
+             * validate the flow's bidirectional scps capabilities.
+             * The or protects against broken implementations offering
+             * SCPS capabilities on SYN+ACK even if it wasn't offered with the SYN
+             */
+            if(tcpd && ((tcpd->rev->scps_capable) || (tcpd->fwd->scps_capable))) {
+                verify_scps(pinfo, tf_syn, tcpd);
+            }
+        }
     }
 
     /* Skip over header + options */

@@ -628,7 +628,7 @@ ngsniffer_open(wtap *wth, int *err, gchar **err_info)
 	/* Check the data link type. */
 	if (version.network >= NUM_NGSNIFF_ENCAPS
 	    || sniffer_encap[version.network] == WTAP_ENCAP_UNKNOWN) {
-		*err = WTAP_ERR_UNSUPPORTED_ENCAP;
+		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup_printf("ngsniffer: network type %u unknown or unsupported",
 		    version.network);
 		return -1;
@@ -870,10 +870,9 @@ process_header_records(wtap *wth, int *err, gchar **err_info, gint16 maj_vers,
 				wth->fh);
 			if (bytes_read != bytes_to_read) {
 				*err = file_error(wth->fh, err_info);
-				if (*err == 0) {
+				if (*err == 0)
 					*err = WTAP_ERR_SHORT_READ;
-					return -1;
-				}
+				return -1;
 			}
 
 			switch (maj_vers) {
@@ -926,7 +925,7 @@ process_rec_header2_v2(wtap *wth, unsigned char *buffer, guint16 length,
 		/*
 		 * There's not enough data to compare.
 		 */
-		*err = WTAP_ERR_UNSUPPORTED_ENCAP;
+		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup_printf("ngsniffer: WAN capture has too-short protocol list");
 		return -1;
 	}
@@ -937,7 +936,7 @@ process_rec_header2_v2(wtap *wth, unsigned char *buffer, guint16 length,
 		 */
 		wth->file_encap = WTAP_ENCAP_LAPB;
 	} else {
-		*err = WTAP_ERR_UNSUPPORTED_ENCAP;
+		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup_printf("ngsniffer: WAN capture protocol string %.*s unknown",
 		    length, buffer);
 		return -1;
@@ -957,7 +956,7 @@ process_rec_header2_v145(wtap *wth, unsigned char *buffer, guint16 length,
 		/*
 		 * There is no 5th byte; give up.
 		 */
-		*err = WTAP_ERR_UNSUPPORTED_ENCAP;
+		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup("ngsniffer: WAN capture has no network subtype");
 		return -1;
 	}
@@ -1026,7 +1025,7 @@ process_rec_header2_v145(wtap *wth, unsigned char *buffer, guint16 length,
 				/*
 				 * There is no 5th byte; give up.
 				 */
-				*err = WTAP_ERR_UNSUPPORTED_ENCAP;
+				*err = WTAP_ERR_UNSUPPORTED;
 				*err_info = g_strdup("ngsniffer: WAN bridge/router capture has no ISDN flag");
 				return -1;
 			}
@@ -1044,7 +1043,7 @@ process_rec_header2_v145(wtap *wth, unsigned char *buffer, guint16 length,
 		/*
 		 * Reject these until we can figure them out.
 		 */
-		*err = WTAP_ERR_UNSUPPORTED_ENCAP;
+		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup_printf("ngsniffer: WAN network subtype %u unknown or unsupported",
 		    buffer[4]);
 		return -1;

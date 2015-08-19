@@ -876,9 +876,10 @@ media_power_base(gchar *buf, guint32 value) {
 		option = 0 -> Latitude
 		option = 1 -> Longitude
 */
-static gchar *
-get_latitude_or_longitude(int option, guint64 value)
+static void
+get_latitude_or_longitude(gchar *buf, int option, guint64 unmasked_value)
 {
+	guint64 value = (unmasked_value & G_GINT64_CONSTANT(0x03FFFFFFFF000000)) >> 24;
 	guint64 tempValue = value;
 	gboolean negativeNum = FALSE;
 	guint32 integerPortion = 0;
@@ -924,8 +925,18 @@ get_latitude_or_longitude(int option, guint64 value)
 			direction = "East";
 	}
 
-	return wmem_strdup_printf(wmem_packet_scope(), "%u.%04" G_GINT64_MODIFIER "u degrees %s",
-	    integerPortion, tempValue, direction);
+	g_snprintf(buf, ITEM_LABEL_LENGTH, "%u.%04" G_GINT64_MODIFIER "u degrees %s (0x%16" G_GINT64_MODIFIER "X))",
+	    integerPortion, tempValue, direction, value);
+}
+
+static void
+latitude_base(gchar *buf, guint64 value) {
+	get_latitude_or_longitude(buf, 0, value);
+}
+
+static void
+longitude_base(gchar *buf, guint64 value) {
+	get_latitude_or_longitude(buf, 1, value);
 }
 
 /* Dissect Chassis Id TLV (Mandatory) */
@@ -2352,7 +2363,6 @@ dissect_media_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 o
 	guint8 subType;
 	guint8 tempByte;
 	guint32 LCI_Length;
-	guint64 temp64bit = 0;
 
 	proto_tree	*media_flags = NULL;
 	proto_item	*tf = NULL;
@@ -2414,38 +2424,26 @@ dissect_media_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 o
 		tlvLen--;
 
 		/* Get flags */
-		if (tlvLen < 2)
+		if (tlvLen < 3)
 		{
 			proto_tree_add_expert(tree, pinfo, &ei_lldp_bad_length , tvb, offset, tlvLen);
 			return;
 		}
 
-		proto_tree_add_item(tree, hf_media_policy_flag, tvb, offset, 1, ENC_BIG_ENDIAN);
-		proto_tree_add_item(tree, hf_media_tag_flag, tvb, offset, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(tree, hf_media_policy_flag, tvb, offset, 3, ENC_BIG_ENDIAN);
+		proto_tree_add_item(tree, hf_media_tag_flag, tvb, offset, 3, ENC_BIG_ENDIAN);
 
 		/* Get vlan id */
-		proto_tree_add_item(tree, hf_media_vlan_id, tvb, offset, 2, ENC_BIG_ENDIAN);
+		proto_tree_add_item(tree, hf_media_vlan_id, tvb, offset, 3, ENC_BIG_ENDIAN);
 
-		offset++;
-		tlvLen--;
 
 		/* Get L2 priority */
-		if (tlvLen < 1)
-		{
-			proto_tree_add_expert(tree, pinfo, &ei_lldp_bad_length , tvb, offset, tlvLen);
-			return;
-		}
 
-		proto_tree_add_item(tree, hf_media_l2_prio, tvb, offset, 2, ENC_BIG_ENDIAN);
-
-		offset++;
-		tlvLen--;
+		proto_tree_add_item(tree, hf_media_l2_prio, tvb, offset, 3, ENC_BIG_ENDIAN);
 
 		/* Get DSCP value */
-		proto_tree_add_item(tree, hf_media_dscp, tvb, offset, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(tree, hf_media_dscp, tvb, offset, 3, ENC_BIG_ENDIAN);
 
-		offset++;
-		tlvLen--;
 		break;
 	}
 	case 3:	/* Location Identification */
@@ -2482,12 +2480,7 @@ dissect_media_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 o
 			proto_tree_add_item(tree, hf_media_loc_lat_resolution, tvb, offset, 1, ENC_BIG_ENDIAN);
 
 			/* Get latitude */
-			temp64bit = tvb_get_ntoh40(tvb, offset);
-			temp64bit = temp64bit & G_GINT64_CONSTANT(0x03FFFFFFFF);
-			if (tree)
-				proto_tree_add_string_format_value(tree, hf_media_loc_lat, tvb, offset, 5, "", "%s (0x%" G_GINT64_MODIFIER "X)",
-				    get_latitude_or_longitude(0, temp64bit),
-				    temp64bit);
+			proto_tree_add_item(tree, hf_media_loc_lat, tvb, offset, 5, ENC_BIG_ENDIAN);
 
 			offset += 5;
 
@@ -2495,12 +2488,7 @@ dissect_media_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 o
 			proto_tree_add_item(tree, hf_media_loc_long_resolution, tvb, offset, 1, ENC_BIG_ENDIAN);
 
 			/* Get longitude */
-			temp64bit = tvb_get_ntoh40(tvb, offset);
-			temp64bit = temp64bit & G_GINT64_CONSTANT(0x03FFFFFFFF);
-			if (tree)
-				proto_tree_add_string_format_value(tree, hf_media_loc_long, tvb, offset, 5, "", "%s (0x%" G_GINT64_MODIFIER "X)",
-				    get_latitude_or_longitude(1, temp64bit),
-				    temp64bit);
+			proto_tree_add_item(tree, hf_media_loc_long, tvb, offset, 5, ENC_BIG_ENDIAN);
 
 			offset += 5;
 
@@ -4143,16 +4131,16 @@ proto_register_lldp(void)
 			NULL, 0xFC, NULL, HFILL }
 		},
 		{ &hf_media_loc_lat,
-			{ "Latitude", "lldp.media.loc.latitude", FT_STRING, BASE_NONE,
-			NULL, 0x0, NULL, HFILL }
+			{ "Latitude", "lldp.media.loc.latitude", FT_UINT64, BASE_CUSTOM,
+			latitude_base, 0x0, NULL, HFILL }
 		},
 		{ &hf_media_loc_long_resolution,
 			{ "Longitude Resolution", "lldp.media.loc.long_resolution", FT_UINT8, BASE_DEC,
 			NULL, 0xFC, NULL, HFILL }
 		},
 		{ &hf_media_loc_long,
-			{ "Longitude", "lldp.media.loc.longitude", FT_STRING, BASE_NONE,
-			NULL, 0x0, NULL, HFILL }
+			{ "Longitude", "lldp.media.loc.longitude", FT_UINT64, BASE_CUSTOM,
+			longitude_base, 0x0, NULL, HFILL }
 		},
 		{ &hf_media_loc_alt_type,
 			{ "Altitude Type", "lldp.media.loc.alt_type", FT_UINT8, BASE_DEC,

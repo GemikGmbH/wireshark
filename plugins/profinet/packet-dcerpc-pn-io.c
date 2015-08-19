@@ -2245,10 +2245,13 @@ static const value_string pn_io_channel_properties_accumulative_vals[] = {
     { 0, NULL }
 };
 
+/* We are reading this as a two bit value, but the spec specifies each bit
+ * separately. Beware endianness when reading spec
+ */
 static const value_string pn_io_channel_properties_maintenance[] = {
     { 0x0000, "Failure" },
-    { 0x0001, "Maintenance demanded" },
-    { 0x0002, "Maintenance required" },
+    { 0x0001, "Maintenance required" },
+    { 0x0002, "Maintenance demanded" },
     { 0x0003, "see QualifiedChannelQualifier" },
     { 0, NULL }
 };
@@ -6660,7 +6663,8 @@ dissect_LogData_block(tvbuff_t *tvb, int offset,
     guint64  u64LocaltimeStamp;
     e_uuid_t aruuid;
     guint32  u32EntryDetail;
-
+	dcerpc_info        di; /* fake dcerpc_info struct */
+	dcerpc_call_value  call_data;
 
     if (u8BlockVersionHigh != 1 || u8BlockVersionLow != 0) {
         expert_add_info_format(pinfo, item, &ei_pn_io_block_version,
@@ -6668,8 +6672,14 @@ dissect_LogData_block(tvbuff_t *tvb, int offset,
         return offset;
     }
 
+	di.conformant_run = 0;
+	/* we need di->call_data->flags.NDR64 == 0 */
+    call_data.flags = 0;
+	di.call_data = &call_data;
+    di.dcerpc_procedure_name = "";
+
     /* ActualLocalTimeStamp */
-    offset = dissect_dcerpc_uint64(tvb, offset, pinfo, tree, drep,
+    offset = dissect_dcerpc_uint64(tvb, offset, pinfo, tree, &di, drep,
                     hf_pn_io_actual_local_time_stamp, &u64ActualLocaltimeStamp);
     /* NumberOfLogEntries */
     offset = dissect_dcerpc_uint16(tvb, offset, pinfo, tree, drep,
@@ -6677,7 +6687,7 @@ dissect_LogData_block(tvbuff_t *tvb, int offset,
 
     while (u16NumberOfLogEntries--) {
         /* LocalTimeStamp */
-        offset = dissect_dcerpc_uint64(tvb, offset, pinfo, tree, drep,
+        offset = dissect_dcerpc_uint64(tvb, offset, pinfo, tree, &di, drep,
                         hf_pn_io_local_time_stamp, &u64LocaltimeStamp);
         /* ARUUID */
         offset = dissect_dcerpc_uuid_t(tvb, offset, pinfo, tree, drep,
@@ -10086,17 +10096,17 @@ proto_register_pn_io (void)
         NULL, HFILL }
     },  /* XXX - 16 bitfield!*/
     { &hf_pn_io_api_tree,
-      { "API", "pn_io.api",
+      { "API", "pn_io.api_tree",
         FT_NONE, BASE_NONE, NULL, 0x0,
         NULL, HFILL }
     },
     { &hf_pn_io_module_tree,
-      { "Module", "pn_io.module",
+      { "Module", "pn_io.module_tree",
         FT_NONE, BASE_NONE, NULL, 0x0,
         NULL, HFILL }
     },
     { &hf_pn_io_submodule_tree,
-      { "Submodule", "pn_io.submodule",
+      { "Submodule", "pn_io.submodule_tree",
         FT_NONE, BASE_NONE, NULL, 0x0,
         NULL, HFILL }
     },
@@ -10663,7 +10673,7 @@ proto_register_pn_io (void)
         NULL, HFILL }
     },
     { &hf_pn_io_data_description_tree,
-      { "DataDescription", "pn_io.data_description",
+      { "DataDescription", "pn_io.data_description_tree",
         FT_NONE, BASE_NONE, NULL, 0x0,
         NULL, HFILL }
     },
@@ -11950,7 +11960,7 @@ proto_register_pn_io (void)
         NULL, HFILL }
     },
     { &hf_pn_io_profidrive_param_value_float,
-      { "Value", "pn_io.profidrive.parameter.value_dw",
+      { "Value", "pn_io.profidrive.parameter.value_float",
         FT_FLOAT, BASE_NONE, NULL, 0x0,
         NULL, HFILL }
     },

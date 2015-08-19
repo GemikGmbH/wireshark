@@ -2100,9 +2100,11 @@ dissect_iscsi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean chec
         if(tvb_get_ntoh48(tvb, offset+10)){
             return FALSE;
         }
-        /* expected data transfer length is never >16MByte ? */
-        if(tvb_get_guint8(tvb,offset+20)){
-            return FALSE;
+        /* if expected data transfer length is set, W and/or R have to be set */
+        if(tvb_get_ntohl(tvb,offset+20)){
+            if(!(tvb_get_guint8(tvb, offset+1)&0x60)){
+                return FALSE;
+            }
         }
         break;
     case ISCSI_OPCODE_SCSI_RESPONSE:
@@ -2778,7 +2780,7 @@ proto_register_iscsi(void)
         },
 /* #ifdef DRAFT08 */
         { &hf_iscsi_ISID8,
-          { "ISID", "iscsi.isid",
+          { "ISID", "iscsi.isid8",
             FT_UINT16, BASE_HEX, NULL, 0,
             "Initiator part of session identifier", HFILL }
         },

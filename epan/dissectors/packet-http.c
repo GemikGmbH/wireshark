@@ -32,7 +32,6 @@
 
 #include <stdlib.h>
 #include <string.h>
-#include <ctype.h>
 #include <errno.h>
 
 #include <glib.h>
@@ -859,20 +858,15 @@ dissect_http_message(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			c = *linep++;
 
 			/*
-			 * This must be a CHAR to be part of a token; that
-			 * means it must be ASCII.
-			 */
-			if (!isascii(c))
-				break;	/* not ASCII, thus not a CHAR */
-
-			/*
-			 * This mustn't be a CTL to be part of a token.
+			 * This must be a CHAR, and must not be a CTL,
+			 * to be part of a token; that means it must be
+			 * printable ASCII.
 			 *
 			 * XXX - what about leading LWS on continuation
 			 * lines of a header?
 			 */
-			if (iscntrl(c))
-				break;	/* CTL, not part of a header */
+			if (!g_ascii_isprint(c))
+				break;
 
 			/*
 			 * This mustn't be a SEP to be part of a token;
@@ -2554,7 +2548,7 @@ process_header(tvbuff_t *tvb, int offset, int next_offset,
 			if (eh_ptr->content_length < 0 ||
 			    p == value ||
 			    errno == ERANGE ||
-			    (*up != '\0' && !isspace(*up))) {
+			    (*up != '\0' && !g_ascii_isspace(*up))) {
 				/*
 				 * Content length not valid; pretend
 				 * we don't have it.
@@ -2766,10 +2760,6 @@ dissect_http(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 	} else {
 		while (tvb_reported_length_remaining(tvb, offset) > 0) {
 			if (conv_data->upgrade == UPGRADE_WEBSOCKET && pinfo->fd->num >= conv_data->startframe) {
-				/* Websockets is a stream of data, preserve
-				 * desegmentation functionality. */
-				if (pinfo->can_desegment > 0)
-					pinfo->can_desegment++;
 				call_dissector_only(websocket_handle, tvb_new_subset_remaining(tvb, offset), pinfo, tree, NULL);
 				break;
 			}

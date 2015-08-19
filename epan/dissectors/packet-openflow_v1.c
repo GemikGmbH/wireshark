@@ -121,6 +121,7 @@ static int hf_openflow_cookie = -1;
 /* static int hf_openflow_cookie_mask = -1; */
 static int hf_openflow_padd8 = -1;
 /* static int hf_openflow_padd16 = -1; */
+static int hf_openflow_features_reply_padding = -1;
 /* static int hf_openflow_padd48 = -1; */
 static int hf_openflow_actions_len = -1;
 static int hf_openflow_action_type = -1;
@@ -507,6 +508,9 @@ dissect_openflow_features_reply_v1(tvbuff_t *tvb, packet_info *pinfo, proto_tree
 
     proto_tree_add_item(tree, hf_openflow_n_tables, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
+
+    proto_tree_add_item(tree, hf_openflow_features_reply_padding, tvb, offset, 3, ENC_NA);
+    offset+=3;
 
     ti = proto_tree_add_item(tree, hf_openflow_capabilities, tvb, offset, 4, ENC_BIG_ENDIAN);
     cap_tree = proto_item_add_subtree(ti, ett_openflow_cap);
@@ -975,7 +979,7 @@ proto_register_openflow_v1(void)
                NULL, HFILL }
         },
         { &hf_openflow_port_name,
-            { "Name", "openflow.hw_add",
+            { "Port Name", "openflow.port_name",
                FT_STRING, BASE_NONE, NULL, 0x0,
                NULL, HFILL }
         },
@@ -1025,7 +1029,7 @@ proto_register_openflow_v1(void)
                NULL, HFILL }
         },
         { &hf_openflow_no_recv_stp,
-            { "Drop received 802.1D STP packets", "openflow.no_recv",
+            { "Drop received 802.1D STP packets", "openflow.no_recv_stp",
                FT_BOOLEAN, 32, NULL, OFPPC_NO_RECV_STP,
                NULL, HFILL }
         },
@@ -1153,7 +1157,7 @@ proto_register_openflow_v1(void)
         },
 #if 0
         { &hf_openflow_cookie_mask,
-            { "Cookie mask", "openflow.cookie",
+            { "Cookie mask", "openflow.cookie_mask",
                FT_UINT64, BASE_HEX, NULL, 0x0,
                NULL, HFILL }
         },
@@ -1170,6 +1174,11 @@ proto_register_openflow_v1(void)
                NULL, HFILL }
         },
 #endif
+        { &hf_openflow_features_reply_padding,
+            { "Padding", "openflow.features_reply.padding",
+               FT_BYTES, BASE_NONE, NULL, 0x0,
+               NULL, HFILL }
+        },
 #if 0
         { &hf_openflow_padd48,
             { "Padding", "openflow.padding48",
@@ -1218,7 +1227,7 @@ proto_register_openflow_v1(void)
                NULL, HFILL }
         },
         { &hf_openflow_eth_dst,
-            { "Ethernet destination address", "openflow.eth_src",
+            { "Ethernet destination address", "openflow.eth_dst",
                FT_ETHER, BASE_NONE, NULL, 0x0,
                NULL, HFILL }
         },

@@ -206,7 +206,7 @@ static int hf_smpp_display_time                       = -1;
 static int hf_smpp_sms_signal                         = -1;
 static int hf_smpp_ms_validity                        = -1;
 static int hf_smpp_alert_on_message_delivery_null     = -1;
-static int hf_smpp_alert_on_message_delivery          = -1;
+static int hf_smpp_alert_on_message_delivery_type     = -1;
 static int hf_smpp_its_reply_type                     = -1;
 static int hf_smpp_its_session_number                 = -1;
 static int hf_smpp_its_session_sequence               = -1;
@@ -1179,27 +1179,10 @@ smpp_mktime(const char *datestr, time_t *secs, int *nsecs)
     if (relative == FALSE) {
         struct tm *gm, *local_time;
         int gm_hour, gm_min;
-        time_t current_time;
 
         *secs = mktime(&r_time);
-
-        /* Subtract out the timezone information since we will adjust for
-         * the presented time's timezone below and then display in UTC.
-         *
-         * To do that, first determine the current timezone's offset to UTC.
-         */
-        current_time = time(NULL);
-        gm = gmtime(&current_time);
-        gm_hour = gm->tm_hour;
-        gm_min = gm->tm_min;
-        local_time = localtime(&current_time);
-        /* Then subtract out that difference (whether the difference is
-         * measured in hours, minutes, or both).
-         */
-        *secs -= 3600*(gm_hour - local_time->tm_hour);
-        *secs -= 60*(gm_min - local_time->tm_min);
-
         *nsecs = (datestr[12] - '0') * 100000000;
+
         t_diff = (10 * (datestr[13] - '0') + (datestr[14] - '0')) * 900;
         if (datestr[15] == '-')
             /* Represented time is behind UTC, shift it forward to UTC */
@@ -1207,6 +1190,24 @@ smpp_mktime(const char *datestr, time_t *secs, int *nsecs)
         else if (datestr[15] == '+')
             /* Represented time is ahead of UTC, shift it backward to UTC */
             *secs -= t_diff;
+
+        /* Subtract out the timezone information since we adjusted for
+         * the presented time's timezone above and will display in UTC.
+         *
+         * To do that, first determine how the time is represented in the
+         * local time zone and in UTC.
+         */
+        gm = gmtime(secs);
+        gm_hour = gm->tm_hour;
+        gm_min = gm->tm_min;
+        local_time = localtime(secs);
+
+        /* Then subtract out the difference between those times (whether the
+         * difference is measured in hours, minutes, or both).
+         */
+        *secs -= 3600*(gm_hour - local_time->tm_hour);
+        *secs -= 60*(gm_min - local_time->tm_min);
+
     } else {
         *secs = r_time.tm_sec + 60 *
             (r_time.tm_min + 60 *
@@ -1753,7 +1754,7 @@ smpp_handle_tlv(proto_tree *tree, tvbuff_t *tvb, int *offset)
                                     tvb, *offset, length, ENC_NA);
                 } else {
                         smpp_handle_int1(sub_tree, tvb,
-                                    hf_smpp_alert_on_message_delivery, offset);
+                                    hf_smpp_alert_on_message_delivery_type, offset);
                 }
                 break;
             case  0x1380:       /* its_reply_type       */
@@ -3395,14 +3396,14 @@ proto_register_smpp(void)
             }
         },
         {   &hf_smpp_alert_on_message_delivery_null,
-            {   "Alert on delivery", "smpp.alert_on_message_delivery",
+            {   "Alert on delivery", "smpp.alert_on_message_delivery_null",
                 FT_NONE, BASE_NONE, NULL, 0x00,
                 "Instructs the handset to alert user on message delivery.",
                 HFILL
             }
         },
-        {   &hf_smpp_alert_on_message_delivery,
-            {   "Alert on delivery", "smpp.alert_on_message_delivery",
+        {   &hf_smpp_alert_on_message_delivery_type,
+            {   "Alert on delivery", "smpp.alert_on_message_delivery_type",
                 FT_UINT8, BASE_DEC, VALS(vals_alert_on_message_delivery), 0x00,
                 "Instructs the handset to alert user on message delivery.",
                 HFILL

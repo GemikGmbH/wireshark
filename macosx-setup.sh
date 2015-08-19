@@ -153,14 +153,14 @@ uninstall() {
         # old configurations.
         #
 
-        installed_cares_version=`ls cares-*-done 2>/dev/null | sed 's/cares-\(.*\)-done/\1/'`
+        installed_cares_version=`ls c-ares-*-done 2>/dev/null | sed 's/c-ares-\(.*\)-done/\1/'`
         if [ ! -z "$installed_cares_version" ] ; then
             echo "Uninstalling C-Ares API:"
-            cd cares-$installed_cares_version
+            cd c-ares-$installed_cares_version
             $DO_MAKE_UNINSTALL || exit 1
             make distclean || exit 1
             cd ..
-            rm cares-$installed_cares_version-done
+            rm c-ares-$installed_cares_version-done
         fi
 
         installed_geoip_version=`ls geoip-*-done 2>/dev/null | sed 's/geoip-\(.*\)-done/\1/'`
@@ -368,8 +368,8 @@ uninstall() {
         if [ ! -z "$installed_libtool_version" ] ; then
             echo "Uninstalling GNU libtool:"
             cd libtool-$installed_libtool_version
-            mv /usr/local/bin/glibtool /usr/local/bin/libtool
-            mv /usr/local/bin/glibtoolize /usr/local/bin/libtoolize
+            $DO_MV /usr/local/bin/glibtool /usr/local/bin/libtool
+            $DO_MV /usr/local/bin/glibtoolize /usr/local/bin/libtoolize
             $DO_MAKE_UNINSTALL || exit 1
             make distclean || exit 1
             cd ..
@@ -415,23 +415,26 @@ uninstall() {
 # (If that's not the case, this test needs to check the subdirectories
 # as well.)
 #
-# If not, do "make install", "make uninstall", and the removes for Lua
-# with sudo.
+# If not, do "make install", "make uninstall", the removes for Lua,
+# and the renames of [g]libtool* with sudo.
 #
 if [ -w /usr/local ]
 then
     DO_MAKE_INSTALL="make install"
     DO_MAKE_UNINSTALL="make uninstall"
     DO_RM="rm"
+    DO_MV="mv"
 else
     DO_MAKE_INSTALL="sudo make install"
     DO_MAKE_UNINSTALL="sudo make uninstall"
     DO_RM="sudo rm"
+    DO_MV="sudo mv"
 fi
 
 #
 # If we have SDKs available, the default target OS is the major version
-# of the one we're running; get that and strip off the third component.
+# of the one we're running; get that and strip off the third component
+# if present.
 #
 for i in /Developer/SDKs \
     /Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs \
@@ -439,7 +442,7 @@ for i in /Developer/SDKs \
 do
     if [ -d "$i" ]
     then
-        min_osx_target=`sw_vers -productVersion | sed 's/\([[0-9]]*\).\([[0-9]]*\).[[0-9]]*/\1.\2/'`
+        min_osx_target=`sw_vers -productVersion | sed 's/\([0-9]*\)\.\([0-9]*\)\.[0-9]*/\1.\2/'`
         break
     fi
 done
@@ -768,8 +771,8 @@ if [ "$LIBTOOL_VERSION" -a ! -f libtool-$LIBTOOL_VERSION-done ] ; then
     ./configure || exit 1
     make $MAKE_BUILD_OPTS || exit 1
     $DO_MAKE_INSTALL || exit 1
-    mv /usr/local/bin/libtool /usr/local/bin/glibtool
-    mv /usr/local/bin/libtoolize /usr/local/bin/glibtoolize
+    $DO_MV /usr/local/bin/libtool /usr/local/bin/glibtool
+    $DO_MV /usr/local/bin/libtoolize /usr/local/bin/glibtoolize
     cd ..
     touch libtool-$LIBTOOL_VERSION-done
 fi
@@ -1347,7 +1350,7 @@ then
     touch geoip-$GEOIP_VERSION-done
 fi
 
-if [ "$CARES_VERSION" -a ! -f geoip-$CARES_VERSION-done ]
+if [ "$CARES_VERSION" -a ! -f c-ares-$CARES_VERSION-done ]
 then
     echo "Downloading, building, and installing C-Ares API:"
     [ -f c-ares-$CARES_VERSION.tar.gz ] || curl -L -O http://c-ares.haxx.se/download/c-ares-$CARES_VERSION.tar.gz || exit 1
@@ -1357,7 +1360,7 @@ then
     make $MAKE_BUILD_OPTS || exit 1
     $DO_MAKE_INSTALL || exit 1
     cd ..
-    touch geoip-$CARES_VERSION-done
+    touch c-ares-$CARES_VERSION-done
 fi
 
 echo ""

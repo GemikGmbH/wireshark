@@ -167,14 +167,15 @@ WSLUA_METAMETHOD FieldInfo__call(lua_State* L) {
                 return 1;
             }
         case FT_NONE:
-                if (fi->ws_fi->length == 0) {
-                        lua_pushnil(L);
-                        return 1;
+                if (fi->ws_fi->length > 0 && fi->ws_fi->rep) {
+                    /* it has a length, but calling fvalue_get() on an FT_NONE asserts,
+                       so get the label instead (it's a FT_NONE, so a label is what it basically is) */
+                    lua_pushstring(L, fi->ws_fi->rep->representation);
+                    return 1;
                 }
-                /* FALLTHROUGH */
+                return 0;
         case FT_BYTES:
         case FT_UINT_BYTES:
-        case FT_PROTOCOL:
         case FT_REL_OID:
         case FT_SYSTEM_ID:
         case FT_OID:
@@ -185,6 +186,16 @@ WSLUA_METAMETHOD FieldInfo__call(lua_State* L) {
                 pushByteArray(L,ba);
                 return 1;
             }
+        case FT_PROTOCOL:
+            {
+                ByteArray ba = g_byte_array_new();
+                tvbuff_t* tvb = (tvbuff_t *) fvalue_get(&fi->ws_fi->value);
+                g_byte_array_append(ba, (const guint8 *)tvb_memdup(wmem_packet_scope(), tvb, 0,
+                                            tvb_captured_length(tvb)), tvb_captured_length(tvb));
+                pushByteArray(L,ba);
+                return 1;
+            }
+
         case FT_GUID:
         default:
                 luaL_error(L,"FT_ not yet supported");
@@ -198,9 +209,19 @@ WSLUA_METAMETHOD FieldInfo__tostring(lua_State* L) {
     FieldInfo fi = checkFieldInfo(L,1);
 
     if (fi->ws_fi->value.ftype->val_to_string_repr) {
-        gchar* repr = fvalue_to_string_repr(&fi->ws_fi->value,FTREPR_DISPLAY,NULL);
+        gchar* repr = NULL;
+
+        if (fi->ws_fi->hfinfo->type == FT_PROTOCOL || fi->ws_fi->hfinfo->type == FT_PCRE) {
+            repr = fvalue_to_string_repr(&fi->ws_fi->value,FTREPR_DFILTER,NULL);
+        }
+        else {
+            repr = fvalue_to_string_repr(&fi->ws_fi->value,FTREPR_DISPLAY,NULL);
+        }
+
         if (repr) {
             lua_pushstring(L,repr);
+            /* fvalue_to_string_repr() g_malloc's the string's buffer */
+            g_free(repr);
         }
         else {
             lua_pushstring(L,"(unknown)");
@@ -279,17 +300,15 @@ WSLUA_METAMETHOD FieldInfo__eq(lua_State* L) {
     FieldInfo l = checkFieldInfo(L,1);
     FieldInfo r = checkFieldInfo(L,2);
 
-    if (l->ws_fi->ds_tvb != r->ws_fi->ds_tvb) {
-        WSLUA_ERROR(FieldInfo__eq,"Data source must be the same for both fields");
-        return 0;
-    }
-
-    if (l->ws_fi->start <= r->ws_fi->start && r->ws_fi->start + r->ws_fi->length <= l->ws_fi->start + r->ws_fi->length) {
+    /* it is not an error if their ds_tvb are different... they're just not equal */
+    if (l->ws_fi->ds_tvb == r->ws_fi->ds_tvb &&
+        l->ws_fi->start == r->ws_fi->start &&
+        r->ws_fi->length == l->ws_fi->length) {
         lua_pushboolean(L,1);
-        return 1;
     } else {
-        return 0;
+        lua_pushboolean(L,0);
     }
+    return 1;
 }
 
 WSLUA_METAMETHOD FieldInfo__le(lua_State* L) {
@@ -302,10 +321,10 @@ WSLUA_METAMETHOD FieldInfo__le(lua_State* L) {
 
     if (r->ws_fi->start + r->ws_fi->length <= l->ws_fi->start + r->ws_fi->length) {
         lua_pushboolean(L,1);
-        return 1;
     } else {
-        return 0;
+        lua_pushboolean(L,0);
     }
+    return 1;
 }
 
 WSLUA_METAMETHOD FieldInfo__lt(lua_State* L) {
@@ -320,10 +339,10 @@ WSLUA_METAMETHOD FieldInfo__lt(lua_State* L) {
 
     if (r->ws_fi->start + r->ws_fi->length < l->ws_fi->start) {
         lua_pushboolean(L,1);
-        return 1;
     } else {
-        return 0;
+        lua_pushboolean(L,0);
     }
+    return 1;
 }
 
 /* Gets registered as metamethod automatically by WSLUA_REGISTER_META */

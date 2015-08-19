@@ -1021,10 +1021,7 @@ dissect_osd2_cdb_continuation(packet_info *pinfo, tvbuff_t *tvb, guint32 offset,
             expert_add_info(pinfo, item_length, &ei_osd2_cdb_continuation_descriptor_length_invalid);
             return;
         }
-        /* check for overflow */
-        if (offset + length + padlen > offset) {
-            offset += length+padlen;
-        }
+        offset += length+padlen;
     }
 
 }

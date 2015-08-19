@@ -158,6 +158,10 @@ WS_DLL_PUBLIC void write_fields_preamble(output_fields_t* fields, FILE *fh);
 WS_DLL_PUBLIC void proto_tree_write_fields(output_fields_t* fields, epan_dissect_t *edt, column_info *cinfo, FILE *fh);
 WS_DLL_PUBLIC void write_fields_finale(output_fields_t* fields, FILE *fh);
 
+WS_DLL_PUBLIC void write_jsonfields_preamble(output_fields_t* fields, FILE *fh);
+WS_DLL_PUBLIC void proto_tree_write_jsonfields(output_fields_t* fields, epan_dissect_t *edt, column_info *cinfo, FILE *fh);
+WS_DLL_PUBLIC void write_jsonfields_finale(output_fields_t* fields, FILE *fh);
+
 WS_DLL_PUBLIC gchar* get_node_field_value(field_info* fi, epan_dissect_t* edt);
 
 #ifdef __cplusplus

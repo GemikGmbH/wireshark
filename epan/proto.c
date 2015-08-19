@@ -24,7 +24,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 #include <glib.h>
 #include <float.h>
 #include <errno.h>
@@ -4768,7 +4767,7 @@ proto_register_protocol(const char *name, const char *short_name,
 	const char *existing_name;
 	gint *key;
 	guint i;
-	guchar c;
+	gchar c;
 	gboolean found_invalid;
 
 	/*
@@ -4808,7 +4807,7 @@ proto_register_protocol(const char *name, const char *short_name,
 	found_invalid = FALSE;
 	for (i = 0; filter_name[i]; i++) {
 		c = filter_name[i];
-		if (!(islower(c) || isdigit(c) || c == '-' || c == '_' || c == '.')) {
+		if (!(g_ascii_islower(c) || g_ascii_isdigit(c) || c == '-' || c == '_' || c == '.')) {
 			found_invalid = TRUE;
 		}
 	}
@@ -5193,7 +5192,7 @@ proto_register_fields_manual(const int parent, header_field_info **hfi, const in
 void
 proto_unregister_field (const int parent, gint hf_id)
 {
-	hf_register_info *hf;
+	header_field_info *hfi;
 	protocol_t       *proto;
 	guint             i;
 
@@ -5206,10 +5205,10 @@ proto_unregister_field (const int parent, gint hf_id)
 	}
 
 	for (i = 0; i < proto->fields->len; i++) {
-		hf = (hf_register_info *)g_ptr_array_index(proto->fields, i);
-		if (*hf->p_id == hf_id) {
+		hfi = (header_field_info *)g_ptr_array_index(proto->fields, i);
+		if (hfi->id == hf_id) {
 			/* Found the hf_id in this protocol */
-			g_hash_table_steal(gpa_name_map, hf->hfinfo.abbrev);
+			g_hash_table_steal(gpa_name_map, hfi->abbrev);
 			g_ptr_array_remove_index_fast(proto->fields, i);
 			return;
 		}
@@ -5401,15 +5400,7 @@ tmp_fld_check_assert(header_field_info *hfinfo)
 				case BASE_OCT:
 				case BASE_DEC_HEX:
 				case BASE_HEX_DEC:
-					break;
 				case BASE_CUSTOM: /* hfinfo_numeric_value_format() treats this as decimal */
-					if (hfinfo->type == FT_INT64 ||
-					    hfinfo->type == FT_UINT64) {
-						/* BASE_CUSTOM not supported yet */
-						g_error("Field '%s' (%s) is a 64-bit field (%s) but is being displayed with BASE_CUSTOM\n",
-							hfinfo->name, hfinfo->abbrev,
-							ftype_name(hfinfo->type));
-					}
 					break;
 				default:
 					g_error("Field '%s' (%s) is an integral value (%s)"
@@ -6141,7 +6132,6 @@ fill_label_number64(field_info *fi, gchar *label_str, gboolean is_signed)
 	guint64            value;
 	char               tmp[ITEM_LABEL_LENGTH+1];
 
-	/* DOES NOT HANDLE BASE_CUSTOM */
 	/* Pick the proper format string */
 	if (is_signed)
 		format = hfinfo_int64_format(hfinfo);
@@ -6275,7 +6265,8 @@ hfinfo_number_value_format_display(const header_field_info *hfinfo, int display,
 				return ptr;
 
 			default:
-				g_assert_not_reached();
+				DISSECTOR_ASSERT_NOT_REACHED();
+				;
 		}
 	return ptr;
 }
@@ -6366,7 +6357,8 @@ hfinfo_uint64_format(const header_field_info *hfinfo)
 			format = "0x%016" G_GINT64_MODIFIER "x (%" G_GINT64_MODIFIER "u)";
 			break;
 		default:
-			g_assert_not_reached();
+			DISSECTOR_ASSERT_NOT_REACHED();
+			;
 	}
 	return format;
 }
@@ -6394,7 +6386,8 @@ hfinfo_int64_format(const header_field_info *hfinfo)
 			format = "0x%016" G_GINT64_MODIFIER "x (%" G_GINT64_MODIFIER "d)";
 			break;
 		default:
-			g_assert_not_reached();
+			DISSECTOR_ASSERT_NOT_REACHED();
+			;
 	}
 	return format;
 }

@@ -372,11 +372,12 @@ typedef struct _dns_transaction_t {
   guint32 req_frame;
   guint32 rep_frame;
   nstime_t req_time;
+  guint id;
 } dns_transaction_t;
 
 /* Structure containing conversation specific information */
 typedef struct _dns_conv_info_t {
-  wmem_map_t *pdus;
+  wmem_tree_t *pdus;
 } dns_conv_info_t;
 
 /* DNS structs and definitions */
@@ -1322,17 +1323,20 @@ dissect_dns_query(tvbuff_t *tvb, int offset, int dns_data_offset,
 
     proto_tree_add_string(q_tree, hf_dns_qry_name, tvb, offset, name_len, name);
 
-    tq = proto_tree_add_uint(q_tree, hf_dns_qry_name_len, tvb, offset, name_len, (guint32)strlen(name));
+    tq = proto_tree_add_uint(q_tree, hf_dns_qry_name_len, tvb, offset, name_len, name_len > 1 ?  (guint32)strlen(name) : 0);
     PROTO_ITEM_SET_GENERATED(tq);
 
     /* Count how many '.' are in the string, plus 1, in order to count the number
        of labels */
     labels = 0;
-    for (i = 0; i < strlen(name); i++) {
-      if (name[i] == '.')
-        labels++;
+    if (name_len > 1) {
+     /* it was not a Zero-length name */
+      for (i = 0; i < strlen(name); i++) {
+        if (name[i] == '.')
+          labels++;
+      }
+      labels++;
     }
-    labels++;
     tq = proto_tree_add_uint(q_tree, hf_dns_count_labels, tvb, offset, name_len, labels);
     PROTO_ITEM_SET_GENERATED(tq);
 
@@ -1886,7 +1890,7 @@ dissect_dns_answer(tvbuff_t *tvb, int offsetx, int dns_data_offset,
       cur_offset += 4;
       rr_len     -= 4;
 
-      proto_tree_add_item(rr_tree, hf_dns_wks_protocol, tvb, cur_offset, 4, ENC_BIG_ENDIAN);
+      proto_tree_add_item(rr_tree, hf_dns_wks_protocol, tvb, cur_offset, 1, ENC_BIG_ENDIAN);
       protocol = tvb_get_guint8(tvb, cur_offset);
       cur_offset += 1;
       rr_len     -= 1;
@@ -2130,6 +2134,7 @@ dissect_dns_answer(tvbuff_t *tvb, int offsetx, int dns_data_offset,
       if (rr_len > 1)   /* ISDN SA is optional */ {
         proto_tree_add_item(rr_tree, hf_dns_isdn_sa_length, tvb, cur_offset, 1, ENC_NA);
         isdn_sa_len = tvb_get_guint8(tvb, cur_offset);
+        cur_offset += 1;
 
         proto_tree_add_item(rr_tree, hf_dns_isdn_sa, tvb, cur_offset, isdn_sa_len, ENC_ASCII|ENC_NA);
       }
@@ -2414,6 +2419,7 @@ dissect_dns_answer(tvbuff_t *tvb, int offsetx, int dns_data_offset,
 
     case T_NAPTR: /*  Naming Authority PoinTeR (35) */
     {
+      proto_item    *ti_len;
       int           offset = cur_offset;
       guint16       order;
       guint16       preference;
@@ -2460,8 +2466,8 @@ dissect_dns_answer(tvbuff_t *tvb, int offsetx, int dns_data_offset,
       /* Replacement */
       replacement_len = get_dns_name(tvb, offset, 0, dns_data_offset, &replacement);
       name_out = format_text(replacement, strlen(replacement));
-      proto_tree_add_item(rr_tree, hf_dns_naptr_replacement_length, tvb, offset, 1, ENC_BIG_ENDIAN);
-      offset += 1;
+      ti_len = proto_tree_add_uint(rr_tree, hf_dns_naptr_replacement_length, tvb, offset, 0, replacement_len);
+      PROTO_ITEM_SET_GENERATED(ti_len);
 
       proto_tree_add_string(rr_tree, hf_dns_naptr_replacement, tvb, offset, replacement_len, name_out);
 
@@ -2564,7 +2570,7 @@ dissect_dns_answer(tvbuff_t *tvb, int offsetx, int dns_data_offset,
       proto_tree_add_item(rr_tree, hf_dns_a6_prefix_len,tvb, a6_offset, 1, ENC_BIG_ENDIAN);
       a6_offset++;
       if (suf_len) {
-        proto_tree_add_ipv6(rr_tree, hf_dns_a6_address_suffix,tvb, a6_offset, suf_octet_count, ip6_to_str(&suffix));
+        proto_tree_add_ipv6(rr_tree, hf_dns_a6_address_suffix,tvb, a6_offset, suf_octet_count, suffix.bytes);
         a6_offset += suf_octet_count;
       }
       if (pre_len > 0) {
@@ -3198,7 +3204,7 @@ dissect_dns_answer(tvbuff_t *tvb, int offsetx, int dns_data_offset,
     {
 
       proto_tree_add_item(rr_tree, hf_dns_eui64, tvb, cur_offset, 8, ENC_NA);
-      /*cur_offset += 6;*/
+      /*cur_offset += 8;*/
 
     }
     break;
@@ -3543,6 +3549,7 @@ dissect_dns_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   conversation_t    *conversation;
   dns_conv_info_t   *dns_info;
   dns_transaction_t *dns_trans;
+  wmem_tree_key_t    key[3];
 
   dns_data_offset = offset;
 
@@ -3597,9 +3604,17 @@ dissect_dns_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
      * it to the list of information structures.
      */
     dns_info = wmem_new(wmem_file_scope(), dns_conv_info_t);
-    dns_info->pdus=wmem_map_new(wmem_file_scope(), g_direct_hash, g_direct_equal);
+    dns_info->pdus=wmem_tree_new(wmem_file_scope());
     conversation_add_proto_data(conversation, proto_dns, dns_info);
   }
+
+  key[0].length = 1;
+  key[0].key = &id;
+  key[1].length = 1;
+  key[1].key = &pinfo->fd->num;
+  key[2].length = 0;
+  key[2].key = NULL;
+
   if (!pinfo->fd->flags.visited) {
     if (!(flags&F_RESPONSE)) {
       /* This is a request */
@@ -3607,15 +3622,23 @@ dissect_dns_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
       dns_trans->req_frame=pinfo->fd->num;
       dns_trans->rep_frame=0;
       dns_trans->req_time=pinfo->fd->abs_ts;
-      wmem_map_insert(dns_info->pdus, GUINT_TO_POINTER(id), (void *)dns_trans);
+      dns_trans->id = id;
+      wmem_tree_insert32_array(dns_info->pdus, key, (void *)dns_trans);
     } else {
-      dns_trans=(dns_transaction_t *)wmem_map_lookup(dns_info->pdus, GUINT_TO_POINTER(id));
+      dns_trans=(dns_transaction_t *)wmem_tree_lookup32_array_le(dns_info->pdus, key);
       if (dns_trans) {
-        dns_trans->rep_frame=pinfo->fd->num;
+        if (dns_trans->id != id) {
+          dns_trans = NULL;
+        } else {
+          dns_trans->rep_frame=pinfo->fd->num;
+        }
       }
     }
   } else {
-    dns_trans=(dns_transaction_t *)wmem_map_lookup(dns_info->pdus, GUINT_TO_POINTER(id));
+    dns_trans=(dns_transaction_t *)wmem_tree_lookup32_array_le(dns_info->pdus, key);
+    if (dns_trans && dns_trans->id != id) {
+      dns_trans = NULL;
+    }
   }
   if (!dns_trans) {
     /* create a "fake" pana_trans structure */
@@ -4144,7 +4167,7 @@ proto_register_dns(void)
         NULL, HFILL }},
 
     { &hf_dns_naptr_replacement_length,
-      { "rReplacement Length", "dns.naptr.replacement_length",
+      { "Replacement Length", "dns.naptr.replacement_length",
         FT_UINT8, BASE_DEC, NULL, 0x0,
         NULL, HFILL }},
 
@@ -4384,7 +4407,7 @@ proto_register_dns(void)
         NULL, HFILL }},
 
     { &hf_dns_eui64,
-      { "EUI48 Address", "dns.eui48",
+      { "EUI64 Address", "dns.eui64",
         FT_EUI64, BASE_NONE, NULL, 0x0,
         NULL, HFILL }},
 

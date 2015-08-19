@@ -1565,9 +1565,12 @@ static const value_string cmd_authentication_enable_values[] = {
     {0, NULL }
 };
 
+/* XXX - Should be pulled from utf8_entities.h */
+#define UTF8_MICRO_SIGN "\xc2\xb5"      /* 181 / 0xb5 */
+
 static const value_string cmd_input_coding_values[] = {
     {0x0, "Linear" },
-    {0x1, "\xb5-law" },
+    {0x1, UTF8_MICRO_SIGN "-law" },
     {0x2, "A-law" },
     {0, NULL }
 };
@@ -1591,7 +1594,7 @@ value_string_ext bthci_cmd_input_sample_size_vals_ext = VALUE_STRING_EXT_INIT(cm
 
 static const value_string cmd_air_coding_format_values[] = {
     {0x0, "CVSD" },
-    {0x1, "\xb5-law" },
+    {0x1, UTF8_MICRO_SIGN "-law" },
     {0x2, "A-law" },
     {0x3, "Transparent" },
     {0, NULL }
@@ -1728,10 +1731,10 @@ static const value_string  cmd_flow_ctrl_mode[] = {
 };
 
 static const value_string cmd_le_advertising_types[] = {
-    { 0x00, "Connectable Unidirected Advertising" },
+    { 0x00, "Connectable Undirected Advertising" },
     { 0x01, "Connectable Directed Advertising" },
-    { 0x02, "Scannable Unidirected Advertising" },
-    { 0x03, "Non-Connectable Unidirected Advertising" },
+    { 0x02, "Scannable Undirected Advertising" },
+    { 0x03, "Non-Connectable Undirected Advertising" },
     { 0, NULL }
 };
 

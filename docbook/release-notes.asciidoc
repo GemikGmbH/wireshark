@@ -9,140 +9,112 @@ used for troubleshooting, analysis, development and education.
 
 === Bug Fixes
 
-The following bugs have been fixed:
-
 // Link templates: ws-buglink:5000[]  ws-buglink:6000[Wireshark bug]  cve-idlink:2013-2486[]
 
 The following vulnerabilities have been fixed.
 
-* ws-salink:2014-13[]
+* ws-salink:2015-01[]
 +
-MEGACO dissector infinite loop.
-// Fixed in master: g9112a09
-// Fixed in master-1.12: g6295e53
-// Fixed in master-1.10: gfeed72f
-(ws-buglink:10333[])
-cve-idlink:2014-6423[]
+The WCCP dissector could crash.
+// Fixed in master: ga442a1c, ge843c67
+// Fixed in master-1.12: gdea8d02, gadce5fa
+(ws-buglink:10720[], ws-buglink:10806[])
+cve-idlink:2015-0559[], cve-idlink:2015-0560[]
 
-* ws-salink:2014-14[]
+* ws-salink:2015-02[]
 +
-Netflow dissector crash.
-// Fixed in master: g4469825
-// Fixed in master-1.12: g2035d31
-// Fixed in master-1.10: g6e67016
-(ws-buglink:10370[])
-cve-idlink:2014-6424[]
+The LPP dissector could crash.
+// Fixed in master: g8e96830
+// Fixed in master-1.12: gedc1a29
+(ws-buglink:10773[])
+cve-idlink:2015-0561[]
 
-* ws-salink:2014-15[]
+* ws-salink:2015-03[]
 +
-CUPS dissector crash.
-// Fixed in master: gc10396d
-// Fixed in master-1.12: g2035d31
-(ws-buglink:10353[])
-cve-idlink:2014-6425[]
+The DEC DNA Routing Protocol dissector could crash.
+// Fixed in master: ga559f2a
+// Fixed in master-1.12: g8ae9b53
+// Fixed in master-1.10: g336ccc1
+(ws-buglink:10724[])
+cve-idlink:2015-0562[]
 
-* ws-salink:2014-16[]
+* ws-salink:2015-04[]
 +
-HIP dissector infinite loop.
-// Fixed in master: gd9e5021
-// Fixed in master-1.12: g9069d7b
-cve-idlink:2014-6426[]
+The SMTP dissector could crash.
+// Fixed in master: g8541578, g611cfd0
+// Fixed in master-1.12: ge3c0c98, gde70b34
+// Fixed in master-1.10: g2d23bcd, gda8282d
+(ws-buglink:10823[])
+cve-idlink:2015-0563[]
 
-* ws-salink:2014-17[]
+* ws-salink:2015-05[]
 +
-RTSP dissector crash.
-// Fixed in master: g7395915
-// Fixed in master-1.12: g949cca0
-// Fixed in master-1.10: gd762bd3
-(ws-buglink:10381[])
-cve-idlink:2014-6427[]
-
-* ws-salink:2014-18[]
-+
-SES dissector crash.
-// Fixed in master: g433a444
-// Fixed in master-1.12: g0942b2c
-// Fixed in master-1.10: g6763e8d
-(ws-buglink:10454[])
-cve-idlink:2014-6428[]
-
-* ws-salink:2014-19[]
-+
-Sniffer file parser crash.
-// Fixed in master: g47c5929
-// Fixed in master-1.12: g4413725
-// Fixed in master-1.10: g9a7abcc
-(ws-buglink:10461[])
-cve-idlink:2014-6429[]
-cve-idlink:2014-6430[]
-cve-idlink:2014-6431[]
-cve-idlink:2014-6432[]
-
+Wireshark could crash while decypting TLS/SSL sessions. Discovered by Noam Rathaus.
+// Fixed in master: gd3581ae
+// Fixed in master-1.12: gf5e435a
+// Fixed in master-1.10: g7fc3a06
+//(ws-buglink:10823[])
+cve-idlink:2015-0564[]
 
 The following bugs have been fixed:
 
 //* Wireshark always manages to score tickets for Burning Man, Coachella, and
 //  SXSW while you end up working double shifts. (ws-buglink:0000[])
+// for bugnumber in `git log --stat v1.12.4rc0..| grep ' Bug:' | cut -f2 -d: | sort -n -u ` ; do gen-bugnote $bugnumber; pbpaste >> /tmp/buglist.txt; done
 
-* Wireshark can crash during remote capture (rpcap) configuration.
-  (ws-buglink:3554[], ws-buglink:6922[], ws-buglink:7021)
+* WebSocket dissector: empty payload causes DISSECTOR_ASSERT_NOT_REACHED. (ws-buglink:9332[])
 
-* 802.11 capture does not decrypt/decode DHCP response. (ws-buglink:8734[])
+* Wireshark crashes if Lua heuristic dissector returns true. (ws-buglink:10233[])
 
-* Extra quotes around date fields (FT_ABSOLUTE_TIME) when using -E quote=d or s. (ws-buglink:10213[])
+* Display MEP ID in decimal in OAM Y.1731 Synthetic Loss Message and Reply PDU. (ws-buglink:10500[])
 
-* No progress line in "VOIP RTP Player". (ws-buglink:10307[])
+* TCP Window Size incorrectly reported in Packet List. (ws-buglink:10514[])
 
-* MIPv6 Service Selection Identifier parse error. (ws-buglink:10323[])
+* Status bar "creeps" to the left a few pixels every time Wireshark is opened. (ws-buglink:10518[])
 
-* Probably wrong length check in proto_item_set_end. (ws-buglink:10329[])
+* E-LMI Message type. (ws-buglink:10531[])
 
-* 802.11 BA sequence number decode is broken. (ws-buglink:10334[])
+* SMTP decoder can dump binary data to terminal in TShark. (ws-buglink:10536[])
 
-* wmem_alloc_array() "succeeds" (and clobbers memory) when requested to allocate
-  0xaaaaaaaa items of size 12. (ws-buglink:10343[])
+* PTPoE dissector gets confused by packets that include an FCS. (ws-buglink:10611[])
 
-* Different dissection results for same file. (ws-buglink:10348[])
+* IPv6 Vendor Specific Mobility Option includes the next mobility option type. (ws-buglink:10618[])
 
-* Mergecap wildcard breaks in version 1.12.0. (ws-buglink:10354[])
+* Save PCAP to PCAPng with commentary fails. (ws-buglink:10656[])
 
-* Diameter TCP reassemble. (ws-buglink:10362[])
+* Display filter "frame contains bytes [2342]" causes a crash. (ws-buglink:10690[])
 
-* TRILL NLPID 0xc0 unknown to Wireshark. (ws-buglink:10382[])
+* Multipath TCP: checksum displayed when it's not there. (ws-buglink:10692[])
 
-* BTLE advertising header flags (RxAdd/TxAdd) dissected incorrectly.
-  (ws-buglink:10384[])
+* LTE APN-AMBR is decoded incorrectly. (ws-buglink:10699[])
 
-* Ethernet OAM (CFM) frames including TLV's are wrongly decoded as malformed.
-  (ws-buglink:10385[])
+* DNS NAPTR RR Replacement Length is incorrect. (ws-buglink:10700[])
 
-* BGP4: Wireshark skipped some potion of AS_PATH. (ws-buglink:10399[])
+* IPv6 Experimental mobility header data is interpreted as options. (ws-buglink:10703[])
 
-* MAC address name resolution is broken. (ws-buglink:10344[])
+* Dissector bug, protocol SPDY: tvbuff.c:610: failed assertion "tvb && tvb->initialized". (ws-buglink:10704[])
 
-* Wrong decoding of RPKI RTR End of Data PDU. (ws-buglink:10411[])
+* BGP: Incorrect decoding AS numbers when mixed AS size. (ws-buglink:10742[])
 
-* SSL/TLS dissector incorrectly interprets length for status_request_v2 hello
-  extension. (ws-buglink:10416[])
+* BGP update community - incorrect decoding. (ws-buglink:10746[])
 
-* Misparsed NTP control assignments with empty values. (ws-buglink:10417[])
+* Setting a 6LoWPAN context generates a Wireshark crash. (ws-buglink:10747[])
 
-* 6LoWPAN multicast address decompression problems. (ws-buglink:10426[])
+* FC is not dissected (protocol UNKNOWN). (ws-buglink:10751[])
 
-* Netflow v9 flowset not decoded if options template has zero-length scope
-  section. (ws-buglink:10432[])
+* Crash when displaying several times INFO column. (ws-buglink:10755[])
 
-* GUI Hangs when Selecting Path to GeoIP Files. (ws-buglink:10434[])
+* Decoding of longitude value in LCSAP (3GPP TS 29.171) is incorrect. (ws-buglink:10767[])
 
-* AX.25 dissector prints unprintable characters. (ws-buglink:10439[])
+* Crash when enabling FCoIB manual settings without filling address field. (ws-buglink:10796[])
 
-* 6LoWPAN context handling not working. (ws-buglink:10443[])
+* RSVP RECORD_ROUTE IPv4 Subobject Flags field incorrect decoding. (ws-buglink:10799[])
 
-* SIP: When export to a CSV, Info is changed to differ. (ws-buglink:10453[])
+* Wireshark Lua engine can't access protocol field type. (ws-buglink:10801[])
 
-* Typo in packet-netflow.c. (ws-buglink:10458[])
+* Field Analysis of OpenFlow v1.4 OFPT_SET_ASYNC. (ws-buglink:10808[])
 
-* Incorrect MPEG-TS decoding (OPCR field). (ws-buglink:10446[])
+* Lua: getting fieldinfo.value for FT_NONE causes assert. (ws-buglink:10815[])
 
 === New and Updated Features
 
@@ -156,43 +128,79 @@ There are no new protocols in this release.
 
 --sort-and-group--
 6LoWPAN
-A21
-ACR122
+ADwin
+AllJoyn
 Art-Net
-AX.25
+Asterix
 BGP
-BTLE
-CAPWAP
-Ethernet OAM
-DIAMETER
-DICOM
-DVB-CI
-HIP
+Bitcoin
+Bluetooth OBEX
+Bluetooth SDP
+CFM
+CIP
+DCERPC PN-IO
+DCERPC SPOOLSS
+DEC DNA
+DECT
+DHCPv6
+DNS
+DTN
+E-LMI
+ENIP
+Ethernet
+Extreme
+Fibre Channel
+FCoIB
+GED125
+GTP
+H.248
+H.264
 HiSLIP
-HTTP2
+IDRP
 IEEE 802.11
+IEEE P1722.1
+Infiniband
+IrDA
+iSCSI
+ISUP
+LBMR
+LCSAP
+LPP
+MAC LTE
 MAUSB
-MEGACO
+MBIM
+MIM
+MIP
 MIPv6
 MP2T
-Netflow
-NTP
-openSAFETY
-OSI
+MPEG-1
+NAS EPS
+NAT-PMP
+NCP
+NXP PN532
+OpcUa
+OpenFlow
+PTP
 RDM
-RPKI RTR
+RPKI-RTR
+RSVP
+RTnet
 RTSP
-SES
-SIP
-TLS
-Token Ring MAC
+SCTP
+SMPP
+SMTP
+SPDY
+Spice
+TCP
+WCCP
+Wi-Fi P2P
+WiMAX
 --sort-and-group--
 
 === New and Updated Capture File Support
 
 --sort-and-group--
-DOS Sniffer
-NetScaler
+K12
 --sort-and-group--
 
 == Getting Wireshark
@@ -224,13 +232,13 @@ The BER dissector might infinitely loop.
 (ws-buglink:1516[])
 
 Capture filters aren't applied when capturing from named pipes.
-(ws-buglink:1814)
+(ws-buglink:1814[])
 
 Filtering tshark captures with read filters (-R) no longer works.
 (ws-buglink:2234[])
 
 The 64-bit Windows installer does not support Kerberos decryption.
-(https://wiki.wireshark.org/Development/Win64[Win64 development page])
+(http://wiki.wireshark.org/Development/Win64[Win64 development page])
 
 Resolving (ws-buglink:9044[]) reopens (ws-buglink:3528[]) so that Wireshark
 no longer automatically decodes gzip data when following a TCP stream.
@@ -244,13 +252,8 @@ Hex pane display issue after startup.
 Packet list rows are oversized.
 (ws-buglink:4357[])
 
-Summary pane selected frame highlighting not maintained.
-(ws-buglink:4445[])
-
 Wireshark and TShark will display incorrect delta times in some cases.
 (ws-buglink:4985[])
-
-The 64-bit Mac OS X installer doesn't support Mac OS X 10.9 (ws-buglink:9242[])
 
 == Getting Help
 

@@ -2588,8 +2588,8 @@ commonspace      1592/tcp # commonspace [Rob_Chandhok_2] [Rob_Chandhok_2]
 commonspace      1592/udp # commonspace [Rob_Chandhok_2] [Rob_Chandhok_2]
 mainsoft-lm      1593/tcp # mainsoft-lm [Anand_Gangadharan] [Anand_Gangadharan]
 mainsoft-lm      1593/udp # mainsoft-lm [Anand_Gangadharan] [Anand_Gangadharan]
-sixtrak          1594/tcp # sixtrak [Bob_Rennie] [Bob_Rennie]
-sixtrak          1594/udp # sixtrak [Bob_Rennie] [Bob_Rennie]
+sixtrak          1594/tcp # sixtrak [Red_Lion_Controls] [Denis_Aull] 2014-09-22
+sixtrak          1594/udp # sixtrak [Red_Lion_Controls] [Denis_Aull] 2014-09-22
 radio            1595/tcp # radio
 radio            1595/udp # radio
 radio-sm         1596/tcp # radio-sm
@@ -3933,8 +3933,8 @@ mfserver         2266/tcp # M-Files Server [Samppa_Lahtinen] [Samppa_Lahtinen] 2
 mfserver         2266/udp # M-files Server [Samppa_Lahtinen] [Samppa_Lahtinen] 2004-06
 ontobroker       2267/tcp # OntoBroker [Dr_Michael_Erdmann] [Dr_Michael_Erdmann] 2004-12
 ontobroker       2267/udp # OntoBroker [Dr_Michael_Erdmann] [Dr_Michael_Erdmann] 2004-12
-amt              2268/tcp # AMT [Tom_Pusateri] [Tom_Pusateri] 2004-12
-amt              2268/udp # AMT [Tom_Pusateri] [Tom_Pusateri] 2004-12
+amt              2268/tcp # AMT [IESG] [IETF_Chair] 2004-12 2014-12-17 [RFC-ietf-mboned-auto-multicast-18]
+amt              2268/udp # AMT [IESG] [IETF_Chair] 2004-12 2014-12-17 [RFC-ietf-mboned-auto-multicast-18]
 mikey            2269/tcp # MIKEY [Karl_Norrman] [Karl_Norrman] 2004-12
 mikey            2269/udp # MIKEY [Karl_Norrman] [Karl_Norrman] 2004-12
 starschool       2270/tcp # starSchool [Adam_Ernst] [Adam_Ernst] 2004-12
@@ -4247,6 +4247,8 @@ kofax-svr        2424/tcp # KOFAX-SVR [Steven_Kilby] [Steven_Kilby] 2011-04-25
 kofax-svr        2424/udp # KOFAX-SVR [Steven_Kilby] [Steven_Kilby] 2011-04-25
 fjitsuappmgr     2425/tcp # Fujitsu App Manager [Hiroyuki_Kawabuchi] [Hiroyuki_Kawabuchi]
 fjitsuappmgr     2425/udp # Fujitsu App Manager [Hiroyuki_Kawabuchi] [Hiroyuki_Kawabuchi]
+vcmp             2426/tcp # VeloCloud MultiPath Protocol [VeloCloud_Networks] [Tim_Van_Herck] 2014-11-13 This port was previously removed on 2002-04-29.
+vcmp             2426/udp # VeloCloud MultiPath Protocol [VeloCloud_Networks] [Tim_Van_Herck] 2014-11-13 This port was previously removed on 2002-04-29.
 mgcp-gateway     2427/tcp # Media Gateway Control Protocol Gateway [Christian_Huitema] [Christian_Huitema]
 mgcp-gateway     2427/udp # Media Gateway Control Protocol Gateway [Christian_Huitema] [Christian_Huitema]
 ott              2428/tcp # One Way Trip Time [Greg_Troxel] [Greg_Troxel]
@@ -6777,6 +6779,7 @@ magaya-network   3691/tcp # Magaya Network Port [Jesus_David_Rodrigue] [Jesus_Da
 magaya-network   3691/udp # Magaya Network Port [Jesus_David_Rodrigue] [Jesus_David_Rodrigue] 2003-02
 intelsync        3692/tcp # Brimstone IntelSync [Davey_Taylor] [Davey_Taylor] 2003-02
 intelsync        3692/udp # Brimstone IntelSync [Davey_Taylor] [Davey_Taylor] 2003-02
+easl             3693/tcp # Emergency Automatic Structure Lockdown System [Mele_Associates] [Greg_Hansen][Randy_Yates] 2014-11-26 This port was previously removed on 2007-04-05.
 bmc-data-coll    3695/tcp # BMC Data Collection [Portnoy_Boxman] [Portnoy_Boxman] 2003-02
 bmc-data-coll    3695/udp # BMC Data Collection [Portnoy_Boxman] [Portnoy_Boxman] 2003-02
 telnetcpcd       3696/tcp # Telnet Com Port Control [Thomas_J_Pinkl] [Thomas_J_Pinkl] 2003-02
@@ -7869,6 +7872,7 @@ matrix-vnet      4360/tcp # Matrix VNet Communication ProtocolIANA assigned this
 matrix_vnet      4360/tcp # Matrix VNet Communication Protocol [Rehan_Mahmood] [Rehan_Mahmood] 2009-03-18 This entry is an alias to "matrix-vnet".This entry is now historic, not usable for use with manycommon service discovery mechanisms.
 nacnl            4361/udp # NavCom Discovery and Control Port [Yilei_Jia] [Yilei_Jia] 2009-03-18
 afore-vdp-disc   4362/udp # AFORE vNode Discovery protocol [Michael_Richardson] [Michael_Richardson] 2011-02-08
+shadowstream     4366/udp # ShadowStream System [StorageCraft_Technology_Corporation] [David_McConkie] 2014-12-17
 wxbrief          4368/tcp # WeatherBrief Direct [Kim_Alan_Waggoner] [Kim_Alan_Waggoner] 2006-11
 wxbrief          4368/udp # WeatherBrief Direct [Kim_Alan_Waggoner] [Kim_Alan_Waggoner] 2006-11
 epmd             4369/tcp # Erlang Port Mapper Daemon [Erlang] [Erlang]
@@ -7984,7 +7988,7 @@ awacs-ice        4488/tcp # Apple Wide Area Connectivity Service ICE Bootstrap [
 awacs-ice        4488/udp # Apple Wide Area Connectivity Service ICE Bootstrap [Rory_McGuire] [Rory_McGuire] 2010-09-24
 ipsec-nat-t      4500/tcp # IPsec NAT-Traversal [RFC3947]
 ipsec-nat-t      4500/udp # IPsec NAT-Traversal [RFC3947]
-a25-fap-fgw      4502/sctp # A25 (FAP-FGW) [ThreeGPP2] [Zhiming_Li] 2012-01-11
+a25-fap-fgw      4502/sctp # A25 (FAP-FGW) [ThreeGPP_2] [Zhiming_Li] 2012-01-11
 armagetronad     4534/udp # Armagetron Advanced Game Server [Manuel_Moos] [Yann_Kaiser] 2012-11-02
 ehs              4535/tcp # Event Heap Server
 ehs              4535/udp # Event Heap Server
@@ -8188,6 +8192,7 @@ sia-ctrl-plane   4787/tcp # Service Insertion Architecture (SIA) Control-Plane [
 xmcp             4788/tcp # eXtensible Messaging Client Protocol [Cisco] [Glenn_Matthews] 2011-05-23 2011-10-25 Defined TXT keys:     txtvers=1 (as described in the draft)      protovers=<comma-separated list of major/minor versions supported>(examples: "protovers=1.0" "protovers=1.1,2.0"
 vxlan            4789/udp # Virtual eXtensible Local Area Network (VXLAN) [Lawrence_Kreeger] [Lawrence_Kreeger] 2013-04-19 2014-06-17 [RFC7348]
 vxlan-gpe        4790/udp # Generic Protocol Extension for Virtual eXtensible Local Area Network (VXLAN) [Lawrence_Kreeger] [Lawrence_Kreeger] 2014-08-26
+roce             4791/udp # IP Routable RocE [InfiniBand_Trade_Association] [Diego_Crupnicoff] 2014-10-17
 iims             4800/tcp # Icona Instant Messenging System
 iims             4800/udp # Icona Instant Messenging System
 iwec             4801/tcp # Icona Web Embedded Chat
@@ -8521,6 +8526,7 @@ aol-3            5193/udp # AmericaOnline3 [Bruce_Mackey] [Bruce_Mackey]
 cpscomm          5194/tcp # CipherPoint Config Service [CipherPoint] [CipherPoint] 2010-03-03
 ampl-lic         5195/tcp # The protocol is used by a license server and client programs to control use of program licenses that float to networked machines [AMPL_Optimization] [David_M_Gay] 2012-05-25
 ampl-tableproxy  5196/tcp # The protocol is used by two programs that exchange "table" data used in the AMPL modeling language [AMPL_Optimization] [David_M_Gay] 2012-05-25
+tunstall-lwp     5197/tcp # Tunstall Lone worker device interface [Tunstall_Healthcare_UK_Ltd] [Robert_Moore] 2014-12-10
 targus-getdata   5200/tcp # TARGUS GetData [John_Keaveney] [John_Keaveney]
 targus-getdata   5200/udp # TARGUS GetData [John_Keaveney] [John_Keaveney]
 targus-getdata1  5201/tcp # TARGUS GetData 1 [John_Keaveney] [John_Keaveney]
@@ -8766,6 +8772,12 @@ quailnet         5464/tcp # Quail Networks Object Broker [Craig_N_Bissell] [Crai
 quailnet         5464/udp # Quail Networks Object Broker [Craig_N_Bissell] [Craig_N_Bissell] 2006-04
 netops-broker    5465/tcp # NETOPS-BROKER [John_R_Deuel] [John_R_Deuel]
 netops-broker    5465/udp # NETOPS-BROKER [John_R_Deuel] [John_R_Deuel]
+apsolab-col      5470/tcp # The Apsolab company's data collection protocol (native api) [Apsolab_Inc] [Jean-Francois_Gauthier] 2014-11-10
+apsolab-cols     5471/tcp # The Apsolab company's secure data collection protocol (native api) [Apsolab_Inc] [Jean-Francois_Gauthier] 2014-11-10
+apsolab-tag      5472/tcp # The Apsolab company's dynamic tag protocol [Apsolab_Inc] [Jean-Francois_Gauthier] 2014-11-10
+apsolab-tags     5473/tcp # The Apsolab company's secure dynamic tag protocol [Apsolab_Inc] [Jean-Francois_Gauthier] 2014-11-10
+apsolab-rpc      5474/udp # The Apsolab company's status query protocol [Apsolab_Inc] [Jean-Francois_Gauthier] 2014-11-10
+apsolab-data     5475/tcp # The Apsolab company's data retrieval protocol [Apsolab_Inc] [Jean-Francois_Gauthier] 2014-11-10
 fcp-addr-srvr1   5500/tcp # fcp-addr-srvr1 [Ken_Wittmer] [Ken_Wittmer]
 fcp-addr-srvr1   5500/udp # fcp-addr-srvr1 [Ken_Wittmer] [Ken_Wittmer]
 fcp-addr-srvr2   5501/tcp # fcp-addr-srvr2 [Ken_Wittmer] [Ken_Wittmer]
@@ -8884,7 +8896,7 @@ ncxcp            5681/udp # Net-coneX Control Protocol [Ryan_Werber] [Ryan_Werbe
 brightcore       5682/udp # BrightCore control & data transfer exchange [Marko_Bjelac] [Marko_Bjelac] 2010-06-10
 coap             5683/udp # Constrained Application Protocol [IESG] [IETF_Chair] 2011-06-13 2013-07-25 [RFC7252]
 coaps            5684/udp # DTLS-secured CoAP [IESG] [IETF_Chair] 2013-07-25 [RFC7252]
-gog-multiplayer  5687/udp # GOG RakNet Game protocol on Galaxy service [GOG.com] [Michal_Gruchala] 2014-07-31
+gog-multiplayer  5687/udp # GOG multiplayer game protocol [GOG.com] [Michal_Gruchala] 2014-07-31 2014-10-09
 ggz              5688/tcp # GGZ Gaming Zone [Josef_Spillner] [Josef_Spillner] 2003-01
 ggz              5688/udp # GGZ Gaming Zone [Josef_Spillner] [Josef_Spillner] 2003-01
 qmvideo          5689/tcp # QM video network management protocol [Jamie_Lokier] [Jamie_Lokier] 2006-05
@@ -9377,6 +9389,7 @@ clever-ctrace    6687/tcp # CleverView for cTrace Message Service [David_Cheng] 
 clever-tcpip     6688/tcp # CleverView for TCP/IP Message Service [David_Cheng] [David_Cheng] 2009-10-13
 tsa              6689/tcp # Tofino Security Appliance [Scott_Howard] [Scott_Howard] 2009-10-13
 tsa              6689/udp # Tofino Security Appliance [Scott_Howard] [Scott_Howard] 2009-10-13
+cleverdetect     6690/tcp # CLEVERDetect Message Service [Applied_Expert_Systems_Inc] [David_Cheng] 2014-12-03
 babel            6696/udp # Babel Routing Protocol 2011-08-15 [RFC6126]
 ircs-u           6697/tcp # Internet Relay Chat via TLS/SSL 2014-02-11 [RFC7194]
 kti-icad-srvr    6701/tcp # KTI/ICAD Nameserver [Stanley_Knutson] [Stanley_Knutson]
@@ -9458,6 +9471,7 @@ swispol          6966/tcp # swispol [Yutaka_Ono] [Yutaka_Ono]
 swispol          6966/udp # swispol [Yutaka_Ono] [Yutaka_Ono]
 acmsoda          6969/tcp # acmsoda [Daniel_Simms] [Daniel_Simms]
 acmsoda          6969/udp # acmsoda [Daniel_Simms] [Daniel_Simms]
+conductor        6970/tcp # Conductor test coordination protocol [George_Neville-Neil] [George_Neville-Neil] 2014-09-18
 conductor-mpx    6970/sctp # conductor for multiplex [George_Neville-Neil] [George_Neville-Neil] 2014-07-29
 MobilitySrv      6997/tcp # Mobility XE Protocol [Joseph_T_Savarese] [Joseph_T_Savarese] 2007-06
 MobilitySrv      6997/udp # Mobility XE Protocol [Joseph_T_Savarese] [Joseph_T_Savarese] 2007-06
@@ -9673,6 +9687,7 @@ tidp             7548/udp # Threat Information Distribution Protocol [Chui_Tin_Y
 nls-tl           7549/tcp # Network Layer Signaling Transport Layer [Melinda_Shore] [Melinda_Shore] 2006-05
 nls-tl           7549/udp # Network Layer Signaling Transport Layer [Melinda_Shore] [Melinda_Shore] 2006-05
 cloudsignaling   7550/udp # Cloud Signaling Service [Scott_Dawson] [Scott_Dawson] 2011-07-01
+controlone-con   7551/tcp # ControlONE Console signaling [SIMB_Tecnologia] [Diego_Dias] 2014-11-07
 sncp             7560/tcp # Sniffer Command Protocol [Dominick_Cafarelli] [Dominick_Cafarelli] 2005-08
 sncp             7560/udp # Sniffer Command Protocol [Dominick_Cafarelli] [Dominick_Cafarelli] 2005-08
 cfw              7563/tcp # Control Framework [RFC6230]
@@ -9753,6 +9768,7 @@ vstat            7779/tcp # VSTAT [Vinh_Nguyn] [Vinh_Nguyn]
 vstat            7779/udp # VSTAT [Vinh_Nguyn] [Vinh_Nguyn]
 accu-lmgr        7781/tcp # accu-lmgr [Moises_E_Hernandez] [Moises_E_Hernandez]
 accu-lmgr        7781/udp # accu-lmgr [Moises_E_Hernandez] [Moises_E_Hernandez]
+s-bfd            7784/udp # Seamless Bidirectional Forwarding Detection (S-BFD) [IESG] [BFD_Chairs] 2014-12-24 [draft-ietf-bfd-seamless-ip]
 minivend         7786/tcp # MINIVEND [Mike_Heins] [Mike_Heins] Known Unauthorized Use on port 7786
 minivend         7786/udp # MINIVEND [Mike_Heins] [Mike_Heins] Known Unauthorized Use on port 7786
 popup-reminders  7787/tcp # Popup Reminders Receive [Robert_Harvey] [Robert_Harvey] 2006-01 Known Unauthorized Use on port 7787
@@ -9915,6 +9931,7 @@ indigo-vbcp      8131/tcp # INDIGO-VBCP [Colin_Caughie] [Colin_Caughie]
 indigo-vbcp      8131/udp # INDIGO-VBCP [Colin_Caughie] [Colin_Caughie]
 dbabble          8132/tcp # dbabble [Chris_Pugmire] [Chris_Pugmire]
 dbabble          8132/udp # dbabble [Chris_Pugmire] [Chris_Pugmire]
+puppet           8140/tcp # The Puppet master service [Puppet_Labs] [Zach_Leslie] 2014-09-18
 isdd             8148/tcp # i-SDD file transfer [Frank_Waarsenburg] [Frank_Waarsenburg] 2004-11
 isdd             8148/udp # i-SDD file transfer [Frank_Waarsenburg] [Frank_Waarsenburg] 2004-11
 eor-game         8149/udp # Edge of Reality game data [Sky_Schulz] [Sky_Schulz] 2011-05-09
@@ -10129,6 +10146,7 @@ http-wmap        8990/tcp # webmail HTTP service [Fred_Batty] [Fred_Batty] 2007-
 http-wmap        8990/udp # webmail HTTP service [Fred_Batty] [Fred_Batty] 2007-12-03
 https-wmap       8991/tcp # webmail HTTPS service [Fred_Batty] [Fred_Batty] 2007-12-03
 https-wmap       8991/udp # webmail HTTPS service [Fred_Batty] [Fred_Batty] 2007-12-03
+oracle-ms-ens    8997/tcp # Oracle Messaging Server Event Notification Service [Oracle_6] [Hubert_Vijay_Arokiasamy] 2014-10-28
 canto-roboflow   8998/tcp # Canto RoboFlow Control [Canto] [Thomas_Schleu_2] 2014-02-26
 bctp             8999/tcp # Brodos Crypto Trade Protocol [Alexander_Sahler] [Alexander_Sahler] 2002-02
 bctp             8999/udp # Brodos Crypto Trade Protocol [Alexander_Sahler] [Alexander_Sahler] 2002-02
@@ -10511,6 +10529,7 @@ netiq-voipa     10116/tcp # NetIQ VoIP Assessor [Gary_Weichinger] [Gary_Weiching
 netiq-voipa     10116/udp # NetIQ VoIP Assessor [Gary_Weichinger] [Gary_Weichinger]
 iqrm            10117/tcp # NetIQ IQCResource Managament Svc [Michael_Sharpe] [Michael_Sharpe] 2010-09-14
 iqrm            10117/udp # NetIQ IQCResource Managament Svc [Michael_Sharpe] [Michael_Sharpe] 2010-09-14
+cimple          10125/tcp # HotLink CIMple REST API [HotLink_Corporation] [Richard_Offer] 2014-12-18
 bmc-perf-sd     10128/tcp # BMC-PERFORM-SERVICE DAEMON [Portnoy_Boxman] [Portnoy_Boxman]
 bmc-perf-sd     10128/udp # BMC-PERFORM-SERVICE DAEMON [Portnoy_Boxman] [Portnoy_Boxman]
 bmc-gms         10129/tcp # BMC General Manager Server [Dima_Seliverstov] [Dima_Seliverstov] 2009-07-28
@@ -10789,6 +10808,7 @@ netserialext4   16368/udp # Network Serial Extension Ports Four [Michael_J_Hoy] 
 connected       16384/tcp # Connected Corp [Nicole_C_Ouellette] [Nicole_C_Ouellette] 2004-02
 connected       16384/udp # Connected Corp [Nicole_C_Ouellette] [Nicole_C_Ouellette] 2004-02
 xoms            16619/tcp # X509 Objects Management Service [Francis_GASCHET] [Francis_GASCHET] 2008-09-08
+axon-tunnel     16665/tcp # Reliable multipath data transport for high latencies [Bridgeworks] [Paul_Burgess] 2014-09-26
 vtp             16666/udp # Vidder Tunnel Protocol [Vidder_Inc] [Ted_Schroeder_2] 2011-10-24
 newbay-snc-mc   16900/tcp # Newbay Mobile Client Update Service [Srinivasa_Nayudu] [Srinivasa_Nayudu] 2009-07-06
 newbay-snc-mc   16900/udp # Newbay Mobile Client Update Service [Srinivasa_Nayudu] [Srinivasa_Nayudu] 2009-07-06
@@ -11128,7 +11148,7 @@ tw-auth-key     27999/udp # Attribute Certificate Services [Alex_Duncan_2] [Alex
 nxlmd           28000/tcp # NX License Manager [Anthony_Greatorex] [Anthony_Greatorex] 2004-11 Unauthorized Use Known on port 28000
 nxlmd           28000/udp # NX License Manager [Anthony_Greatorex] [Anthony_Greatorex] 2004-11
 pqsp            28001/tcp # PQ Service [Peter_Laschtowitz] [Peter_Laschtowitz] 2009-09-15
-a27-ran-ran     28119/udp # A27 cdma2000 RAN Management [ThreeGPP2] [Zhiming_Li] 2012-04-13
+a27-ran-ran     28119/udp # A27 cdma2000 RAN Management [ThreeGPP_2] [Zhiming_Li] 2012-04-13
 voxelstorm      28200/tcp # VoxelStorm game server [VoxelStorm] [Eugene_Hopkinson] 2012-11-08
 voxelstorm      28200/udp # VoxelStorm game server [VoxelStorm] [Eugene_Hopkinson] 2012-11-08
 siemensgsm      28240/tcp # Siemens GSM [David_Anuszewski] [David_Anuszewski] 2004-11
@@ -11252,21 +11272,26 @@ guttersnex      35356/tcp # Gutters Note Exchange [Squee_Application_Development
 openstack-id    35357/tcp # OpenStack ID Service [Rackspace_Hosting] [Ziad_Sawalha] 2011-08-15
 allpeers        36001/tcp # AllPeers Network [Cedric_Maloux] [Cedric_Maloux] 2007-04
 allpeers        36001/udp # AllPeers Network [Cedric_Maloux] [Cedric_Maloux] 2007-04
+wlcp            36411/udp # Wireless LAN Control plane Protocol (WLCP) [ThreeGPP_3] [Frederic_Firmin] 2014-11-14
 s1-control      36412/sctp # S1-Control Plane (3GPP) [Kimmo_Kymalainen] [Kimmo_Kymalainen] 2009-09-01
 x2-control      36422/sctp # X2-Control Plane (3GPP) [Kimmo_Kymalainen] [Kimmo_Kymalainen] 2009-09-01
 m2ap            36443/sctp # M2 Application Part [Dario_S_Tonesi] [Dario_S_Tonesi] 2011-02-07
 m3ap            36444/sctp # M3 Application Part [Dario_S_Tonesi] [Dario_S_Tonesi] 2011-02-07
 febooti-aw      36524/tcp # Febooti Automation Workshop [Maris_Bormanis] [Maris_Bormanis] 2011-06-10
 observium-agent 36602/tcp # Observium statistics collection agent [Observium] [Adam_Armstrong] 2013-05-10
+mapx            36700/tcp # MapX communication [MicroTechniX] [Yarochkin_Michail] 2014-10-13
 kastenxpipe     36865/tcp # KastenX Pipe [Guy_Cheng] [Guy_Cheng]
 kastenxpipe     36865/udp # KastenX Pipe [Guy_Cheng] [Guy_Cheng]
 neckar          37475/tcp # science + computing's Venus Administration Port [Ralf_Allrutz] [Ralf_Allrutz] 2002-02
 neckar          37475/udp # science + computing's Venus Administration Port [Ralf_Allrutz] [Ralf_Allrutz] 2002-02
 gdrive-sync     37483/tcp # Google Drive Sync [Google] [Fil_Zembowicz] 2013-02-01
+eftp            37601/tcp # Epipole File Transfer Protocol [Epipole_Limited] [Colin_Buchanan] 2014-11-13
 unisys-eportal  37654/tcp # Unisys ClearPath ePortal [Sung_U_Ro] [Sung_U_Ro] 2006-01
 unisys-eportal  37654/udp # Unisys ClearPath ePortal [Sung_U_Ro] [Sung_U_Ro] 2006-01
 ivs-database    38000/tcp # InfoVista Server Database [InfoVista] [Sebastien_Bouchex_Bellomie] 2014-05-23
 ivs-insertion   38001/tcp # InfoVista Server Insertion [InfoVista] [Sebastien_Bouchex_Bellomie] 2014-05-23
+cresco-control  38002/tcp # Cresco Controller [UofK] [Cody_Bumgardner] 2014-11-21
+crescoctrl-disc 38002/udp # Cresco Controller Discovery [UofK] [Cody_Bumgardner] 2014-11-21
 galaxy7-data    38201/tcp # Galaxy7 Data Tunnel [Tatham_Oddie] [Tatham_Oddie] 2002-09
 galaxy7-data    38201/udp # Galaxy7 Data Tunnel [Tatham_Oddie] [Tatham_Oddie] 2002-09
 fairview        38202/tcp # Fairview Message Service [Jim_Lyle] [Jim_Lyle] 2005-11 Defined TXT keys: DevID=<device id>, DevType=<device type>, DevStat=<device status>

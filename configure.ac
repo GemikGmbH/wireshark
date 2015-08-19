@@ -7,7 +7,7 @@
 #
 m4_define([version_major], [1])
 m4_define([version_minor], [12])
-m4_define([version_micro], [1])
+m4_define([version_micro], [3])
 m4_define([version_micro_extra], version_micro)
 m4_append([version_micro_extra], [])
 
@@ -2553,9 +2553,29 @@ AC_C_BIGENDIAN
 AC_PROG_GCC_TRADITIONAL
 
 GETOPT_LO=""
-AC_CHECK_FUNC(getopt,
-  [GETOPT_LO=""
-   AC_DEFINE(HAVE_GETOPT, 1, [Define to 1 if you have the getopt function.])
+AC_CHECK_FUNC(getopt_long,
+  [
+    GETOPT_LO=""
+    AC_DEFINE(HAVE_GETOPT_LONG, 1, [Define to 1 if you have the getopt_long function.])
+
+    #
+    # Do we have optreset?
+    #
+    AC_MSG_CHECKING(whether optreset is defined)
+    AC_TRY_LINK([],
+      [
+        extern int optreset;
+
+        return optreset;
+      ],
+      ac_cv_pcap_debug_defined=yes,
+      ac_cv_pcap_debug_defined=no)
+    if test "$ac_cv_pcap_debug_defined" = yes ; then
+      AC_MSG_RESULT(yes)
+      AC_DEFINE(HAVE_OPTRESET, 1, [Define to 1 if you have the optreset variable])
+    else
+      AC_MSG_RESULT(no)
+    fi
   ],
   GETOPT_LO="wsgetopt.lo"
 )

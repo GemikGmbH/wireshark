@@ -207,7 +207,7 @@ int radcom_open(wtap *wth, int *err, gchar **err_info)
 	else if (memcmp(search_encap, "ATM/", 4) == 0)
 		wth->file_encap = WTAP_ENCAP_ATM_RFC1483;
 	else {
-		*err = WTAP_ERR_UNSUPPORTED_ENCAP;
+		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup_printf("radcom: network type \"%.4s\" unknown", search_encap);
 		return -1;
 	}
@@ -372,7 +372,7 @@ radcom_read_rec(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
 		 * XXX - is this stuff a pseudo-header?
 		 * The direction appears to be in the "hdr.dce" field.
 		 */
-		if (!radcom_read_rec_data(wth->fh, atmhdr, sizeof atmhdr, err,
+		if (!radcom_read_rec_data(fh, atmhdr, sizeof atmhdr, err,
 		    err_info))
 			return FALSE;	/* Read error */
 		length -= 8;

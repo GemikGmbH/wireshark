@@ -223,6 +223,15 @@ make %{?_smp_mflags}
 %install
 rm -rf $RPM_BUILD_ROOT
 make DESTDIR=$RPM_BUILD_ROOT install
+
+# If we're being installed in an unusual prefix tell the loader where
+# to find our libraries.
+%if "%{_prefix}" != "/usr"
+	%define install_ld_so_conf 1
+	mkdir -p $RPM_BUILD_ROOT/etc/ld.so.conf.d
+	echo %{_libdir} > $RPM_BUILD_ROOT/etc/ld.so.conf.d/wireshark.conf
+%endif
+
 %if %{with gtk3} || %{with gtk2}
 # Change the program name for 'alternatives'
 mv %{buildroot}%{_bindir}/wireshark %{buildroot}%{_bindir}/wireshark-gtk
@@ -266,6 +275,7 @@ fi
 update-desktop-database &> /dev/null ||:
 update-mime-database /usr/share/mime &> /dev/null || :
 touch --no-create /usr/share/icons/hicolor &>/dev/null || :
+gtk-update-icon-cache /usr/share/icons/hicolor &>/dev/null || :
 /usr/sbin/update-alternatives --install %{_bindir}/wireshark \
   %{name} %{_bindir}/wireshark-gtk 50
 
@@ -292,15 +302,9 @@ update-desktop-database &> /dev/null ||:
 update-mime-database /usr/share/mime &> /dev/null || :
 if [ $1 -eq 0 ] ; then
 	touch --no-create /usr/share/icons/hicolor &>/dev/null || :
-	gtk-update-icon-cache /usr/share/icons/hicolor &>/dev/null || :
 	/usr/sbin/update-alternatives --remove %{name} %{_bindir}/wireshark-qt
 fi
 %endif
-
-# Is this really needed?
-%posttrans
-gtk-update-icon-cache /usr/share/icons/hicolor &>/dev/null || :
-
 
 %files
 %defattr(-,root,root)
@@ -345,6 +349,9 @@ gtk-update-icon-cache /usr/share/icons/hicolor &>/dev/null || :
 %{_mandir}/man1/*
 %{_mandir}/man4/*
 %{_datadir}/wireshark
+%if 0%{?install_ld_so_conf}
+/etc/ld.so.conf.d/wireshark.conf
+%endif
 
 %if %{with gtk2} || %{with gtk3}
 %files gnome
@@ -371,6 +378,12 @@ gtk-update-icon-cache /usr/share/icons/hicolor &>/dev/null || :
 %endif
 
 %changelog
+* Wed Dec  3 2014 Jeff Morriss
+- Don't run gtk-update-icon-cache when (un)installing the Qt package.  But do run
+  it when installing the gnome package.
+- Tell the loader where to find our libraries if we're being installed
+  someplace other than /usr .
+
 * Mon Aug 4 2014 Jeff Morriss
 - Fix RPM builds with a prefix other than /usr: The location of
   update-alternatives does not depend on Wireshark's installation prefix:

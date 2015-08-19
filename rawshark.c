@@ -37,7 +37,6 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 #include <locale.h>
 #include <limits.h>
 
@@ -57,7 +56,7 @@
 # include <sys/stat.h>
 #endif
 
-#ifndef HAVE_GETOPT
+#ifndef HAVE_GETOPT_LONG
 #include "wsutil/wsgetopt.h"
 #endif
 

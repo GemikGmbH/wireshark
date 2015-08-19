@@ -508,22 +508,7 @@ pcapng_read_section_header_block(FILE_T fh, gboolean first_block,
         pcapng_option_header_t oh;
         char *option_content = NULL; /* Allocate as large as the options block */
 
-        /*
-         * Is this block long enough to be an SHB?
-         */
-        if (bh->block_total_length < MIN_SHB_SIZE) {
-                /*
-                 * No.
-                 */
-                if (first_block)
-                        return 0;       /* probably not a pcap-ng file */
-                *err = WTAP_ERR_BAD_FILE;
-                *err_info = g_strdup_printf("pcapng_read_section_header_block: total block length %u of an SHB is less than the minimum SHB size %u",
-                              bh->block_total_length, MIN_SHB_SIZE);
-                return -1;
-        }
-
-        /* read block content */
+        /* read fixed-length part of the block */
         errno = WTAP_ERR_CANT_READ;
         bytes_read = file_read(&shb, sizeof shb, fh);
         if (bytes_read != sizeof shb) {
@@ -582,6 +567,21 @@ pcapng_read_section_header_block(FILE_T fh, gboolean first_block,
                 *err = WTAP_ERR_BAD_FILE;
                 *err_info = g_strdup_printf("pcapng_read_section_header_block: unknown byte-order magic number 0x%08x", shb.magic);
                 return 0;
+        }
+
+        /*
+         * Is this block long enough to be an SHB?
+         */
+        if (bh->block_total_length < MIN_SHB_SIZE) {
+                /*
+                 * No.
+                 */
+                if (first_block)
+                        return 0;       /* probably not a pcap-ng file */
+                *err = WTAP_ERR_BAD_FILE;
+                *err_info = g_strdup_printf("pcapng_read_section_header_block: total block length %u of an SHB is less than the minimum SHB size %u",
+                              bh->block_total_length, MIN_SHB_SIZE);
+                return -1;
         }
 
         /* OK, at this point we assume it's a pcap-ng file.
@@ -2035,14 +2035,14 @@ pcapng_read_unknown_block(FILE_T fh, pcapng_block_header_t *bh, pcapng_t *pn _U_
         /*
          * Do we have a handler for this block type?
          */
-        handler = (block_handler *)g_hash_table_lookup(block_handlers,
-                                                       GUINT_TO_POINTER(bh->block_type));
-        if (handler != NULL) {
-                /* Yes - call it to read this block type. */
-                if (!handler->read(fh, block_read, pn->byte_swapped,
-                                   wblock->packet_header, wblock->frame_buffer,
-                                   err, err_info))
-                        return -1;
+        if (block_handlers != NULL &&
+            (handler = (block_handler *)g_hash_table_lookup(block_handlers,
+                                                            GUINT_TO_POINTER(bh->block_type))) != NULL) {
+            /* Yes - call it to read this block type. */
+            if (!handler->read(fh, block_read, pn->byte_swapped,
+                               wblock->packet_header, wblock->frame_buffer,
+                               err, err_info))
+                return -1;
         } else
 #endif
         {
@@ -2218,8 +2218,7 @@ pcapng_open(wtap *wth, int *err, gchar **err_info)
         pn.if_fcslen = -1;
         pn.version_major = -1;
         pn.version_minor = -1;
-        pn.interfaces = g_array_new(FALSE, FALSE, sizeof(interface_info_t));
-
+        pn.interfaces = NULL;
 
         /* we don't expect any packet blocks yet */
         wblock.frame_buffer = NULL;
@@ -2266,6 +2265,7 @@ pcapng_open(wtap *wth, int *err, gchar **err_info)
         pcapng = (pcapng_t *)g_malloc(sizeof(pcapng_t));
         wth->priv = (void *)pcapng;
         *pcapng = pn;
+        pcapng->interfaces = g_array_new(FALSE, FALSE, sizeof(interface_info_t));
 
         wth->subtype_read = pcapng_read;
         wth->subtype_seek_read = pcapng_seek_read;
@@ -2385,7 +2385,7 @@ pcapng_read(wtap *wth, int *err, gchar **err_info, gint64 *data_offset)
                         pcapng_debug0("pcapng_read: block type BLOCK_TYPE_ISB");
                         *data_offset += bytes_read;
                         pcapng_debug1("pcapng_read: *data_offset is updated to %" G_GINT64_MODIFIER "d", *data_offset);
-                        if (wth->interface_data->len <= wblock.data.if_stats.interface_id) {
+                        if (wth->interface_data->len < wblock.data.if_stats.interface_id) {
                                 pcapng_debug1("pcapng_read: BLOCK_TYPE_ISB wblock.if_stats.interface_id %u > number_of_interfaces", wblock.data.if_stats.interface_id);
                         } else {
                                 /* Get the interface description */
@@ -3622,9 +3622,6 @@ static gboolean pcapng_dump(wtap_dumper *wdh,
                       phdr->pkt_encap,
                       wtap_encap_string(phdr->pkt_encap));
 
-        /* Flush any hostname resolution info we may have */
-        pcapng_write_name_resolution_block(wdh, err);
-
         switch (phdr->rec_type) {
 
         case REC_TYPE_PACKET:
@@ -3639,12 +3636,12 @@ static gboolean pcapng_dump(wtap_dumper *wdh,
                 /*
                  * Do we have a handler for this block type?
                  */
-                handler = (block_handler *)g_hash_table_lookup(block_handlers,
-                                                               GUINT_TO_POINTER(pseudo_header->ftsrec.record_type));
-                if (handler != NULL) {
-                        /* Yes. Call it to write out this record. */
-                        if (!handler->write(wdh, phdr, pd, err))
-                                return FALSE;
+                if (block_handlers != NULL &&
+                    (handler = (block_handler *)g_hash_table_lookup(block_handlers,
+                                                                    GUINT_TO_POINTER(pseudo_header->ftsrec.record_type))) != NULL) {
+                    /* Yes. Call it to write out this record. */
+                    if (!handler->write(wdh, phdr, pd, err))
+                        return FALSE;
                 } else
 #endif
                 {
@@ -3669,6 +3666,9 @@ static gboolean pcapng_dump(wtap_dumper *wdh,
 static gboolean pcapng_dump_close(wtap_dumper *wdh, int *err _U_)
 {
         guint i, j;
+
+        /* Flush any hostname resolution info we may have */
+        pcapng_write_name_resolution_block(wdh, err);
 
         for (i = 0; i < wdh->interface_data->len; i++) {
 

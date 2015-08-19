@@ -34,8 +34,6 @@
 
 #include "config.h"
 
-#include <ctype.h>
-
 #include <glib.h>
 #include <epan/conversation.h>
 #include <epan/packet.h>
@@ -799,6 +797,8 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
     }
 
     if (data_tvb == NULL) {
+      if (next_tvb == NULL)
+        goto body_dissected;
       data_tvb = next_tvb;
     } else {
       add_new_data_source(pinfo, data_tvb, "Assembled entity body");
@@ -1056,8 +1056,8 @@ static spdy_header_info_t* spdy_find_saved_header_block(packet_info *pinfo _U_,
 static gchar* spdy_parse_content_type(gchar *content_type) {
   gchar *cp = content_type;
 
-  while (*cp != '\0' && *cp != ';' && !isspace(*cp)) {
-    *cp = tolower(*cp);
+  while (*cp != '\0' && *cp != ';' && !g_ascii_isspace(*cp)) {
+    *cp = g_ascii_tolower(*cp);
     ++cp;
   }
   if (*cp == '\0') {
@@ -1066,7 +1066,7 @@ static gchar* spdy_parse_content_type(gchar *content_type) {
 
   if (cp != NULL) {
     *cp++ = '\0';
-    while (*cp == ';' || isspace(*cp)) {
+    while (*cp == ';' || g_ascii_isspace(*cp)) {
       ++cp;
     }
     if (*cp != '\0') {
@@ -1530,7 +1530,7 @@ int dissect_spdy_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 
   /* Add control bit. */
   control_bit = tvb_get_guint8(tvb, offset) & 0x80;
-  proto_tree_add_item(spdy_tree, hf_spdy_control_bit, tvb, offset, 1, ENC_NA);
+  proto_tree_add_item(spdy_tree, hf_spdy_control_bit, tvb, offset, 2, ENC_NA);
 
   /* Process first four bytes of frame, formatted depending on control bit. */
   if (control_bit) {
@@ -1660,8 +1660,10 @@ static guint get_spdy_message_len(packet_info *pinfo _U_, tvbuff_t *tvb,
  */
 static int dissect_spdy(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-   tcp_dissect_pdus(tvb, pinfo, tree, TRUE, 8, get_spdy_message_len, dissect_spdy_frame, data);
-   return tvb_captured_length(tvb);
+  col_clear(pinfo->cinfo, COL_INFO);
+
+  tcp_dissect_pdus(tvb, pinfo, tree, TRUE, 8, get_spdy_message_len, dissect_spdy_frame, data);
+  return tvb_captured_length(tvb);
 }
 
 #if 0 /* heuristic too weak */
@@ -1812,7 +1814,7 @@ void proto_register_spdy(void)
     },
     { &hf_spdy_priority,
       { "Priority",       "spdy.priority",
-          FT_UINT8, BASE_DEC, NULL, 0x07,
+          FT_UINT8, BASE_DEC, NULL, 0xE0,
           NULL, HFILL
       }
     },

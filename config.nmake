@@ -14,7 +14,7 @@ PROGRAM_NAME=Wireshark
 ##### Target platform #####
 
 # Pick up the value from the environment, VS2012 onwards sets PLATFORM via
-#  vcvarsall.bat (it appears for X64 only).
+# vcvarsall.bat (it appears for X64 only).
 # For VS2010 and earlier you'll have to set the value yourself
 !IF "$(PLATFORM)" == "X64"
 WIRESHARK_TARGET_PLATFORM=win64
@@ -35,20 +35,20 @@ GIT_REVISION=0
 # Updated by make-version.pl
 VERSION_MAJOR=1
 VERSION_MINOR=12
-VERSION_MICRO=1
+VERSION_MICRO=3
 VERSION_BUILD=$(GIT_REVISION)
 
 # Local build information. Recommended: Unique string for your
 # environment, e.g. "-JackStackBarbecue". Updated by make-version.pl
 # Defaults to the environment variable WIRESHARK_VERSION_EXTRA
 
-VERSION_EXTRA=
+VERSION_EXTRA=$(WIRESHARK_VERSION_EXTRA)
+
 
 # The version of the wiretap library. Recommended: Leave unchanged.
 WTAP_VERSION_MAJOR=$(VERSION_MAJOR)
 WTAP_VERSION_MINOR=$(VERSION_MINOR)
 WTAP_VERSION_MICRO=0
-
 # The version of the filetap library. Recommended: Leave unchanged.
 FTAP_VERSION_MAJOR=$(VERSION_MAJOR)
 FTAP_VERSION_MINOR=$(VERSION_MINOR)
@@ -217,7 +217,6 @@ NASM=$(WIRESHARK_LIB_DIR)\nasm-2.09.08\nasm.exe
 # XXX The DLL path in epan/wspython/wspy_libws.py likely needs to
 # be fixed before this is enabled by default.
 #PYTHON_EMBED=1
-
 #
 # Optional: the Python interpreter is used as part of the buildsystem
 #
@@ -238,7 +237,10 @@ NASM=$(WIRESHARK_LIB_DIR)\nasm-2.09.08\nasm.exe
 
 # Find native Python automatically if PYTHON(_DIR) wasn't defined
 !IF !DEFINED(PYTHON) && !DEFINED(PYTHON_DIR)
-!IF EXIST(c:\Python27\python.exe)
+!IF EXIST(c:\tools\python2\python.exe)
+# Chocolatey default
+PYTHON_DIR=C:\tools\python2
+!ELSE IF EXIST(c:\Python27\python.exe)
 PYTHON_VER=27
 !ELSE IF EXIST(c:\Python26\python.exe)
 PYTHON_VER=26
@@ -256,6 +258,11 @@ PYTHON_DIR=C:\Python$(PYTHON_VER)
 !IF DEFINED(PYTHON_DIR)
 PYTHON="$(PYTHON_DIR)\python.exe"
 PATH=$(PYTHON_DIR);$(PATH)
+!ENDIF
+
+# If all else fails, try to find it on the PATH
+!IF !DEFINED(PYTHON)
+PYTHON=python
 !ENDIF
 
 #### Save files as pcap-ng by default. Comment out to use pcap instead. ####
@@ -433,7 +440,7 @@ C_ARES_PKG=1.9.1-1
 # isn't defined.
 #
 # Platform SDK conflicts with openssl.h header
-GNUTLS_PKG=3.1.22-2.3
+GNUTLS_PKG=3.2.15-2.7
 GPGERROR_DLL=libgpg-error-0.dll
 GCC_DLL=libgcc_s_sjlj-1.dll
 
@@ -688,7 +695,7 @@ C_ARES_PKG=1.9.1-1
 # isn't defined.
 #
 # Platform SDK conflicts with openssl.h header
-GNUTLS_PKG=3.1.22-2.3
+GNUTLS_PKG=3.2.15-2.9
 GPGERROR_DLL=libgpg-error6-0.dll
 GCC_DLL=libgcc_s_seh-1.dll
 
@@ -798,10 +805,10 @@ GTK_SCHEMAS_DIR=\share\glib-2.0\schemas
 ##### Tools #####
 
 # Set the following mandatory commands to find the tools.
-# The easiest way is to use the corresponding packages from cygwin.
+# The easiest way is to use the corresponding packages from Cygwin.
 
-# Set up the path to the cygwin binaries
-CYGWIN_PATH=c:\cygwin\bin
+# Set up the path to the Cygwin binaries
+CYGWIN_PATH=C:\cygwin\bin
 
 # command for a shell (cygwin's bash package recommended)
 SH_PROG=bash
@@ -864,7 +871,7 @@ TEXTIFY=$(SH) $(TOOLS_DIR)/textify.sh
 # line and adjust the path accordingly.
 #
 
-#MAKENSIS="\custom\path\to\NSIS\makensis.exe"
+MAKENSIS="C:\Program Files (x86)\NSIS\makensis.exe"
 
 # Find NSIS automatically
 !IF !DEFINED(MAKENSIS)
@@ -925,7 +932,6 @@ HHC_DIR=$(PROGRAM_FILES)\HTML Help Workshop
 UPX=$(WIRESHARK_LIB_DIR)\upx303w\upx.exe
 
 ##### Flags, PATHs and Miscellaneous #####
-
 # Santity check: Python embedding requires a valid PYTHON_DIR
 !IF DEFINED(PYTHON_EMBED) && !DEFINED(PYTHON_DIR)
 !ERROR PYTHON_EMBED requires that PYTHON_DIR is defined
@@ -1008,6 +1014,9 @@ APPVER=5.02
 #                                   /Gs (Buffer Security Check)
 #                                   /GF (Eliminate Duplicate Strings)
 #                                   /Gy (Enable Function-Level Linking)
+# /Zo                               Output debug info allowing debuggers to display local values and trace into inline
+#                                   functions.  For VS2013 Update 3.  Assume all VS2013 builds are at least Update 3.
+#                                   See http://msdn.microsoft.com/en-us/library/dn785163.aspx
 
 ##Note: LOCAL_CFLAGS are flags used for *all* compilations
 ##      STANDARD_CFLAGS (see below) are flags used just for *Wireshark* compilations
@@ -1034,7 +1043,7 @@ LOCAL_CFLAGS=$(LOCAL_CFLAGS) /D_ALLOW_KEYWORD_MACROS
 
 !IF "$(MSVC_VARIANT)" == "MSVC2013"   || \
         "$(MSVC_VARIANT)" == "MSVC2013EE"
-LOCAL_CFLAGS=$(LOCAL_CFLAGS) /DBUILD_WINDOWS
+LOCAL_CFLAGS=$(LOCAL_CFLAGS) /DBUILD_WINDOWS /Zo
 !ENDIF
 
 !IF "$(WIRESHARK_TARGET_PLATFORM)" != "win64"
@@ -1081,6 +1090,7 @@ LOCAL_CFLAGS= $(LOCAL_CFLAGS) /MP
 LOCAL_CFLAGS= $(LOCAL_CFLAGS) /analyze:WX-
 !ENDIF
 
+
 #STANDARD_CFLAGS are flags used for *Wireshark* compiles (not stuff like lemon, etc)
 STANDARD_CFLAGS=/DWINPCAP_VERSION=$(WINPCAP_VERSION) $(LOCAL_CFLAGS) $(WARNINGS_CFLAGS)
 
@@ -1088,7 +1098,6 @@ STANDARD_CFLAGS=/DWINPCAP_VERSION=$(WINPCAP_VERSION) $(LOCAL_CFLAGS) $(WARNINGS_
 !IFDEF WIRESHARK_GENERATE_BSC_FILE
 STANDARD_CFLAGS= $(STANDARD_CFLAGS) /FR
 !ENDIF
-
 #Comment out the following if warnings are not to be treated as errors
 #WARNINGS_ARE_ERRORS=-WX
 
@@ -1141,7 +1150,6 @@ ENABLE_LIBWIRESHARK=USE
 #
 # install (debug) directory for Wireshark (relative to your source dir)
 INSTALL_DIR=wireshark-gtk2
-
 
 
 ##### C-Runtime Redistributable #####
@@ -1220,6 +1228,7 @@ MSVCR_DLL=$(PROGRAM_FILES)\Microsoft Visual Studio 9.0\VC\redist\$(PROCESSOR_ARC
 # vcredist_x86.exe or vcredist_x64.exe, from Microsoft first, and copy
 # it to the lib folder!!!
 VCREDIST_EXE=$(VCREDIST_DIR)\vcredist_$(TARGET_MACHINE).exe
+
 !ELSEIF "$(MSVC_VARIANT)" == "MSVC2010"
 #
 # For MSVC 2010 non-Express Edition, we "Install a particular Visual C++
@@ -1297,12 +1306,13 @@ MSVCR_DLL=$(PROGRAM_FILES)\Microsoft Visual Studio 12.0\VC\redist\$(TARGET_MACHI
 # You may want to install the FOP hyphenation patterns from
 # http://offo.sourceforge.net/hyphenation/
 !IFNDEF FOP
+
 FOP=fop-1.0\fop.bat
 !ENDIF
 
+
 # Additional options to fop.
 FOP_OPTS=-Xmx256m
-
 # html help compiler
 # Comment this out if you don't have hhc.exe or you don't want the docs in
 # .chm format.
@@ -1310,14 +1320,12 @@ FOP_OPTS=-Xmx256m
 # Beware: hhc.exe is NOT part of the MSVC packages in HHC_DIR mentioned above,
 # so you'll need to install the HTML Help Workshop for this.
 HHC_EXE="$(HHC_DIR)\hhc.exe"
-
 # html to text converter for text version of release notes, e.g. elinks.
 # This could also be "lynx", or "true" if neither elinks nor lynx is installed
 # (cygwin: lynx works, elinks not available, links and true doesn't produce output)
 #HTML2TXT=elinks -dump -dump-width 72
 ##HTML2TXT=links -dump -width 72 ## XXX: Fails: For links -dump requires 'url' (filename) arg.
 #HTML2TXT=lynx -dump -width=72 -nolist -stdin
-
 !IFNDEF HTML2TXT
 HTML2TXT=$(PYTHON) $(TOOLS_DIR)\html2text.py --width=72 --no-links
 !ENDIF
@@ -1622,7 +1630,6 @@ KFW_CFLAGS=
 KFW_LIBS=
 KFW_CONFIG=
 !ENDIF
-
 !IFDEF NETTLE_DIR
 NETTLE_CFLAGS=/I$(NETTLE_DIR)
 NETTLE_LIBS=$(NETTLE_DIR)\libnettle.lib
@@ -1681,7 +1688,6 @@ PYTHON_CFLAGS=
 PYTHON_LIBS=
 PYTHON_CONFIG=
 !ENDIF
-
 !IFDEF PORTAUDIO_DIR
 # Nmake uses carets to escape special characters
 PORTAUDIO_CONFIG=^#define HAVE_LIBPORTAUDIO 1

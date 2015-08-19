@@ -402,18 +402,18 @@ void proto_register_opcua(void)
             FT_FRAMENUM, BASE_NONE, NULL, 0x00, NULL, HFILL } },
         {&hf_opcua_fragment_overlap,
             {"Message fragment overlap", "opcua.fragment.overlap",
-            FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
+            FT_BOOLEAN, BASE_NONE, NULL, 0x00, NULL, HFILL } },
         {&hf_opcua_fragment_overlap_conflicts,
             {"Message fragment overlapping with conflicting data",
             "opcua.fragment.overlap.conflicts",
-            FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
+            FT_BOOLEAN, BASE_NONE, NULL, 0x00, NULL, HFILL } },
         {&hf_opcua_fragment_multiple_tails,
             {"Message has multiple tail fragments",
             "opcua.fragment.multiple_tails",
-            FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
+            FT_BOOLEAN, BASE_NONE, NULL, 0x00, NULL, HFILL } },
         {&hf_opcua_fragment_too_long_fragment,
             {"Message fragment too long", "opcua.fragment.too_long_fragment",
-            FT_BOOLEAN, 0, NULL, 0x00, NULL, HFILL } },
+            FT_BOOLEAN, BASE_NONE, NULL, 0x00, NULL, HFILL } },
         {&hf_opcua_fragment_error,
             {"Message defragmentation error", "opcua.fragment.error",
             FT_FRAMENUM, BASE_NONE, NULL, 0x00, NULL, HFILL } },
@@ -469,7 +469,7 @@ void proto_register_opcua(void)
     opcua_module = prefs_register_protocol(proto_opcua, proto_reg_handoff_opcua);
     prefs_register_range_preference(opcua_module, "tcp_ports",
 				 "OPC UA TCP Ports",
-				 "The TCP ports for the OPC UA TCP Binary Protocol",
+				 "The TCP ports for the OPC UA TCP Binary Protocol (comma separated list)",
 				 &global_tcp_ports_opcua, 65535);
 
 }

@@ -67,12 +67,13 @@ static int hf_mip_rext_i = -1;
 static int hf_mip_rext_reserved = -1;
 static int hf_mip_rext_tstamp = -1;
 static int hf_mip_rev_reserved = -1;
+static int hf_mip_flags2 = -1;
 static int hf_mip_rev_a = -1;
 static int hf_mip_rev_i = -1;
-/* static int hf_mip_rev_reserved2 = -1; */
+static int hf_mip_rev_reserved2 = -1;
 static int hf_mip_ack_reserved = -1;
 static int hf_mip_ack_i = -1;
-/* static int hf_mip_ack_reserved2 = -1; */
+static int hf_mip_ack_reserved2 = -1;
 static int hf_mip_hda = -1;
 static int hf_mip_fda = -1;
 static int hf_mip_revid = -1;
@@ -108,7 +109,7 @@ static int hf_mip_pmipv4skipext_accesstechnology_type = -1;
 static int hf_mip_cvse_reserved = -1;
 static int hf_mip_cvse_vendor_org_id = -1;
 static int hf_mip_cvse_verizon_cvse_type = -1;
-/* static int hf_mip_cvse_3gpp2_cvse_type = -1; */
+static int hf_mip_cvse_3gpp2_cvse_type = -1;
 static int hf_mip_cvse_3gpp2_grekey = -1;
 static int hf_mip_cvse_vendor_cvse_type = -1;
 static int hf_mip_cvse_vendor_cvse_value = -1;
@@ -717,19 +718,22 @@ dissect_mip_extensions( tvbuff_t *tvb, int offset, proto_tree *tree, packet_info
       /*Vendor CVSE Type*/
       if( cvse_vendor_id == VENDOR_VERIZON ){
         /*Verizon CVSE type*/
-           proto_tree_add_item(ext_tree, hf_mip_cvse_verizon_cvse_type, tvb, cvse_local_offset, 2, ENC_BIG_ENDIAN);
+        proto_tree_add_item(ext_tree, hf_mip_cvse_verizon_cvse_type, tvb, cvse_local_offset, 2, ENC_BIG_ENDIAN);
       }else if( cvse_vendor_id == VENDOR_THE3GPP2 ){
         /*THE3GPP2 CVSE type*/
-       cvse_3gpp2_type = tvb_get_ntohs(tvb, cvse_local_offset);
-      /* THE3GPP2 CVSE Value */
+        proto_tree_add_item(ext_tree, hf_mip_cvse_3gpp2_cvse_type, tvb, cvse_local_offset, 2, ENC_BIG_ENDIAN);
+        cvse_3gpp2_type = tvb_get_ntohs(tvb, cvse_local_offset);
+        /* XXX: THE3GPP2 CVSE type is followed by a 2 byte length field ? - No ?*/
+        /*  ... */
+        /* THE3GPP2 CVSE Value */
        if(cvse_3gpp2_type == GRE_KEY_EXT){
-           proto_tree_add_item(ext_tree, hf_mip_cvse_3gpp2_grekey, tvb, cvse_local_offset, ext_len - 6, ENC_NA);
+           proto_tree_add_item(ext_tree, hf_mip_cvse_3gpp2_grekey, tvb, cvse_local_offset + 2, ext_len - 6, ENC_BIG_ENDIAN);
        }
       }else{
         /*CVSE Type of Other vendor, just show raw numbers currently*/
         proto_tree_add_item(ext_tree, hf_mip_cvse_vendor_cvse_type, tvb, cvse_local_offset, 2, ENC_BIG_ENDIAN);
         /* Vendor CVSE Type+Vendor/Org ID = 6 bytes*/
-        proto_tree_add_item(ext_tree, hf_mip_cvse_vendor_cvse_value, tvb, cvse_local_offset, ext_len - 6, ENC_NA);
+        proto_tree_add_item(ext_tree, hf_mip_cvse_vendor_cvse_value, tvb, cvse_local_offset + 2, ext_len - 6, ENC_NA);
       }
       break;
 
@@ -932,13 +936,13 @@ dissect_mip( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
       /* flags */
       flags = tvb_get_ntohs(tvb, offset);
-      tf = proto_tree_add_uint(mip_tree, hf_mip_flags, tvb, offset, 2, flags);
+      tf = proto_tree_add_uint(mip_tree, hf_mip_flags2, tvb, offset, 2, flags);
       flags_tree = proto_item_add_subtree(tf, ett_mip_flags);
       proto_tree_add_boolean(flags_tree, hf_mip_rev_a, tvb, offset, 2, flags);
       proto_tree_add_boolean(flags_tree, hf_mip_rev_i, tvb, offset, 2, flags);
 
       /* reserved */
-      proto_tree_add_uint(flags_tree, hf_mip_rev_reserved, tvb, offset, 2, flags);
+      proto_tree_add_uint(flags_tree, hf_mip_rev_reserved2, tvb, offset, 2, flags);
       offset += 2;
 
       /* home address */
@@ -976,12 +980,12 @@ dissect_mip( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
       /* flags */
       flags = tvb_get_ntohs(tvb, offset);
-      tf = proto_tree_add_uint(mip_tree, hf_mip_flags, tvb, offset, 2, flags);
+      tf = proto_tree_add_uint(mip_tree, hf_mip_flags2, tvb, offset, 2, flags);
       flags_tree = proto_item_add_subtree(tf, ett_mip_flags);
       proto_tree_add_boolean(flags_tree, hf_mip_ack_i, tvb, offset, 2, flags);
 
       /* reserved */
-      proto_tree_add_uint(flags_tree, hf_mip_ack_reserved, tvb, offset, 2, flags);
+      proto_tree_add_uint(flags_tree, hf_mip_ack_reserved2, tvb, offset, 2, flags);
       offset += 2;
 
       /* home address */
@@ -1149,6 +1153,11 @@ void proto_register_mip(void)
         FT_UINT8, BASE_HEX, NULL, 0x0,
         NULL, HFILL}
     },
+    { &hf_mip_flags2,
+      {"Flags", "mip.flags2",
+       FT_UINT16, BASE_HEX, NULL, 0x0,
+       NULL, HFILL}
+    },
     { &hf_mip_rev_a,
       { "Home Agent",               "mip.rev.a",
         FT_BOOLEAN, 16, NULL, 32768,
@@ -1159,12 +1168,11 @@ void proto_register_mip(void)
         FT_BOOLEAN, 16, NULL, 16384,
         "Inform Mobile Node", HFILL }
     },
-#if 0
     { &hf_mip_rev_reserved2,
       { "Reserved",                 "mip.rev.reserved2",
         FT_UINT16, BASE_HEX, NULL, 0x3fff,
-        NULL, HFILL}},
-#endif
+        NULL, HFILL}
+    },
     { &hf_mip_hda,
       { "Home Domain Address",      "mip.rev.hda",
         FT_IPv4, BASE_NONE, NULL, 0,
@@ -1190,12 +1198,11 @@ void proto_register_mip(void)
         FT_BOOLEAN, 16, NULL, 32768,
         "Inform Mobile Node", HFILL }
     },
-#if 0
     { &hf_mip_ack_reserved2,
       { "Reserved",                 "mip.ack.reserved2",
         FT_UINT16, BASE_HEX, NULL, 0x7fff,
-        NULL, HFILL}},
-#endif
+        NULL, HFILL}
+    },
     { &hf_mip_dhaext_stype,
       { "DynHA Ext SubType",        "mip.ext.dynha.subtype",
         FT_UINT8, BASE_DEC, VALS(mip_dhaext_stypes), 0,
@@ -1356,16 +1363,14 @@ void proto_register_mip(void)
         FT_UINT16, BASE_DEC, VALS(mip_cvse_verizon_cvse_types), 0,
         NULL, HFILL }
     },
-#if 0
     { &hf_mip_cvse_3gpp2_cvse_type ,
       { "3GPP2 CVSE Type","mip.ext.cvse.3gpp2_type",
         FT_UINT16, BASE_DEC, NULL, 0,
         NULL, HFILL }
     },
-#endif
     { &hf_mip_cvse_3gpp2_grekey,
       { "GRE Key","mip.ext.cvse.3gpp2_grekey",
-        FT_UINT16, BASE_DEC, NULL, 0,
+        FT_UINT32, BASE_DEC, NULL, 0,
         NULL, HFILL }
     },
     { &hf_mip_cvse_vendor_cvse_type,
