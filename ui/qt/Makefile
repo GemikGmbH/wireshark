@@ -1099,65 +1099,6 @@ wireshark-tap-register.c: stats_tree_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvector2d.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		ui_stats_tree_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		display_filter_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\file.h \
 		..\..\epan\print.h \
 		..\..\epan\packet.h \
@@ -1176,6 +1117,13 @@ wireshark-tap-register.c: stats_tree_dialog.h \
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -1189,6 +1137,27 @@ wireshark-tap-register.c: stats_tree_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qclipboard.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItemIterator \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFileDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfiledialog.h \
@@ -26885,64 +26854,6 @@ about_dialog.obj: about_dialog.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvector2d.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		ui_about_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPlainTextEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qplaintextedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtextedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextdocument.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qabstracttextdocumentlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qglyphrun.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qrawfont.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qfontdatabase.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTabWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
 		wireshark_application.h \
 		..\..\..\Wireshark-win64-libs-1.12\gtk2\include\glib-2.0\glib.h \
 		..\..\..\Wireshark-win64-libs-1.12\gtk2\include\glib-2.0\glib\galloca.h \
@@ -27070,6 +26981,13 @@ about_dialog.obj: about_dialog.cpp ..\..\config.h \
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -29556,49 +29474,6 @@ capture_interfaces_dialog.obj: capture_interfaces_dialog.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
 		ui_capture_interfaces_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGroupBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgroupbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpinBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTabWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
 		wireshark_application.h \
 		..\..\file.h \
 		..\..\wiretap\wtap.h \
@@ -29642,6 +29517,13 @@ capture_interfaces_dialog.obj: capture_interfaces_dialog.cpp ..\..\config.h \
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -29874,33 +29756,8 @@ capture_preferences_frame.obj: capture_preferences_frame.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
 		ui_capture_preferences_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
 		..\..\capture_ui_utils.h \
 		..\..\capture_opts.h \
 		..\..\capture_ifinfo.h \
@@ -30526,32 +30383,6 @@ column_preferences_frame.obj: column_preferences_frame.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		ui_column_preferences_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		syntax_line_edit.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
@@ -30576,6 +30407,13 @@ column_preferences_frame.obj: column_preferences_frame.cpp ..\..\config.h \
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -30830,37 +30668,6 @@ decode_as_dialog.obj: decode_as_dialog.cpp decode_as_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		ui_decode_as_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		elided_label.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
 		..\..\epan\decode_as.h \
 		..\..\epan\dissectors\packet-dcerpc.h \
 		..\..\epan\conversation.h \
@@ -30882,6 +30689,13 @@ decode_as_dialog.obj: decode_as_dialog.cpp decode_as_dialog.h \
 		..\..\epan\print.h \
 		..\..\epan\packet-range.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -32058,10 +31872,11 @@ export_object_dialog.obj: export_object_dialog.cpp export_object_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAbstractButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		ui_export_object_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
+		wireshark_application.h \
+		..\..\capture_opts.h \
+		..\..\capture_ifinfo.h \
+		..\..\capture_session.h \
+		..\..\ui\help_url.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
@@ -32069,30 +31884,6 @@ export_object_dialog.obj: export_object_dialog.cpp export_object_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QProgressBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qprogressbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		wireshark_application.h \
-		..\..\capture_opts.h \
-		..\..\capture_ifinfo.h \
-		..\..\capture_session.h \
-		..\..\ui\help_url.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -32102,6 +31893,8 @@ export_object_dialog.obj: export_object_dialog.cpp export_object_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTimer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtimer.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qbasictimer.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
@@ -32220,61 +32013,6 @@ export_pdu_dialog.obj: export_pdu_dialog.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDebug \
 		ui_export_pdu_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
-		display_filter_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\globals.h \
 		..\..\file.h \
 		..\..\wiretap\wtap.h \
@@ -32650,36 +32388,6 @@ file_set_dialog.obj: file_set_dialog.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		ui_file_set_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFormLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qformlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		elided_label.h \
 		wireshark_application.h \
 		..\..\epan\prefs.h \
 		..\..\color.h \
@@ -32687,6 +32395,13 @@ file_set_dialog.obj: file_set_dialog.cpp ..\..\config.h \
 		..\..\capture_opts.h \
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -32696,6 +32411,8 @@ file_set_dialog.obj: file_set_dialog.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTimer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtimer.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qbasictimer.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
@@ -32915,32 +32632,6 @@ filter_expressions_preferences_frame.obj: filter_expressions_preferences_frame.c
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		ui_filter_expressions_preferences_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		syntax_line_edit.h \
 		wireshark_application.h \
 		..\..\epan\prefs.h \
@@ -32992,6 +32683,13 @@ filter_expressions_preferences_frame.obj: filter_expressions_preferences_frame.c
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -33252,62 +32950,6 @@ follow_stream_dialog.obj: follow_stream_dialog.cpp follow_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
 		ui_follow_stream_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpinBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		follow_stream_text.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTextEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtextedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextdocument.h \
 		main_window.h \
 		..\..\ui\ui_util.h \
 		..\..\capture_opts.h \
@@ -33315,8 +32957,10 @@ follow_stream_dialog.obj: follow_stream_dialog.cpp follow_stream_dialog.h \
 		..\..\capture_session.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMainWindow \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmainwindow.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSplitter \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qsplitter.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTimer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtimer.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qbasictimer.h \
@@ -33327,6 +32971,20 @@ follow_stream_dialog.obj: follow_stream_dialog.cpp follow_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QListWidget \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlistwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlistview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItem \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
@@ -33357,14 +33015,19 @@ follow_stream_dialog.obj: follow_stream_dialog.cpp follow_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVector \
 		packet_list_record.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QList \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
 		proto_tree.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenu \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmenu.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
 		related_packet_delegate.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStyledItemDelegate \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleditemdelegate.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeView \
 		display_filter_combo.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
 		progress_bar.h \
 		..\..\ui\progress_dlg.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QProgressBar \
@@ -33376,6 +33039,12 @@ follow_stream_dialog.obj: follow_stream_dialog.cpp follow_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
 		syntax_line_edit.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		packet_range_group_box.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGroupBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgroupbox.h \
@@ -33385,10 +33054,19 @@ follow_stream_dialog.obj: follow_stream_dialog.cpp follow_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfiledialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qdir.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
 		summary_dialog.h \
 		qt_ui_utils.h \
 		..\..\epan\timestamp.h \
@@ -33407,6 +33085,13 @@ follow_stream_dialog.obj: follow_stream_dialog.cpp follow_stream_dialog.h \
 		preferences_dialog.h \
 		about_dialog.h \
 		wireshark_application.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthread.h \
@@ -33439,6 +33124,9 @@ follow_stream_dialog.obj: follow_stream_dialog.cpp follow_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpagedpaintdevice.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpagelayout.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpagesize.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTextEdit \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtextedit.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextdocument.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTextStream \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDebug
 
@@ -33769,40 +33457,6 @@ font_color_preferences_frame.obj: font_color_preferences_frame.cpp font_color_pr
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
 		ui_font_color_preferences_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		color_utils.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QObject \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QColor \
@@ -33852,6 +33506,13 @@ font_color_preferences_frame.obj: font_color_preferences_frame.cpp font_color_pr
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QList \
@@ -34117,10 +33778,10 @@ import_text_dialog.obj: import_text_dialog.cpp ..\..\config.h \
 		..\..\..\Wireshark-win64-libs-1.12\gtk2\include\glib-2.0\gmodule.h \
 		..\..\wsutil\tempfile.h \
 		ui_import_text_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
+		wireshark_application.h \
+		..\..\capture_opts.h \
+		..\..\capture_ifinfo.h \
+		..\..\capture_session.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
@@ -34128,49 +33789,6 @@ import_text_dialog.obj: import_text_dialog.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFormLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qformlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGroupBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgroupbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		wireshark_application.h \
-		..\..\capture_opts.h \
-		..\..\capture_ifinfo.h \
-		..\..\capture_session.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -35092,21 +34710,6 @@ io_graph_dialog.obj: io_graph_dialog.cpp io_graph_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtPrintSupport\qprintpreviewwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtPrintSupport\qtprintsupportversion.h \
 		ui_io_graph_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		elided_label.h \
 		..\..\epan\stats_tree_priv.h \
 		..\..\epan\stats_tree.h \
 		..\..\epan\tap.h \
@@ -35124,13 +34727,18 @@ io_graph_dialog.obj: io_graph_dialog.cpp io_graph_dialog.h \
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QClipboard \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFileDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFontMetrics \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget
 
 label_stack.obj: label_stack.cpp label_stack.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
@@ -35462,36 +35070,10 @@ layout_preferences_frame.obj: layout_preferences_frame.cpp layout_preferences_fr
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAbstractButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		ui_layout_preferences_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDebug \
 		..\..\epan\prefs-int.h \
 		..\..\epan\wmem\wmem.h \
@@ -35747,54 +35329,6 @@ lbm_lbtrm_transport_dialog.obj: lbm_lbtrm_transport_dialog.cpp lbm_lbtrm_transpo
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		ui_lbm_lbtrm_transport_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSplitter \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qsplitter.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStackedWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstackedwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTabWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
-		display_filter_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\file.h \
 		..\..\epan\print.h \
 		..\..\epan\packet.h \
@@ -35810,6 +35344,13 @@ lbm_lbtrm_transport_dialog.obj: lbm_lbtrm_transport_dialog.cpp lbm_lbtrm_transpo
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -35823,9 +35364,12 @@ lbm_lbtrm_transport_dialog.obj: lbm_lbtrm_transport_dialog.cpp lbm_lbtrm_transpo
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qclipboard.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItemIterator \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenu \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmenu.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
 		..\..\epan\tap.h \
 		..\..\epan\to_str.h \
 		..\..\epan\dissectors\packet-lbm.h \
@@ -36070,54 +35614,6 @@ lbm_lbtru_transport_dialog.obj: lbm_lbtru_transport_dialog.cpp lbm_lbtru_transpo
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		ui_lbm_lbtru_transport_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSplitter \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qsplitter.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStackedWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstackedwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTabWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
-		display_filter_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\file.h \
 		..\..\epan\print.h \
 		..\..\epan\packet.h \
@@ -36133,6 +35629,13 @@ lbm_lbtru_transport_dialog.obj: lbm_lbtru_transport_dialog.cpp lbm_lbtru_transpo
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -36146,9 +35649,12 @@ lbm_lbtru_transport_dialog.obj: lbm_lbtru_transport_dialog.cpp lbm_lbtru_transpo
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qclipboard.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItemIterator \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenu \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmenu.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
 		..\..\epan\tap.h \
 		..\..\epan\to_str.h \
 		..\..\epan\dissectors\packet-lbm.h \
@@ -36372,65 +35878,6 @@ lbm_stream_dialog.obj: lbm_stream_dialog.cpp lbm_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvector2d.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		ui_lbm_stream_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		display_filter_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\file.h \
 		..\..\epan\print.h \
 		..\..\epan\packet.h \
@@ -36446,6 +35893,13 @@ lbm_stream_dialog.obj: lbm_stream_dialog.cpp lbm_stream_dialog.h \
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -36459,6 +35913,27 @@ lbm_stream_dialog.obj: lbm_stream_dialog.cpp lbm_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qclipboard.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItemIterator \
 		..\..\epan\to_str.h \
 		..\..\epan\tap.h \
@@ -37066,20 +36541,6 @@ lbm_uimflow_dialog.obj: lbm_uimflow_dialog.cpp lbm_uimflow_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenu \
 		ui_lbm_uimflow_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QScrollBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		..\..\epan\dissectors\packet-lbm.h \
 		..\..\epan\tap.h \
 		..\..\epan\to_str.h \
@@ -37096,6 +36557,7 @@ lbm_uimflow_dialog.obj: lbm_uimflow_dialog.cpp lbm_uimflow_dialog.h \
 		..\..\epan\print.h \
 		..\..\epan\packet-range.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
@@ -38085,54 +37547,6 @@ main_welcome.obj: main_welcome.cpp ..\..\..\Wireshark-win64-libs-1.12\gtk2\inclu
 		..\..\capture_ui_utils.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
 		ui_main_welcome.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStackedWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstackedwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		capture_filter_combo.h \
-		capture_filter_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthread.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		capture_filter_syntax_worker.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QMutex \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QObject \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QWaitCondition \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qwaitcondition.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QList \
 		tango_colors.h \
 		wireshark_application.h \
 		..\..\file.h \
@@ -38176,9 +37590,19 @@ main_welcome.obj: main_welcome.cpp ..\..\..\Wireshark-win64-libs-1.12\gtk2\inclu
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QList \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthread.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTimer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtimer.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qbasictimer.h \
@@ -38565,7 +37989,13 @@ main_window.obj: main_window.cpp main_window.h \
 		preferences_dialog.h \
 		about_dialog.h \
 		ui_main_window.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
+		..\..\epan\epan_dissect.h \
+		..\..\wsutil\filesystem.h \
+		..\..\ui\alert_box.h \
+		..\..\ui\main_statusbar.h \
+		..\..\ui\recent.h \
+		..\..\ui\util.h \
+		wireshark_application.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
@@ -38573,51 +38003,24 @@ main_window.obj: main_window.cpp main_window.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenuBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmenubar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStackedWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstackedwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbar.h \
-		accordion_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QPropertyAnimation \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qpropertyanimation.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qvariantanimation.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeasingcurve.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractanimation.h \
-		main_status_bar.h \
-		wireshark_application.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthread.h \
-		label_stack.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QStack \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qstack.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStatusBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstatusbar.h \
-		search_frame.h \
-		..\..\epan\epan_dissect.h \
-		..\..\wsutil\filesystem.h \
-		..\..\ui\alert_box.h \
-		..\..\ui\main_statusbar.h \
-		..\..\ui\recent.h \
-		..\..\ui\util.h \
 		import_text_dialog.h \
 		..\..\ui\text_import.h \
 		export_dissection_dialog.h \
 		packet_format_group_box.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDesktopWidget \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QKeyEvent \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QMetaObject \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QPropertyAnimation \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qpropertyanimation.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qvariantanimation.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeasingcurve.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractanimation.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDebug
 
 main_window_preferences_frame.obj: main_window_preferences_frame.cpp main_window_preferences_frame.h \
@@ -38832,44 +38235,6 @@ main_window_preferences_frame.obj: main_window_preferences_frame.cpp main_window
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
 		ui_main_window_preferences_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		..\..\epan\prefs-int.h \
 		..\..\epan\wmem\wmem.h \
 		..\..\epan\wmem\wmem_array.h \
@@ -39269,44 +38634,6 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		preferences_dialog.h \
 		about_dialog.h \
 		ui_main_window.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenuBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmenubar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStackedWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstackedwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbar.h \
-		accordion_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QPropertyAnimation \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qpropertyanimation.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qvariantanimation.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeasingcurve.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractanimation.h \
-		main_status_bar.h \
-		wireshark_application.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthread.h \
-		label_stack.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QStack \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qstack.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStatusBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstatusbar.h \
-		search_frame.h \
 		..\..\wsutil\filesystem.h \
 		..\..\wsutil\file_util.h \
 		..\..\..\Wireshark-win64-libs-1.12\gtk2\include\glib-2.0\gmodule.h \
@@ -39344,6 +38671,8 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QMultiMap \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFlags \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QVector2D \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QStack \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qstack.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QCache \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcache.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QMargins \
@@ -39361,9 +38690,13 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtPrintSupport\QtPrintSupportDepends \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QtCore \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QtCoreDepends \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractanimation.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qanimationgroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qparallelanimationgroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qpauseanimation.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qpropertyanimation.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qvariantanimation.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeasingcurve.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qsequentialanimationgroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtextcodec.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qendian.h \
@@ -39393,7 +38726,9 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qjsondocument.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qjsonobject.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstracteventdispatcher.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractnativeeventfilter.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qmetaobject.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qmimedata.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qobjectcleanuphandler.h \
@@ -39426,6 +38761,7 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfuturewatcher.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qreadwritelock.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qsemaphore.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthread.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthreadpool.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthreadstorage.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qwaitcondition.h \
@@ -39467,6 +38803,8 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qdrag.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qgenericplugin.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qgenericpluginfactory.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qoffscreensurface.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qsurface.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qsurfaceformat.h \
@@ -39533,6 +38871,7 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\complexwidgets.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaccessiblewidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\itemviews.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaccessiblemenu.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaccessiblewidgets.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QPair \
@@ -39569,6 +38908,8 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfileiconprovider.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qitemdelegate.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qitemeditorfactory.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qformlayout.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLayout \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgesture.h \
@@ -39598,6 +38939,7 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qundogroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qundostack.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qundoview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcalendarwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcommandlinkbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdatetimeedit.h \
@@ -39609,13 +38951,17 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlcdnumber.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmdiarea.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmdisubwindow.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmenubar.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qplaintextedit.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtextedit.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qscrollbar.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qsizegrip.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qspinbox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qsplashscreen.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstackedwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstatusbar.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtextbrowser.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbar.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtwidgetsversion.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtPrintSupport\qabstractprintdialog.h \
@@ -39639,6 +38985,7 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		..\..\epan\dissectors\packet-sctp.h \
 		..\..\ui\tap-sctp-analysis.h \
 		sctp_assoc_analyse_dialog.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		sctp_graph_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDir \
@@ -39650,7 +38997,11 @@ main_window_slots.obj: main_window_slots.cpp ..\..\config.h \
 		tcp_stream_dialog.h \
 		..\..\epan\dissectors\packet-tcp.h \
 		..\..\ui\tap-tcp-stream.h \
-		time_shift_dialog.h
+		time_shift_dialog.h \
+		wireshark_application.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread
 
 module_preferences_scroll_area.obj: module_preferences_scroll_area.cpp module_preferences_scroll_area.h \
 		..\..\config.h \
@@ -39841,42 +39192,6 @@ module_preferences_scroll_area.obj: module_preferences_scroll_area.cpp module_pr
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvector2d.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		ui_module_preferences_scroll_area.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
 		syntax_line_edit.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
@@ -39894,6 +39209,19 @@ module_preferences_scroll_area.obj: module_preferences_scroll_area.cpp module_pr
 		..\..\epan\emem.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
@@ -39902,6 +39230,8 @@ module_preferences_scroll_area.obj: module_preferences_scroll_area.cpp module_pr
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItem \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		..\..\epan\prefs-int.h \
 		..\..\epan\wmem\wmem.h \
@@ -39918,6 +39248,8 @@ module_preferences_scroll_area.obj: module_preferences_scroll_area.cpp module_pr
 		..\..\epan\wmem\wmem_tree.h \
 		..\..\epan\wmem\wmem_user_cb.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAbstractButton \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFileDialog \
@@ -39925,6 +39257,10 @@ module_preferences_scroll_area.obj: module_preferences_scroll_area.cpp module_pr
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qdir.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
@@ -40039,58 +39375,6 @@ packet_comment_dialog.obj: packet_comment_dialog.cpp packet_comment_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvector2d.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		ui_packet_comment_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPlainTextEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qplaintextedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtextedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextdocument.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qabstracttextdocumentlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qglyphrun.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qrawfont.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qfontdatabase.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
 		wireshark_application.h \
 		..\..\config.h \
 		..\..\..\Wireshark-win64-libs-1.12\gtk2\include\glib-2.0\glib.h \
@@ -40219,6 +39503,13 @@ packet_comment_dialog.obj: packet_comment_dialog.cpp packet_comment_dialog.h \
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -40335,48 +39626,9 @@ packet_format_group_box.obj: packet_format_group_box.cpp packet_format_group_box
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvector2d.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		ui_packet_format_group_box.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStyle \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStyle
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h
 
 packet_list.obj: packet_list.cpp ..\..\config.h \
 		..\..\..\Wireshark-win64-libs-1.12\gtk2\include\glib-2.0\glib.h \
@@ -41357,51 +40609,7 @@ packet_range_group_box.obj: packet_range_group_box.cpp packet_range_group_box.h 
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGroupBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgroupbox.h \
-		ui_packet_range_group_box.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem
+		ui_packet_range_group_box.h
 
 preferences_dialog.obj: preferences_dialog.cpp preferences_dialog.h \
 		..\..\config.h \
@@ -41613,53 +40821,6 @@ preferences_dialog.obj: preferences_dialog.cpp preferences_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
 		ui_preferences_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSplitter \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qsplitter.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStackedWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstackedwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		capture_preferences_frame.h \
-		column_preferences_frame.h \
-		filter_expressions_preferences_frame.h \
-		font_color_preferences_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
-		layout_preferences_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAbstractButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		main_window_preferences_frame.h \
 		module_preferences_scroll_area.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QScrollArea \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qscrollarea.h \
@@ -41709,8 +40870,16 @@ preferences_dialog.obj: preferences_dialog.cpp preferences_dialog.h \
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QList \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qthread.h \
@@ -41721,6 +40890,12 @@ preferences_dialog.obj: preferences_dialog.cpp preferences_dialog.h \
 		..\..\epan\prefs-int.h \
 		..\..\ui\preference_utils.h \
 		syntax_line_edit.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		qt_ui_utils.h \
 		..\..\epan\timestamp.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QString \
@@ -41729,14 +40904,22 @@ preferences_dialog.obj: preferences_dialog.cpp preferences_dialog.h \
 		..\..\epan\uat.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QColorDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcolordialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFileDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfiledialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qdir.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QKeyEvent \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItemIterator \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDebug
 
@@ -41977,61 +41160,6 @@ print_dialog.obj: print_dialog.cpp print_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
 		ui_print_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		packet_format_group_box.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGroupBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgroupbox.h \
-		packet_range_group_box.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtPrintSupport\QPrintDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtPrintSupport\qprintdialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtPrintSupport\qabstractprintdialog.h \
@@ -42039,6 +41167,8 @@ print_dialog.obj: print_dialog.cpp print_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtPrintSupport\qpagesetupdialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QPainter \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpainter.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QPaintEngine \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpaintengine.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QKeyEvent \
@@ -42052,6 +41182,13 @@ print_dialog.obj: print_dialog.cpp print_dialog.h \
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -42275,36 +41412,6 @@ profile_dialog.obj: profile_dialog.cpp ..\..\config.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		ui_profile_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		elided_label.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
 		wireshark_application.h \
 		..\..\capture_opts.h \
 		..\..\capture_ifinfo.h \
@@ -42351,6 +41458,13 @@ profile_dialog.obj: profile_dialog.cpp ..\..\config.h \
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -44087,56 +43201,15 @@ sctp_all_assocs_dialog.obj: sctp_all_assocs_dialog.cpp sctp_all_assocs_dialog.h 
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QObject \
 		ui_sctp_all_assocs_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTableWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtablewidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtableview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		sctp_assoc_analyse_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTabWidget \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
 		qt_ui_utils.h \
@@ -44155,6 +43228,7 @@ sctp_all_assocs_dialog.obj: sctp_all_assocs_dialog.cpp sctp_all_assocs_dialog.h 
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmainwindow.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSplitter \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qsplitter.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTimer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtimer.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qbasictimer.h \
@@ -44165,6 +43239,20 @@ sctp_all_assocs_dialog.obj: sctp_all_assocs_dialog.cpp sctp_all_assocs_dialog.h 
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QListWidget \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlistwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlistview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItem \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
@@ -44193,9 +43281,12 @@ sctp_all_assocs_dialog.obj: sctp_all_assocs_dialog.cpp sctp_all_assocs_dialog.h 
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVector \
 		packet_list_record.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QList \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
 		proto_tree.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenu \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmenu.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
 		related_packet_delegate.h \
 		..\..\epan\conversation.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QStyledItemDelegate \
@@ -44214,6 +43305,7 @@ sctp_all_assocs_dialog.obj: sctp_all_assocs_dialog.cpp sctp_all_assocs_dialog.h 
 		display_filter_edit.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		syntax_line_edit.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
@@ -44230,12 +43322,15 @@ sctp_all_assocs_dialog.obj: sctp_all_assocs_dialog.cpp sctp_all_assocs_dialog.h 
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfiledialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qdir.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
 		summary_dialog.h \
 		..\..\epan\strutil.h \
 		..\..\globals.h \
@@ -44257,7 +43352,12 @@ sctp_all_assocs_dialog.obj: sctp_all_assocs_dialog.cpp sctp_all_assocs_dialog.h 
 		..\..\..\Wireshark-win64-libs-1.12\gnutls-3.2.15-2.9-win64ws\include\gnutls\pkcs12.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFile \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QMap \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
 		capture_interfaces_dialog.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTableWidget \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtablewidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtableview.h \
 		preferences_dialog.h \
 		about_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDir \
@@ -44503,50 +43603,11 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
 		ui_sctp_assoc_analyse_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QLocale \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QListWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlistwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlistview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
 		sctp_graph_dialog.h \
 		qcustomplot.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QPointer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qpointer.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QPainter \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpainter.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
@@ -44610,8 +43671,10 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtemporarydir.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QScopedPointer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtemporaryfile.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractproxymodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qidentityproxymodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qsortfilterproxymodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qstringlistmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qjsonarray.h \
@@ -44619,8 +43682,10 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qjsondocument.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qjsonobject.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstracteventdispatcher.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractnativeeventfilter.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qbasictimer.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qmetaobject.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qmimedata.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qobjectcleanuphandler.h \
@@ -44671,6 +43736,7 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qlinkedlist.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qmessageauthenticationcode.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qqueue.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qscopedvaluerollback.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtextboundaryfinder.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtimeline.h \
@@ -44698,6 +43764,8 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qdrag.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qgenericplugin.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qgenericpluginfactory.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qoffscreensurface.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qsurface.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qsurfaceformat.h \
@@ -44761,12 +43829,25 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextlist.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtexttable.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qdesktopservices.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtguiversion.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QtWidgets \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QtWidgetsDepends \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\complexwidgets.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaccessiblewidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\itemviews.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaccessiblemenu.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaccessiblewidgets.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QPair \
@@ -44804,12 +43885,18 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfileiconprovider.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qitemdelegate.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qitemeditorfactory.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlistview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlistwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleditemdelegate.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtableview.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtablewidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qformlayout.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLayout \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgesture.h \
@@ -44836,14 +43923,18 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QScrollerProperties \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qscrollerproperties.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QMetaType \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qsystemtrayicon.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qundogroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qundostack.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qundoview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcalendarwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcommandlinkbutton.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdatetimeedit.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdial.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
@@ -44852,6 +43943,7 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfontcombobox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgroupbox.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qkeysequenceedit.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlcdnumber.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmainwindow.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmdiarea.h \
@@ -44900,6 +43992,7 @@ sctp_assoc_analyse_dialog.obj: sctp_assoc_analyse_dialog.cpp ..\..\epan\to_str.h
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
@@ -45190,18 +44283,6 @@ sctp_chunk_statistics_dialog.obj: sctp_chunk_statistics_dialog.cpp sctp_chunk_st
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QContextMenuEvent \
 		ui_sctp_chunk_statistics_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTableWidget \
 		uat_dialog.h \
 		syntax_line_edit.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
@@ -45212,6 +44293,9 @@ sctp_chunk_statistics_dialog.obj: sctp_chunk_statistics_dialog.cpp sctp_chunk_st
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItem \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
@@ -45824,13 +44908,6 @@ sctp_graph_dialog.obj: sctp_graph_dialog.cpp sctp_graph_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDir \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFileDialog \
 		ui_sctp_graph_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
 		sctp_assoc_analyse_dialog.h \
 		sctp_all_assocs_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTabWidget \
@@ -45843,6 +44920,7 @@ sctp_graph_dialog.obj: sctp_graph_dialog.cpp sctp_graph_dialog.h \
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
@@ -46453,13 +45531,6 @@ sctp_graph_arwnd_dialog.obj: sctp_graph_arwnd_dialog.cpp sctp_graph_arwnd_dialog
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		ui_sctp_graph_arwnd_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
 		sctp_assoc_analyse_dialog.h \
 		sctp_all_assocs_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTabWidget \
@@ -47073,13 +46144,6 @@ sctp_graph_byte_dialog.obj: sctp_graph_byte_dialog.cpp sctp_graph_byte_dialog.h 
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		ui_sctp_graph_byte_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
 		sctp_graph_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDir \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFileDialog \
@@ -47312,57 +46376,6 @@ search_frame.obj: search_frame.cpp search_frame.h \
 		..\..\wiretap\wtap.h \
 		..\..\wsutil\buffer.h \
 		ui_search_frame.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcombobox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\epan\strutil.h \
 		wireshark_application.h \
 		..\..\epan\prefs.h \
@@ -47379,6 +46392,13 @@ search_frame.obj: search_frame.cpp search_frame.h \
 		..\..\epan\tfs.h \
 		..\..\epan\packet-range.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -47388,7 +46408,11 @@ search_frame.obj: search_frame.cpp search_frame.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTimer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtimer.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qbasictimer.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QKeyEvent
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QKeyEvent \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h
 
 sequence_diagram.obj: sequence_diagram.cpp sequence_diagram.h \
 		..\..\config.h \
@@ -48594,20 +47618,6 @@ sequence_dialog.obj: sequence_dialog.cpp sequence_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenu \
 		ui_sequence_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFrame \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGridLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QScrollBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		..\..\epan\addr_resolv.h \
 		..\..\epan\to_str.h \
 		wireshark_application.h \
@@ -48622,6 +47632,7 @@ sequence_dialog.obj: sequence_dialog.cpp sequence_dialog.h \
 		..\..\epan\print.h \
 		..\..\epan\packet-range.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
@@ -49134,49 +48145,6 @@ splash_overlay.obj: splash_overlay.cpp splash_overlay.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTime \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qdatetime.h \
 		ui_splash_overlay.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QProgressBar \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qprogressbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		wireshark_application.h \
 		..\..\epan\prefs.h \
 		..\..\color.h \
@@ -49226,6 +48194,13 @@ splash_overlay.obj: splash_overlay.cpp splash_overlay.h \
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -49465,65 +48440,6 @@ stats_tree_dialog.obj: stats_tree_dialog.cpp stats_tree_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvector2d.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtouchdevice.h \
 		ui_stats_tree_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		display_filter_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		syntax_line_edit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLineEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlineedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
 		..\..\file.h \
 		..\..\epan\print.h \
 		..\..\epan\packet.h \
@@ -49542,6 +48458,13 @@ stats_tree_dialog.obj: stats_tree_dialog.cpp stats_tree_dialog.h \
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -49555,6 +48478,27 @@ stats_tree_dialog.obj: stats_tree_dialog.cpp stats_tree_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qclipboard.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMessageBox \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qmessagebox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreeview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItemIterator \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFileDialog \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfiledialog.h \
@@ -49810,12 +48754,11 @@ summary_dialog.obj: summary_dialog.cpp summary_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QClipboard \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qclipboard.h \
 		ui_summary_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QLocale \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
+		wireshark_application.h \
+		..\..\epan\prefs.h \
+		..\..\color.h \
+		..\..\epan\params.h \
+		..\..\ui\help_url.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
@@ -49823,63 +48766,6 @@ summary_dialog.obj: summary_dialog.cpp summary_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFormLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qformlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QGroupBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgroupbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qframe.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPlainTextEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qplaintextedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtextedit.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextdocument.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qabstracttextdocumentlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qglyphrun.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qrawfont.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qfontdatabase.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTabWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTableWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtablewidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtableview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTextEdit \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QWidget \
-		wireshark_application.h \
-		..\..\epan\prefs.h \
-		..\..\color.h \
-		..\..\epan\params.h \
-		..\..\ui\help_url.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QList \
@@ -49922,8 +48808,10 @@ summary_dialog.obj: summary_dialog.cpp summary_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtemporarydir.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QScopedPointer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtemporaryfile.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractproxymodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qidentityproxymodel.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qsortfilterproxymodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qstringlistmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qjsonarray.h \
@@ -49983,6 +48871,7 @@ summary_dialog.obj: summary_dialog.cpp summary_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qlinkedlist.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qmessageauthenticationcode.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qqueue.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qscopedvaluerollback.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qstack.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qtextboundaryfinder.h \
@@ -49995,6 +48884,7 @@ summary_dialog.obj: summary_dialog.cpp summary_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qaccessibleobject.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qaccessibleplugin.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qbitmap.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qiconengine.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qiconengineplugin.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qimageiohandler.h \
@@ -50058,7 +48948,17 @@ summary_dialog.obj: summary_dialog.cpp summary_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpagesize.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpaintengine.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpainter.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextoption.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpen.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qpdfwriter.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qabstracttextdocumentlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextlayout.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextformat.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qglyphrun.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qrawfont.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qfontdatabase.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextcursor.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextdocument.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qstatictext.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qsyntaxhighlighter.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextobject.h \
@@ -50067,6 +48967,7 @@ summary_dialog.obj: summary_dialog.cpp summary_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtextlist.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtexttable.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qdesktopservices.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qtguiversion.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qpushbutton.h \
@@ -50522,51 +49423,6 @@ time_shift_dialog.obj: time_shift_dialog.cpp time_shift_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractbutton.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qicon.h \
 		ui_time_shift_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QCheckBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qcheckbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractscrollarea.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qabstractitemmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractitemdelegate.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyleoption.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractspinbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qvalidator.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qregularexpression.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qabstractslider.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qstyle.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabbar.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtabwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qrubberband.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qradiobutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		wireshark_application.h \
 		..\..\epan\prefs.h \
 		..\..\color.h \
@@ -50582,6 +49438,13 @@ time_shift_dialog.obj: time_shift_dialog.cpp time_shift_dialog.h \
 		..\..\epan\tfs.h \
 		..\..\epan\packet-range.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -50813,36 +49676,6 @@ uat_dialog.obj: uat_dialog.cpp uat_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qitemselectionmodel.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtreewidgetitemiterator.h \
 		ui_uat_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QVariant \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qaction.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qactiongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qbuttongroup.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdialogbuttonbox.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qboxlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlayoutitem.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qgridlayout.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qheaderview.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QToolButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qtoolbutton.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
-		elided_label.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qlabel.h \
 		wireshark_application.h \
 		..\..\epan\prefs.h \
 		..\..\color.h \
@@ -50892,6 +49725,13 @@ uat_dialog.obj: uat_dialog.cpp uat_dialog.h \
 		..\..\epan\dfilter\dfilter.h \
 		..\..\epan\frame_data_sequence.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qcoreapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qeventloop.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qdesktopwidget.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qguiapplication.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\qinputmethod.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qfileinfo.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QFont \
@@ -50914,6 +49754,7 @@ uat_dialog.obj: uat_dialog.cpp uat_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\qfiledialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\qdir.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QKeyEvent \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidget \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QTreeWidgetItemIterator \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QUrl \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDebug
@@ -51806,19 +50647,6 @@ tcp_stream_dialog.obj: tcp_stream_dialog.cpp tcp_stream_dialog.h \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QMenu \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRubberBand \
 		ui_tcp_stream_dialog.h \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QAction \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QButtonGroup \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QComboBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QDialogButtonBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHBoxLayout \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QHeaderView \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QLabel \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QRadioButton \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpacerItem \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QSpinBox \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QVBoxLayout \
 		..\..\epan\to_str.h \
 		..\..\wsutil\str_util.h \
 		..\..\ui\utf8_entities.h \
@@ -51834,13 +50662,15 @@ tcp_stream_dialog.obj: tcp_stream_dialog.cpp tcp_stream_dialog.h \
 		..\..\capture_ifinfo.h \
 		..\..\capture_session.h \
 		..\..\ui\help_url.h \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QApplication \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QFileInfo \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QThread \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QTimer \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QCursor \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtCore\QDir \
 		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QFileDialog \
-		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QIcon
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtGui\QIcon \
+		..\..\..\..\Qt\5.4\msvc2013_64_opengl\include\QtWidgets\QPushButton
 
 wireshark-tap-register.obj: wireshark-tap-register.c 
 
