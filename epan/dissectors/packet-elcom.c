@@ -50,9 +50,11 @@
 #define SUFFIX_LEN  2
 #define TOTAL_LEN (LOWADR_LEN + SUFFIX_LEN + 2)
 
+#if 0 /* ??? */
 #define ELCOM_UNKNOWN_ENDIAN 0
 #define ELCOM_LITTLE_ENDIAN  1
 #define ELCOM_BIG_ENDIAN     2
+#endif
 
 void proto_register_elcom(void);
 void proto_reg_handoff_elcom(void);
@@ -182,10 +184,10 @@ dissect_lower_address(proto_item *ti_arg, gint ett_arg,
          * ELCOM-90 TRA3825.02 User Element conventions, p. 5-2 and Appendix G
          */
         len1 = tvb_get_guint8(tvb, offset);
-        if (tvb_length_remaining(tvb, offset+len1+1) <= 0)
+        if (tvb_captured_length_remaining(tvb, offset+len1+1) <= 0)
                 return offset;
         len2 = tvb_get_guint8(tvb, offset+len1+1);
-        if (tvb_length_remaining(tvb, offset+len1+len2+2) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset+len1+len2+2) <= 0)
                 return offset;
         if ((len1 != LOWADR_LEN) || (len2 != SUFFIX_LEN)) {
                 proto_item_append_text(tree, " Invalid structure");
@@ -216,8 +218,9 @@ dissect_lower_address(proto_item *ti_arg, gint ett_arg,
         offset += 8;                /* skip the zero bytes */
 
         /* SUFFIX */
-        suffix = tvb_get_string(wmem_packet_scope(), tvb, offset+1, len2);
-        ti = proto_tree_add_item(tree, hf_suff, tvb, offset, 1, ENC_ASCII|ENC_LITTLE_ENDIAN);
+        suffix = tvb_get_string_enc(wmem_packet_scope(), tvb, offset+1, len2, ENC_ASCII);
+        /* hf_suff FIELDTYPE must be FT_UINT_STRING */
+        ti = proto_tree_add_item(tree, hf_suff, tvb, offset, 1, ENC_ASCII|ENC_BIG_ENDIAN);
         offset += len2+1;
 
         if (!(suffix[0] == 'A' || suffix[0] == 'B')) {
@@ -259,35 +262,35 @@ dissect_userdata(proto_item *ti_arg, gint ett_arg, tvbuff_t *tvb, gint arg_offse
                 proto_item_append_text(ti, " (2 bytes, should be 1 byte)");
         }
 
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         proto_tree_add_item(tree, hf_elcom_userdata_pduid, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset++;
 
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         proto_tree_add_item(tree, hf_elcom_userdata_version, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset++;
 
 
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         proto_tree_add_item(tree, hf_elcom_userdata_result, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset++;
 
         /* show the rest */
-        /*        tree2 = proto_tree_add_text(tree, tvb, offset, -1, "User Data"); */
+        /*        tree2 = proto_tree_add_subtree(tree, tvb, offset, -1, "User Data"); */
 
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
         ti = proto_tree_add_item(tree, hf_elcom_userdata_restmark, tvb, offset, 1, ENC_BIG_ENDIAN);
         proto_item_append_text(ti, " <-- '0' = no restart etc.");
         offset +=1;
 
-        if (tvb_length_remaining(tvb, offset+8) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset+8) <= 0)
                 return offset;
         year  = tvb_get_guint8(tvb, offset);
         month = tvb_get_guint8(tvb, offset+1);
@@ -302,11 +305,11 @@ dissect_userdata(proto_item *ti_arg, gint ett_arg, tvbuff_t *tvb, gint arg_offse
                                    year+1900, month, day, hour, min, sec, msec);
 
         offset += 12;
-        if (tvb_length_remaining(tvb, offset+12) > 0) {
+        if (tvb_reported_length_remaining(tvb, offset+12) > 0) {
                 proto_item_append_text(ti, " Security info: ");
         }
         /* security info field, if present */
-        while (tvb_length_remaining(tvb, offset) > 0) {
+        while (tvb_reported_length_remaining(tvb, offset) > 0) {
                 proto_item_append_text(ti, elcom_show_hex ? " %02x" : " %03o",
                                        tvb_get_guint8(tvb, offset));
                 offset++;
@@ -320,11 +323,11 @@ dissect_datarequest(proto_item *ti_arg, gint ett_arg, tvbuff_t *tvb, gint arg_of
 {
         gint        offset = arg_offset;
         guint8      gtype, oidlen;
-        proto_tree *tree, *tree2;
+        proto_tree *tree;
         proto_item *ti;
 
         tree = proto_item_add_subtree(ti_arg, ett_arg);
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         gtype = tvb_get_guint8(tvb, offset);
@@ -350,59 +353,53 @@ dissect_datarequest(proto_item *ti_arg, gint ett_arg, tvbuff_t *tvb, gint arg_of
                 proto_item_append_text(ti, " <<--- meaning WHAT?");
                 return offset;
         }
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         proto_tree_add_item(tree, hf_elcom_datarequest_groupnumber, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset += 1;
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         proto_tree_add_item(tree, hf_elcom_datarequest_grouppriority, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset += 1;
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         proto_tree_add_item(tree, hf_elcom_datarequest_groupsize, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset += 1;
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         proto_tree_add_item(tree, hf_elcom_datarequest_groupindex1, tvb, offset, 2, ENC_BIG_ENDIAN);
         offset += 2;
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         proto_tree_add_item(tree, hf_elcom_datarequest_groupindex2, tvb, offset, 2, ENC_BIG_ENDIAN);
         offset += 2;
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         while (1) {
                 oidlen = tvb_get_guint8(tvb, offset);
                 if (oidlen == 0) /* normal termination */
                         break;
-                if (tvb_length_remaining(tvb, offset+oidlen+1) <= 0)
+                if (tvb_reported_length_remaining(tvb, offset+oidlen+1) <= 0)
                         return offset;
-                proto_tree_add_item(tree, hf_elcom_datarequest_oid, tvb, offset, 1, ENC_ASCII|ENC_NA);
+                proto_tree_add_item(tree, hf_elcom_datarequest_oid, tvb, offset, 1, ENC_ASCII|ENC_BIG_ENDIAN);
                 offset += oidlen+1;
         }
         offset += 1;             /* the loop exited at the 0 length byte */
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return offset;
 
         /* show the rest */
-        tree2 = proto_tree_add_text(tree, tvb, offset, -1, "leftover =");
-        while (tvb_length_remaining(tvb, offset) > 0) {
-                proto_item_append_text(tree2, elcom_show_hex ? " %02x" : " %03o",
-                                       tvb_get_guint8(tvb, offset));
-                offset++;
-        }
-
+        proto_tree_add_item(tree, hf_elcom_strangeleftover, tvb, offset, -1, ENC_NA);
         return offset;
 }
 
-/* XXX: Are all the tests against tvb_length() really the right way to handle invalid fields ?
+/* XXX: Are all the tests against tvb_reported_length() really the right way to handle invalid fields ?
  *      It seems to me that invalid fields should just add an expert item
  *        or cause a "Malformed" exception.
  */
@@ -418,7 +415,7 @@ dissect_elcom(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         guint8     *suffix;
 
         /* Check that there's enough data */
-        if (tvb_length(tvb) < 3)
+        if (tvb_captured_length(tvb) < 3)
                 return;
 
         col_set_str(pinfo->cinfo, COL_PROTOCOL, "ELCOM");
@@ -440,7 +437,7 @@ dissect_elcom(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
                         /* starting after elcom_len and elcom_msg_type,
                            initiator + responder + userdata fields must be there */
-                        if (tvb_length_remaining(tvb, 3+TOTAL_LEN+TOTAL_LEN+3) < 0) return;
+                        if (tvb_captured_length_remaining(tvb, 3+TOTAL_LEN+TOTAL_LEN+3) < 0) return;
                         /* check also that those field lengths are valid */
                         if (tvb_get_guint8(tvb, 3)  != LOWADR_LEN) return;
                         if (tvb_get_guint8(tvb, 3+1+LOWADR_LEN) != SUFFIX_LEN) return;
@@ -448,7 +445,7 @@ dissect_elcom(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                         if (tvb_get_guint8(tvb, 3+1+TOTAL_LEN+LOWADR_LEN) != SUFFIX_LEN) return;
 
                         /* finally believe that there is valid suffix */
-                        suffix = tvb_get_string(wmem_packet_scope(), tvb, 3+2+LOWADR_LEN, 2);
+                        suffix = tvb_get_string_enc(wmem_packet_scope(), tvb, 3+2+LOWADR_LEN, 2, ENC_ASCII);
                         col_append_fstr(pinfo->cinfo, COL_INFO, " %s Connect", suffix);
                         break;
 
@@ -498,7 +495,7 @@ dissect_elcom(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         proto_item_append_text(elcom_tree, " ( %s)", val_to_str(elcom_msg_type, type_vals, "Unknown %d"));
 
         offset++;
-        if (tvb_length_remaining(tvb, offset) <= 0)
+        if (tvb_reported_length_remaining(tvb, offset) <= 0)
                 return;
 
         switch (elcom_msg_type) {
@@ -516,7 +513,7 @@ dissect_elcom(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                                                hf_elcom_initiator_ip,
                                                hf_elcom_initiator_port,
                                                hf_elcom_initiator_suff);
-                if (tvb_length_remaining(tvb, offset) <= 0)
+                if (tvb_reported_length_remaining(tvb, offset) <= 0)
                         return;
 
                 ti = proto_tree_add_item(elcom_tree, hf_elcom_responder, tvb, offset, TOTAL_LEN, ENC_NA);
@@ -525,7 +522,7 @@ dissect_elcom(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                                                hf_elcom_responder_ip,
                                                hf_elcom_responder_port,
                                                hf_elcom_responder_suff);
-                if (tvb_length_remaining(tvb, offset) <= 0)
+                if (tvb_reported_length_remaining(tvb, offset) <= 0)
                         return;
 
                 /* Rest of the payload is USER-DATA, 0..82 bytes */
@@ -558,16 +555,10 @@ dissect_elcom(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                 break;
         }
 
-
-        if (tvb_length_remaining(tvb, offset) <= 0)
-                return;
-
-        /* We should not get here, but if we do, show what is left over: */
-        ti = proto_tree_add_item(elcom_tree, hf_elcom_strangeleftover, tvb, offset, -1, ENC_NA);
-        while (tvb_length_remaining(tvb, offset) > 0) {
-                proto_item_append_text(ti, elcom_show_hex ? " %02x" : " %03o",
-                                       tvb_get_guint8(tvb, offset));
-                offset++;
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
+        {
+            /* We should not get here, but if we do, show what is left over: */
+            proto_tree_add_item(elcom_tree, hf_elcom_strangeleftover, tvb, offset, -1, ENC_NA);
         }
 }
 
@@ -737,7 +728,7 @@ proto_register_elcom(void)
                 },
                 { &hf_elcom_strangeleftover,
                   { "Strange Leftover",        "elcom.leftover",
-                    FT_NONE, BASE_NONE, NULL, 0, NULL, HFILL }
+                    FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }
                 }
         };
 

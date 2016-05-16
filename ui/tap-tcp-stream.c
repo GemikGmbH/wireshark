@@ -24,14 +24,12 @@
 
 #include "config.h"
 
-#include <glib.h>
 
 #include <stdlib.h>
 
 #include <file.h>
 #include <frame_tvbuff.h>
 
-#include <epan/address.h>
 #include <epan/epan_dissect.h>
 #include <epan/packet.h>
 #include <epan/tap.h>
@@ -289,6 +287,7 @@ select_tcpip_session(capture_file *cf, struct segment *hdrs)
     frame_data     *fdata;
     epan_dissect_t  edt;
     dfilter_t      *sfcode;
+    gchar          *err_msg;
     GString        *error_string;
     nstime_t        rel_ts;
     th_t th = {0, {NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL}};
@@ -299,8 +298,9 @@ select_tcpip_session(capture_file *cf, struct segment *hdrs)
     fdata = cf->current_frame;
 
     /* no real filter yet */
-    if (!dfilter_compile("tcp", &sfcode)) {
-        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", dfilter_error_msg);
+    if (!dfilter_compile("tcp", &sfcode, &err_msg)) {
+        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+        g_free(err_msg);
         return NULL;
     }
 
@@ -330,7 +330,7 @@ select_tcpip_session(capture_file *cf, struct segment *hdrs)
          * segment, as tcp_graph_selected_packet_enabled() is used
          * to determine whether to enable any of our menu items. */
         simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-                      "Selected packet isn't a TCP segment");
+                      "Selected packet isn't a TCP segment or is truncated");
         return NULL;
     }
     /* XXX fix this later, we should show a dialog allowing the user

@@ -22,12 +22,11 @@
  */
 
 /*
- * See: http://tools.ietf.org/html/draft-ietf-trill-rbridge-protocol-16
+ * See: RFC6325
  */
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/etypes.h>
 
@@ -71,7 +70,7 @@ static const true_false_string multi_dst_strings = {
 } ;
 
 static const range_string version_strings[] = {
-  { 0, 0, "draft-ietf-trill-rbridge-protocol-16 Version" },
+  { 0, 0, "RFC6325 Version" },
   { 1, 3, "Unallocated Version" },
   { 0, 0, NULL }
 } ;
@@ -85,7 +84,9 @@ static const range_string reserved_strings[] = {
 static const range_string nickname_strings[] = {
   { 0x0000, 0x0000, "Nickname Not Specified" },
   { 0x0001, 0xFFBF, "Valid Nickname" },
-  { 0xFFC0, 0xFFFE, "Reserved for Future Specification" },
+  { 0xFFC0, 0xFFC0, "Any RBridge" },
+  { 0xFFC1, 0xFFC1, "OOMF" },
+  { 0xFFC2, 0xFFFE, "Reserved for Future Specification" },
   { 0xFFFF, 0xFFFF, "Permanently Reserved" },
   { 0, 0, NULL }
 } ;
@@ -105,7 +106,8 @@ dissect_trill( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 
   op_len = tvb_get_bits( tvb, 5, 5, ENC_BIG_ENDIAN ) * TRILL_OP_LENGTH_BYTE_UNITS ;
   if (tree) {
-    ti = proto_tree_add_item( tree, proto_trill, tvb, 0, -1, ENC_NA ) ;
+    ti = proto_tree_add_item( tree, proto_trill, tvb, 0,
+      TRILL_MIN_FRAME_LENGTH + op_len, ENC_NA ) ;
     trill_tree = proto_item_add_subtree( ti, ett_trill ) ;
 
     /* Parse the bit fields, i.e. V, R, M, Op-Length, Hop Count. */
@@ -142,7 +144,7 @@ dissect_trill( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
   next_tvb = tvb_new_subset_remaining( tvb, TRILL_MIN_FRAME_LENGTH + op_len ) ;
   call_dissector( eth_dissector, next_tvb, pinfo, tree ) ;
 
-  return tvb_length( tvb ) ;
+  return tvb_reported_length( tvb ) ;
 }
 
 /* Register the protocol with Wireshark */
@@ -201,6 +203,27 @@ proto_reg_handoff_trill(void)
   trill_handle = new_create_dissector_handle(dissect_trill, proto_trill);
   dissector_add_uint("ethertype", ETHERTYPE_TRILL, trill_handle);
 
-  eth_dissector = find_dissector( "eth" ) ;
+  /*
+   * RFC 6325, section 4.1.4 "Frame Check Sequence (FCS)", says
+   *
+   * "Thus, when a frame is encapsulated, the original FCS is not
+   * included but is discarded."
+   *
+   * meaning that the inner Ethernet frame does *not* include an
+   * FCS.
+   */
+  eth_dissector = find_dissector( "eth_withoutfcs" ) ;
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

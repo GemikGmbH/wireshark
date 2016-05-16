@@ -23,10 +23,7 @@
 
 #include "config.h"
 
-#include <stdio.h>
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/emem.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
 
@@ -138,13 +135,13 @@ static gboolean aol_desegment  = TRUE;
  * Dissect the 'INIT' PDU.
  */
 static guint dissect_aol_init(tvbuff_t *tvb, packet_info *pinfo _U_, guint offset, proto_tree *tree) {
-	proto_item *data_item = NULL;
-	proto_tree *data_tree = NULL;
+	proto_item *data_item;
+	proto_tree *data_tree;
 	guint16     dos_ver   = 0;
 	guint16     win_ver   = 0;
 
 	/* Add the Data subtree */
-	data_item = proto_tree_add_item(tree,hf_aol_init,tvb,offset,tvb_length_remaining(tvb,offset)-1,ENC_NA);
+	data_item = proto_tree_add_item(tree,hf_aol_init,tvb,offset,tvb_reported_length_remaining(tvb,offset)-1,ENC_NA);
 	data_tree = proto_item_add_subtree(data_item,ett_aol_data);
 
 	/* Now, parse the structure */
@@ -180,8 +177,8 @@ static guint dissect_aol_init(tvbuff_t *tvb, packet_info *pinfo _U_, guint offse
 	proto_tree_add_item(data_tree,hf_aol_num_colors,   tvb,offset,2,ENC_LITTLE_ENDIAN); offset += 2; /* 37b */
 
 	/* WAOL 1.5 (48b), >= 2.5 (49b) */
-	if (tvb_length_remaining(tvb,offset) <= 13) { /* WAOL 1.5 - 3.0 */
-		if (tvb_length_remaining(tvb,offset) == 13) { /* WAOL > 1.5 */
+	if (tvb_reported_length_remaining(tvb,offset) <= 13) { /* WAOL 1.5 - 3.0 */
+		if (tvb_reported_length_remaining(tvb,offset) == 13) { /* WAOL > 1.5 */
 			proto_tree_add_item(data_tree,hf_aol_filler,tvb,offset,1,ENC_BIG_ENDIAN); offset += 1;
 		}
 
@@ -198,7 +195,9 @@ static guint dissect_aol_init(tvbuff_t *tvb, packet_info *pinfo _U_, guint offse
 /**
  * Get the length of a particular PDU (+6 bytes for the frame)
  */
-static guint get_aol_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset) {
+static guint get_aol_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                             int offset, void *data _U_)
+{
 	guint16 plen;
 
 	/* Get the PDU length */
@@ -210,12 +209,10 @@ static guint get_aol_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset) 
  * Dissect a PDU
  */
 static int dissect_aol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_) {
-	proto_item    *ti         = NULL;
-	proto_tree    *aol_tree   = NULL;
+	proto_item    *ti;
+	proto_tree    *aol_tree;
 	guint          offset     = 0;
-	guint          old_offset = 0;
-	guint16        token      = 0;
-	guint16        pdu_len    = 0;
+	guint16        pdu_len;
 	guint8         pdu_type   = 0;
 
 	/* Set the protocol name, and info column text. */
@@ -250,14 +247,15 @@ static int dissect_aol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
 
 	/* Now for the data... */
 	if (pdu_len > 0) {
-		old_offset = offset;
+		guint old_offset = offset;
 
-		if (tvb_length_remaining(tvb,offset) > pdu_len) {
+		if (tvb_reported_length_remaining(tvb,offset) > pdu_len) {
 			/* Init packets are a special case */
 			if (pdu_type == AOL_P3_TYPE_INIT) {
 				offset = dissect_aol_init(tvb,pinfo,offset,aol_tree);
 			} else {
 				if (pdu_len >= 2) {
+					guint16 token;
 					/* Get the token */
 					token = tvb_get_ntohs(tvb,offset);
 
@@ -287,14 +285,14 @@ static int dissect_aol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
 	}
 
 	/* End-of-Frame Marker */
-	if (tvb_length_remaining(tvb,offset) >= 1) {
+	if (tvb_reported_length_remaining(tvb,offset) >= 1) {
 		proto_tree_add_item(aol_tree,hf_aol_end,tvb,offset,1,ENC_NA);/* offset += 1;*/
 	} else {
 		/* Malformed Packet */
 		expert_add_info(pinfo,ti,&ei_aol_end_missing);
 	}
 
-	return tvb_length(tvb);
+	return tvb_reported_length(tvb);
 }
 
 /**
@@ -302,11 +300,11 @@ static int dissect_aol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
  */
 static int dissect_aol(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data) {
 	/* Ensure this really is an AOL packet */
-	if (tvb_length(tvb) >= 1 && tvb_get_guint8(tvb,0) != AOL_P3_FRAME_START) return 0;
+	if (tvb_reported_length(tvb) >= 1 && tvb_get_guint8(tvb,0) != AOL_P3_FRAME_START) return 0;
 
 	/* Dissect PDUs */
 	tcp_dissect_pdus(tvb,pinfo,tree,aol_desegment,9,get_aol_pdu_len,dissect_aol_pdu,data);
-	return tvb_length(tvb);
+	return tvb_reported_length(tvb);
 }
 
 /**
@@ -405,3 +403,16 @@ void proto_reg_handoff_aol(void) {
 }
 
 /* vi:set ts=4: */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

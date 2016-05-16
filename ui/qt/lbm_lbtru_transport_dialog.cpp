@@ -22,10 +22,11 @@
  */
 
 #include "lbm_lbtru_transport_dialog.h"
-#include "ui_lbm_lbtru_transport_dialog.h"
+#include <ui_lbm_lbtru_transport_dialog.h>
 
 #include "file.h"
 
+#include "qt_ui_utils.h"
 #include "wireshark_application.h"
 
 #include <QClipboard>
@@ -33,10 +34,11 @@
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QMenu>
+#include <QTreeWidgetItem>
+
 #include <epan/packet_info.h>
 #include <epan/tap.h>
 #include <epan/to_str.h>
-#include <epan/wmem/wmem.h>
 #include <epan/dissectors/packet-lbm.h>
 #include <wsutil/nstime.h>
 
@@ -1396,7 +1398,7 @@ void LBMLBTRUTransportDialogInfo::processPacket(const packet_info * pinfo, const
             {
                 LBMLBTRUSourceEntry * source = NULL;
                 LBMLBTRUSourceMapIterator it;
-                QString src_address = QString(address_to_str(wmem_packet_scope(), &(pinfo->src)));
+                QString src_address = address_to_qstring(&(pinfo->src));
 
                 it = m_sources.find(src_address);
                 if (m_sources.end() == it)
@@ -1425,7 +1427,7 @@ void LBMLBTRUTransportDialogInfo::processPacket(const packet_info * pinfo, const
             {
                 LBMLBTRUReceiverEntry * receiver = NULL;
                 LBMLBTRUReceiverMapIterator it;
-                QString src_address = QString(address_to_str(wmem_packet_scope(), &(pinfo->src)));
+                QString src_address = address_to_qstring(&(pinfo->src));
 
                 it = m_receivers.find(src_address);
                 if (m_receivers.end() == it)
@@ -1721,7 +1723,7 @@ void LBMLBTRUTransportDialog::fillTree(void)
     }
     m_dialog_info->setDialog(this);
 
-    error_string = register_tap_listener("lbtru",
+    error_string = register_tap_listener("lbm_lbtru",
         (void *)m_dialog_info,
         m_ui->displayFilterLineEdit->text().toUtf8().constData(),
         TL_REQUIRES_COLUMNS,
@@ -1756,10 +1758,8 @@ void LBMLBTRUTransportDialog::resetTap(void * tap_data)
     info->clearMaps();
 }
 
-gboolean LBMLBTRUTransportDialog::tapPacket(void * tap_data, packet_info * pinfo, epan_dissect_t * edt, const void * tap_info)
+gboolean LBMLBTRUTransportDialog::tapPacket(void * tap_data, packet_info * pinfo, epan_dissect_t *, const void * tap_info)
 {
-    Q_UNUSED(edt)
-
     if (pinfo->fd->flags.passed_dfilter == 1)
     {
         const lbm_lbtru_tap_info_t * tapinfo = (const lbm_lbtru_tap_info_t *)tap_info;
@@ -1770,9 +1770,8 @@ gboolean LBMLBTRUTransportDialog::tapPacket(void * tap_data, packet_info * pinfo
     return (TRUE);
 }
 
-void LBMLBTRUTransportDialog::drawTreeItems(void * tap_data)
+void LBMLBTRUTransportDialog::drawTreeItems(void *)
 {
-    Q_UNUSED(tap_data)
 }
 
 void LBMLBTRUTransportDialog::on_applyFilterButton_clicked(void)
@@ -1811,10 +1810,8 @@ void LBMLBTRUTransportDialog::sourcesDetailCurrentChanged(int index)
     sourcesItemClicked(m_current_source_transport, 0);
 }
 
-void LBMLBTRUTransportDialog::sourcesItemClicked(QTreeWidgetItem * item, int column)
+void LBMLBTRUTransportDialog::sourcesItemClicked(QTreeWidgetItem * item, int)
 {
-    Q_UNUSED(column)
-
     LBMLBTRUSourceTransportEntry * transport = dynamic_cast<LBMLBTRUSourceTransportEntry *>(item);
 
     resetSourcesDetail();
@@ -1893,10 +1890,8 @@ void LBMLBTRUTransportDialog::loadSourceRSTDetails(LBMLBTRUSourceTransportEntry 
     }
 }
 
-void LBMLBTRUTransportDialog::sourcesDetailItemDoubleClicked(QTreeWidgetItem * item, int column)
+void LBMLBTRUTransportDialog::sourcesDetailItemDoubleClicked(QTreeWidgetItem * item, int)
 {
-    Q_UNUSED(column)
-
     LBMLBTRUFrameEntry * frame = dynamic_cast<LBMLBTRUFrameEntry *>(item);
     if (frame == NULL)
     {
@@ -1926,10 +1921,8 @@ void LBMLBTRUTransportDialog::receiversDetailCurrentChanged(int index)
     receiversItemClicked(m_current_receiver_transport, 0);
 }
 
-void LBMLBTRUTransportDialog::receiversItemClicked(QTreeWidgetItem * item, int column)
+void LBMLBTRUTransportDialog::receiversItemClicked(QTreeWidgetItem * item, int)
 {
-    Q_UNUSED(column)
-
     LBMLBTRUReceiverTransportEntry * transport = dynamic_cast<LBMLBTRUReceiverTransportEntry *>(item);
 
     resetReceiversDetail();
@@ -1984,10 +1977,8 @@ void LBMLBTRUTransportDialog::loadReceiverCREQDetails(LBMLBTRUReceiverTransportE
     }
 }
 
-void LBMLBTRUTransportDialog::receiversDetailItemDoubleClicked(QTreeWidgetItem * item, int column)
+void LBMLBTRUTransportDialog::receiversDetailItemDoubleClicked(QTreeWidgetItem * item, int)
 {
-    Q_UNUSED(column)
-
     LBMLBTRUFrameEntry * frame = dynamic_cast<LBMLBTRUFrameEntry *>(item);
     if (frame == NULL)
     {

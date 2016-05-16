@@ -29,17 +29,14 @@
 
 #include "config.h"
 
-#include <glib.h>
-
-#include <wsutil/str_util.h>
-
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
+
 #include <epan/prefs.h>
+#include <epan/expert.h>
+#include <wsutil/str_util.h>
 #include "packet-alcap.h"
 #include "packet-mtp3.h"
-#include <epan/dissectors/packet-isup.h>
-#include <epan/expert.h>
+#include "packet-isup.h"
 
 void proto_register_alcap(void);
 void proto_reg_handoff_alcap(void);
@@ -596,7 +593,7 @@ static const gchar* dissect_fields_dnsea(packet_info* pinfo _U_, tvbuff_t *tvb, 
         return NULL;
     }
 
-    msg_info->dest_nsap = tvb_bytes_to_ep_str(tvb,offset,20);
+    msg_info->dest_nsap = tvb_bytes_to_str(wmem_packet_scope(), tvb,offset,20);
 
     proto_tree_add_item(tree, hf_alcap_dnsea, tvb, offset, 20, ENC_NA);
     dissect_nsap(tvb, offset,20, tree);
@@ -616,7 +613,7 @@ static const gchar* dissect_fields_onsea(packet_info* pinfo _U_, tvbuff_t *tvb, 
         return NULL;
     }
 
-    msg_info->orig_nsap = tvb_bytes_to_ep_str(tvb,offset,20);
+    msg_info->orig_nsap = tvb_bytes_to_str(wmem_packet_scope(), tvb,offset,20);
 
     proto_tree_add_item(tree, hf_alcap_onsea, tvb, offset, 20, ENC_NA);
     dissect_nsap(tvb, offset,20, tree);
@@ -779,7 +776,7 @@ static const gchar* dissect_fields_ssim(packet_info* pinfo _U_, tvbuff_t *tvb, p
     return NULL;
 }
 
-static const gchar* dissect_fields_ssisa(packet_info* pinfo _U_, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
+static const gchar* dissect_fields_ssisa(packet_info* pinfo, tvbuff_t *tvb, proto_tree *tree, int offset, int len, alcap_message_info_t* msg_info _U_) {
     /*
      * Q.2630.1 -> 7.3.11 Service specific information (SAR-assured)
      *
@@ -797,7 +794,7 @@ static const gchar* dissect_fields_ssisa(packet_info* pinfo _U_, tvbuff_t *tvb, 
     proto_tree_add_item(tree,hf_alcap_ssisa_max_sscop_uu_fw,tvb,offset+10,2,ENC_BIG_ENDIAN);
     proto_tree_add_item(tree,hf_alcap_ssisa_max_sscop_uu_bw,tvb,offset+12,2,ENC_BIG_ENDIAN);
 
-    proto_tree_add_text(tree,tvb,offset,14,"Not yet decoded: Q.2630.1 7.4.8");
+    proto_tree_add_expert_format(tree,pinfo,&ei_alcap_undecoded,tvb,offset,14,"Not yet decoded: Q.2630.1 7.4.8");
 
     return NULL;
 }
@@ -816,7 +813,7 @@ static const gchar* dissect_fields_ssisu(packet_info* pinfo _U_, tvbuff_t *tvb, 
     proto_tree_add_item(tree,hf_alcap_ssisu_max_sssar_fw,tvb,offset,3,ENC_BIG_ENDIAN);
     proto_tree_add_item(tree,hf_alcap_ssisu_max_sssar_bw,tvb,offset+3,3,ENC_BIG_ENDIAN);
     proto_tree_add_item(tree,hf_alcap_ssisu_ted,tvb,offset+6,1,ENC_BIG_ENDIAN);
-    proto_tree_add_text(tree,tvb,offset,7,"Not yet decoded: Q.2630.1 7.4.9");
+    proto_tree_add_expert_format(tree,pinfo,&ei_alcap_undecoded,tvb,offset,7,"Not yet decoded: Q.2630.1 7.4.9");
 
     return NULL;
 }
@@ -1247,33 +1244,10 @@ static alcap_param_info_t param_infos[]  = {
 
 #define GET_PARAM_INFO(id) ( array_length(param_infos) <= id ? &(param_infos[0]) : &(param_infos[id]) )
 
-typedef struct _alcap_msg_type_info_t {
-    const gchar* abbr;
-    int severity; /* XXX - not used */
-} alcap_msg_type_info_t;
-
-static const alcap_msg_type_info_t msg_types[] = {
-    { "Unknown Message ", PI_ERROR },
-    { "BLC ", PI_NOTE },
-    { "BLO ", PI_NOTE },
-    { "CFN ", PI_WARN },
-    { "ECF ", PI_CHAT },
-    { "ERQ ", PI_CHAT },
-    { "RLC ", PI_CHAT },
-    { "REL ", PI_CHAT },
-    { "RSC ", PI_NOTE },
-    { "RES ", PI_NOTE },
-    { "UBC ", PI_NOTE },
-    { "UBL ", PI_NOTE },
-    { "MOA ", PI_CHAT },
-    { "MOR ", PI_CHAT },
-    { "MOD ", PI_CHAT },
-};
-
 static void alcap_leg_tree(proto_tree* tree, tvbuff_t* tvb, packet_info *pinfo, const alcap_leg_info_t* leg) {
-    proto_item* pi = proto_tree_add_text(tree,tvb,0,0,"[ALCAP Leg Info]");
+    proto_item* pi;
 
-    tree = proto_item_add_subtree(pi,ett_leg);
+    tree = proto_tree_add_subtree(tree,tvb,0,0,ett_leg,NULL,"[ALCAP Leg Info]");
 
     if (leg->dsaid) {
         pi = proto_tree_add_uint(tree,hf_alcap_leg_dsaid,tvb,0,0,leg->dsaid);
@@ -1319,9 +1293,8 @@ static void alcap_leg_tree(proto_tree* tree, tvbuff_t* tvb, packet_info *pinfo, 
 
     if(leg->msgs) {
         alcap_msg_data_t* msg = leg->msgs;
-        proto_item* pi_local = proto_tree_add_text(tree,tvb,0,0,"[Messages in this leg]");
-        proto_tree* tree_local = proto_item_add_subtree(pi_local,ett_leg);
-
+        proto_item* pi_local;
+        proto_tree* tree_local = proto_tree_add_subtree(tree,tvb,0,0,ett_leg,&pi_local,"[Messages in this leg]");
 
         do {
             pi_local = proto_tree_add_uint(tree_local,hf_alcap_leg_frame,tvb,0,0,msg->framenum);
@@ -1349,11 +1322,10 @@ extern void alcap_tree_from_bearer_key(proto_tree* tree, tvbuff_t* tvb, packet_i
 static void dissect_alcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
     proto_tree *alcap_tree = NULL;
     alcap_message_info_t* msg_info = wmem_new0(wmem_packet_scope(), alcap_message_info_t);
-    int len = tvb_length(tvb);
+    int len = tvb_reported_length(tvb);
     int offset;
     proto_item* pi;
     proto_tree* compat_tree;
-    const alcap_msg_type_info_t* msg_type;
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, alcap_proto_name_short);
 
@@ -1368,11 +1340,9 @@ static void dissect_alcap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
     msg_info->dsaid = tvb_get_ntohl(tvb, 0);
     msg_info->msg_type = tvb_get_guint8(tvb, 4);
 
-    msg_type = GET_MSG_TYPE(msg_info->msg_type);
-
     expert_add_info(pinfo, pi, &ei_alcap_response);
 
-    col_set_str(pinfo->cinfo, COL_INFO, msg_type->abbr);
+    col_set_str(pinfo->cinfo, COL_INFO, val_to_str_const(msg_info->msg_type, msg_type_strings, "Unknown Message"));
 
     pi = proto_tree_add_item(alcap_tree,hf_alcap_compat,tvb,5,1,ENC_NA);
     compat_tree = proto_item_add_subtree(pi,ett_compat);
@@ -2448,3 +2418,16 @@ proto_reg_handoff_alcap(void)
 
     dissector_add_uint("mtp3.service_indicator", MTP_SI_AAL2, alcap_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

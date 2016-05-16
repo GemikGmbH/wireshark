@@ -32,11 +32,8 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/etypes.h>
-#include <epan/emem.h>
-
 void proto_register_epl_v1(void);
 void proto_reg_handoff_epl_v1(void);
 
@@ -346,7 +343,7 @@ dissect_epl_v1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
 	proto_tree *epl_v1_tree=NULL;
 
 
-	if(tvb_length(tvb) < 3){
+	if(tvb_captured_length(tvb) < 3){
 		/* Not enough data for an EPL_V1 header; don't try to interpret it */
 		return FALSE;
 	}
@@ -653,3 +650,16 @@ proto_reg_handoff_epl_v1(void)
 	epl_v1_handle = new_create_dissector_handle(dissect_epl_v1, proto_epl_v1);
 	dissector_add_uint("ethertype", ETHERTYPE_EPL_V1, epl_v1_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

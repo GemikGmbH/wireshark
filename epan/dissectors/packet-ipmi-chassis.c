@@ -27,6 +27,8 @@
 
 #include "packet-ipmi.h"
 
+void proto_register_ipmi_chassis(void);
+
 /* Local variables.
  */
 static gint ett_ipmi_chs_bo00_byte1 = -1;
@@ -563,7 +565,6 @@ rs07(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 static void
 rq08(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 {
-	proto_item *ti;
 	proto_tree *s_tree;
 	tvbuff_t *sub;
 	guint8 pno;
@@ -578,14 +579,13 @@ rq08(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 		desc = "Reserved";
 	}
 
-	ti = proto_tree_add_text(tree, tvb, 0, 1,
-			"Boot option parameter selector: %s (0x%02x)",
+	s_tree = proto_tree_add_subtree_format(tree, tvb, 0, 1,
+			ett_ipmi_chs_08_byte1, NULL, "Boot option parameter selector: %s (0x%02x)",
 			desc, pno);
-	s_tree = proto_item_add_subtree(ti, ett_ipmi_chs_08_byte1);
 	proto_tree_add_item(s_tree, hf_ipmi_chs_08_valid, tvb, 0, 1, ENC_LITTLE_ENDIAN);
-	proto_tree_add_uint_format(s_tree, hf_ipmi_chs_08_selector, tvb, 0, 1,
-			pno, "%sBoot option parameter selector: %s (0x%02x)",
-			ipmi_dcd8(pno, 0x7f), desc, pno);
+	proto_tree_add_uint_format_value(s_tree, hf_ipmi_chs_08_selector, tvb, 0, 1,
+			pno, "Boot option parameter selector: %s (0x%02x)",
+			desc, pno);
 
 	/* Data is optional; no data means 'just set validity' */
 	if (tvb_captured_length(tvb) > 1) {
@@ -611,7 +611,6 @@ static const value_string cc08[] = {
 static void
 rq09(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 {
-	proto_item *ti;
 	proto_tree *s_tree;
 	guint8 pno;
 	const char *desc;
@@ -626,13 +625,12 @@ rq09(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 	}
 
 
-	ti = proto_tree_add_text(tree, tvb, 0, 1,
-			"Boot option parameter selector: %s (0x%02x)",
+	s_tree = proto_tree_add_subtree_format(tree, tvb, 0, 1,
+			ett_ipmi_chs_09_rq_byte1, NULL, "Boot option parameter selector: %s (0x%02x)",
 			desc, pno);
-	s_tree = proto_item_add_subtree(ti, ett_ipmi_chs_09_rq_byte1);
-	proto_tree_add_uint_format(s_tree, hf_ipmi_chs_09_rq_param_select, tvb, 0, 1,
-			pno, "%sBoot option parameter selector: %s (0x%02x)",
-			ipmi_dcd8(pno, 0x7f), desc, pno);
+	proto_tree_add_uint_format_value(s_tree, hf_ipmi_chs_09_rq_param_select, tvb, 0, 1,
+			pno, "Boot option parameter selector: %s (0x%02x)",
+			desc, pno);
 
 	proto_tree_add_item(tree, hf_ipmi_chs_09_rq_set_select, tvb, 1, 1, ENC_LITTLE_ENDIAN);
 	proto_tree_add_item(tree, hf_ipmi_chs_09_rq_block_select, tvb, 2, 1, ENC_LITTLE_ENDIAN);
@@ -642,7 +640,6 @@ static void
 rs09(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 {
 	static const int *byte1[] = { &hf_ipmi_chs_09_rs_param_version, NULL };
-	proto_item *ti;
 	proto_tree *s_tree;
 	tvbuff_t *sub;
 	guint8 pno;
@@ -660,14 +657,13 @@ rs09(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 	proto_tree_add_bitmask_text(tree, tvb, 0, 1, NULL, NULL,
 			ett_ipmi_chs_09_rs_byte1, byte1, ENC_LITTLE_ENDIAN, 0);
 
-	ti = proto_tree_add_text(tree, tvb, 1, 1,
-			"Boot option parameter selector: %s (0x%02x)",
+	s_tree = proto_tree_add_subtree_format(tree, tvb, 1, 1,
+			ett_ipmi_chs_09_rs_byte2, NULL, "Boot option parameter selector: %s (0x%02x)",
 			desc, pno);
-	s_tree = proto_item_add_subtree(ti, ett_ipmi_chs_09_rs_byte2);
 	proto_tree_add_item(s_tree, hf_ipmi_chs_09_rs_valid, tvb, 1, 1, ENC_LITTLE_ENDIAN);
-	proto_tree_add_uint_format(s_tree, hf_ipmi_chs_09_rs_param_select, tvb, 1, 1,
-			pno, "%sBoot option parameter selector: %s (0x%02x)",
-			ipmi_dcd8(pno, 0x7f), desc, pno);
+	proto_tree_add_uint_format_value(s_tree, hf_ipmi_chs_09_rs_param_select, tvb, 1, 1,
+			pno, "Boot option parameter selector: %s (0x%02x)",
+			desc, pno);
 
 	if (pno < array_length(boot_options)) {
 		sub = tvb_new_subset_remaining(tvb, 2);
@@ -692,24 +688,24 @@ rs0f(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 }
 
 static ipmi_cmd_t cmd_chassis[] = {
-  /* Chassis commands */
-  { 0x00, NULL, rs00, NULL, NULL, "Get Chassis Capabilities", 0 },
-  { 0x01, NULL, rs01, NULL, NULL, "Get Chassis Status", 0 },
-  { 0x02, rq02, NULL, NULL, NULL, "Chassis Control", 0 },
-  { 0x03, NULL, NULL, NULL, NULL, "Chassis Reset", 0 },
-  { 0x04, rq04, NULL, NULL, NULL, "Chassis Identify", 0 },
-  { 0x05, rq05, NULL, NULL, NULL, "Set Chassis Capabilities", 0 },
-  { 0x06, rq06, rs06, NULL, NULL, "Set Power Restore Policy", 0 },
-  { 0x07, NULL, rs07, NULL, NULL, "Get System Restart Cause", 0 },
-  { 0x08, rq08, NULL, cc08, NULL, "Set System Boot Options", 0 },
-  { 0x09, rq09, rs09, cc09, NULL, "Get System Boot Options", 0 },
-  { 0x0a, IPMI_TBD,   NULL, NULL, "Set Front Panel Buttons Enables", 0 },
-  { 0x0b, IPMI_TBD,   NULL, NULL, "Set Power Cycle Interval", 0 },
-  { 0x0f, NULL, rs0f, NULL, NULL, "Get POH Counter", 0 },
+	/* Chassis commands */
+	{ 0x00, NULL, rs00, NULL, NULL, "Get Chassis Capabilities", 0 },
+	{ 0x01, NULL, rs01, NULL, NULL, "Get Chassis Status", 0 },
+	{ 0x02, rq02, NULL, NULL, NULL, "Chassis Control", 0 },
+	{ 0x03, NULL, NULL, NULL, NULL, "Chassis Reset", 0 },
+	{ 0x04, rq04, NULL, NULL, NULL, "Chassis Identify", 0 },
+	{ 0x05, rq05, NULL, NULL, NULL, "Set Chassis Capabilities", 0 },
+	{ 0x06, rq06, rs06, NULL, NULL, "Set Power Restore Policy", 0 },
+	{ 0x07, NULL, rs07, NULL, NULL, "Get System Restart Cause", 0 },
+	{ 0x08, rq08, NULL, cc08, NULL, "Set System Boot Options", 0 },
+	{ 0x09, rq09, rs09, cc09, NULL, "Get System Boot Options", 0 },
+	{ 0x0a, IPMI_TBD,   NULL, NULL, "Set Front Panel Buttons Enables", 0 },
+	{ 0x0b, IPMI_TBD,   NULL, NULL, "Set Power Cycle Interval", 0 },
+	{ 0x0f, NULL, rs0f, NULL, NULL, "Get POH Counter", 0 },
 };
 
 void
-ipmi_register_chassis(gint proto_ipmi)
+proto_register_ipmi_chassis(void)
 {
 	static hf_register_info hf[] = {
 		{ &hf_ipmi_chs_bo00_sip,
@@ -774,7 +770,7 @@ ipmi_register_chassis(gint proto_ipmi)
 				"ipmi.bootopt05.lock_kbd", FT_BOOLEAN, 8, NULL, 0x40, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo05_bootdev,
 			{ "Boot Device Selector",
-				"ipmi.bootopt05.bootdev", FT_UINT8, BASE_HEX, bo05_bootdev_vals, 0x3c, NULL, HFILL }},
+				"ipmi.bootopt05.bootdev", FT_UINT8, BASE_HEX, VALS(bo05_bootdev_vals), 0x3c, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo05_screen_blank,
 			{ "Screen Blank",
 				"ipmi.bootopt05.screen_blank", FT_BOOLEAN, 8, NULL, 0x02, NULL, HFILL }},
@@ -786,7 +782,7 @@ ipmi_register_chassis(gint proto_ipmi)
 				"ipmi.bootopt05.lockout_poweroff", FT_BOOLEAN, 8, NULL, 0x80, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo05_bios_verbosity,
 			{ "BIOS verbosity",
-				"ipmi.bootopt05.bios_verbosity", FT_UINT8, BASE_HEX, bo05_bios_verbosity_vals, 0x60, NULL, HFILL }},
+				"ipmi.bootopt05.bios_verbosity", FT_UINT8, BASE_HEX, VALS(bo05_bios_verbosity_vals), 0x60, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo05_progress_traps,
 			{ "Force Progress Event Traps",
 				"ipmi.bootopt05.progress_traps", FT_BOOLEAN, 8, NULL, 0x10, NULL, HFILL }},
@@ -798,19 +794,19 @@ ipmi_register_chassis(gint proto_ipmi)
 				"ipmi.bootopt05.lock_sleep", FT_BOOLEAN, 8, NULL, 0x04, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo05_console_redirection,
 			{ "Console redirection",
-				"ipmi.bootopt05.console_redirection", FT_UINT8, BASE_HEX, bo05_console_redir_vals, 0x03, NULL, HFILL }},
+				"ipmi.bootopt05.console_redirection", FT_UINT8, BASE_HEX, VALS(bo05_console_redir_vals), 0x03, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo05_bios_shared_override,
 			{ "BIOS Shared Mode Override",
 				"ipmi.bootopt05.bios_shared_override", FT_BOOLEAN, 8, TFS(&bo05_bios_shared_tfs), 0x08, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo05_bios_muxctl_override,
 			{ "BIOS Mux Control Override",
-				"ipmi.bootopt05.bios_muxctl_override", FT_UINT8, BASE_HEX, bo05_bios_muxctl_vals, 0x07, NULL, HFILL }},
+				"ipmi.bootopt05.bios_muxctl_override", FT_UINT8, BASE_HEX, VALS(bo05_bios_muxctl_vals), 0x07, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo05_byte5,
 			{ "Data 5 (reserved)",
 				"ipmi.bootopt05.byte5", FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo06_chan_num,
 			{ "Channel",
-				"ipmi.bootopt06.chan_num", FT_UINT8, BASE_CUSTOM, ipmi_fmt_channel, 0x0f, NULL, HFILL }},
+				"ipmi.bootopt06.chan_num", FT_UINT8, BASE_CUSTOM, CF_FUNC(ipmi_fmt_channel), 0x0f, NULL, HFILL }},
 		{ &hf_ipmi_chs_bo06_session_id,
 			{ "Session ID",
 				"ipmi.bootopt06.session_id", FT_UINT32, BASE_DEC, NULL, 0, NULL, HFILL }},
@@ -854,7 +850,7 @@ ipmi_register_chassis(gint proto_ipmi)
 
 		{ &hf_ipmi_chs_01_pwr_state_policy,
 			{ "Power Restore Policy",
-				"ipmi.ch01.cur_pwr.policy", FT_UINT8, BASE_HEX, vals_01_pwr_policy, 0x60, NULL, HFILL }},
+				"ipmi.ch01.cur_pwr.policy", FT_UINT8, BASE_HEX, VALS(vals_01_pwr_policy), 0x60, NULL, HFILL }},
 		{ &hf_ipmi_chs_01_pwr_state_ctl_fault,
 			{ "Power Control Fault",
 				"ipmi.ch01.cur_pwr.ctl_fault", FT_BOOLEAN, 8, NULL, 0x10, NULL, HFILL }},
@@ -890,7 +886,7 @@ ipmi_register_chassis(gint proto_ipmi)
 				"ipmi.ch01.identsupp", FT_BOOLEAN, 8, NULL, 0x40, NULL, HFILL }},
 		{ &hf_ipmi_chs_01_misc_identstate,
 			{ "Chassis Identify state (if supported)",
-				"ipmi.ch01.identstate", FT_UINT8, BASE_HEX, vals_01_identstate, 0x30, NULL, HFILL }},
+				"ipmi.ch01.identstate", FT_UINT8, BASE_HEX, VALS(vals_01_identstate), 0x30, NULL, HFILL }},
 		{ &hf_ipmi_chs_01_misc_fan,
 			{ "Cooling/fan fault detected",
 				"ipmi.ch01.misc.fan", FT_BOOLEAN, 8, NULL, 0x08, NULL, HFILL }},
@@ -930,11 +926,11 @@ ipmi_register_chassis(gint proto_ipmi)
 
 		{ &hf_ipmi_chs_02_cctrl,
 			{ "Chassis Control",
-				"ipmi.ch02.chassis_control", FT_UINT8, BASE_HEX, vals_02_cctrl, 0x0f, NULL, HFILL }},
+				"ipmi.ch02.chassis_control", FT_UINT8, BASE_HEX, VALS(vals_02_cctrl), 0x0f, NULL, HFILL }},
 
 		{ &hf_ipmi_chs_04_ival,
 			{ "Identify Interval in seconds",
-				"ipmi.ch04.interval", FT_UINT8, BASE_CUSTOM, ipmi_fmt_1s_1based, 0, NULL, HFILL }},
+				"ipmi.ch04.interval", FT_UINT8, BASE_CUSTOM, CF_FUNC(ipmi_fmt_1s_1based), 0, NULL, HFILL }},
 		{ &hf_ipmi_chs_04_perm_on,
 			{ "Turn on Identify indefinitely",
 				"ipmi.ch04.perm_on", FT_BOOLEAN, 8, NULL, 0x01, NULL, HFILL }},
@@ -963,7 +959,7 @@ ipmi_register_chassis(gint proto_ipmi)
 
 		{ &hf_ipmi_chs_06_rq_policy,
 			{ "Power Restore Policy",
-				"ipmi.ch06.rq_policy", FT_UINT8, BASE_HEX, vals_06_policy, 0x07, NULL, HFILL }},
+				"ipmi.ch06.rq_policy", FT_UINT8, BASE_HEX, VALS(vals_06_policy), 0x07, NULL, HFILL }},
 		{ &hf_ipmi_chs_06_rs_policy_support_powerup,
 			{ "Always powering up",
 				"ipmi.ch06.rs_support.powerup", FT_BOOLEAN, 8, TFS(&tfs_06_supported), 0x04, NULL, HFILL }},
@@ -976,10 +972,10 @@ ipmi_register_chassis(gint proto_ipmi)
 
 		{ &hf_ipmi_chs_07_cause,
 			{ "Restart Cause",
-				"ipmi.ch07.cause", FT_UINT8, BASE_HEX, vals_07_cause, 0x0f, NULL, HFILL }},
+				"ipmi.ch07.cause", FT_UINT8, BASE_HEX, VALS(vals_07_cause), 0x0f, NULL, HFILL }},
 		{ &hf_ipmi_chs_07_chan,
 			{ "Channel",
-				"ipmi.ch07.chan", FT_UINT8, BASE_CUSTOM, ipmi_fmt_channel, 0, NULL, HFILL }},
+				"ipmi.ch07.chan", FT_UINT8, BASE_CUSTOM, CF_FUNC(ipmi_fmt_channel), 0, NULL, HFILL }},
 
 		{ &hf_ipmi_chs_08_valid,
 			{ "Validity",
@@ -1053,3 +1049,17 @@ ipmi_register_chassis(gint proto_ipmi)
 	ipmi_register_netfn_cmdtab(IPMI_CHASSIS_REQ, IPMI_OEM_NONE, NULL, 0, NULL,
 			cmd_chassis, array_length(cmd_chassis));
 }
+
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

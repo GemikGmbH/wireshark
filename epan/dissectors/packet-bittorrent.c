@@ -25,10 +25,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <epan/prefs.h>
-#include <epan/conversation.h>
 #include <epan/packet.h>
+#include <epan/prefs.h>
 #include <epan/strutil.h>
 
 #include "packet-tcp.h"
@@ -155,6 +153,8 @@ static gint hf_azureus_jpc_port         = -1;
 static gint hf_azureus_jpc_session      = -1;
 static gint hf_bittorrent_port          = -1;
 static gint hf_bittorrent_extended      = -1;
+static gint hf_bittorrent_continuous_data = -1;
+static gint hf_bittorrent_version       = -1;
 
 static gint ett_bittorrent              = -1;
 static gint ett_bittorrent_msg          = -1;
@@ -257,7 +257,8 @@ static struct client_information peer_id[] = {
 };
 
 static guint
-get_bittorrent_pdu_length(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_bittorrent_pdu_length(packet_info *pinfo _U_, tvbuff_t *tvb,
+                          int offset, void *data _U_)
 {
    guint8  type;
    guint32 length;
@@ -290,7 +291,7 @@ get_bittorrent_pdu_length(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
                data from the middle of a message, and just return the
                remaining length in the tvbuff so the rest of the tvbuff
                is displayed as continuation data. */
-            return tvb_length_remaining(tvb, offset);
+            return tvb_reported_length_remaining(tvb, offset);
          }
       } else {
          /* We don't have the type field, so we can't determine
@@ -299,7 +300,7 @@ get_bittorrent_pdu_length(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
             and just return the remaining length in the tvbuff so
             the rest of the tvbuff is displayed as continuation
             data. */
-         return tvb_length_remaining(tvb, offset);
+         return tvb_reported_length_remaining(tvb, offset);
       }
    }
 }
@@ -362,7 +363,7 @@ dissect_bittorrent_message (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       }
 #endif
       if (msgtype == NULL) {
-         proto_tree_add_text(tree, tvb, offset, -1, "Continuation data");
+         proto_tree_add_item(tree, hf_bittorrent_continuous_data, tvb, offset, -1, ENC_NA);
          col_set_str(pinfo->cinfo, COL_INFO, "Continuation data");
          return;
       }
@@ -470,7 +471,7 @@ dissect_bittorrent_message (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
    case AZUREUS_MESSAGE_HANDSHAKE:
    case AZUREUS_MESSAGE_PEER_EXCHANGE:
-      subtvb = tvb_new_subset(tvb, offset, length, length);
+      subtvb = tvb_new_subset_length(tvb, offset, length);
       call_dissector(bencode_handle, subtvb, pinfo, mtree);
       break;
 
@@ -512,11 +513,10 @@ dissect_bittorrent_welcome (tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
       for(i = 0; peer_id[i].name != NULL; ++i)
       {
          if(tvb_memeql(tvb, offset, peer_id[i].id, (int)strlen(peer_id[i].id)) == 0) {
-            version = tvb_get_string(wmem_packet_scope(), tvb, offset + (int)strlen(peer_id[i].id),
-                                     peer_id[i].ver_len);
-            proto_tree_add_text(tree, tvb, offset, 20, "Client is %s v%s",
-                                peer_id[i].name,
-                                format_text((guchar*)version, peer_id[i].ver_len));
+            version = tvb_get_string_enc(wmem_packet_scope(), tvb, offset + (int)strlen(peer_id[i].id),
+                                     peer_id[i].ver_len, ENC_ASCII);
+            proto_tree_add_string_format(tree, hf_bittorrent_version, tvb, offset, 20, version, "Client is %s v%s",
+                                peer_id[i].name, format_text((guchar*)version, peer_id[i].ver_len));
             break;
          }
       }
@@ -547,7 +547,7 @@ int dissect_bittorrent_tcp_pdu (tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     col_append_str(pinfo->cinfo, COL_INFO, "  ");
     col_set_fence(pinfo->cinfo, COL_INFO);
 
-    return tvb_length(tvb);
+    return tvb_reported_length(tvb);
 }
 
 static
@@ -555,7 +555,7 @@ int dissect_bittorrent (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
 {
    tcp_dissect_pdus(tvb, pinfo, tree, bittorrent_desegment, BITTORRENT_HEADER_LENGTH,
                     get_bittorrent_pdu_length, dissect_bittorrent_tcp_pdu, data);
-   return tvb_length(tvb);
+   return tvb_reported_length(tvb);
 }
 
 static
@@ -564,7 +564,7 @@ gboolean test_bittorrent_packet (tvbuff_t *tvb, packet_info *pinfo,
 {
    conversation_t *conversation;
 
-   if (tvb_length(tvb) >= 20 &&
+   if (tvb_captured_length(tvb) >= 20 &&
        tvb_get_guint8(tvb, 0) == 19 &&
        tvb_memeql(tvb, 1, "BitTorrent protocol", 19) == 0) {
       conversation = find_or_create_conversation(pinfo);
@@ -655,7 +655,13 @@ proto_register_bittorrent(void)
       },
       { &hf_bittorrent_extended,
         { "Extended Message", "bittorrent.extended", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }
-      }
+      },
+      { &hf_bittorrent_continuous_data,
+        { "Extended Message", "bittorrent.continuous_data", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }
+      },
+      { &hf_bittorrent_version,
+        { "Client version", "bittorrent.version", FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }
+      },
    };
 
    static gint *ett[] = {
@@ -702,7 +708,7 @@ proto_reg_handoff_bittorrent(void)
    dissector_add_uint("tcp.port", 6888, dissector_handle);
    dissector_add_uint("tcp.port", 6889, dissector_handle);
 #endif
-   heur_dissector_add("tcp", test_bittorrent_packet, proto_bittorrent);
+   heur_dissector_add("tcp", test_bittorrent_packet, "BitTorrent over TCP", "bittorrent_tcp", proto_bittorrent, HEURISTIC_ENABLE);
 }
 
 /*

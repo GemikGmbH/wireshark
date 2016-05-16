@@ -4,6 +4,8 @@
 # X11 dissector. Creates header files containing code to
 # dissect X11 extensions.
 #
+# Instructions for using this script are in epan/dissectors/README.X11
+#
 # Copyright 2008, 2009, 2013, 2014 Open Text Corporation <pharris[AT]opentext.com>
 #
 # Wireshark - Network traffic analyzer
@@ -39,7 +41,6 @@ use strict;
 # language with a proper compatibility document, such as
 # http://golang.org/doc/go1compat
 no if $] >= 5.018, warnings => "experimental::smartmatch";
-no 5.20.0;
 
 use IO::File;
 use XML::Twig;
@@ -59,11 +60,11 @@ my %basictype = (
     CARD64 => { size => 8, encoding => 'byte_order',       type => 'FT_UINT64', base => 'BASE_HEX_DEC', get => 'VALUE64', list => 'listOfCard64', },
     INT8 =>   { size => 1, encoding => 'byte_order',       type => 'FT_INT8',   base => 'BASE_DEC',     get => 'VALUE8',  list => 'listOfByte', },
     INT16 =>  { size => 2, encoding => 'byte_order',       type => 'FT_INT16',  base => 'BASE_DEC',     get => 'VALUE16', list => 'listOfInt16', },
-    INT32 =>  { size => 4, encoding => 'byte_order', type => 'FT_INT32',  base => 'BASE_DEC',     get => 'VALUE32', list => 'listOfInt32', },
-    INT64 =>  { size => 8, encoding => 'byte_order', type => 'FT_INT64',  base => 'BASE_DEC',     get => 'VALUE64', list => 'listOfInt64', },
-    float =>  { size => 4, encoding => 'byte_order', type => 'FT_FLOAT',  base => 'BASE_NONE',    get => 'FLOAT',   list => 'listOfFloat', },
-    double => { size => 8, encoding => 'byte_order', type => 'FT_DOUBLE', base => 'BASE_NONE',    get => 'DOUBLE',  list => 'listOfDouble', },
-    BOOL =>   { size => 1, encoding => 'byte_order', type => 'FT_BOOLEAN',base => 'BASE_NONE',    get => 'VALUE8',  list => 'listOfByte', },
+    INT32 =>  { size => 4, encoding => 'byte_order',       type => 'FT_INT32',  base => 'BASE_DEC',     get => 'VALUE32', list => 'listOfInt32', },
+    INT64 =>  { size => 8, encoding => 'byte_order',       type => 'FT_INT64',  base => 'BASE_DEC',     get => 'VALUE64', list => 'listOfInt64', },
+    float =>  { size => 4, encoding => 'byte_order',       type => 'FT_FLOAT',  base => 'BASE_NONE',    get => 'FLOAT',   list => 'listOfFloat', },
+    double => { size => 8, encoding => 'byte_order',       type => 'FT_DOUBLE', base => 'BASE_NONE',    get => 'DOUBLE',  list => 'listOfDouble', },
+    BOOL =>   { size => 1, encoding => 'byte_order',       type => 'FT_BOOLEAN',base => 'BASE_NONE',    get => 'VALUE8',  list => 'listOfByte', },
 );
 
 my %simpletype;  # Reset at the beginning of each extension
@@ -94,12 +95,9 @@ my %struct =  # Not reset; contains structures already defined.
     'xproto:POINT' => 1,
 
     # structures defined by xinput, but never used (except by each other)(bug in xcb?)
-    'xinput:InputInfo' => 1,
     'xinput:KeyInfo' => 1,
     'xinput:ButtonInfo' => 1,
-    'xinput:AxisInfo' => 1,
     'xinput:ValuatorInfo' => 1,
-    'xinput:DeviceTimeCoord' => 1,
     'xinput:KbdFeedbackState' => 1,
     'xinput:PtrFeedbackState' => 1,
     'xinput:IntegerFeedbackState' => 1,
@@ -578,7 +576,10 @@ sub get_struct_info {
 
 sub getinfo {
     my $name = shift;
-    return get_simple_info($name) // get_struct_info($name);
+    my $info = get_simple_info($name) // get_struct_info($name);
+    # If the script fails here search for $name in this script and remove it from the black list
+    die "$name is defined to be unused in process-x11-xcb.pl but is actually used!" if (defined($info) && $info == "1");
+    return $info;
 }
 
 sub dump_enum_values($)
@@ -622,7 +623,7 @@ sub reference_elements($$)
                 }
             }
 
-	    my @elements = $e->children('bitcase');
+	    my @elements = $e->children(qr/(bit)?case/);
 	    for my $case (@elements) {
 		my @sub_elements = $case->children(qr/list|switch/);
 
@@ -632,6 +633,14 @@ sub reference_elements($$)
             }
         }
         when ('list') {
+            my $type = $e->att('type');
+            my $info = getinfo($type);
+            if (defined $info->{paramref}) {
+                for my $pref (keys %{$info->{paramref}}) {
+                    $refref->{field}{$pref} = 1;
+                }
+            }
+
 	    my $lentype = $e->first_child();
 	    if (defined $lentype) {
 		given ($lentype->name()) {
@@ -701,7 +710,7 @@ sub register_element($$$$;$)
 	    my $itemname = $$bit{$val};
 	    my $item = $regname . '_mask_' . $itemname;
 	    my $itemhuman = $humanname . '.' . $itemname;
-	    my $bitshift = "1 << $val";
+	    my $bitshift = "1U << $val";
 
 	    say $decl "static int $item = -1;";
 	    say $reg "{ &$item, { \"$itemname\", \"$itemhuman\", FT_BOOLEAN, $bitsize, NULL, $bitshift, NULL, HFILL }},";
@@ -763,7 +772,7 @@ sub dissect_element($$$$$;$$)
                     $length += $align - $length % $align;
                 }
                 if ($adjustlength) {
-                    say $impl $indent.'length = (length + '.($align-1).' & ~'.($align-1).';';
+                    say $impl $indent.'length = ((length + '.($align-1).') & ~'.($align-1).');';
                 }
             }
 	}
@@ -833,6 +842,7 @@ sub dissect_element($$$$$;$$)
 		given ($lentype->name()) {
 		    when ('value') { $lencalc = $lentype->text(); }
 		    when ('fieldref') { $lencalc = 'f_'.$lentype->text(); }
+		    when ('paramref') { $lencalc = 'p_'.$lentype->text(); }
 		    when ('op') { $lencalc = get_op($lentype); }
 		    when (['unop','popcount']) { $lencalc = get_unop($lentype); }
 		    when ('sumof') { $lencalc = 'sumof_'.$lentype->att('ref'); }
@@ -856,7 +866,13 @@ sub dissect_element($$$$$;$$)
 
 		print $impl $indent."$list(tvb, offsetp, t, $regname, $lencalc, byte_order);\n";
 	    } elsif (get_struct_info($type)) {
-		print $impl $indent."struct_$info->{'name'}(tvb, offsetp, t, byte_order, $lencalc);\n";
+                my $si = get_struct_info($type);
+                my $prefs = "";
+                foreach my $pref (sort keys %{$si->{paramref}}) {
+                    $prefs .= ", f_$pref";
+                }
+
+		print $impl $indent."struct_$info->{'name'}(tvb, offsetp, t, byte_order, $lencalc$prefs);\n";
 	    } else {
 		die ("Unrecognized type: $type\n");
 	    }
@@ -871,28 +887,46 @@ sub dissect_element($$$$$;$$)
 	    my $switchtype = $e->first_child() or die("Switch element not defined");
 
 	    my $switchon = get_ref($switchtype, {});
-	    my @elements = $e->children('bitcase');
+	    my @elements = $e->children(qr/(bit)?case/);
 	    for my $case (@elements) {
                 my @refs = $case->children('enumref');
-                my @bits;
+                my @test;
                 my $fieldname;
                 foreach my $ref (@refs) {
                     my $enum_ref = $ref->att('ref');
                     my $field = $ref->text();
                     $fieldname //= $field; # Use first named field
-                    my $bit = $enum{$enum_name{$enum_ref}}{rbit}{$field};
-                    if (! defined($bit)) {
-                        for my $foo (keys %{$enum{$enum_name{$enum_ref}}{rbit}}) { say "'$foo'"; }
-                        die ("Field '$field' not found in '$enum_ref'");
+                    if ($case->name() eq 'bitcase') {
+                        my $bit = $enum{$enum_name{$enum_ref}}{rbit}{$field};
+                        if (! defined($bit)) {
+                            for my $foo (keys %{$enum{$enum_name{$enum_ref}}{rbit}}) { say "'$foo'"; }
+                            die ("Field '$field' not found in '$enum_ref'");
+                        }
+                        push @test , "$switchon & (1U << $bit)";
+                    } else {
+                        my $val = $enum{$enum_name{$enum_ref}}{rvalue}{$field};
+                        if (! defined($val)) {
+                            for my $foo (keys %{$enum{$enum_name{$enum_ref}}{rvalue}}) { say "'$foo'"; }
+                            die ("Field '$field' not found in '$enum_ref'");
+                        }
+                        push @test , "$switchon == $val";
                     }
-                    push @bits , "(1 << $bit)";
                 }
-                if (scalar @bits == 1) {
-                    say $impl $indent."if (($switchon & $bits[0]) != 0) {";
-                } else {
-                    my $list = join '|', @bits;
-                    say $impl $indent."if (($switchon & ($list)) != 0) {";
-                }
+
+		if (@test > 1) {
+		    # We have more than one conditional, add parentheses to them.
+		    # We don't add parentheses to all the conditionals because
+		    # clang complains about the extra parens if you do "if ((x == y))".
+		    my @tests_with_parens;
+		    foreach my $conditional (@test) {
+			push @tests_with_parens, "($conditional)";
+		    }
+
+		    @test = @tests_with_parens;
+		}
+
+		my $list = join ' || ', @test;
+                say $impl $indent."if ($list) {";
 
 		my $vp = $varpat;
 		my $hp = $humanpat;
@@ -940,6 +974,7 @@ sub struct {
     $name =~ s/:/_/;
 
     my %refs;
+    my %paramrefs;
     my $size = 0;
     my $dynamic = 0;
     my $needi = 0;
@@ -965,7 +1000,6 @@ sub struct {
 	    when ('list') {
 		my $type = $e->att('type');
 		my $info = getinfo($type);
-		my $count;
 
 		$needi = 1 if ($info->{'size'} == 0);
 
@@ -973,6 +1007,11 @@ sub struct {
 		given($value->name()) {
 		    when ('fieldref') {
 			$refs{$value->text()} = 1;
+			$count = 0;
+			$dynamic = 1;
+		    }
+		    when ('paramref') {
+			$paramrefs{$value->text()} = $value->att('type');
 			$count = 0;
 			$dynamic = 1;
 		    }
@@ -993,7 +1032,11 @@ sub struct {
 		}
 	    }
 	    when ('field') { }
-	    default { die("unrecognized field $_\n"); }
+	    when ('switch') {
+                $dynamic = 1;
+                next;
+            }
+	    default { die("unrecognized field: $_\n"); }
 	}
 
 	my $type = $e->att('type');
@@ -1002,11 +1045,18 @@ sub struct {
 	$size += $info->{'size'} * $count;
     }
 
+    my $prefs = "";
+
     if ($dynamic) {
 	$size = 0;
+
+	foreach my $pref (sort keys %paramrefs) {
+            $prefs .= ", int p_$pref";
+        }
+
 	print $impl <<eot
 
-static int struct_size_$name(tvbuff_t *tvb, int *offsetp, guint byte_order _U_)
+static int struct_size_$name(tvbuff_t *tvb _U_, int *offsetp _U_, guint byte_order _U_$prefs)
 {
     int size = 0;
 eot
@@ -1043,6 +1093,7 @@ eot
 			when ('op') { $sizemul = get_op($len, \%refs); }
 			when (['unop','popcount']) { $sizemul = get_unop($len, \%refs); }
 			when ('fieldref') { $sizemul = 'f_'.$len->text(); }
+			when ('paramref') { $sizemul = 'p_'.$len->text(); }
 			when ('value') {
 			    if ($infosize) {
 				$size += $infosize * $len->text();
@@ -1082,7 +1133,7 @@ eot
 
     print $impl <<eot
 
-static void struct_$name(tvbuff_t *tvb, int *offsetp, proto_tree *root, guint byte_order _U_, int count)
+static void struct_$name(tvbuff_t *tvb, int *offsetp, proto_tree *root, guint byte_order _U_, int count$prefs)
 {
     int i;
     for (i = 0; i < count; i++) {
@@ -1102,8 +1153,13 @@ eot
 	register_element($e, $varpat, $humanpat, $refs, "\t");
     }
 
+    $prefs = "";
+    foreach my $pref (sort keys %paramrefs) {
+        $prefs .= ", p_$pref";
+    }
+
     my $sizecalc = $size;
-    $size or $sizecalc = "struct_size_$name(tvb, offsetp, byte_order)";
+    $size or $sizecalc = "struct_size_$name(tvb, offsetp, byte_order$prefs)";
 
     print $impl <<eot
 
@@ -1117,7 +1173,7 @@ eot
     }
 
     print $impl "    }\n}\n";
-    $struct{$qualname} = { size => $size, name => $name };
+    $struct{$qualname} = { size => $size, name => $name, paramref => \%paramrefs };
     $t->purge;
 }
 
@@ -1220,8 +1276,9 @@ sub enum {
 
     my $value = {};
     my $bit = {};
+    my $rvalue = {};
     my $rbit = {};
-    $enum{$fullname} = { value => $value, bit => $bit, rbit => $rbit };
+    $enum{$fullname} = { value => $value, bit => $bit, rbit => $rbit, rvalue => $rvalue };
 
     my $nextvalue = 0;
 
@@ -1233,6 +1290,7 @@ sub enum {
 	    given ($valtype->name()) {
 		when ('value') {
 		    $$value{$val} = $n;
+		    $$rvalue{$n} = $val;
 		    $nextvalue = $val + 1;
 
                     # Ugly hack to support (temporary, hopefully) ugly

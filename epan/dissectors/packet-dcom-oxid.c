@@ -25,7 +25,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 #include "packet-dcom.h"
@@ -56,7 +55,7 @@ static int hf_oxid_ds_array = -1;
 
 static gint ett_oxid = -1;
 
-static e_uuid_t uuid_oxid = { 0x99fcfec4, 0x5260, 0x101b, { 0xbb, 0xcb, 0x00, 0xaa, 0x00, 0x21, 0x34, 0x7a } };
+static e_guid_t uuid_oxid = { 0x99fcfec4, 0x5260, 0x101b, { 0xbb, 0xcb, 0x00, 0xaa, 0x00, 0x21, 0x34, 0x7a } };
 static guint16  ver_oxid = 0;
 
 
@@ -214,7 +213,7 @@ dissect_oxid_resolve_oxid2_resp(tvbuff_t *tvb, int offset,
 {
     guint32 u32Pointer;
     guint32 u32ArraySize;
-    e_uuid_t ipid;
+    e_guid_t ipid;
     guint32 u32AuthnHint;
     guint16 u16VersionMajor;
     guint16 u16VersionMinor;
@@ -338,3 +337,16 @@ proto_reg_handoff_oxid (void)
     /* Register the protocol as dcerpc */
     dcerpc_init_uuid (proto_oxid, ett_oxid, &uuid_oxid, ver_oxid, oxid_dissectors, hf_oxid_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

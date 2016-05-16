@@ -22,7 +22,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
+#include <config.h>
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -32,7 +32,6 @@
 # include <sys/types.h>
 #endif
 
-#include <sys/time.h>
 #include <sys/uio.h>
 
 #ifdef HAVE_UNISTD_H
@@ -134,7 +133,7 @@ static char* new_child_cmd(char** params, char** err) {
 		return NULL;
 	}
 
-	child = echld_new(paramsets[ps_id],NULL);
+	child = echld_new(paramsets[ps_id],NULL,NULL);
 
 	if (child <= 0) {
 		*err = g_strdup("No child\n");
@@ -317,14 +316,11 @@ cmd_t commands[] = {
 static char* help_cmd(char** params _U_, char** err _U_) {
 	GString* out = g_string_new("Commands:\n");
 	cmd_t* c = commands;
-	char* s;
 
 	for (;c->txt;c++) {
 		g_string_append_printf(out,"%s\n",c->help);
 	}
-	s = out->str;
-	g_string_free(out,FALSE);
-	return s;
+	return g_string_free(out,FALSE);
 }
 
 
@@ -364,7 +360,7 @@ static int invoke_cmd(FILE* in_fp) {
 }
 
 static char* run_cmd(char** pars, char** err _U_) {
-	FILE* fp = fopen(pars[1],"r");
+	FILE* fp = ws_stdio_fopen(pars[1],"r");
 	while(invoke_cmd(fp)) { ; }
 	fclose(fp);
 	return NULL;
@@ -377,7 +373,7 @@ int got_param = 0;
 int main(int argc _U_, char** argv _U_) {
 	struct timeval tv;
 	int tot_cycles = 0;
-	echld_init_t init = {ECHLD_ENCODING_JSON,argv[0],main,NULL,NULL,NULL,NULL};
+	echld_init_t init = {ECHLD_ENCODING_JSON,argv[0],main,NULL,NULL,NULL,NULL,NULL,NULL};
 
 
 	tv.tv_sec = 5;
@@ -411,3 +407,16 @@ int main(int argc _U_, char** argv _U_) {
 	echld_terminate();
 	return 0;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

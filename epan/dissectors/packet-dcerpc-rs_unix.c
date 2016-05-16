@@ -27,7 +27,6 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 
@@ -40,7 +39,7 @@ static int hf_rs_unix_opnum = -1;
 static gint ett_rs_unix = -1;
 
 
-static e_uuid_t uuid_rs_unix = { 0x361993c0, 0xb000, 0x0000, { 0x0d, 0x00, 0x00, 0x87, 0x84, 0x00, 0x00, 0x00 } };
+static e_guid_t uuid_rs_unix = { 0x361993c0, 0xb000, 0x0000, { 0x0d, 0x00, 0x00, 0x87, 0x84, 0x00, 0x00, 0x00 } };
 static guint16  ver_rs_unix = 1;
 
 
@@ -72,3 +71,16 @@ proto_reg_handoff_rs_unix (void)
 	/* Register the protocol as dcerpc */
 	dcerpc_init_uuid (proto_rs_unix, ett_rs_unix, &uuid_rs_unix, ver_rs_unix, rs_unix_dissectors, hf_rs_unix_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

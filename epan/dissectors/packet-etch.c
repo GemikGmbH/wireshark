@@ -30,17 +30,14 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <stdio.h>
 #include <string.h>
 
-#include <wsutil/file_util.h>
-#include <wsutil/report_err.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include <epan/dissectors/packet-tcp.h>
-#include <epan/wmem/wmem.h>
+#include <wsutil/file_util.h>
+#include <wsutil/report_err.h>
+#include "packet-tcp.h"
 
 void proto_register_etch(void);
 void proto_reg_handoff_etch(void);
@@ -117,7 +114,7 @@ static gint ett_etch_value = -1;
 static int hf_etch_sig = -1;
 static int hf_etch_length = -1;
 static int hf_etch_version = -1;
-/* static int hf_etch_typecode = -1; */
+static int hf_etch_typecode = -1;
 static int hf_etch_value = -1;
 static int hf_etch_bytes = -1;
 static int hf_etch_byte = -1;
@@ -174,7 +171,7 @@ static int read_value(unsigned int *offset, tvbuff_t *tvb, proto_tree *etch_tree
  *  (Code based upon code in packet-diameter.c)
  */
 static GArray                 *gbl_symbols_array  = NULL;
-static const value_string_ext *gbl_symbols_vs_ext = NULL;
+static value_string_ext *gbl_symbols_vs_ext = NULL;
 
 static void
 gbl_symbols_new(void)
@@ -363,7 +360,7 @@ read_hashed_symbols_from_dir(const char *dirname)
     ws_dir_close(dir);
     gbl_symbols_vs_ext_new();
   }else{
-    report_failure("%s", err_p->message);
+    report_failure("etch: %s", err_p->message);
     g_error_free(err_p);
   }
 }
@@ -379,11 +376,9 @@ read_type(unsigned int *offset, tvbuff_t *tvb, proto_tree *etch_tree)
 {
 
   guint32      type_code;
-  const gchar *type_as_string;
 
   type_code = tvb_get_guint8(tvb, *offset);
-  type_as_string = val_to_str(type_code, tc_lookup_table, "Etch TypeCode: 0x%02x");
-  proto_tree_add_text(etch_tree, tvb, *offset, 1, "%s", type_as_string);
+  proto_tree_add_item(etch_tree, hf_etch_typecode, tvb, *offset, 1, ENC_BIG_ENDIAN);
   (*offset)++;
   return type_code;
 }
@@ -472,7 +467,7 @@ read_array(unsigned int *offset, tvbuff_t *tvb, proto_tree *etch_tree)
   read_array_type(offset, tvb, etch_tree);
 
   /*  Array dim */
-  proto_tree_add_item(etch_tree, hf_etch_dim, tvb, *offset, 1, ENC_NA);
+  proto_tree_add_item(etch_tree, hf_etch_dim, tvb, *offset, 1, ENC_BIG_ENDIAN);
   (*offset)++;
 
   /*  Array length */
@@ -621,7 +616,7 @@ read_struct(unsigned int *offset, tvbuff_t *tvb, proto_tree *etch_tree,
   int         i;
 
   ti = proto_tree_add_item(etch_tree, hf_etch_struct, tvb, *offset,
-                           tvb_length(tvb) - *offset, ENC_NA);
+                           tvb_captured_length(tvb) - *offset, ENC_NA);
   new_tree = proto_item_add_subtree(ti, ett_etch_struct);
 
   if (add_type_field) {
@@ -754,18 +749,19 @@ dissect_etch_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* 
     etch_tree = proto_item_add_subtree(ti, ett_etch);
     proto_tree_add_item(etch_tree, hf_etch_sig, tvb, 0, 4, ENC_BIG_ENDIAN);
     proto_tree_add_item(etch_tree, hf_etch_length, tvb, 4, 4, ENC_BIG_ENDIAN);
-    proto_tree_add_item(etch_tree, hf_etch_version, tvb, 8, 1, ENC_NA);
+    proto_tree_add_item(etch_tree, hf_etch_version, tvb, 8, 1, ENC_BIG_ENDIAN);
     read_struct(&offset, tvb, etch_tree, 0);
   }
 
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 /*
  * determine PDU length of protocol etch
  */
 static guint
-get_etch_message_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_etch_message_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                     int offset, void *data _U_)
 {
   /* length is at offset 4. we add magic bytes length + length size */
   return tvb_get_ntohl(tvb, offset + 4) + 8;
@@ -778,7 +774,7 @@ get_etch_message_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
 static int
 dissect_etch(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-  if (tvb_length(tvb) < 4) {
+  if (tvb_captured_length(tvb) < 4) {
     /* Too small for an etch packet. */
     return 0;
   }
@@ -835,14 +831,12 @@ void proto_register_etch(void)
       NULL, 0x0,
       NULL, HFILL}
     },
-#if 0
     {&hf_etch_typecode,
      {"Etch TypeCode", "etch.typecode",
-      FT_STRING, BASE_NONE,    /* FT_INT8 */
-      NULL, 0x0,
+      FT_UINT8, BASE_HEX,
+      VALS(tc_lookup_table), 0x0,
       NULL, HFILL}
     },
-#endif
     {&hf_etch_value,
      {"Etch Value", "etch.value",
       FT_UINT64, BASE_DEC,
@@ -981,7 +975,7 @@ void proto_reg_handoff_etch(void)
   /* create dissector handle only once */
   if(!etch_prefs_initialized) {
     /* add heuristic dissector for tcp */
-    heur_dissector_add("tcp", dissect_etch, proto_etch);
+    heur_dissector_add("tcp", dissect_etch, "Etch over TCP", "etch_tcp", proto_etch, HEURISTIC_ENABLE);
     etch_prefs_initialized = TRUE;
   }
 

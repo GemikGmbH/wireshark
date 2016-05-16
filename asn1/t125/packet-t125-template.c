@@ -24,7 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 
@@ -69,7 +68,7 @@ dissect_t125(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *d
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "T.125");
   col_clear(pinfo->cinfo, COL_INFO);
 
-  item = proto_tree_add_item(parent_tree, proto_t125, tvb, 0, tvb_length(tvb), ENC_NA);
+  item = proto_tree_add_item(parent_tree, proto_t125, tvb, 0, tvb_captured_length(tvb), ENC_NA);
   tree = proto_item_add_subtree(item, ett_t125);
 
   get_ber_identifier(tvb, 0, &ber_class, &pc, &tag);
@@ -81,7 +80,7 @@ dissect_t125(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *d
     dissect_DomainMCSPDU_PDU(tvb, pinfo, tree);
   }
 
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 static gboolean
@@ -138,7 +137,7 @@ void proto_register_t125(void) {
   proto_register_field_array(proto_t125, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
-  register_heur_dissector_list("t125", &t125_heur_subdissector_list);
+  t125_heur_subdissector_list= register_heur_dissector_list("t125");
 
   new_register_dissector("t125", dissect_t125, proto_t125);
 }
@@ -147,6 +146,6 @@ void proto_register_t125(void) {
 /*--- proto_reg_handoff_t125 ---------------------------------------*/
 void proto_reg_handoff_t125(void) {
 
-  heur_dissector_add("cotp", dissect_t125_heur, proto_t125);
-  heur_dissector_add("cotp_is", dissect_t125_heur, proto_t125);
+  heur_dissector_add("cotp", dissect_t125_heur, "T.125 over COTP", "t125_cotp", proto_t125, HEURISTIC_ENABLE);
+  heur_dissector_add("cotp_is", dissect_t125_heur, "T.125 over COTP (inactive subset)", "t125_cotp_is", proto_t125, HEURISTIC_ENABLE);
 }

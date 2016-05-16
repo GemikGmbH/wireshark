@@ -37,6 +37,10 @@ U-RNTI-Group
 UL-DCCH-MessageType
 UL-TS-ChannelisationCode
 UL-TS-ChannelisationCode-VHCR
+MinimumTEBS-threshold
+UE-DTX-Cycle2-2ms-Secondary
+SIB-Type2
+WLANThreshBackhaulRate
 
 #.EXPORTS
 InterRATHandoverInfo
@@ -80,6 +84,7 @@ BCCH-BCH-Message             @bcch.bch
 MCCH-Message                 @mcch
 MSCH-Message                 @msch
 SystemInformation-BCH        @sysinfo
+SystemInformation2-BCH       @sysinfo2
 System-Information-Container @sysinfo.cont
 MasterInformationBlock       @si.mib
 SysInfoType1                 @si.sib1
@@ -95,6 +100,7 @@ SysInfoType9                 @si.sib9
 SysInfoType10                @si.sib10
 SysInfoType11                @si.sib11
 SysInfoType11bis             @si.sib11bis
+SysInfoType11ter             @si.sib11ter
 SysInfoType12                @si.sib12
 SysInfoType13                @si.sib13
 SysInfoType13-1              @si.sib13-1
@@ -106,6 +112,7 @@ SysInfoType15                @si.sib15
 SysInfoType15bis             @si.sib15bis
 SysInfoType15-1              @si.sib15-1
 SysInfoType15-1bis           @si.sib15-1bis
+SysInfoType15-1ter           @si.sib15-1ter
 SysInfoType15-2              @si.sib15-2
 SysInfoType15-2bis           @si.sib15-2bis
 SysInfoType15-2ter           @si.sib15-2ter
@@ -123,8 +130,11 @@ SysInfoType19                @si.sib19
 SysInfoType20                @si.sib20
 SysInfoType21                @si.sib21
 SysInfoType22                @si.sib22
+SysInfoType23                @si.sib23
+SysInfoType24                @si.sib24
 SysInfoTypeSB1               @si.sb1
 SysInfoTypeSB2               @si.sb2
+SysInfoTypeSB3               @si.sb3
 HandoverToUTRANCommand       @irat.ho_to_utran_cmd
 InterRATHandoverInfo         @irat.irat_ho_info
 UE-RadioAccessCapabilityInfo @ue_radio_access_cap_info
@@ -527,7 +537,7 @@ fp_info       *fpinf ;
 
 %(DEFAULT_BODY)s
 
-  bits_remaining = 8*tvb_length(tvb) - offset;
+  bits_remaining = 8*tvb_reported_length(tvb) - offset;
   whole_octets_remaining = bits_remaining / 8;
 
   gsm_message_tvb = tvb_new_octet_aligned(tvb, offset, 8*whole_octets_remaining);
@@ -542,7 +552,7 @@ fp_info       *fpinf ;
 
 %(DEFAULT_BODY)s
 
-  bits_remaining = 8*tvb_length(tvb) - offset;
+  bits_remaining = 8*tvb_reported_length(tvb) - offset;
   whole_octets_remaining = bits_remaining / 8;
 
   gsm_message_tvb = tvb_new_octet_aligned(tvb, offset, 8*whole_octets_remaining);
@@ -582,7 +592,7 @@ fp_info       *fpinf ;
 
 %(DEFAULT_BODY)s
   if (parameter_tvb){
-    de_ms_cm_3(parameter_tvb, tree, actx->pinfo, 0, tvb_length(parameter_tvb), NULL, 0);
+    de_ms_cm_3(parameter_tvb, tree, actx->pinfo, 0, tvb_reported_length(parameter_tvb), NULL, 0);
   }
 
 #.FN_BODY GSM-MS-RadioAccessCapability VAL_PTR = &parameter_tvb
@@ -590,7 +600,7 @@ fp_info       *fpinf ;
 
 %(DEFAULT_BODY)s
   if (parameter_tvb){
-    de_gmm_ms_radio_acc_cap(parameter_tvb, tree, actx->pinfo, 0, tvb_length(parameter_tvb), NULL, 0);
+    de_gmm_ms_radio_acc_cap(parameter_tvb, tree, actx->pinfo, 0, tvb_reported_length(parameter_tvb), NULL, 0);
   }
 
 #.FN_BODY InterRATHandoverInfoWithInterRATCapabilities-r3-IEs/interRATHandoverInfo VAL_PTR = &parameter_tvb
@@ -643,6 +653,35 @@ fp_info       *fpinf ;
     curr_bit_offset++;
 }
 
+#.FN_BODY RSR-VCC-Info/ims-Information VAL_PTR = &imsInformation_tvb
+  tvbuff_t *imsInformation_tvb=NULL;
+%(DEFAULT_BODY)s
+  if(imsInformation_tvb){
+    /* Dissect ims-Information
+       Decoding specified in TS 124 237 V11.4.0 Annex D.5.3.3 ATGW transfer details
+     */
+    proto_tree *subtree;
+    gint curr_offset = 0;
+    guint32 atgw_trans_det_cont;
+    subtree = proto_item_add_subtree(actx->created_item, ett_rrc_ims_info);
+    proto_tree_add_item_ret_uint(subtree, hf_rrc_ims_info_atgw_trans_det_cont_type, imsInformation_tvb, curr_offset, 1, ENC_BIG_ENDIAN, &atgw_trans_det_cont);
+    curr_offset++;
+    switch (atgw_trans_det_cont & 0x03) {
+      case 0:
+        proto_tree_add_item(subtree, hf_rrc_ims_info_atgw_udp_port, imsInformation_tvb, curr_offset, 2, ENC_BIG_ENDIAN);
+        curr_offset+=2;
+        proto_tree_add_item(subtree, hf_rrc_ims_info_atgw_ipv4, imsInformation_tvb, curr_offset, 4, ENC_BIG_ENDIAN);
+        break;
+      case 1:
+        proto_tree_add_item(subtree, hf_rrc_ims_info_atgw_udp_port, imsInformation_tvb, curr_offset, 2, ENC_BIG_ENDIAN);
+        curr_offset+=2;
+        proto_tree_add_item(subtree, hf_rrc_ims_info_atgw_ipv6, imsInformation_tvb, curr_offset, 16, ENC_NA);
+        break;
+      default:
+      break;
+    }
+}
+
 #.TYPE_ATTR
 HNBName TYPE=FT_STRING DISPLAY=STR_UNICODE
 
@@ -655,6 +694,7 @@ HNBName TYPE=FT_STRING DISPLAY=STR_UNICODE
 #.FN_BODY CN-DomainIdentity VAL_PTR = &nas_sys_info_gsm_map
   guint32 nas_sys_info_gsm_map;
 %(DEFAULT_BODY)s
+  col_append_fstr(actx->pinfo->cinfo, COL_INFO, "(%%s)", val_to_str_const(nas_sys_info_gsm_map,rrc_CN_DomainIdentity_vals,"Unknown"));
   actx->private_data = GUINT_TO_POINTER(nas_sys_info_gsm_map+1);
 
 #.FN_BODY CN-InformationInfo/cn-CommonGSM-MAP-NAS-SysInfo
@@ -676,27 +716,26 @@ HNBName TYPE=FT_STRING DISPLAY=STR_UNICODE
 #.FN_BODY NAS-SystemInformationGSM-MAP VAL_PTR = &nas_sys_info_gsm_map_tvb
   tvbuff_t *nas_sys_info_gsm_map_tvb = NULL;
   guint32 length;
-  proto_item *item;
   proto_tree *subtree;
 
 %(DEFAULT_BODY)s
-  length = tvb_length(nas_sys_info_gsm_map_tvb);
+  length = tvb_reported_length(nas_sys_info_gsm_map_tvb);
   if (length) {
     if (actx->private_data) {
       switch (GPOINTER_TO_UINT(actx->private_data)-1) {
         case RRC_NAS_SYS_INFO_CN_COMMON:
-          item = proto_tree_add_text(tree, nas_sys_info_gsm_map_tvb, 0, length, "CN Common GSM-MAP NAS system information");
-          subtree = proto_item_add_subtree(item, ett_rrc_cn_CommonGSM_MAP_NAS_SysInfo);
+          subtree = proto_tree_add_subtree(tree, nas_sys_info_gsm_map_tvb, 0, length,
+					ett_rrc_cn_CommonGSM_MAP_NAS_SysInfo, NULL, "CN Common GSM-MAP NAS system information");
           de_cn_common_gsm_map_nas_sys_info(nas_sys_info_gsm_map_tvb, subtree, actx->pinfo, 0, length, NULL, 0);
           break;
         case RRC_NAS_SYS_INFO_CS:
-          item = proto_tree_add_text(tree, nas_sys_info_gsm_map_tvb, 0, length, "CS domain specific system information");
-          subtree = proto_item_add_subtree(item, ett_rrc_cn_CommonGSM_MAP_NAS_SysInfo);
+          subtree = proto_tree_add_subtree(tree, nas_sys_info_gsm_map_tvb, 0, length,
+					ett_rrc_cn_CommonGSM_MAP_NAS_SysInfo, NULL, "CS domain specific system information");
           de_cs_domain_spec_sys_info(nas_sys_info_gsm_map_tvb, subtree, actx->pinfo, 0, length, NULL, 0);
           break;
         case RRC_NAS_SYS_INFO_PS:
-          item = proto_tree_add_text(tree, nas_sys_info_gsm_map_tvb, 0, length, "PS domain specific system information");
-          subtree = proto_item_add_subtree(item, ett_rrc_cn_CommonGSM_MAP_NAS_SysInfo);
+          subtree = proto_tree_add_subtree(tree, nas_sys_info_gsm_map_tvb, 0, length,
+				ett_rrc_cn_CommonGSM_MAP_NAS_SysInfo, NULL, "PS domain specific system information");
           de_ps_domain_spec_sys_info(nas_sys_info_gsm_map_tvb, subtree, actx->pinfo, 0, length, NULL, 0);
           break;
         default:
@@ -709,8 +748,8 @@ HNBName TYPE=FT_STRING DISPLAY=STR_UNICODE
 /*Here we try to figure out which HS-DSCH channels are multiplexed*/
 #.FN_BODY DL-TransportChannelType-r5 VAL_PTR = &type
 
-    gint *flowd_p;
-    gint *cur_val=NULL;
+    guint *flowd_p;
+    guint *cur_val=NULL;
     struct rrc_info *rrcinf;
 
     %(DEFAULT_BODY)s
@@ -725,15 +764,15 @@ HNBName TYPE=FT_STRING DISPLAY=STR_UNICODE
                 expert_add_info(actx->pinfo, actx->created_item, &ei_rrc_no_hrnti);
             }
             else{
-                /*If it doesnt exists, insert it*/
+                /*If it doesn't exists, insert it*/
                 if( (cur_val=(gint *)g_tree_lookup(hsdsch_muxed_flows, GUINT_TO_POINTER((guint)rrcinf->hrnti[actx->pinfo->fd->subnum]))) == NULL ){
 
                     flowd_p = (guint*)g_malloc0(sizeof(gint));
-                    *flowd_p = (1<<flowd);    /*Set the bit to mark it as true*/
+                    *flowd_p = (1U<<flowd);    /*Set the bit to mark it as true*/
                     g_tree_insert(hsdsch_muxed_flows, GUINT_TO_POINTER((guint)rrcinf->hrnti[actx->pinfo->fd->subnum]), flowd_p);
 
                 }else{
-                    *cur_val = (1<<flowd) | *cur_val;
+                    *cur_val = (1U<<flowd) | *cur_val;
 
                 }
             }
@@ -744,8 +783,8 @@ HNBName TYPE=FT_STRING DISPLAY=STR_UNICODE
 /*Here we try to figure out which HS-DSCH channels are multiplexed*/
 #.FN_BODY DL-TransportChannelType-r7 VAL_PTR = &type
 
-    gint *flowd_p;
-    gint *cur_val=NULL;
+    guint *flowd_p;
+    guint *cur_val=NULL;
     struct rrc_info *rrcinf;
 
     %(DEFAULT_BODY)s
@@ -761,15 +800,15 @@ HNBName TYPE=FT_STRING DISPLAY=STR_UNICODE
                 expert_add_info(actx->pinfo, actx->created_item, &ei_rrc_no_hrnti);
             }
             else{
-                /*If it doesnt exists, insert it*/
+                /*If it doesn't exists, insert it*/
                 if( (cur_val=(gint *)g_tree_lookup(hsdsch_muxed_flows, GUINT_TO_POINTER((guint)rrcinf->hrnti[actx->pinfo->fd->subnum]))) == NULL ){
 
                     flowd_p = (guint*)g_malloc0(sizeof(gint));
-                    *flowd_p = (1<<flowd);    /* Set the bit to mark it as true*/
+                    *flowd_p = (1U<<flowd);    /* Set the bit to mark it as true*/
                     g_tree_insert(hsdsch_muxed_flows, GUINT_TO_POINTER((guint)rrcinf->hrnti[actx->pinfo->fd->subnum]), flowd_p);
 
                 }else{
-                    *cur_val = (1<<flowd) | *cur_val;
+                    *cur_val = (1U<<flowd) | *cur_val;
 
                 }
             }
@@ -899,6 +938,12 @@ HNBName TYPE=FT_STRING DISPLAY=STR_UNICODE
 #.FN_BODY UE-SecurityInformation2
   actx->private_data = GUINT_TO_POINTER(RRC_NAS_SYS_INFO_PS+1);
 %(DEFAULT_BODY)s
+
+#.FN_BODY ReleaseCause VAL_PTR=&value
+  guint32 value;
+%(DEFAULT_BODY)s
+  col_append_fstr(actx->pinfo->cinfo, COL_INFO, " [cause=%%s]",
+                  val_to_str(value, rrc_ReleaseCause_vals, "Unknown"));
 
 #.END
 

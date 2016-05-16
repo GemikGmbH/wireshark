@@ -19,8 +19,10 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "qt_ui_utils.h"
+
 #include "font_color_preferences_frame.h"
-#include "ui_font_color_preferences_frame.h"
+#include <ui_font_color_preferences_frame.h>
 #include "color_utils.h"
 #include "wireshark_application.h"
 
@@ -63,10 +65,8 @@ FontColorPreferencesFrame::~FontColorPreferencesFrame()
     delete ui;
 }
 
-void FontColorPreferencesFrame::showEvent(QShowEvent *evt)
+void FontColorPreferencesFrame::showEvent(QShowEvent *)
 {
-    Q_UNUSED(evt)
-
     GRand *rand_state = g_rand_new();
     QString pangram = QString(font_pangrams_[g_rand_int_range(rand_state, 0, num_font_pangrams_)]) + " 0123456789";
     ui->fontSampleLineEdit->setText(pangram);
@@ -192,10 +192,10 @@ void FontColorPreferencesFrame::changeColor(pref_t *pref)
 void FontColorPreferencesFrame::on_fontPushButton_clicked()
 {
     bool ok;
-    QFont new_font = QFontDialog::getFont(&ok, cur_font_, this, tr("Wireshark: Font"));
+    QFont new_font = QFontDialog::getFont(&ok, cur_font_, this, wsApp->windowTitleString(tr("Font")));
     if (ok) {
         g_free(pref_qt_gui_font_name_->stashed_val.string);
-        pref_qt_gui_font_name_->stashed_val.string = g_strdup(new_font.toString().toUtf8().constData());
+        pref_qt_gui_font_name_->stashed_val.string = qstring_strdup(new_font.toString());
         cur_font_ = new_font;
         updateWidgets();
     }

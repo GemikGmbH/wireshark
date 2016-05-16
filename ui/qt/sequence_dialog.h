@@ -22,7 +22,7 @@
 #ifndef SEQUENCE_DIALOG_H
 #define SEQUENCE_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
@@ -30,30 +30,42 @@
 
 #include "epan/packet.h"
 
-#include "sequence_diagram.h"
+#include "ui/tap-sequence-analysis.h"
 
-#include <QDialog>
+#include "qcustomplot.h"
+#include "wireshark_dialog.h"
+
 #include <QMenu>
 
 namespace Ui {
 class SequenceDialog;
 }
 
-class SequenceDialog : public QDialog
+class SequenceDiagram;
+
+class SequenceInfo
+{
+public:
+    SequenceInfo(seq_analysis_info_t *sainfo = NULL);
+    seq_analysis_info_t * sainfo() { return sainfo_;}
+    void ref() { count_++; }
+    void unref() { if (--count_ == 0) delete this; }
+private:
+    ~SequenceInfo();
+    seq_analysis_info_t *sainfo_;
+    unsigned int count_;
+};
+
+class SequenceDialog : public WiresharkDialog
 {
     Q_OBJECT
 
 public:
-    enum SequenceType { any, tcp, voip };
-
-    explicit SequenceDialog(QWidget *parent = 0, capture_file *cf = NULL, SequenceType type = any);
+    explicit SequenceDialog(QWidget &parent, CaptureFile &cf, SequenceInfo *info = NULL);
     ~SequenceDialog();
 
 signals:
     void goToPacket(int packet_num);
-
-public slots:
-    void setCaptureFile(capture_file *cf);
 
 protected:
     void showEvent(QShowEvent *event);
@@ -62,6 +74,7 @@ protected:
     void mouseReleaseEvent(QMouseEvent *event);
 
 private slots:
+    void updateWidgets();
     void hScrollBarChanged(int value);
     void vScrollBarChanged(int value);
     void xAxisChanged(QCPRange range);
@@ -70,12 +83,14 @@ private slots:
     void mouseMoved(QMouseEvent *event);
     void mouseReleased(QMouseEvent *event);
 
+    void fillDiagram();
+
     void on_buttonBox_accepted();
     void on_resetButton_clicked();
     void on_actionGoToPacket_triggered();
-    void on_showComboBox_currentIndexChanged(int index);
-    void on_flowComboBox_currentIndexChanged(int index);
-    void on_addressComboBox_currentIndexChanged(int index);
+    void on_showComboBox_activated(int index);
+    void on_flowComboBox_activated(int index);
+    void on_addressComboBox_activated(int index);
     void on_actionReset_triggered();
     void on_actionMoveRight10_triggered();
     void on_actionMoveLeft10_triggered();
@@ -89,15 +104,13 @@ private slots:
 private:
     Ui::SequenceDialog *ui;
     SequenceDiagram *seq_diagram_;
-    capture_file *cap_file_;
-    seq_analysis_info_t seq_analysis_;
+    SequenceInfo *info_;
     int num_items_;
     guint32 packet_num_;
     double one_em_;
     int node_label_w_;
     QMenu ctx_menu_;
 
-    void fillDiagram();
     void panAxes(int x_pixels, int y_pixels);
     void resetAxes(bool keep_lower = false);
 

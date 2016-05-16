@@ -23,8 +23,6 @@
  */
 
 #include "config.h"
-#include <stdio.h>
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 #include "packet-dcerpc-nt.h"
@@ -41,7 +39,7 @@ static int hf_mgmt_princ_name = -1;
 static gint ett_mgmt = -1;
 
 
-static e_uuid_t uuid_mgmt = { 0xafa8bd80, 0x7d8a, 0x11c9, { 0xbe, 0xf4, 0x08, 0x00, 0x2b, 0x10, 0x29, 0x89 } };
+static e_guid_t uuid_mgmt = { 0xafa8bd80, 0x7d8a, 0x11c9, { 0xbe, 0xf4, 0x08, 0x00, 0x2b, 0x10, 0x29, 0x89 } };
 static guint16  ver_mgmt = 1;
 
 static int
@@ -84,16 +82,16 @@ proto_register_mgmt (void)
 		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_mgmt_proto,
 		  {"Authn Proto", "mgmt.proto", FT_UINT32, BASE_HEX,
-                    NULL, 0x0, NULL, HFILL }},
+		    NULL, 0x0, NULL, HFILL }},
 		{ &hf_mgmt_princ_name,
 		  {"Principal name", "mgmt.princ_name", FT_STRING, BASE_NONE,
-                    NULL, 0, NULL, HFILL }},
+		    NULL, 0, NULL, HFILL }},
 		{ &hf_mgmt_princ_size,
 		  {"Principal size", "mgmt.princ_size", FT_UINT32, BASE_DEC,
-                    NULL, 0x0, "Size of principal", HFILL }},
+		    NULL, 0x0, "Size of principal", HFILL }},
 		{ &hf_mgmt_rc,
 		  {"Status", "mgmt.rc", FT_UINT32, BASE_HEX,
-                    NULL, 0x0, NULL, HFILL }},
+		    NULL, 0x0, NULL, HFILL }},
 	};
 
 	static gint *ett[] = {
@@ -110,3 +108,16 @@ proto_reg_handoff_mgmt (void)
 	/* Register the protocol as dcerpc */
 	dcerpc_init_uuid (proto_mgmt, ett_mgmt, &uuid_mgmt, ver_mgmt, mgmt_dissectors, hf_mgmt_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

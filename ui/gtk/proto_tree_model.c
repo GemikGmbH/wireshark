@@ -28,7 +28,6 @@
 #include <string.h>
 
 #include <gtk/gtk.h>
-#include <glib.h>
 
 #include <epan/addr_resolv.h>
 #include <epan/proto.h>
@@ -472,3 +471,16 @@ proto_tree_model_new(proto_tree *protocol_tree, int display_hidden_proto_items)
 
 	return model;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

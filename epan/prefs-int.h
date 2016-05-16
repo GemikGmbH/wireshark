@@ -160,7 +160,7 @@ struct preference {
       } enum_info;                   /**< for PREF_ENUM */
     } info;                          /**< display/text file information */
     struct pref_custom_cbs custom_cbs;   /**< for PREF_CUSTOM */
-    void    *control;                /**< handle for GUI control for this preference */
+    void    *control;                /**< handle for GUI control for this preference. GTK+ only? */
 };
 
 /* read_prefs_file: read in a generic config file and do a callback to */
@@ -174,11 +174,24 @@ struct preference {
  */
 typedef prefs_set_pref_e (*pref_set_pair_cb) (gchar *key, const gchar *value, void *private_data, gboolean return_range_errors);
 
-/** read the preferences file (or similiar) and call the callback
+/** read the preferences file (or similar) and call the callback
  * function to set each key/value pair found
  */
 WS_DLL_PUBLIC
 int
 read_prefs_file(const char *pf_path, FILE *pf, pref_set_pair_cb pref_set_pair_fct, void *private_data);
+
+/** Convert a string list preference to a preference string.
+ *
+ * Given a GList of gchar pointers, create a quoted, comma-separated
+ * string. Should be used with prefs_get_string_list() and
+ * prefs_clear_string_list().
+ *
+ * @param sl String list.
+ * @return Quoted, joined, and wrapped string. May be empty.
+ */
+WS_DLL_PUBLIC
+char *
+join_string_list(GList *sl);
 
 #endif /* prefs-int.h */

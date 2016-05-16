@@ -21,11 +21,9 @@
 #include "config.h"
 #include <errno.h>
 #include <string.h>
-#include <time.h>
 
 #include "wtap-int.h"
 #include "file_wrappers.h"
-#include <wsutil/buffer.h>
 #include "5views.h"
 
 
@@ -106,29 +104,27 @@ static gboolean _5views_seek_read(wtap *wth, gint64 seek_off,
 static int _5views_read_header(wtap *wth, FILE_T fh, t_5VW_TimeStamped_Header *hdr,
     struct wtap_pkthdr *phdr, int *err, gchar **err_info);
 
-static gboolean _5views_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr, const guint8 *pd, int *err);
-static gboolean _5views_dump_close(wtap_dumper *wdh, int *err);
+static gboolean _5views_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr, const guint8 *pd, int *err, gchar **err_info);
+static gboolean _5views_dump_finish(wtap_dumper *wdh, int *err);
 
 
-int _5views_open(wtap *wth, int *err, gchar **err_info)
+wtap_open_return_val
+_5views_open(wtap *wth, int *err, gchar **err_info)
 {
-	int bytes_read;
 	t_5VW_Capture_Header Capture_Header;
 	int encap = WTAP_ENCAP_UNKNOWN;
 
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(&Capture_Header.Info_Header, sizeof(t_5VW_Info_Header), wth->fh);
-	if (bytes_read != sizeof(t_5VW_Info_Header)) {
-		*err = file_error(wth->fh, err_info);
-		if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-			return -1;
-		return 0;
+	if (!wtap_read_bytes(wth->fh, &Capture_Header.Info_Header,
+	    sizeof(t_5VW_Info_Header), err, err_info)) {
+		if (*err != WTAP_ERR_SHORT_READ)
+			return WTAP_OPEN_ERROR;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
 	/*	Check whether that's 5Views format or not */
 	if(Capture_Header.Info_Header.Signature != CST_5VW_INFO_HEADER_KEY)
 	{
-		return 0;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
 	/* Check Version */
@@ -142,7 +138,7 @@ int _5views_open(wtap *wth, int *err, gchar **err_info)
 	default:
 		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup_printf("5views: header version %u unsupported", Capture_Header.Info_Header.Version);
-		return -1;
+		return WTAP_OPEN_ERROR;
 	}
 
 	/* Check File Type */
@@ -152,7 +148,7 @@ int _5views_open(wtap *wth, int *err, gchar **err_info)
 	{
 		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup_printf("5views: file is not a capture file (filetype is %u)", Capture_Header.Info_Header.Version);
-		return -1;
+		return WTAP_OPEN_ERROR;
 	}
 
 	/* Check possible Encap */
@@ -167,17 +163,13 @@ int _5views_open(wtap *wth, int *err, gchar **err_info)
 		*err = WTAP_ERR_UNSUPPORTED;
 		*err_info = g_strdup_printf("5views: network type %u unknown or unsupported",
 		    Capture_Header.Info_Header.FileType);
-		return -1;
+		return WTAP_OPEN_ERROR;
 	}
 
 	/* read the remaining header information */
-	bytes_read = file_read(&Capture_Header.HeaderDateCreation, sizeof (t_5VW_Capture_Header) - sizeof(t_5VW_Info_Header), wth->fh);
-	if (bytes_read != sizeof (t_5VW_Capture_Header)- sizeof(t_5VW_Info_Header) ) {
-		*err = file_error(wth->fh, err_info);
-		if (*err == 0)
-			*err = WTAP_ERR_SHORT_READ;
-		return -1;
-	}
+	if (!wtap_read_bytes(wth->fh, &Capture_Header.HeaderDateCreation,
+	    sizeof (t_5VW_Capture_Header) - sizeof(t_5VW_Info_Header), err, err_info))
+		return WTAP_OPEN_ERROR;
 
 	/* This is a 5views capture file */
 	wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_5VIEWS;
@@ -185,9 +177,9 @@ int _5views_open(wtap *wth, int *err, gchar **err_info)
 	wth->subtype_seek_read = _5views_seek_read;
 	wth->file_encap = encap;
 	wth->snapshot_length = 0;	/* not available in header */
-	wth->tsprecision = WTAP_FILE_TSPREC_NSEC;
+	wth->file_tsprec = WTAP_TSPREC_NSEC;
 
-	return 1;
+	return WTAP_OPEN_MINE;
 }
 
 /* Read the next packet */
@@ -270,19 +262,10 @@ static gboolean
 _5views_read_header(wtap *wth, FILE_T fh, t_5VW_TimeStamped_Header *hdr,
     struct wtap_pkthdr *phdr, int *err, gchar **err_info)
 {
-	int	bytes_read, bytes_to_read;
-
-	bytes_to_read = sizeof(t_5VW_TimeStamped_Header);
-
 	/* Read record header. */
-	bytes_read = file_read(hdr, bytes_to_read, fh);
-	if (bytes_read != bytes_to_read) {
-		*err = file_error(fh, err_info);
-		if (*err == 0 && bytes_read != 0) {
-			*err = WTAP_ERR_SHORT_READ;
-		}
+	if (!wtap_read_bytes_or_eof(fh, hdr, (unsigned int)sizeof(t_5VW_TimeStamped_Header),
+	    err, err_info))
 		return FALSE;
-	}
 
 	hdr->Key = pletoh32(&hdr->Key);
 	if (hdr->Key != CST_5VW_RECORDS_HEADER_KEY) {
@@ -333,8 +316,8 @@ int _5views_dump_can_write_encap(int encap)
 	if (encap == WTAP_ENCAP_PER_PACKET)
 		return WTAP_ERR_ENCAP_PER_PACKET_UNSUPPORTED;
 
-	if (encap < 0 || (unsigned) encap >= NUM_WTAP_ENCAPS || wtap_encap[encap] == -1)
-		return WTAP_ERR_UNSUPPORTED_ENCAP;
+	if (encap < 0 || (unsigned int) encap >= NUM_WTAP_ENCAPS || wtap_encap[encap] == -1)
+		return WTAP_ERR_UNWRITABLE_ENCAP;
 
 	return 0;
 }
@@ -354,7 +337,7 @@ gboolean _5views_dump_open(wtap_dumper *wdh, int *err)
 
 	/* This is a 5Views file */
 	wdh->subtype_write = _5views_dump;
-	wdh->subtype_close = _5views_dump_close;
+	wdh->subtype_finish = _5views_dump_finish;
 	_5views = (_5views_dump_t *)g_malloc(sizeof(_5views_dump_t));
 	wdh->priv = (void *)_5views;
 	_5views->nframes = 0;
@@ -366,14 +349,14 @@ gboolean _5views_dump_open(wtap_dumper *wdh, int *err)
    Returns TRUE on success, FALSE on failure. */
 static gboolean _5views_dump(wtap_dumper *wdh,
 	const struct wtap_pkthdr *phdr,
-	const guint8 *pd, int *err)
+	const guint8 *pd, int *err, gchar **err_info _U_)
 {
 	_5views_dump_t *_5views = (_5views_dump_t *)wdh->priv;
 	t_5VW_TimeStamped_Header HeaderFrame;
 
 	/* We can only write packet records. */
 	if (phdr->rec_type != REC_TYPE_PACKET) {
-		*err = WTAP_ERR_REC_TYPE_UNSUPPORTED;
+		*err = WTAP_ERR_UNWRITABLE_REC_TYPE;
 		return FALSE;
 	}
 
@@ -412,7 +395,7 @@ static gboolean _5views_dump(wtap_dumper *wdh,
 	return TRUE;
 }
 
-static gboolean _5views_dump_close(wtap_dumper *wdh, int *err)
+static gboolean _5views_dump_finish(wtap_dumper *wdh, int *err)
 {
 	_5views_dump_t *_5views = (_5views_dump_t *)wdh->priv;
 	t_5VW_Capture_Header file_hdr;
@@ -460,3 +443,16 @@ static gboolean _5views_dump_close(wtap_dumper *wdh, int *err)
 
 	return TRUE;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

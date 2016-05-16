@@ -23,7 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/etypes.h>
 
@@ -65,7 +64,7 @@ static dissector_handle_t data_handle;
 static void
 dissect_3com_xns(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	proto_tree *subtree = NULL;
+	proto_tree *subtree;
 	proto_tree *ti;
 	guint16 type;
 	tvbuff_t *next_tvb;
@@ -73,10 +72,8 @@ dissect_3com_xns(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "3Com XNS");
 	col_clear(pinfo->cinfo, COL_INFO);
 
-	if (tree) {
-		ti = proto_tree_add_item(tree, proto_3com_xns, tvb, 0, 4, ENC_NA);
-		subtree = proto_item_add_subtree(ti, ett_3com_xns);
-	}
+	ti = proto_tree_add_item(tree, proto_3com_xns, tvb, 0, 4, ENC_NA);
+	subtree = proto_item_add_subtree(ti, ett_3com_xns);
 
 	type = tvb_get_ntohs(tvb, 0);
 	next_tvb = tvb_new_subset_remaining(tvb, 2);
@@ -129,3 +126,16 @@ proto_reg_handoff_3com_xns(void)
 	our_xns_handle = create_dissector_handle(dissect_3com_xns, proto_3com_xns);
 	dissector_add_uint("llc.dsap", 0x80, our_xns_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -27,12 +27,11 @@
 
 #include "config.h"
 
-#include <epan/conversation.h>
+#include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/tap.h>
 #include <epan/exported_pdu.h>
-#include <epan/wmem/wmem.h>
-#include <packet-tcp.h>
+#include "packet-tcp.h"
 
 void proto_register_reload_framing(void);
 void proto_reg_handoff_reload_framing(void);
@@ -97,7 +96,8 @@ static const value_string types[] = {
 };
 
 static guint
-get_reload_framing_message_length(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_reload_framing_message_length(packet_info *pinfo _U_, tvbuff_t *tvb,
+                                  int offset, void *data _U_)
 {
   /* Get the type */
   guint32 length = 9;
@@ -178,7 +178,7 @@ dissect_reload_framing_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     guint8 tags = EXP_PDU_TAG_IP_SRC_BIT | EXP_PDU_TAG_IP_DST_BIT | EXP_PDU_TAG_SRC_PORT_BIT |
                   EXP_PDU_TAG_DST_PORT_BIT | EXP_PDU_TAG_ORIG_FNO_BIT;
 
-    exp_pdu_data = load_export_pdu_tags(pinfo, "reload-framing", -1, &tags, 1);
+    exp_pdu_data = load_export_pdu_tags(pinfo, EXP_PDU_TAG_PROTO_NAME, "reload-framing", &tags, 1);
 
     exp_pdu_data->tvb_captured_length = effective_length;
     exp_pdu_data->tvb_reported_length = tvb_reported_length(tvb);
@@ -350,7 +350,7 @@ dissect_reload_framing_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     next_tvb = tvb_new_subset(tvb, offset, effective_length - offset, message_length);
     if (reload_handle == NULL) {
       expert_add_info(pinfo, ti, &ei_reload_no_dissector);
-      return tvb_length(tvb);
+      return tvb_captured_length(tvb);
     }
     call_dissector_only(reload_handle, next_tvb, pinfo, tree, NULL);
   }
@@ -367,14 +367,13 @@ dissect_reload_framing_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     {
       guint32     received;
       int         last_received      = -1;
-      int         indx               = 0;
+      unsigned int         indx      = 0;
       proto_tree *received_tree;
       proto_item *ti_parsed_received = NULL;
 
       received = tvb_get_ntohl(tvb, offset);
-      while ((received<<indx) != 0) {
-        if (indx>=32) break;
-        if (received &(0x1<<(31-indx))) {
+      while ((indx<32) && (received<<indx) != 0) {
+        if (received &(1U<<(31-indx))) {
           if (indx==0) {
             received_tree = proto_item_add_subtree(ti_received, ett_reload_framing_received);
             ti_parsed_received = proto_tree_add_item(received_tree, hf_reload_framing_parsed_received, tvb, offset, 4, ENC_NA);
@@ -382,9 +381,9 @@ dissect_reload_framing_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
             last_received = indx;
           }
           else {
-            if (received &(0x1<<(31-indx+1))) {
+            if (received &(1U<<(31-indx+1))) {
               indx++;
-              /* range: skip */
+              /* the previous one is also acked: in the middle of a range: skip */
               continue;
             }
             else {
@@ -404,9 +403,9 @@ dissect_reload_framing_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
           }
         }
         else if (indx>0) {
-          if ((received &(0x1<<(31-indx+1))) && (received &(0x1<<(31-indx+2)))) {
+          if ((indx>1) && (received &(1U<<(31-indx+1))) && (received &(1U<<(31-indx+2)))) {
             /* end of a series */
-            if ((received &(0x1<<(31-indx+3)))) {
+            if ((indx>2) && (received &(1U<<(31-indx+3)))) {
               proto_item_append_text(ti_parsed_received,"-%u",(sequence-32+indx-1));
             }
             else {
@@ -422,9 +421,9 @@ dissect_reload_framing_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
         indx++;
       }
       if (last_received>=0) {
-        if ((received &(0x1<<(31-indx+1))) && (received &(0x1<<(31-indx+2)))) {
+        if ((indx>1) && (received &(1U<<(31-indx+1)))  && (received &(1U<<(31-indx+2)))) {
           /* end of a series */
-          if ((received &(0x1<<(31-indx+3)))) {
+          if ((indx>2) && (received &(1U<<(31-indx+3)))) {
             proto_item_append_text(ti_parsed_received,"-%u",(sequence-32+indx-1));
           }
           else {
@@ -443,7 +442,7 @@ dissect_reload_framing_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     DISSECTOR_ASSERT_NOT_REACHED();
   }
 
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 static int
@@ -458,7 +457,7 @@ dissect_reload_framing_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
   /* XXX: Check if we have a valid RELOAD Frame Type ? */
   tcp_dissect_pdus(tvb, pinfo, tree, TRUE, MIN_HDR_LENGTH,
                    get_reload_framing_message_length, dissect_reload_framing, data);
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 /* ToDo: If a TCP connection is identified heuristically as reload-framing, then
@@ -600,9 +599,9 @@ proto_reg_handoff_reload_framing(void)
   dissector_add_uint("tcp.port", TCP_PORT_RELOAD, reload_framing_tcp_handle);
   dissector_add_uint("udp.port", UDP_PORT_RELOAD, reload_framing_udp_handle);
 
-  heur_dissector_add("udp",  dissect_reload_framing_heur, proto_reload_framing);
-  heur_dissector_add("tcp",  dissect_reload_framing_heur, proto_reload_framing);
-  heur_dissector_add("dtls", dissect_reload_framing_heur_dtls, proto_reload_framing);
+  heur_dissector_add("udp",  dissect_reload_framing_heur, "RELOAD Framing over UDP", "reload_framing_udp", proto_reload_framing, HEURISTIC_ENABLE);
+  heur_dissector_add("tcp",  dissect_reload_framing_heur, "RELOAD Framing over TCP", "reload_framing_tcp", proto_reload_framing, HEURISTIC_ENABLE);
+  heur_dissector_add("dtls", dissect_reload_framing_heur_dtls, "RELOAD Framing over DTLS", "reload_framing_dtls", proto_reload_framing, HEURISTIC_ENABLE);
 
   exported_pdu_tap = find_tap_id(EXPORT_PDU_TAP_NAME_LAYER_7);
 }

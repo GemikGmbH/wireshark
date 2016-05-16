@@ -30,10 +30,9 @@
 #include "ui/gtk/color_dlg.h"
 #include "ui/gtk/filter_utils.h"
 
-#include "ui/gtk/old-gtk-compat.h"
 
 void
-apply_selected_filter (guint callback_action, char *filter)
+apply_selected_filter (guint callback_action, const char *filter)
 {
  	int action, type;
 	char *str = NULL;
@@ -101,3 +100,16 @@ apply_selected_filter (guint callback_action, char *filter)
 	}
 	g_free (str);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

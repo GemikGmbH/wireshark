@@ -145,9 +145,9 @@ dissect_epmd_request(packet_info *pinfo, tvbuff_t *tvb, gint offset, proto_tree 
             name_length = tvb_get_ntohs(tvb, offset);
             proto_tree_add_item(tree, hf_epmd_name_len, tvb, offset, 2, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_epmd_name, tvb, offset + 2, name_length, ENC_ASCII|ENC_NA);
-            name = tvb_get_string(wmem_packet_scope(), tvb, offset + 2, name_length);
+            name = tvb_get_string_enc(wmem_packet_scope(), tvb, offset + 2, name_length, ENC_ASCII);
             offset += 2 + name_length;
-            if (tvb_length_remaining(tvb, offset) >= 2) {
+            if (tvb_reported_length_remaining(tvb, offset) >= 2) {
                 guint16 elen=0;
                 elen = tvb_get_ntohs(tvb, offset);
                 proto_tree_add_item(tree, hf_epmd_elen, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -159,17 +159,17 @@ dissect_epmd_request(packet_info *pinfo, tvbuff_t *tvb, gint offset, proto_tree 
 
         case EPMD_PORT_REQ:
         case EPMD_PORT2_REQ:
-            name_length = tvb_length_remaining(tvb, offset);
+            name_length = tvb_captured_length_remaining(tvb, offset);
             proto_tree_add_item(tree, hf_epmd_name, tvb, offset, name_length, ENC_ASCII|ENC_NA);
-            name = tvb_get_string(wmem_packet_scope(), tvb, offset, name_length);
+            name = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, name_length, ENC_ASCII);
             break;
 
         case EPMD_ALIVE_REQ:
             proto_tree_add_item(tree, hf_epmd_port_no, tvb, offset, 2, ENC_BIG_ENDIAN);
             offset += 2;
-            name_length = tvb_length_remaining(tvb, offset);
+            name_length = tvb_captured_length_remaining(tvb, offset);
             proto_tree_add_item(tree, hf_epmd_name, tvb, offset, name_length, ENC_ASCII|ENC_NA);
-            name = tvb_get_string(wmem_packet_scope(), tvb, offset, name_length);
+            name = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, name_length, ENC_ASCII);
             break;
 
         case EPMD_NAMES_REQ:
@@ -248,9 +248,9 @@ dissect_epmd_response(packet_info *pinfo, tvbuff_t *tvb, gint offset, proto_tree
             name_length = tvb_get_ntohs(tvb, offset);
             proto_tree_add_item(tree, hf_epmd_name_len, tvb, offset, 2, ENC_BIG_ENDIAN);
             proto_tree_add_item(tree, hf_epmd_name, tvb, offset + 2, name_length, ENC_ASCII|ENC_NA);
-            name = tvb_get_string(wmem_packet_scope(), tvb, offset + 2, name_length);
+            name = tvb_get_string_enc(wmem_packet_scope(), tvb, offset + 2, name_length, ENC_ASCII);
             offset += 2 + name_length;
-            if (tvb_length_remaining(tvb, offset) >= 2) {
+            if (tvb_reported_length_remaining(tvb, offset) >= 2) {
                 guint16 elen=0;
                 elen = tvb_get_ntohs(tvb, offset);
                 proto_tree_add_item(tree, hf_epmd_elen, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -280,7 +280,7 @@ check_epmd(tvbuff_t *tvb) {
      * It's possible to start checking lengths but imho that
      * doesn't bring very much.
      */
-    if (tvb_length(tvb) < 3)
+    if (tvb_captured_length(tvb) < 3)
         return (FALSE);
 
     type = tvb_get_guint8(tvb, 0);
@@ -327,7 +327,7 @@ dissect_epmd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
         dissect_epmd_response(pinfo, tvb, 0, epmd_tree);
     }
 
-    return (tvb_length(tvb));
+    return (tvb_captured_length(tvb));
 }
 
 void
@@ -424,3 +424,16 @@ proto_reg_handoff_epmd(void) {
 
     dissector_add_uint("tcp.port", EPMD_PORT, epmd_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

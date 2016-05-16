@@ -42,31 +42,43 @@ public:
     void animatedShow();
     void findNext();
     void findPrevious();
+    void setFocus();
 
 public slots:
     void setCaptureFile(capture_file *cf);
     void findFrameWithFilter(QString &filter);
 
 signals:
-    void pushFilterSyntaxStatus(QString&);
+    void pushFilterSyntaxStatus(const QString&);
 
 protected:
-    void keyPressEvent(QKeyEvent *event);
+    virtual void keyPressEvent(QKeyEvent *event);
 
 private:
-    void enableWidgets();
+    void updateWidgets();
 
     Ui::SearchFrame *sf_ui_;
     capture_file *cap_file_;
 
 private slots:
-    void on_searchTypeComboBox_currentIndexChanged(int index);
-
-    void on_searchLineEdit_textChanged(const QString &search_string);
-
+    void on_searchTypeComboBox_currentIndexChanged(int);
+    void on_searchLineEdit_textChanged(const QString &);
     void on_findButton_clicked();
-
     void on_cancelButton_clicked();
+    void changeEvent(QEvent* event);
 };
 
 #endif // SEARCH_FRAME_H
+
+/*
+ * Editor modelines
+ *
+ * Local Variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

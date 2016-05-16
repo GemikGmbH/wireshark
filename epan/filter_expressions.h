@@ -29,12 +29,16 @@
 extern "C" {
 #endif /* __cplusplus */
 
+/** @file
+ * Filter expressions.
+ */
+
 struct filter_expression {
 	gpointer button;	/* Filter toolbar */
 	gchar	*label;
 	gchar	*expression;
 
-	gint	index;
+    gint	 index;
 	gboolean enabled;	/* Can be set to FALSE by Preferences Dialog */
 	gboolean deleted;	/* Can be set to TRUE by Preferences Dialog (GTK+ only) */
 
@@ -43,11 +47,24 @@ struct filter_expression {
 
 WS_DLL_PUBLIC struct filter_expression **pfilter_expression_head;
 
+/** Create a filter expression
+ *
+ * @param label Label (button) text for the expression.
+ * @param expr The display filter for the expression.
+ * @param enabled Determines if the expression is shown in the UI.
+ * @return A newly allocated and initialized struct filter_expression.
+ */
 WS_DLL_PUBLIC
 struct filter_expression *filter_expression_new(const gchar *label,
     const gchar *expr, const gboolean enabled);
 
 void filter_expression_init(gboolean prefs);
+
+/** Clear the filter expression list.
+ * Frees each item in the list. Caller should set list_head to NULL afterward.
+ */
+WS_DLL_PUBLIC
+void filter_expression_free(struct filter_expression *list_head);
 
 #ifdef __cplusplus
 }

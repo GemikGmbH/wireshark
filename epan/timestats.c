@@ -1,6 +1,6 @@
 /* timestats.c
  * routines for time statistics
- * Copyrigth 2003 Lars Roland
+ * Copyright 2003 Lars Roland
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -88,3 +88,16 @@ gdouble get_average(const nstime_t *sum, guint32 num)
 	}
 	return average;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -20,12 +20,20 @@
  */
 
 #include "sctp_graph_arwnd_dialog.h"
-#include "ui_sctp_graph_arwnd_dialog.h"
+#include <ui_sctp_graph_arwnd_dialog.h>
 #include "sctp_assoc_analyse_dialog.h"
 
+#include <file.h>
+#include <math.h>
+#include <epan/dissectors/packet-sctp.h>
+#include "epan/packet.h"
+
+#include "ui/tap-sctp-analysis.h"
+
+#include "qcustomplot.h"
 #include "sctp_graph_dialog.h"
 
-SCTPGraphArwndDialog::SCTPGraphArwndDialog(QWidget *parent, sctp_assoc_info_t *assoc, capture_file *cf, int dir) :
+SCTPGraphArwndDialog::SCTPGraphArwndDialog(QWidget *parent, sctp_assoc_info_t *assoc, _capture_file *cf, int dir) :
     QDialog(parent),
     ui(new Ui::SCTPGraphArwndDialog),
     selected_assoc(assoc),
@@ -36,6 +44,11 @@ SCTPGraphArwndDialog::SCTPGraphArwndDialog(QWidget *parent, sctp_assoc_info_t *a
     if (!selected_assoc) {
         selected_assoc = SCTPAssocAnalyseDialog::findAssocForPacket(cap_file_);
     }
+    Qt::WindowFlags flags = Qt::Window | Qt::WindowSystemMenuHint
+            | Qt::WindowMinimizeButtonHint
+            | Qt::WindowMaximizeButtonHint
+            | Qt::WindowCloseButtonHint;
+    this->setWindowFlags(flags);
     this->setWindowTitle(QString(tr("SCTP Data and Adv. Rec. Window over Time: %1 Port1 %2 Port2 %3")).arg(cf_get_display_name(cap_file_)).arg(selected_assoc->port1).arg(selected_assoc->port2));
     if ((direction == 1 && selected_assoc->n_array_tsn1 == 0) || (direction == 2 && selected_assoc->n_array_tsn2 == 0)) {
         QMessageBox msgBox;
@@ -63,10 +76,10 @@ void SCTPGraphArwndDialog::drawArwndGraph()
 
     if (direction == 1) {
         listSACK = g_list_last(selected_assoc->sack1);
-        startArwnd = selected_assoc->arwnd1;
+        startArwnd = selected_assoc->arwnd2;
     } else {
         listSACK = g_list_last(selected_assoc->sack2);
-        startArwnd = selected_assoc->arwnd2;
+        startArwnd = selected_assoc->arwnd1;
     }
     while (listSACK) {
         tsn = (tsn_t*) (listSACK->data);

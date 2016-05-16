@@ -27,29 +27,40 @@
 
 #include "config.h"
 
-#include <string.h>
+#include <stdlib.h>
 
 #include <gtk/gtk.h>
 
-#include "epan/packet_info.h"
-#include "epan/epan.h"
-#include "epan/value_string.h"
+#include <epan/packet_info.h>
+#include <epan/stat_groups.h>
 #include <epan/tap.h>
+#include <epan/value_string.h>
+
 #include <epan/dissectors/packet-mtp3.h>
 
-#include "../stat_menu.h"
-#include "../globals.h"
-#include "../file.h"
-#include "../summary.h"
+#include "globals.h"
+#include "summary.h"
+
+#include "ui/simple_dialog.h"
 
 #include "ui/gtk/gui_stat_menu.h"
 #include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/gui_utils.h"
-#include "ui/gtk/mtp3_stat.h"
+
+void register_tap_listener_gtk_mtp3_summary(void);
 
 #define SUM_STR_MAX 1024
 
-void register_tap_listener_gtkmtp3_summary(void);
+typedef struct _mtp3_stat_si_code_t {
+    int			num_msus;
+    int			size;
+} mtp3_stat_si_code_t;
+
+typedef struct _mtp3_stat_t {
+    mtp3_addr_pc_t		addr_opc;
+    mtp3_addr_pc_t		addr_dpc;
+    mtp3_stat_si_code_t		mtp3_si_code[MTP3_NUM_SI_CODE];
+} mtp3_stat_t;
 
 typedef struct _my_columns_t {
     guint32           value;
@@ -59,14 +70,23 @@ typedef struct _my_columns_t {
 
 enum
 {
-   SI_COLUMN,
-   NUM_MSUS_COLUMN,
-   NUM_MSUS_SEC_COLUMN,
-   NUM_BYTES_COLUMN,
-   NUM_BYTES_MSU_COLUMN,
-   NUM_BYTES_SEC_COLUMN,
-   N_COLUMN /* The number of columns */
+    SI_COLUMN,
+    NUM_MSUS_COLUMN,
+    NUM_MSUS_SEC_COLUMN,
+    NUM_BYTES_COLUMN,
+    NUM_BYTES_MSU_COLUMN,
+    NUM_BYTES_SEC_COLUMN,
+    N_COLUMN /* The number of columns */
 };
+
+/*
+ * I don't like it but I don't have time to create
+ * the code for a dynamic size solution
+ */
+#define	MTP3_MAX_NUM_OPC_DPC	50
+
+static mtp3_stat_t     mtp3_stat[MTP3_MAX_NUM_OPC_DPC];
+static guint8          mtp3_num_used;
 
 /* Create list */
 static GtkWidget *
@@ -233,8 +253,8 @@ mtp3_sum_draw(
 
         while (j < mtp3_num_used)
         {
-            num_msus += mtp3_stat[j].si_code[i].num_msus;
-            num_bytes += mtp3_stat[j].si_code[i].size;
+            num_msus += mtp3_stat[j].mtp3_si_code[i].num_msus;
+            num_bytes += mtp3_stat[j].mtp3_si_code[i].size;
 
             j++;
         }
@@ -438,8 +458,106 @@ mtp3_sum_gtk_sum_cb(GtkAction *action _U_, gpointer user_data _U_)
     window_present(sum_open_w);
 }
 
+static void
+mtp3_summary_reset(
+    void        *tapdata)
+{
+    mtp3_stat_t     (*stat_p)[MTP3_MAX_NUM_OPC_DPC] = (mtp3_stat_t(*)[MTP3_MAX_NUM_OPC_DPC])tapdata;
+
+    mtp3_num_used = 0;
+    memset(stat_p, 0, MTP3_MAX_NUM_OPC_DPC * sizeof(mtp3_stat_t));
+}
+
+
+static gboolean
+mtp3_summary_packet(
+    void            *tapdata,
+    packet_info     *pinfo _U_,
+    epan_dissect_t  *edt _U_,
+    const void      *data)
+{
+    mtp3_stat_t           (*stat_p)[MTP3_MAX_NUM_OPC_DPC] = (mtp3_stat_t(*)[MTP3_MAX_NUM_OPC_DPC])tapdata;
+    const mtp3_tap_rec_t  *data_p = (const mtp3_tap_rec_t *)data;
+    int                    i;
+
+    if (data_p->mtp3_si_code >= MTP3_NUM_SI_CODE)
+    {
+        /*
+         * we thought this si_code was not used ?
+         * is MTP3_NUM_SI_CODE out of date ?
+         */
+        return(FALSE);
+    }
+
+    /*
+     * look for opc/dpc pair
+     */
+    i = 0;
+    while (i < mtp3_num_used)
+    {
+        if (memcmp(&data_p->addr_opc, &(*stat_p)[i].addr_opc, sizeof(mtp3_addr_pc_t)) == 0)
+        {
+            if (memcmp(&data_p->addr_dpc, &(*stat_p)[i].addr_dpc, sizeof(mtp3_addr_pc_t)) == 0)
+            {
+                break;
+            }
+        }
+
+        i++;
+    }
+
+    if (i == mtp3_num_used)
+    {
+        if (mtp3_num_used == MTP3_MAX_NUM_OPC_DPC)
+        {
+            /*
+             * too many
+             */
+            return(FALSE);
+        }
+
+        mtp3_num_used++;
+    }
+
+    (*stat_p)[i].addr_opc = data_p->addr_opc;
+    (*stat_p)[i].addr_dpc = data_p->addr_dpc;
+    (*stat_p)[i].mtp3_si_code[data_p->mtp3_si_code].num_msus++;
+    (*stat_p)[i].mtp3_si_code[data_p->mtp3_si_code].size += data_p->size;
+
+    return(TRUE);
+}
 
 void
-register_tap_listener_gtkmtp3_summary(void)
+register_tap_listener_gtk_mtp3_summary(void)
 {
+    GString     *err_p;
+
+    memset((void *) &mtp3_stat, 0, sizeof(mtp3_stat));
+
+    err_p =
+    register_tap_listener("mtp3", &mtp3_stat, NULL, 0,
+        mtp3_summary_reset,
+        mtp3_summary_packet,
+        NULL);
+
+    if (err_p != NULL)
+    {
+        simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK, "%s", err_p->str);
+        g_string_free(err_p, TRUE);
+
+        exit(1);
+    }
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

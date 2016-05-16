@@ -186,7 +186,8 @@ window_new(GtkWindowType  type,
 GtkWidget *
 window_new_with_geom(GtkWindowType  type,
                      const gchar   *title,
-                     const gchar   *geom_name)
+                     const gchar   *geom_name,
+                     GtkWindowPosition pos)
 {
     window_geometry_t geom;
     GtkWidget *win = window_new(type, title);
@@ -203,6 +204,17 @@ window_new_with_geom(GtkWindowType  type,
             geom.set_size       = TRUE;
             geom.set_maximized  = FALSE;  /* don't maximize until window is shown */
             window_set_geometry(win, &geom);
+        } else if (pos != GTK_WIN_POS_NONE) {
+#ifdef _WIN32
+            /* Testing using GTK+ 2.24.10 shows that
+             * GTK_WIN_POS_CENTER_ON_PARENT doesn't seem to work on Windows, so
+             * use the next best thing.  Is this a problem for all OS's though,
+             * or just Windows?  Unknown. (Tested with Windows XP SP3 32-bit)
+             */
+            if (pos == GTK_WIN_POS_CENTER_ON_PARENT)
+                pos = GTK_WIN_POS_CENTER;
+#endif
+            gtk_window_set_position(GTK_WINDOW(win), pos);
         }
     }
 
@@ -523,7 +535,8 @@ pixbuf_to_widget(const guint8 *pb_data) {
  */
 void
 bad_dfilter_alert_box(GtkWidget  *parent,
-                      const char *dftext)
+                      const char *dftext,
+                      gchar *err_msg)
 {
     GtkWidget *msg_dialog;
 
@@ -532,7 +545,7 @@ bad_dfilter_alert_box(GtkWidget  *parent,
                                         GTK_MESSAGE_ERROR,
                                         GTK_BUTTONS_OK,
             "The filter expression \"%s\" isn't a valid display filter. (%s)",
-                                        dftext, dfilter_error_msg);
+                                        dftext, err_msg);
     gtk_message_dialog_format_secondary_text(GTK_MESSAGE_DIALOG(msg_dialog),
          "See the help for a description of the display filter syntax.");
     gtk_dialog_run(GTK_DIALOG(msg_dialog));
@@ -567,7 +580,7 @@ main_window_quit(void)
 typedef struct pipe_input_tag {
     gint             source;
     gpointer         user_data;
-    int             *child_process;
+    ws_process_id   *child_process;
     pipe_input_cb_t  input_cb;
     guint            pipe_input_id;
 #ifdef _WIN32
@@ -680,7 +693,7 @@ pipe_input_cb(GIOChannel   *source _U_,
 void
 pipe_input_set_handler(gint             source,
                        gpointer         user_data,
-                       int             *child_process,
+                       ws_process_id   *child_process,
                        pipe_input_cb_t  input_cb)
 {
     static pipe_input_t pipe_input;
@@ -770,6 +783,9 @@ setup_scrolled_window(GtkWidget *scrollw)
 {
     gtk_scrolled_window_set_policy(GTK_SCROLLED_WINDOW(scrollw),
                                    GTK_POLICY_AUTOMATIC, GTK_POLICY_AUTOMATIC);
+#if GTK_CHECK_VERSION(3,16,0)
+        gtk_scrolled_window_set_overlay_scrolling(GTK_SCROLLED_WINDOW(scrollw), FALSE);
+#endif /* OVERLAY_SCROLLING */
 
     scrolled_windows = g_list_append(scrolled_windows, scrollw);
 
@@ -1063,11 +1079,11 @@ copy_binary_to_clipboard(const guint8 *data_p,
                          int           len)
 {
     static GtkTargetEntry target_entry[] = {
-         {(char *)"application/octet-stream", 0, 0}};
-	     /* XXX - this is not understood by most applications,
-              * but can be pasted into the better hex editors - is
-              * there something better that we can do?
-              */
+        {(char *)"application/octet-stream", 0, 0}};
+    /* XXX - this is not understood by most applications,
+     * but can be pasted into the better hex editors - is
+     * there something better that we can do?
+     */
 
     GtkClipboard  *cb;
     copy_binary_t *copy_data;
@@ -2010,11 +2026,24 @@ ws_gtk_grid_set_homogeneous(GtkGrid *grid, gboolean homogeneous)
 void
 gdk_cairo_set_source_rgba(cairo_t *cr, const GdkRGBA *rgba)
 {
-	GdkColor color;
+    GdkColor color;
 
-	gdkRGBAcolor_to_GdkColor(&color, rgba);
+    gdkRGBAcolor_to_GdkColor(&color, rgba);
 
-	gdk_cairo_set_source_color(cr, &color);
+    gdk_cairo_set_source_color(cr, &color);
 
 }
 #endif /* GTK_CHECK_VERSION(3,0,0) */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

@@ -24,63 +24,65 @@
 LIBWIRESHARK_SRC =		\
 	addr_and_mask.c		\
 	addr_resolv.c		\
-	address_to_str.c	\
+	address_types.c	\
 	afn.c			\
 	aftypes.c		\
 	app_mem_usage.c		\
 	asn1.c			\
-	atalk-utils.c		\
 	charsets.c		\
 	circuit.c		\
 	column.c		\
 	column-utils.c		\
 	conversation.c		\
+	conversation_table.c	\
+	crc10-tvb.c		\
 	crc16-tvb.c		\
 	crc32-tvb.c		\
+	crc6-tvb.c		\
 	crc8-tvb.c		\
 	decode_as.c		\
 	disabled_protos.c	\
 	dissector_filters.c	\
 	dvb_chartbl.c		\
 	dwarf.c			\
-	emem.c			\
 	epan.c			\
 	ex-opt.c		\
 	except.c		\
 	expert.c		\
 	exported_pdu.c		\
+	plugin_if.c		\
 	filter_expressions.c	\
 	follow.c		\
 	frame_data.c		\
 	frame_data_sequence.c	\
-	frequency-utils.c	\
 	funnel.c		\
+	g_int64_hash_routines.c	\
 	gcp.c			\
 	geoip_db.c		\
 	golay.c			\
 	guid-utils.c		\
-	h225-persistentdata.c	\
 	in_cksum.c		\
 	ipproto.c		\
 	ipv4.c			\
 	next_tvb.c		\
 	oids.c			\
 	osi-utils.c		\
+	oui.c			\
 	packet-range.c		\
 	packet.c		\
 	prefs.c			\
 	print.c			\
+	print_stream.c		\
 	proto.c			\
 	range.c			\
 	reassemble.c		\
 	reedsolomon.c		\
 	req_resp_hdrs.c		\
+	rtd_table.c	\
 	show_exception.c	\
-	sigcomp_state_hdlr.c	\
-	sigcomp-udvm.c		\
 	sminmpec.c		\
-	sna-utils.c		\
-	stat_cmd_args.c		\
+	srt_table.c	\
+	stat_tap_ui.c		\
 	stats_tree.c		\
 	strutil.c		\
 	stream.c		\
@@ -145,13 +147,13 @@ LIBWIRESHARK_INCLUDES =		\
 	addr_and_mask.h		\
 	addr_resolv.h		\
 	address.h		\
+	address_types.h		\
 	afn.h			\
 	aftypes.h		\
 	app_mem_usage.h		\
 	arcnet_pids.h		\
 	arptypes.h		\
 	asn1.h			\
-	atalk-utils.h		\
 	ax25_pids.h		\
 	bridged_pids.h		\
 	charsets.h		\
@@ -162,9 +164,12 @@ LIBWIRESHARK_INCLUDES =		\
 	column-utils.h		\
 	conversation.h		\
 	conversation_debug.h		\
+	conversation_table.h		\
 	conv_id.h		\
+	crc10-tvb.h		\
 	crc16-tvb.h		\
 	crc32-tvb.h		\
+	crc6-tvb.h		\
 	crc8-tvb.h		\
 	decode_as.h		\
 	diam_dict.h		\
@@ -176,7 +181,6 @@ LIBWIRESHARK_INCLUDES =		\
 	dwarf.h			\
 	eap.h			\
 	eapol_keydes_types.h	\
-	emem.h			\
 	epan-int.h		\
 	epan.h			\
 	epan_dissect.h		\
@@ -186,20 +190,18 @@ LIBWIRESHARK_INCLUDES =		\
 	exceptions.h		\
 	expert.h		\
 	exported_pdu.h		\
+	plugin_if.h      \
 	filter_expressions.h	\
 	follow.h		\
 	frame_data.h		\
 	frame_data_sequence.h	\
-	frequency-utils.h	\
 	funnel.h		\
+	g_int64_hash_routines.h	\
 	garrayfix.h		\
 	gcp.h			\
 	geoip_db.h		\
 	golay.h			\
-	greproto.h		\
 	guid-utils.h		\
-	h225-persistentdata.h	\
-	iana_snap_pid.h		\
 	iax2_codec_type.h	\
 	in_cksum.h		\
 	ip_opts.h		\
@@ -219,6 +221,7 @@ LIBWIRESHARK_INCLUDES =		\
 	params.h		\
 	ppptypes.h		\
 	print.h			\
+	print_stream.h		\
 	prefs.h			\
 	prefs-int.h		\
 	proto.h			\
@@ -228,14 +231,15 @@ LIBWIRESHARK_INCLUDES =		\
 	reassemble.h		\
 	reedsolomon.h		\
 	req_resp_hdrs.h		\
+	rtd_table.h	\
 	rtp_pt.h		\
 	sctpppids.h		\
 	show_exception.h	\
-	sigcomp_state_hdlr.h	\
-	sigcomp-udvm.h		\
+	slow_protocol_subtypes.h \
 	sminmpec.h		\
-	sna-utils.h		\
-	stat_cmd_args.h		\
+	srt_table.h	\
+	stat_tap_ui.h		\
+	stat_groups.h		\
 	stats_tree.h		\
 	stats_tree_priv.h	\
 	stream.h		\

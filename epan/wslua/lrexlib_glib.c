@@ -48,16 +48,12 @@ THE SOFTWARE.
 #include <stdlib.h>
 #include <string.h>
 #include <locale.h>
-#include <ctype.h>
 #include <glib.h>
 
 #include "lua.h"
 #include "lauxlib.h"
 #include "lrexlib.h"
 
-extern int Gregex_get_flags (lua_State *L);
-extern int Gregex_get_compile_flags (lua_State *L);
-extern int Gregex_get_match_flags (lua_State *L);
 extern flag_pair gregex_error_flags[];
 
 /* These 2 settings may be redefined from the command-line or the makefile.
@@ -79,8 +75,8 @@ extern flag_pair gregex_error_flags[];
 static int getcflags (lua_State *L, int pos);
 #define ALG_GETCFLAGS(L,pos)  getcflags(L, pos)
 
-#define ALG_NOMATCH(res)   (res) == FALSE
-#define ALG_ISMATCH(res)   (res) == TRUE
+#define ALG_NOMATCH(res)   ((res) == FALSE)
+#define ALG_ISMATCH(res)   ((res) == TRUE)
 #define ALG_SUBBEG(ud,n)   getSubStartPos(ud,n)
 #define ALG_SUBEND(ud,n)   getSubEndPos(ud,n)
 #define ALG_SUBLEN(ud,n)   (ALG_SUBEND(ud,n) - ALG_SUBBEG(ud,n))
@@ -232,7 +228,7 @@ static int getcflags (lua_State *L, int pos) {
 }
 
 static int check_eflags(lua_State *L, const int idx, const int def) {
-  int eflags = luaL_optint (L, idx, def);
+  int eflags = (int) luaL_optinteger (L, idx, def);
   if ((eflags & ~G_REGEX_MATCH_MASK) != 0) {
     return luaL_error (L, "GLib Regex match flag is invalid");
   }
@@ -260,10 +256,12 @@ static int compile_regex (lua_State *L, const TArgComp *argC, TGrgx **pud) {
 
   ud->pr = g_regex_new (argC->pattern,
         (GRegexCompileFlags)(argC->cflags | G_REGEX_RAW), (GRegexMatchFlags)0, &ud->error);
+
+  if (pud) *pud = ud;
+
   if (!ud->pr)
     return luaL_error (L, "%s (code: %d)", ud->error->message, ud->error->code);
 
-  if (pud) *pud = ud;
   return 1;
 }
 

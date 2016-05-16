@@ -29,6 +29,7 @@
 #include "config.h"
 
 #include <epan/packet.h>
+#include "packet-bluetooth.h"
 #include "packet-btl2cap.h"
 
 /* Initialize the protocol and registered fields */
@@ -53,6 +54,8 @@ static int hf_btsmp_ediv = -1;
 static int hf_btsmp_authreq = -1;
 static int hf_btsmp_initiator_key_distribution = -1;
 static int hf_btsmp_responder_key_distribution = -1;
+static int hf_bd_addr = -1;
+static int hf_address_type = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_btsmp = -1;
@@ -177,14 +180,30 @@ dissect_btsmp_key_dist(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree
 }
 
 static int
-dissect_btsmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+dissect_btsmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-    int offset = 0;
-    proto_item *ti;
-    proto_tree *st;
-    guint8 opcode;
+    int          offset = 0;
+    proto_item  *ti;
+    proto_tree  *st;
+    guint8      opcode;
+    guint32     interface_id;
+    guint32     adapter_id;
+    gint        previous_proto;
 
-    ti = proto_tree_add_item(tree, proto_btsmp, tvb, 0, -1, ENC_NA);
+    interface_id = HCI_INTERFACE_DEFAULT;
+    adapter_id = HCI_ADAPTER_DEFAULT;
+    previous_proto = (GPOINTER_TO_INT(wmem_list_frame_data(wmem_list_frame_prev(wmem_list_tail(pinfo->layers)))));
+    if (data && previous_proto == proto_btl2cap) {
+        btl2cap_data_t *l2cap_data;
+
+        l2cap_data = (btl2cap_data_t *) data;
+        if (l2cap_data) {
+            interface_id = l2cap_data->interface_id;
+            adapter_id = l2cap_data->adapter_id;
+        }
+    }
+
+    ti = proto_tree_add_item(tree, proto_btsmp, tvb, 0, tvb_captured_length(tvb), ENC_NA);
     st = proto_item_add_subtree(ti, ett_btsmp);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "SMP");
@@ -197,12 +216,11 @@ dissect_btsmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
             col_set_str(pinfo->cinfo, COL_INFO, "Rcvd ");
             break;
         default:
-            col_add_fstr(pinfo->cinfo, COL_INFO, "Unknown direction %d ",
-                pinfo->p2p_dir);
+            col_set_str(pinfo->cinfo, COL_INFO, "UnknownDirection ");
             break;
     }
 
-    if (tvb_length_remaining(tvb, 0) < 1)
+    if (tvb_reported_length(tvb) < 1)
         return FALSE;
 
     proto_tree_add_item(st, hf_btsmp_opcode, tvb, 0, 1, ENC_LITTLE_ENDIAN);
@@ -265,7 +283,14 @@ dissect_btsmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
         offset += 16;
         break;
 
-    case 0x0a: /* Signing Informationn */
+    case 0x09: /* Identity Address Information */
+        proto_tree_add_item(st, hf_address_type, tvb, offset, 1, ENC_NA);
+        offset += 1;
+
+        offset = dissect_bd_addr(hf_bd_addr, pinfo, st, tvb, offset, FALSE, interface_id, adapter_id, NULL);
+        break;
+
+    case 0x0a: /* Signing Information */
         proto_tree_add_item(st, hf_btsmp_signature_key, tvb, offset, 16, ENC_NA);
         offset += 16;
         break;
@@ -380,6 +405,16 @@ proto_register_btsmp(void)
             {"Responder Key Distribution", "btsmp.responder_key_distribution",
             FT_NONE, BASE_NONE, NULL, 0x00,
             NULL, HFILL}
+        },
+        {&hf_bd_addr,
+          { "BD_ADDR", "btsmp.bd_addr",
+            FT_ETHER, BASE_NONE, NULL, 0x0,
+            "Bluetooth Device Address", HFILL}
+        },
+        { &hf_address_type,
+            { "Address Type", "btsmp.address_type",
+            FT_UINT8, BASE_HEX, VALS(bluetooth_address_type_vals), 0x0,
+            NULL, HFILL }
         }
     };
 

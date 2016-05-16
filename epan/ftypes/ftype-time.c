@@ -38,7 +38,7 @@
 #include <ftypes-int.h>
 #include <epan/to_str.h>
 
-#ifdef NEED_STRPTIME_H
+#ifndef HAVE_STRPTIME
 #include "wsutil/strptime.h"
 #endif
 
@@ -168,7 +168,7 @@ get_nsecs(const char *startp, int *nsecs)
 }
 
 static gboolean
-relative_val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, LogFunc logfunc)
+relative_val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, gchar **err_msg)
 {
 	const char    *curptr;
 	char *endptr;
@@ -227,14 +227,14 @@ relative_val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_v
 	return TRUE;
 
 fail:
-	if (logfunc != NULL)
-		logfunc("\"%s\" is not a valid time.", s);
+	if (err_msg != NULL)
+		*err_msg = g_strdup_printf("\"%s\" is not a valid time.", s);
 	return FALSE;
 }
 
 
 static gboolean
-absolute_val_from_string(fvalue_t *fv, const char *s, LogFunc logfunc)
+absolute_val_from_string(fvalue_t *fv, const char *s, gchar **err_msg)
 {
 	struct tm tm;
 	char    *curptr;
@@ -291,16 +291,16 @@ absolute_val_from_string(fvalue_t *fv, const char *s, LogFunc logfunc)
 	return TRUE;
 
 fail:
-	if (logfunc != NULL)
-		logfunc("\"%s\" is not a valid absolute time. Example: \"Nov 12, 1999 08:55:44.123\" or \"2011-07-04 12:34:56\"",
+	if (err_msg != NULL)
+		*err_msg = g_strdup_printf("\"%s\" is not a valid absolute time. Example: \"Nov 12, 1999 08:55:44.123\" or \"2011-07-04 12:34:56\"",
 		    s);
 	return FALSE;
 }
 
 static gboolean
-absolute_val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, LogFunc logfunc)
+absolute_val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, gchar **err_msg)
 {
-	return absolute_val_from_string(fv, s, logfunc);
+	return absolute_val_from_string(fv, s, err_msg);
 }
 
 static void
@@ -323,42 +323,60 @@ value_get(fvalue_t *fv)
 }
 
 static int
-absolute_val_repr_len(fvalue_t *fv, ftrepr_t rtype)
+absolute_val_repr_len(fvalue_t *fv, ftrepr_t rtype, int field_display _U_)
 {
 	gchar *rep;
+	int ret;
 
-	rep = abs_time_to_ep_str(&fv->value.time, ABSOLUTE_TIME_LOCAL,
+	rep = abs_time_to_str(NULL, &fv->value.time, ABSOLUTE_TIME_LOCAL,
 		rtype == FTREPR_DISPLAY);
-	return (int)strlen(rep) + ((rtype == FTREPR_DFILTER) ? 2 : 0);	/* 2 for opening and closing quotes */
+
+	ret = (int)strlen(rep) + ((rtype == FTREPR_DFILTER) ? 2 : 0);	/* 2 for opening and closing quotes */
+
+	wmem_free(NULL, rep);
+
+	return ret;
 }
 
 static void
-absolute_val_to_repr(fvalue_t *fv, ftrepr_t rtype, char *buf)
+absolute_val_to_repr(fvalue_t *fv, ftrepr_t rtype, int field_display _U_, char *buf)
 {
-	gchar *rep;
-
-	rep = abs_time_to_ep_str(&fv->value.time, ABSOLUTE_TIME_LOCAL,
+	gchar *rep = abs_time_to_str(NULL, &fv->value.time, ABSOLUTE_TIME_LOCAL,
 		rtype == FTREPR_DISPLAY);
 	if (rtype == FTREPR_DFILTER) {
-		sprintf(buf, "\"%s\"", rep);
-	} else {
-		strcpy(buf, rep);
+		*buf++ = '\"';
 	}
+
+	strcpy(buf, rep);
+
+	if (rtype == FTREPR_DFILTER) {
+		buf += strlen(rep);
+		*buf++ = '\"';
+		*buf++ = '\0';
+	}
+	wmem_free(NULL, rep);
 }
 
 static int
-relative_val_repr_len(fvalue_t *fv, ftrepr_t rtype _U_)
+relative_val_repr_len(fvalue_t *fv, ftrepr_t rtype _U_, int field_display _U_)
 {
 	gchar *rep;
+	int ret;
 
-	rep = rel_time_to_secs_ep_str(&fv->value.time);
-	return (int)strlen(rep);
+	rep = rel_time_to_secs_str(NULL, &fv->value.time);
+	ret = (int)strlen(rep);
+	wmem_free(NULL, rep);
+
+	return ret;
 }
 
 static void
-relative_val_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, char *buf)
+relative_val_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, int field_display _U_, char *buf)
 {
-	strcpy(buf, rel_time_to_secs_ep_str(&fv->value.time));
+	gchar *rep;
+	rep = rel_time_to_secs_str(NULL, &fv->value.time);
+	strcpy(buf, rep);
+	wmem_free(NULL, rep);
 }
 
 void
@@ -385,13 +403,15 @@ ftype_register_time(void)
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		NULL,				/* set_value_floating */
 
 		value_get,			/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		NULL,				/* get_value_floating */
 
 		cmp_eq,
@@ -427,13 +447,15 @@ ftype_register_time(void)
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		NULL,				/* set_value_floating */
 
 		value_get,			/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		NULL,				/* get_value_floating */
 
 		cmp_eq,
@@ -453,3 +475,16 @@ ftype_register_time(void)
 	ftype_register(FT_ABSOLUTE_TIME, &abstime_type);
 	ftype_register(FT_RELATIVE_TIME, &reltime_type);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

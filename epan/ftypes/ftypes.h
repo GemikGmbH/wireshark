@@ -40,11 +40,17 @@ enum ftenum {
 	FT_UINT16,
 	FT_UINT24,	/* really a UINT32, but displayed as 3 hex-digits if FD_HEX*/
 	FT_UINT32,
+	FT_UINT40,	/* really a UINT64, but displayed as 10 hex-digits if FD_HEX*/
+	FT_UINT48,	/* really a UINT64, but displayed as 12 hex-digits if FD_HEX*/
+	FT_UINT56,	/* really a UINT64, but displayed as 14 hex-digits if FD_HEX*/
 	FT_UINT64,
 	FT_INT8,
 	FT_INT16,
 	FT_INT24,	/* same as for UINT24 */
 	FT_INT32,
+	FT_INT40, /* same as for UINT40 */
+	FT_INT48, /* same as for UINT48 */
+	FT_INT56, /* same as for UINT56 */
 	FT_INT64,
 	FT_FLOAT,
 	FT_DOUBLE,
@@ -69,11 +75,12 @@ enum ftenum {
 	FT_REL_OID,	/* RELATIVE-OID */
 	FT_SYSTEM_ID,
 	FT_STRINGZPAD,	/* for use with proto_tree_add_item() */
+	FT_FCWWN,
 	FT_NUM_TYPES /* last item number plus one */
 };
 
-#define IS_FT_INT(ft)    ((ft)==FT_INT8||(ft)==FT_INT16||(ft)==FT_INT24||(ft)==FT_INT32||(ft)==FT_INT64)
-#define IS_FT_UINT(ft)   ((ft)==FT_UINT8||(ft)==FT_UINT16||(ft)==FT_UINT24||(ft)==FT_UINT32||(ft)==FT_UINT64||(ft)==FT_FRAMENUM)
+#define IS_FT_INT(ft)    ((ft)==FT_INT8||(ft)==FT_INT16||(ft)==FT_INT24||(ft)==FT_INT32||(ft)==FT_INT40||(ft)==FT_INT48||(ft)==FT_INT56||(ft)==FT_INT64)
+#define IS_FT_UINT(ft)   ((ft)==FT_UINT8||(ft)==FT_UINT16||(ft)==FT_UINT24||(ft)==FT_UINT32||(ft)==FT_UINT40||(ft)==FT_UINT48||(ft)==FT_UINT56||(ft)==FT_UINT64||(ft)==FT_FRAMENUM)
 #define IS_FT_TIME(ft)   ((ft)==FT_ABSOLUTE_TIME||(ft)==FT_RELATIVE_TIME)
 #define IS_FT_STRING(ft) ((ft)==FT_STRING||(ft)==FT_STRINGZ||(ft)==FT_STRINGZPAD)
 
@@ -85,9 +92,21 @@ enum ftenum {
 #define FT_IPXNET_LEN       4
 #define FT_EUI64_LEN        8
 #define FT_AX25_ADDR_LEN    7
-#define FT_VINES_ADDR_LEN	6
+#define FT_VINES_ADDR_LEN	  6
+#define FT_FCWWN_LEN        8
 
 typedef enum ftenum ftenum_t;
+
+enum ft_framenum_type {
+    FT_FRAMENUM_NONE,
+    FT_FRAMENUM_REQUEST,
+    FT_FRAMENUM_RESPONSE,
+    FT_FRAMENUM_ACK,
+    FT_FRAMENUM_DUP_ACK,
+    FT_FRAMENUM_NUM_TYPES /* last item number plus one */
+};
+
+typedef enum ft_framenum_type ft_framenum_type_t;
 
 struct _ftype_t;
 typedef struct _ftype_t ftype_t;
@@ -183,6 +202,8 @@ typedef struct _fvalue_t {
 		guint32		uinteger;
 		gint32		sinteger;
 		guint64		integer64;
+		guint64		uinteger64;
+		gint64		sinteger64;
 		gdouble		floating;
 		gchar		*string;
 		guchar		*ustring;
@@ -201,8 +222,6 @@ typedef struct _fvalue_t {
 
 } fvalue_t;
 
-typedef void (*LogFunc)(const char*,...);
-
 fvalue_t*
 fvalue_new(ftenum_t ftype);
 
@@ -211,10 +230,10 @@ fvalue_init(fvalue_t *fv, ftenum_t ftype);
 
 WS_DLL_PUBLIC
 fvalue_t*
-fvalue_from_unparsed(ftenum_t ftype, const char *s, gboolean allow_partial_value, LogFunc logfunc);
+fvalue_from_unparsed(ftenum_t ftype, const char *s, gboolean allow_partial_value, gchar **err_msg);
 
 fvalue_t*
-fvalue_from_string(ftenum_t ftype, const char *s, LogFunc logfunc);
+fvalue_from_string(ftenum_t ftype, const char *s, gchar **err_msg);
 
 /* Returns the length of the string required to hold the
  * string representation of the the field value.
@@ -224,7 +243,7 @@ fvalue_from_string(ftenum_t ftype, const char *s, LogFunc logfunc);
  * The length DOES NOT include the terminating NUL. */
 WS_DLL_PUBLIC
 int
-fvalue_string_repr_len(fvalue_t *fv, ftrepr_t rtype);
+fvalue_string_repr_len(fvalue_t *fv, ftrepr_t rtype, int field_display);
 
 /* Creates the string representation of the field value.
  * If given non-NULL 'buf', the string is written at the memory
@@ -235,9 +254,12 @@ fvalue_string_repr_len(fvalue_t *fv, ftrepr_t rtype);
  * memory. if 'buf' was non-NULL, then the return value will be
  * 'buf'.
  *
+ * field_display parameter should be a BASE_ value (enum field_display_e)
+ * BASE_NONE should be used if field information isn't available.
+ *
  * Returns NULL if the string cannot be represented in the given rtype.*/
 WS_DLL_PUBLIC char *
-fvalue_to_string_repr(fvalue_t *fv, ftrepr_t rtype, char *buf);
+fvalue_to_string_repr(fvalue_t *fv, ftrepr_t rtype, int field_display, char *buf);
 
 WS_DLL_PUBLIC ftenum_t
 fvalue_type_ftenum(fvalue_t *fv);
@@ -270,7 +292,10 @@ void
 fvalue_set_sinteger(fvalue_t *fv, gint32 value);
 
 void
-fvalue_set_integer64(fvalue_t *fv, guint64 value);
+fvalue_set_uinteger64(fvalue_t *fv, guint64 value);
+
+void
+fvalue_set_sinteger64(fvalue_t *fv, gint64 value);
 
 void
 fvalue_set_floating(fvalue_t *fv, gdouble value);
@@ -287,7 +312,11 @@ fvalue_get_sinteger(fvalue_t *fv);
 
 WS_DLL_PUBLIC
 guint64
-fvalue_get_integer64(fvalue_t *fv);
+fvalue_get_uinteger64(fvalue_t *fv);
+
+WS_DLL_PUBLIC
+gint64
+fvalue_get_sinteger64(fvalue_t *fv);
 
 WS_DLL_PUBLIC double
 fvalue_get_floating(fvalue_t *fv);
@@ -330,3 +359,16 @@ fvalue_slice(fvalue_t *fv, drange_t *dr);
 #endif /* __cplusplus */
 
 #endif /* __FTYPES_H__ */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

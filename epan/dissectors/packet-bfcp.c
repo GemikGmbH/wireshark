@@ -27,8 +27,6 @@
  */
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
@@ -38,8 +36,6 @@ void proto_reg_handoff_bfcp(void);
 
 /* Initialize protocol and registered fields */
 static int proto_bfcp = -1;
-static gboolean  bfcp_enable_heuristic_dissection = FALSE;
-
 
 static int hf_bfcp_version = -1;
 static int hf_bfcp_hdr_r_bit = -1;
@@ -68,6 +64,8 @@ static int hf_bfcp_supp_prim = -1;
 static int hf_bfcp_user_disp_name = -1;
 static int hf_bfcp_user_uri = -1;
 static int hf_bfcp_req_by_id = -1;
+static int hf_bfcp_padding = -1;
+static int hf_bfcp_error_specific_details = -1;
 
 /* Initialize subtree pointers */
 static gint ett_bfcp = -1;
@@ -240,13 +238,13 @@ dissect_bfcp_attributes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
 			offset++;
 			if(length>3){
 				/* We have Error Specific Details */
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, length-3, "Error Specific Details");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_error_specific_details, tvb, offset, length-3, ENC_NA);
 			}
 			offset = offset + length-3;
 			pad_len = length & 0x03;
 			if(pad_len != 0){
 				pad_len = 4 - pad_len;
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, pad_len, "Padding");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_padding, tvb, offset, pad_len, ENC_NA);
 			}
 			offset = offset + pad_len;
 			break;
@@ -256,7 +254,7 @@ dissect_bfcp_attributes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
 			pad_len = length & 0x03;
 			if(pad_len != 0){
 				pad_len = 4 - pad_len;
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, pad_len, "Padding");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_padding, tvb, offset, pad_len, ENC_NA);
 			}
 			offset = offset + pad_len;
 			break;
@@ -266,7 +264,7 @@ dissect_bfcp_attributes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
 			pad_len = length & 0x03;
 			if(pad_len != 0){
 				pad_len = 4 - pad_len;
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, pad_len, "Padding");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_padding, tvb, offset, pad_len, ENC_NA);
 			}
 			offset = offset + pad_len;
 			break;
@@ -276,7 +274,7 @@ dissect_bfcp_attributes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
 			pad_len = length & 0x03;
 			if(pad_len != 0){
 				pad_len = 4 - pad_len;
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, pad_len, "Padding");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_padding, tvb, offset, pad_len, ENC_NA);
 			}
 			offset = offset + pad_len;
 			break;
@@ -289,7 +287,7 @@ dissect_bfcp_attributes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
 			pad_len = length & 0x03;
 			if(pad_len != 0){
 				pad_len = 4 - pad_len;
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, pad_len, "Padding");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_padding, tvb, offset, pad_len, ENC_NA);
 			}
 			offset = offset + pad_len;
 			break;
@@ -302,7 +300,7 @@ dissect_bfcp_attributes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
 			pad_len = length & 0x03;
 			if(pad_len != 0){
 				pad_len = 4 - pad_len;
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, pad_len, "Padding");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_padding, tvb, offset, pad_len, ENC_NA);
 			}
 			offset = offset + pad_len;
 			break;
@@ -312,7 +310,7 @@ dissect_bfcp_attributes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
 			pad_len = length & 0x03;
 			if(pad_len != 0){
 				pad_len = 4 - pad_len;
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, pad_len, "Padding");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_padding, tvb, offset, pad_len, ENC_NA);
 			}
 			offset = offset + pad_len;
 			break;
@@ -322,7 +320,7 @@ dissect_bfcp_attributes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
 			pad_len = length & 0x03;
 			if(pad_len != 0){
 				pad_len = 4 - pad_len;
-				proto_tree_add_text(bfcp_attr_tree, tvb, offset, pad_len, "Padding");
+				proto_tree_add_item(bfcp_attr_tree, hf_bfcp_padding, tvb, offset, pad_len, ENC_NA);
 			}
 			offset = offset + pad_len;
 			break;
@@ -460,7 +458,7 @@ dissect_bfcp_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 
 
 	/* Size of smallest BFCP packet: 12 octets */
-	if (tvb_length(tvb) < 12)
+	if (tvb_captured_length(tvb) < 12)
 		return FALSE;
 
 	/* Check version and reserved bits in first byte */
@@ -654,6 +652,18 @@ void proto_register_bfcp(void)
 			  FT_UINT16, BASE_DEC, NULL, 0x0,
 			  NULL, HFILL }
 		},
+		{
+			&hf_bfcp_padding,
+			{ "Padding", "bfcp.padding",
+			  FT_BYTES, BASE_NONE, NULL, 0x0,
+			  NULL, HFILL }
+		},
+		{
+			&hf_bfcp_error_specific_details,
+			{ "Error Specific Details", "bfcp.error_specific_details",
+			  FT_BYTES, BASE_NONE, NULL, 0x0,
+			  NULL, HFILL }
+		},
 	};
 
 	static gint *ett[] = {
@@ -674,10 +684,7 @@ void proto_register_bfcp(void)
 	bfcp_module = prefs_register_protocol(proto_bfcp,
 				proto_reg_handoff_bfcp);
 
-	prefs_register_bool_preference(bfcp_module, "enable",
-		      "Enable BFCP heuristic dissection",
-		      "Enable BFCP heuristic dissection (default is disabled)",
-		      &bfcp_enable_heuristic_dissection);
+	prefs_register_obsolete_preference(bfcp_module, "enable");
 
 	/* Register field and subtree array */
 	proto_register_field_array(proto_bfcp, hf, array_length(hf));
@@ -697,16 +704,23 @@ void proto_reg_handoff_bfcp(void)
 	 */
 	if (!prefs_initialized)
 	{
-		heur_dissector_add("tcp", dissect_bfcp_heur, proto_bfcp);
-		heur_dissector_add("udp", dissect_bfcp_heur, proto_bfcp);
-		dissector_add_handle("tcp.port", bfcp_handle);
-		dissector_add_handle("udp.port", bfcp_handle);
+		heur_dissector_add("tcp", dissect_bfcp_heur, "BFCP over TCP", "bfcp_tcp", proto_bfcp, HEURISTIC_DISABLE);
+		heur_dissector_add("udp", dissect_bfcp_heur, "BFCP over UDP", "bfcp_udp", proto_bfcp, HEURISTIC_DISABLE);
+		dissector_add_for_decode_as("tcp.port", bfcp_handle);
+		dissector_add_for_decode_as("udp.port", bfcp_handle);
 		prefs_initialized = TRUE;
 	}
-
-	heur_dissector_set_enabled("tcp", dissect_bfcp_heur, proto_bfcp,
-				   bfcp_enable_heuristic_dissection);
-
-	heur_dissector_set_enabled("udp", dissect_bfcp_heur, proto_bfcp,
-				   bfcp_enable_heuristic_dissection);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

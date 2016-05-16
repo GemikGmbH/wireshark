@@ -29,7 +29,7 @@
 #include <epan/etypes.h>
 #include <epan/expert.h>
 
-#include "packet-bluetooth-hci.h"
+#include "packet-bluetooth.h"
 #include "packet-btl2cap.h"
 #include "packet-btsdp.h"
 
@@ -154,7 +154,7 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
     guint16      uuid_dst;
     guint16      uuid_src;
     guint16      response_message;
-    guint        list_length;
+    guint16      list_length;
     guint        i_item;
 
     proto_tree_add_item(tree, hf_btbnep_control_type, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -179,17 +179,17 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
 
             pitem = proto_tree_add_item(tree, hf_btbnep_destination_service_uuid, tvb, offset, uuid_size, ENC_NA);
             uuid_dst = tvb_get_ntohs(tvb, offset);
-            proto_item_append_text(pitem, " (%s)", val_to_str_ext(uuid_dst, &bt_sig_uuid_vals_ext,  "Unknown uuid"));
+            proto_item_append_text(pitem, " (%s)", val_to_str_ext(uuid_dst, &bluetooth_uuid_vals_ext,  "Unknown uuid"));
             offset += uuid_size;
 
             pitem = proto_tree_add_item(tree, hf_btbnep_source_service_uuid, tvb, offset, uuid_size, ENC_NA);
             uuid_src = tvb_get_ntohs(tvb, offset);
-            proto_item_append_text(pitem, " (%s)", val_to_str_ext(uuid_src, &bt_sig_uuid_vals_ext,  "Unknown uuid"));
+            proto_item_append_text(pitem, " (%s)", val_to_str_ext(uuid_src, &bluetooth_uuid_vals_ext,  "Unknown uuid"));
             offset += uuid_size;
 
             col_append_fstr(pinfo->cinfo, COL_INFO, " - dst: <%s>, src: <%s>",
-                    val_to_str_ext(uuid_dst, &bt_sig_uuid_vals_ext,  "Unknown uuid"),
-                    val_to_str_ext(uuid_src, &bt_sig_uuid_vals_ext,  "Unknown uuid"));
+                    val_to_str_ext(uuid_dst, &bluetooth_uuid_vals_ext,  "Unknown uuid"),
+                    val_to_str_ext(uuid_src, &bluetooth_uuid_vals_ext,  "Unknown uuid"));
             break;
         case 0x02: /* Setup Connection Response */
             proto_tree_add_item(tree, hf_btbnep_setup_connection_response_message, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -203,7 +203,7 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
             list_length = tvb_get_ntohs(tvb, offset);
             offset += 2;
 
-            for (i_item = 0; i_item < list_length; i_item += 4) {
+            for (i_item = 0; i_item + 4 > i_item && i_item < list_length; i_item += 4) {
                 proto_tree_add_item(tree, hf_btbnep_network_type_start, tvb, offset, 2, ENC_BIG_ENDIAN);
                 offset += 2;
 
@@ -223,7 +223,7 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
             list_length = tvb_get_ntohs(tvb, offset);
             offset += 2;
 
-            for (i_item = 0; i_item < list_length; i_item += 12) {
+            for (i_item = 0; i_item + 12 > i_item && i_item < list_length; i_item += 12) {
                 proto_tree_add_item(tree, hf_btbnep_multicast_address_start, tvb, offset, 6, ENC_NA);
                 offset += 6;
 
@@ -286,8 +286,6 @@ dissect_btbnep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
     guint         type = 0;
     proto_item   *addr_item;
     proto_tree   *addr_tree = NULL;
-    const guint8 *src_addr;
-    const guint8 *dst_addr;
 
     pi = proto_tree_add_item(tree, proto_btbnep, tvb, offset, -1, ENC_NA);
     btbnep_tree = proto_item_add_subtree(pi, ett_btbnep);
@@ -303,8 +301,7 @@ dissect_btbnep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
             col_set_str(pinfo->cinfo, COL_INFO, "Rcvd ");
             break;
         default:
-            col_add_fstr(pinfo->cinfo, COL_INFO, "Unknown direction %d ",
-                pinfo->p2p_dir);
+            col_set_str(pinfo->cinfo, COL_INFO, "UnknownDirection ");
             break;
     }
 
@@ -319,32 +316,28 @@ dissect_btbnep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
     if (extension_flag) col_append_str(pinfo->cinfo, COL_INFO, "+E");
 
     if (bnep_type == BNEP_TYPE_GENERAL_ETHERNET || bnep_type == BNEP_TYPE_COMPRESSED_ETHERNET_DESTINATION_ONLY) {
-        dst_addr = tvb_get_ptr(tvb, offset, 6);
-        SET_ADDRESS(&pinfo->dl_dst, AT_ETHER, 6, dst_addr);
-        SET_ADDRESS(&pinfo->dst, AT_ETHER, 6, dst_addr);
+        TVB_SET_ADDRESS(&pinfo->dl_dst, AT_ETHER, tvb, offset, 6);
+        COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->dl_dst);
 
-        addr_item = proto_tree_add_ether(btbnep_tree, hf_btbnep_dst, tvb, offset, 6, dst_addr);
-        if (addr_item) addr_tree = proto_item_add_subtree(addr_item, ett_addr);
-        proto_tree_add_ether(addr_tree, hf_btbnep_addr, tvb, offset, 6, dst_addr);
+        addr_item = proto_tree_add_item(btbnep_tree, hf_btbnep_dst, tvb, offset, 6, ENC_NA);
+        addr_tree = proto_item_add_subtree(addr_item, ett_addr);
+        proto_tree_add_item(addr_tree, hf_btbnep_addr, tvb, offset, 6, ENC_NA);
         proto_tree_add_item(addr_tree, hf_btbnep_lg, tvb, offset, 3, ENC_BIG_ENDIAN);
         proto_tree_add_item(addr_tree, hf_btbnep_ig, tvb, offset, 3, ENC_BIG_ENDIAN);
         offset += 6;
     }
 
     if (bnep_type == BNEP_TYPE_GENERAL_ETHERNET || bnep_type == BNEP_TYPE_COMPRESSED_ETHERNET_SOURCE_ONLY) {
-        src_addr = tvb_get_ptr(tvb, offset, 6);
-        SET_ADDRESS(&pinfo->dl_src, AT_ETHER, 6, src_addr);
-        SET_ADDRESS(&pinfo->src, AT_ETHER, 6, src_addr);
+        TVB_SET_ADDRESS(&pinfo->dl_src, AT_ETHER, tvb, offset, 6);
+        COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->dl_src);
 
-
-        addr_item = proto_tree_add_ether(btbnep_tree, hf_btbnep_src, tvb, offset, 6, src_addr);
-        if (addr_item) {
-            addr_tree = proto_item_add_subtree(addr_item, ett_addr);
-            if (tvb_get_guint8(tvb, offset) & 0x01) {
-                expert_add_info(pinfo, addr_item, &ei_btbnep_src_not_group_address);
-            }
+        addr_item = proto_tree_add_item(btbnep_tree, hf_btbnep_src, tvb, offset, 6, ENC_NA);
+        addr_tree = proto_item_add_subtree(addr_item, ett_addr);
+        if (tvb_get_guint8(tvb, offset) & 0x01) {
+            expert_add_info(pinfo, addr_item, &ei_btbnep_src_not_group_address);
         }
-        proto_tree_add_ether(addr_tree, hf_btbnep_addr, tvb, offset, 6, src_addr);
+
+        proto_tree_add_item(addr_tree, hf_btbnep_addr, tvb, offset, 6, ENC_NA);
         proto_tree_add_item(addr_tree, hf_btbnep_lg, tvb, offset, 3, ENC_BIG_ENDIAN);
         proto_tree_add_item(addr_tree, hf_btbnep_ig, tvb, offset, 3, ENC_BIG_ENDIAN);
         offset += 6;
@@ -548,12 +541,12 @@ proto_reg_handoff_btbnep(void)
     data_handle   = find_dissector("data");
     ethertype_handle = find_dissector("ethertype");
 
-    dissector_add_uint("btl2cap.service", BTSDP_PAN_GN_SERVICE_UUID, btbnep_handle);
-    dissector_add_uint("btl2cap.service", BTSDP_PAN_NAP_SERVICE_UUID, btbnep_handle);
-    dissector_add_uint("btl2cap.service", BTSDP_PAN_GN_SERVICE_UUID, btbnep_handle);
+    dissector_add_string("bluetooth.uuid", "1115", btbnep_handle);
+    dissector_add_string("bluetooth.uuid", "1116", btbnep_handle);
+    dissector_add_string("bluetooth.uuid", "1117", btbnep_handle);
 
     dissector_add_uint("btl2cap.psm", BTL2CAP_PSM_BNEP, btbnep_handle);
-    dissector_add_handle("btl2cap.cid", btbnep_handle);
+    dissector_add_for_decode_as("btl2cap.cid", btbnep_handle);
 }
 
 /*

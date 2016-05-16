@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/strutil.h>
 
@@ -58,7 +56,7 @@ static gint ett_aim_buddylist = -1;
 static int dissect_aim_buddylist_buddylist(tvbuff_t *tvb, packet_info *pinfo, proto_tree *buddy_tree)
 {
 	int offset = 0;
-	while (tvb_length_remaining(tvb, offset) > 0) {
+	while (tvb_reported_length_remaining(tvb, offset) > 0) {
 		offset = dissect_aim_buddyname( tvb, pinfo, offset, buddy_tree);
 	}
 	return offset;
@@ -161,3 +159,16 @@ proto_reg_handoff_aim_buddylist(void)
 {
 	aim_init_family(proto_aim_buddylist, ett_aim_buddylist, FAMILY_BUDDYLIST, aim_fnac_family_buddylist);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

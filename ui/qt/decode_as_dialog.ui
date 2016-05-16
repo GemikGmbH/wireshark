@@ -10,17 +10,11 @@
     <height>460</height>
    </rect>
   </property>
-  <property name="windowTitle">
-   <string>Wireshark: Decode As</string>
-  </property>
   <layout class="QVBoxLayout" name="verticalLayout_2">
    <item>
     <widget class="QTreeWidget" name="decodeAsTreeWidget">
      <property name="indentation">
       <number>0</number>
-     </property>
-     <property name="uniformRowHeights">
-      <bool>true</bool>
      </property>
      <column>
       <property name="text">
@@ -142,7 +136,7 @@
       <enum>Qt::Horizontal</enum>
      </property>
      <property name="standardButtons">
-      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Help|QDialogButtonBox::Ok</set>
+      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Help|QDialogButtonBox::Ok|QDialogButtonBox::Save</set>
      </property>
     </widget>
    </item>

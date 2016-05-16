@@ -1,7 +1,7 @@
 ++++++++++++++++++++++++++++++++++++++
 <!-- WSDG Chapter Dissection -->
 ++++++++++++++++++++++++++++++++++++++
-    
+
 [[ChapterDissection]]
 
 == Packet dissection
@@ -34,9 +34,9 @@ built-in one. So starting with a plugin makes initial development simpler, while
 the finished code may make more sense as a built-in dissector.
 
 [NOTE]
-.Read README.developer
+.Read README.dissector
 ====
-The file 'doc/README.developer' contains detailed information about implementing
+The file 'doc/README.dissector' contains detailed information about implementing
 a dissector. In many cases it is more up to date than this document.
 ====
 
@@ -302,7 +302,7 @@ Now we can enhance the protocol display with some detail.
         ti = proto_tree_add_item(tree, proto_foo, tvb, 0, -1, ENC_NA);
         foo_tree = proto_item_add_subtree(ti, ett_foo);
         proto_tree_add_item(foo_tree, hf_foo_pdu_type, tvb, 0, 1, ENC_BIG_ENDIAN);
-    }   
+    }
 ----
 ====
 
@@ -432,7 +432,7 @@ static const value_string packettypenames[] = {
     { 2, "Terminate" },
     { 3, "Data" },
     { 0, NULL }
-};   
+};
 ----
 ====
 
@@ -594,7 +594,7 @@ effect.
         guchar *decompressed_buffer = (guchar*)g_malloc(orig_size);
         offset += 2;
         decompress_packet(tvb_get_ptr(tvb, offset, -1),
-                tvb_length_remaining(tvb, offset),
+                tvb_captured_length_remaining(tvb, offset),
                 decompressed_buffer, orig_size);
         /* Now re-setup the tvb buffer to have the new data */
         next_tvb = tvb_new_child_real_data(tvb, decompressed_buffer, orig_size, orig_size);
@@ -618,7 +618,7 @@ So armed with the size, a buffer is allocated to receive the uncompressed data
 using +g_malloc()+, and the packet is decompressed into it. The +tvb_get_ptr()+
 function is useful to get a pointer to the raw data of the packet from the
 offset onwards. In this case the decompression routine also needs to know the
-length, which is given by the +tvb_length_remaining()+ function.
+length, which is given by the +tvb_captured_length_remaining()+ function.
 
 Next we build a new tvb buffer from this data, using the
 +tvb_new_child_real_data()+ call. This data is a child of our original data, so
@@ -648,6 +648,10 @@ until you have all the data. The first packet doesn't have enough data,
 and the subsequent packets don't have the expect format.
 To dissect these packets you need to wait until all the parts have
 arrived and then start the dissection.
+
+The following sections will guide you through two common cases. For a
+description of all possible functions, structures and parameters, see
+'epan/reassemble.h'.
 
 [[ChDissectReassembleUdp]]
 
@@ -695,12 +699,11 @@ if (flags & FL_FRAGMENT) { /* fragmented */
     guint16 msg_num = tvb_get_ntohs(tvb, offset); offset += 2;
 
     pinfo->fragmented = TRUE;
-    frag_msg = fragment_add_seq_check(tvb, offset, pinfo,
-        msg_seqid, /* ID for fragments belonging together */
-        msg_fragment_table, /* list of message fragments */
-        msg_reassembled_table, /* list of reassembled messages */
+    frag_msg = fragment_add_seq_check(msg_reassembly_table,
+        tvb, offset, pinfo,
+        msg_seqid, NULL, /* ID for fragments belonging together */
         msg_num, /* fragment sequence number */
-        tvb_length_remaining(tvb, offset), /* fragment length - to the end */
+        tvb_captured_length_remaining(tvb, offset), /* fragment length - to the end */
         flags & FL_FRAG_LAST); /* More fragments? */
 ----
 ====
@@ -709,7 +712,9 @@ We start by saving the fragmented state of this packet, so we can restore it
 later. Next comes some protocol specific stuff, to dig the fragment data out of
 the stream if it's present. Having decided it is present, we let the function
 +fragment_add_seq_check()+ do its work. We need to provide this with a certain
-amount of data.
+amount of parameters:
+
+* The +msg_reassembly_table+ table is for bookkeeping and is described later.
 
 * The tvb buffer we are dissecting.
 
@@ -721,8 +726,8 @@ amount of data.
   fragments in flight, and this is used to key the relevant one to be used for
   reassembly.
 
-* The +msg_fragment_table+ and the +msg_reassembled_table+ are variables we need
-  to declare. We'll consider these in detail later.
+* Optional additional data for identifying the fragment. Can be set to +NULL+
+  (as is done in the example) for most dissectors.
 
 * msg_num is the packet number within the sequence.
 
@@ -777,25 +782,29 @@ Now the mysterious data we passed into the +fragment_add_seq_check()+.
 .Reassembling fragments - Initialisation
 ====
 ----
-static GHashTable *msg_fragment_table = NULL;
-static GHashTable *msg_reassembled_table = NULL;
+static reassembly_table reassembly_table;
 
 static void
 msg_init_protocol(void)
 {
-    fragment_table_init(&msg_fragment_table);
-    reassembled_table_init(&msg_reassembled_table);
-}   
+    reassembly_table_init(&msg_reassemble_table,
+        &addresses_ports_reassembly_table_functions);
+}
 ----
 ====
 
-First a couple of hash tables are declared, and these are initialised in the
-protocol initialisation routine. Following that, a +fragment_items+ structure is
-allocated and filled in with a series of ett items, hf data items, and a string
-tag. The ett and hf values should be included in the relevant tables like all
-the other variables your protocol may use. The hf variables need to be placed in
-the structure something like the following. Of course the names may need to be
-adjusted.
+First a +reassembly_table+ structure is declared and initialised in the protocol
+initialisation routine. The second parameter specifies the functions that should
+be used for identifying fragments. We will use
++addresses_ports_reassembly_table_functions+ in order to identify fragments by
+the given sequence number (+msg_seqid+), the source and destination addresses
+and ports from the packet.
+
+Following that, a +fragment_items+ structure is allocated and filled in with a
+series of ett items, hf data items, and a string tag. The ett and hf values
+should be included in the relevant tables like all the other variables your
+protocol may use. The hf variables need to be placed in the structure something
+like the following. Of course the names may need to be adjusted.
 
 .Reassembling fragments - Data
 ====
@@ -922,25 +931,28 @@ This function is implemented in 'epan/dissectors/packet-tcp.h'.
 #define FRAME_HEADER_LEN 8
 
 /* This method dissects fully reassembled messages */
-static int dissect_foo_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
+static int
+dissect_foo_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
     /* TODO: implement your dissecting code */
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 /* determine PDU length of protocol foo */
-static guint get_foo_message_len(packet_info *pinfo, tvbuff_t *tvb, int offset)
+static guint
+get_foo_message_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
     /* TODO: change this to your needs */
     return (guint)tvb_get_ntohl(tvb, offset+4); /* e.g. length is at offset 4 */
 }
 
 /* The main dissecting routine */
-static int dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
+static int
+dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
     tcp_dissect_pdus(tvb, pinfo, tree, TRUE, FRAME_HEADER_LEN,
                      get_foo_message_len, dissect_foo_message, data);
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 ...
@@ -951,15 +963,19 @@ As you can see this is really simple. Just call +tcp_dissect_pdus()+ in your
 main dissection routine and move you message parsing code into another function.
 This function gets called whenever a message has been reassembled.
 
-The parameters tvb, pinfo, treeand dataare just handed over to
+The parameters tvb, pinfo, tree and data are just handed over to
 +tcp_dissect_pdus()+. The 4th parameter is a flag to indicate if the data should
 be reassembled or not. This could be set according to a dissector preference as
 well. Parameter 5 indicates how much data has at least to be available to be
 able to determine the length of the foo message. Parameter 6 is a function
 pointer to a method that returns this length. It gets called when at least the
 number of bytes given in the previous parameter is available. Parameter 7 is a
-function pointer to your real message dissector. Parameter 8 is a the data
+function pointer to your real message dissector. Parameter 8 is the data
 passed in from parent dissector.
+
+Protocols which need more data before the message length can be determined can
+return zero. Other values smaller than the fixed length will result in an
+exception.
 
 [[ChDissectTap]]
 
@@ -1017,7 +1033,7 @@ of the dissector.
 void dissect_foo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
        ...
-    fooinfo = ep_alloc(sizeof(struct FooTap));
+    fooinfo = wmem_alloc(wmem_packet_scope(), sizeof(struct FooTap));
     fooinfo->packet_type = tvb_get_guint8(tvb, 0);
     fooinfo->priority = tvb_get_ntohs(tvb, 8);
        ...
@@ -1060,7 +1076,7 @@ WS_DLL_PUBLIC_DEF void plugin_register_tap_listener(void)
     register_foo_stat_trees();
 }
 
-#endif   
+#endif
 ----
 ====
 
@@ -1097,7 +1113,7 @@ static void foo_stats_tree_init(stats_tree* st)
 {
     st_node_packets = stats_tree_create_node(st, st_str_packets, 0, TRUE);
     st_node_packet_types = stats_tree_create_pivot(st, st_str_packet_types, st_node_packets);
-}   
+}
 ----
 ====
 
@@ -1116,7 +1132,7 @@ static int foo_stats_tree_packet(stats_tree* st, packet_info* pinfo, epan_dissec
     stats_tree_tick_pivot(st, st_node_packet_types,
             val_to_str(pi->packet_type, msgtypevalues, "Unknown packet type (%d)"));
     return 1;
-}   
+}
 ----
 ====
 
@@ -1130,9 +1146,195 @@ us to record statistics by packet type.
 === How to use conversations
 
 Some info about how to use conversations in a dissector can be found in the file
-'doc/README.developer', chapter 2.2.
+'doc/README.dissector', chapter 2.2.
+
+[[ChDissectIdl2wrs]]
+
+=== __idl2wrs__: Creating dissectors from CORBA IDL files
+
+Many of Wireshark's dissectors are automatically generated. This section shows
+how to generate one from a CORBA IDL file.
+
+==== What is it?
+
+As you have probably guessed from the name, `idl2wrs` takes a user specified IDL
+file and attempts to build a dissector that can decode the IDL traffic over
+GIOP. The resulting file is ``C'' code, that should compile okay as a Wireshark
+dissector.
+
++idl2wrs+ parses the data struct given to it by the `omniidl` compiler,
+and using the GIOP API available in packet-giop.[ch], generates get_CDR_xxx
+calls to decode the CORBA traffic on the wire.
+
+It consists of 4 main files.
+
+_README.idl2wrs_::
+This document
+
+_$$wireshark_be.py$$_::
+The main compiler backend
+
+_$$wireshark_gen.py$$_::
+A helper class, that generates the C code.
+
+_idl2wrs_::
+A simple shell script wrapper that the end user should use to generate the
+dissector from the IDL file(s).
+
+==== Why do this?
+
+It is important to understand what CORBA traffic looks like over GIOP/IIOP, and
+to help build a tool that can assist in troubleshooting CORBA interworking. This
+was especially the case after seeing a lot of discussions about how particular
+IDL types are represented inside an octet stream.
+
+I have also had comments/feedback that this tool would be good for say a CORBA
+class when teaching students what CORBA traffic looks like ``on the wire''.
+
+It is also COOL to work on a great Open Source project such as the case with
+``Wireshark'' (link:$$wireshark-web-site:[]$$[wireshark-web-site:[]] )
+
+
+==== How to use idl2wrs
+
+To use the idl2wrs to generate Wireshark dissectors, you need the following:
+
+* Python must be installed.  See link:$$http://python.org/$$[]
+
+* +omniidl+ from the omniORB package must be available. See link:$$http://omniorb.sourceforge.net/$$[]
+
+* Of course you need Wireshark installed to compile the code and tweak it if
+required. idl2wrs is part of the standard Wireshark distribution
+
+To use idl2wrs to generate an Wireshark dissector from an idl file use the following procedure:
+
+* To write the C code to stdout.
++
+--
+----
+$ idl2wrs <your_file.idl>
+----
+
+e.g.:
+
+----
+$ idl2wrs echo.idl
+----
+--
+
+* To write to a file, just redirect the output.
++
+--
+----
+$ idl2wrs echo.idl > packet-test-idl.c
+----
+
+You may wish to comment out the register_giop_user_module() code and that will
+leave you with heuristic dissection.
+
+If you don't want to use the shell script wrapper, then try steps 3 or 4 instead.
+--
+
+* To write the C code to stdout.
++
+--
+----
+$ omniidl  -p ./ -b wireshark_be <your file.idl>
+----
+
+e.g.:
+
+----
+$ omniidl  -p ./ -b wireshark_be echo.idl
+----
+--
+
+* To write to a file, just redirect the output.
++
+--
+----
+$ omniidl  -p ./ -b wireshark_be echo.idl > packet-test-idl.c
+----
+
+You may wish to comment out the register_giop_user_module() code and that will
+leave you with heuristic dissection.
+--
+
+* Copy the resulting C code to subdirectory epan/dissectors/ inside your
+Wireshark source directory.
++
+--
+----
+$ cp packet-test-idl.c /dir/where/wireshark/lives/epan/dissectors/
+----
+
+The new dissector has to be added to Makefile.common in the same directory. Look
+for the declaration CLEAN_DISSECTOR_SRC and add the new dissector there. For
+example,
+
+----
+CLEAN_DISSECTOR_SRC = \
+        packet-2dparityfec.c    \
+        packet-3com-njack.c     \
+        ...
+----
+
+becomes
+
+----
+CLEAN_DISSECTOR_SRC = \
+        packet-test-idl.c       \
+        packet-2dparityfec.c    \
+        packet-3com-njack.c     \
+        ...
+----
+--
+
+For the next steps, go up to the top of your Wireshark source directory.
+
+* Run configure
++
+--
+----
+$ ./configure (or ./autogen.sh)
+----
+--
+
+* Compile the code
++
+--
+----
+$ make
+----
+--
+
+* Good Luck !!
+
+==== TODO
+
+* Exception code not generated  (yet), but can be added manually.
+
+* Enums not converted to symbolic values (yet), but can be added manually.
+
+* Add command line options etc
+
+* More I am sure :-)
+
+==== Limitations
+
+See the TODO list inside _packet-giop.c_
+
+==== Notes
+
+The `-p ./` option passed to omniidl indicates that the wireshark_be.py and
+wireshark_gen.py are residing in the current directory. This may need tweaking
+if you place these files somewhere else.
+
+If it complains about being unable to find some modules (e.g. tempfile.py), you
+may want to check if PYTHONPATH is set correctly. On my Linux box, it is
+PYTHONPATH=/usr/lib/python2.4/
+
 
 ++++++++++++++++++++++++++++++++++++++
 <!-- End of WSDG Chapter Dissection -->
 ++++++++++++++++++++++++++++++++++++++
-    

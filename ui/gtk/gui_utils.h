@@ -109,9 +109,11 @@ extern GtkWidget *window_new(GtkWindowType type, const gchar *title);
  * @param type window type, typical GTK_WINDOW_TOPLEVEL
  * @param title the title for the new window
  * @param geom_name the name to distinguish this window; will also be used for the recent file (don't use special chars)
+ * @param pos the initial position of the window if a previously saved geometry was not saved or found.
+ *     If the initial position does not matter, specify GTK_WIN_POS_NONE.
  * @return the newly created window
  */
-extern GtkWidget *window_new_with_geom(GtkWindowType type, const gchar *title, const gchar *geom_name);
+extern GtkWidget *window_new_with_geom(GtkWindowType type, const gchar *title, const gchar *geom_name, GtkWindowPosition pos);
 
 /** Create a new splash window, with no icon or title bar.
  *
@@ -187,13 +189,12 @@ extern void reactivate_window(GtkWidget *win);
 /** @} */
 
 /** Alert box for an invalid display filter expression.
- * Assumes "dfilter_error_msg" has been set by "dfilter_compile()" to the
- * error message for the filter.
  *
  * @param parent parent window from which the display filter came
  * @param dftext text of the display filter
+ * @param err_msg text of the error message for the filter
  */
-extern void bad_dfilter_alert_box(GtkWidget *parent, const char *dftext);
+extern void bad_dfilter_alert_box(GtkWidget *parent, const char *dftext, gchar *err_msg);
 
 /** Create a GtkScrolledWindow, set its scrollbar placement appropriately,
  *  and remember it.

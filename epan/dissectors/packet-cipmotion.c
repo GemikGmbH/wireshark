@@ -31,6 +31,7 @@
 
 void proto_register_cipmotion(void);
 /* The entry point to the actual disection is: dissect_cipmotion */
+void proto_reg_handoff_cipmotion(void);
 
 /* Protocol handle for CIP Motion */
 static int proto_cipmotion = -1;
@@ -90,7 +91,8 @@ static int hf_cip_sts_flt                   = -1;
 static int hf_cip_sts_alrm                  = -1;
 static int hf_cip_sts_sts                   = -1;
 static int hf_cip_sts_iosts                 = -1;
-static int hf_cip_sts_safety                = -1;
+static int hf_cip_sts_axis_safety           = -1;
+static int hf_cip_sts_drive_safety          = -1;
 static int hf_cip_intrp                     = -1;
 static int hf_cip_position_data_type        = -1;
 static int hf_cip_axis_state                = -1;
@@ -201,7 +203,10 @@ static int hf_cip_axis_status               = -1;
 static int hf_cip_axis_status_mfg           = -1;
 static int hf_cip_axis_io_status            = -1;
 static int hf_cip_axis_io_status_mfg        = -1;
-static int hf_cip_safety_status             = -1;
+static int hf_cip_axis_safety_status        = -1;
+static int hf_cip_axis_safety_status_mfg    = -1;
+static int hf_cip_axis_safety_state         = -1;
+static int hf_cip_drive_safety_status       = -1;
 static int hf_cip_cmd_data_set              = -1;
 static int hf_cip_act_data_set              = -1;
 static int hf_cip_sts_data_set              = -1;
@@ -285,7 +290,8 @@ static gint ett_command_control     = -1;
 #define STATUS_DATA_SET_AXIS_ALARM              0x02
 #define STATUS_DATA_SET_AXIS_STATUS             0x04
 #define STATUS_DATA_SET_AXIS_IO_STATUS          0x08
-#define STATUS_DATA_SET_AXIS_SAFETY             0x80
+#define STATUS_DATA_SET_AXIS_SAFETY             0x10
+#define STATUS_DATA_SET_DRIVE_SAFETY            0x80
 
 /* These are the BITMASKS for the Command Control cyclic field */
 #define COMMAND_CONTROL_TARGET_UPDATE       0x03
@@ -700,7 +706,17 @@ dissect_status_data_set(guint32 status_data_set, proto_tree* tree, tvbuff_t* tvb
 
    if ( (status_data_set & STATUS_DATA_SET_AXIS_SAFETY) == STATUS_DATA_SET_AXIS_SAFETY )
    {
-      proto_tree_add_item(tree, hf_cip_safety_status, tvb, offset + bytes_used, 4, ENC_LITTLE_ENDIAN);
+      proto_tree_add_item(tree, hf_cip_axis_safety_status, tvb, offset + bytes_used, 4, ENC_LITTLE_ENDIAN);
+      bytes_used += 4;
+      proto_tree_add_item(tree, hf_cip_axis_safety_status_mfg, tvb, offset + bytes_used, 4, ENC_LITTLE_ENDIAN);
+      bytes_used += 4;
+      proto_tree_add_item(tree, hf_cip_axis_safety_state, tvb, offset + bytes_used, 1, ENC_LITTLE_ENDIAN);
+      bytes_used += 4;
+   }
+
+   if ( (status_data_set & STATUS_DATA_SET_DRIVE_SAFETY) == STATUS_DATA_SET_DRIVE_SAFETY )
+   {
+      proto_tree_add_item(tree, hf_cip_drive_safety_status, tvb, offset + bytes_used, 4, ENC_LITTLE_ENDIAN);
       bytes_used += 4;
    }
 
@@ -718,15 +734,14 @@ dissect_status_data_set(guint32 status_data_set, proto_tree* tree, tvbuff_t* tvb
 static guint32
 dissect_cntr_cyclic(guint32 con_format _U_, tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size, guint32 instance _U_)
 {
-   proto_item *header_item, *temp_proto_item;
+   proto_item *temp_proto_item;
    proto_tree *header_tree, *temp_proto_tree;
    guint32     temp_data;
    gboolean    lreal_pos;
    guint32     bytes_used = 0;
 
    /* Create the tree for the entire instance data header */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Cyclic Data Block");
-   header_tree = proto_item_add_subtree(header_item, ett_cyclic_data_block);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_cyclic_data_block, NULL, "Cyclic Data Block");
 
    /* Add the control mode header field to the tree */
    proto_tree_add_item(header_tree, hf_cip_motor_cntrl, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -783,7 +798,8 @@ dissect_cntr_cyclic(guint32 con_format _U_, tvbuff_t* tvb, proto_tree* tree, gui
    proto_tree_add_item(temp_proto_tree, hf_cip_sts_alrm,   tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
    proto_tree_add_item(temp_proto_tree, hf_cip_sts_sts,    tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
    proto_tree_add_item(temp_proto_tree, hf_cip_sts_iosts,  tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
-   proto_tree_add_item(temp_proto_tree, hf_cip_sts_safety, tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
+   proto_tree_add_item(temp_proto_tree, hf_cip_sts_axis_safety, tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
+   proto_tree_add_item(temp_proto_tree, hf_cip_sts_drive_safety, tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
 
    /* Create the tree for the command control header field */
    temp_proto_item = proto_tree_add_item(header_tree, hf_cip_command_control, tvb, offset + 7, 1, ENC_LITTLE_ENDIAN);
@@ -808,14 +824,13 @@ dissect_cntr_cyclic(guint32 con_format _U_, tvbuff_t* tvb, proto_tree* tree, gui
 static guint32
 dissect_devce_cyclic(guint32 con_format _U_, tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size, guint32 instance _U_)
 {
-   proto_item *header_item, *temp_proto_item;
+   proto_item *temp_proto_item;
    proto_tree *header_tree, *temp_proto_tree;
    guint32 temp_data;
    guint32 bytes_used = 0;
 
    /* Create the tree for the entire instance data header */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Cyclic Data Block");
-   header_tree = proto_item_add_subtree(header_item, ett_cyclic_data_block);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_cyclic_data_block, NULL, "Cyclic Data Block");
 
    /* Add the control mode header field to the tree */
    proto_tree_add_item(header_tree, hf_cip_motor_cntrl, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -858,7 +873,8 @@ dissect_devce_cyclic(guint32 con_format _U_, tvbuff_t* tvb, proto_tree* tree, gu
    proto_tree_add_item(temp_proto_tree, hf_cip_sts_alrm,   tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
    proto_tree_add_item(temp_proto_tree, hf_cip_sts_sts,    tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
    proto_tree_add_item(temp_proto_tree, hf_cip_sts_iosts,  tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
-   proto_tree_add_item(temp_proto_tree, hf_cip_sts_safety, tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
+   proto_tree_add_item(temp_proto_tree, hf_cip_sts_axis_safety, tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
+   proto_tree_add_item(temp_proto_tree, hf_cip_sts_drive_safety, tvb, offset + 6, 1, ENC_LITTLE_ENDIAN);
 
    /* Display the status data values from the cyclic data payload within the status data set tree, the
    * cyclic data starts immediately after the axis state field in the device to controller
@@ -883,12 +899,10 @@ dissect_devce_cyclic(guint32 con_format _U_, tvbuff_t* tvb, proto_tree* tree, gu
 static guint32
 dissect_cyclic_wt(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item;
    proto_tree *header_tree;
 
    /* Create the tree for the entire cyclic write data block */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Cyclic Write Data Block");
-   header_tree = proto_item_add_subtree(header_item, ett_cyclic_rd_wt);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_cyclic_rd_wt, NULL, "Cyclic Write Data Block");
 
    /* Display the cyclic write block id value */
    proto_tree_add_item(header_tree, hf_cip_cyclic_write_blk, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -916,12 +930,10 @@ dissect_cyclic_wt(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 static guint32
 dissect_cyclic_rd(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item;
    proto_tree *header_tree;
 
    /* Create the tree for the entire cyclic write data block */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Cyclic Read Data Block");
-   header_tree = proto_item_add_subtree(header_item, ett_cyclic_rd_wt);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_cyclic_rd_wt, NULL, "Cyclic Read Data Block");
 
    /* Display the cyclic write block id value */
    proto_tree_add_item(header_tree, hf_cip_cyclic_write_blk, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -955,15 +967,14 @@ dissect_cyclic_rd(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 static guint32
 dissect_cntr_event(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item, *temp_proto_item;
+   proto_item *temp_proto_item;
    proto_tree *header_tree, *temp_proto_tree;
    guint32 temp_data;
    guint32 acks, cur_ack;
    guint32 bytes_used = 0;
 
    /* Create the tree for the entire cyclic write data block */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Event Data Block");
-   header_tree = proto_item_add_subtree(header_item, ett_event);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_event, NULL, "Event Data Block");
 
    /* Read the event checking control header field from the packet into memory */
    temp_data = tvb_get_letohl(tvb, offset);
@@ -1026,15 +1037,14 @@ dissect_cntr_event(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size
 static guint32
 dissect_devce_event(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item, *temp_proto_item;
+   proto_item *temp_proto_item;
    proto_tree *header_tree, *temp_proto_tree;
    guint64     temp_data;
    guint64     nots, cur_not;
    guint32     bytes_used = 0;
 
    /* Create the tree for the entire cyclic write data block */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Event Data Block");
-   header_tree = proto_item_add_subtree(header_item, ett_event);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_event, NULL, "Event Data Block");
 
    /* Read the event checking control header field from the packet into memory */
    temp_data = tvb_get_letohl(tvb, offset);
@@ -1108,15 +1118,14 @@ dissect_devce_event(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 siz
 static void
 dissect_get_axis_attr_list_request (tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item, *attr_item;
+   proto_item *attr_item;
    proto_tree *header_tree, *attr_tree;
    guint16     attribute, attribute_cnt;
    guint32     local_offset;
    guint8      increment_size, dimension;
 
    /* Create the tree for the get axis attribute list request */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Get Axis Attribute List Request");
-   header_tree = proto_item_add_subtree(header_item, ett_get_axis_attribute);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_get_axis_attribute, NULL, "Get Axis Attribute List Request");
 
    /* Read the number of attributes that are contained within the request */
    attribute_cnt = tvb_get_letohs(tvb, offset);
@@ -1167,7 +1176,7 @@ dissect_get_axis_attr_list_request (tvbuff_t* tvb, proto_tree* tree, guint32 off
 static void
 dissect_set_axis_attr_list_request (tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item, *attr_item;
+   proto_item *attr_item;
    proto_tree *header_tree, *attr_tree;
    guint16     attribute, attribute_cnt, data_elements;
    guint32     local_offset;
@@ -1175,8 +1184,7 @@ dissect_set_axis_attr_list_request (tvbuff_t* tvb, proto_tree* tree, guint32 off
    guint8      dimension, attribute_start, increment_size;
 
    /* Create the tree for the set axis attribute list request */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Set Axis Attribute List Request");
-   header_tree = proto_item_add_subtree(header_item, ett_set_axis_attribute);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_set_axis_attribute, NULL, "Set Axis Attribute List Request");
 
    /* Read the number of attributes that are contained within the request */
    attribute_cnt = tvb_get_letohs(tvb, offset);
@@ -1247,12 +1255,10 @@ dissect_set_axis_attr_list_request (tvbuff_t* tvb, proto_tree* tree, guint32 off
 static void
 dissect_group_sync_request (tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item;
    proto_tree *header_tree;
 
    /* Create the tree for the group sync request */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Group Sync Request");
-   header_tree = proto_item_add_subtree(header_item, ett_group_sync);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_group_sync, NULL, "Group Sync Request");
 
    /* Read the grandmaster id from the payload */
    proto_tree_add_item(header_tree, hf_cip_ptp_grandmaster, tvb, offset, 8, ENC_LITTLE_ENDIAN);
@@ -1270,13 +1276,11 @@ dissect_group_sync_request (tvbuff_t* tvb, proto_tree* tree, guint32 offset, gui
 static guint32
 dissect_cntr_service(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item;
    proto_tree *header_tree;
    guint8      service;
 
    /* Create the tree for the entire service data block */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Service Data Block");
-   header_tree = proto_item_add_subtree(header_item, ett_service);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_service, NULL, "Service Data Block");
 
    /* Display the transaction id value */
    proto_tree_add_item(header_tree, hf_cip_svc_transction, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -1315,14 +1319,13 @@ dissect_cntr_service(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 si
 static void
 dissect_set_axis_attr_list_response (tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item, *attr_item;
+   proto_item *attr_item;
    proto_tree *header_tree, *attr_tree;
    guint16     attribute, attribute_cnt;
    guint32     local_offset;
 
    /* Create the tree for the set axis attribute list response */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Set Axis Attribute List Response");
-   header_tree = proto_item_add_subtree(header_item, ett_get_axis_attribute);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_get_axis_attribute, NULL, "Set Axis Attribute List Response");
 
    /* Read the number of attributes that are contained within the response */
    attribute_cnt = tvb_get_letohs(tvb, offset);
@@ -1356,7 +1359,7 @@ dissect_set_axis_attr_list_response (tvbuff_t* tvb, proto_tree* tree, guint32 of
 static void
 dissect_get_axis_attr_list_response (tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item, *attr_item;
+   proto_item *attr_item;
    proto_tree *header_tree, *attr_tree;
    guint16     attribute, attribute_cnt, data_elements;
    guint32     attribute_size;
@@ -1364,8 +1367,7 @@ dissect_get_axis_attr_list_response (tvbuff_t* tvb, proto_tree* tree, guint32 of
    guint32     local_offset;
 
    /* Create the tree for the get axis attribute list response */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Get Axis Attribute List Response");
-   header_tree = proto_item_add_subtree(header_item, ett_get_axis_attribute);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_get_axis_attribute, NULL, "Get Axis Attribute List Response");
 
    /* Read the number of attributes that are contained within the request */
    attribute_cnt = tvb_get_letohs(tvb, offset);
@@ -1461,12 +1463,10 @@ dissect_group_sync_response (tvbuff_t* tvb, proto_tree* tree, guint32 offset, gu
 static guint32
 dissect_devce_service(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint32 size)
 {
-   proto_item *header_item;
    proto_tree *header_tree;
 
    /* Create the tree for the entire service data block */
-   header_item = proto_tree_add_text(tree, tvb, offset, size, "Service Data Block");
-   header_tree = proto_item_add_subtree(header_item, ett_service);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_service, NULL, "Service Data Block");
 
    /* Display the transaction id value */
    proto_tree_add_item(header_tree, hf_cip_svc_transction, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -1513,14 +1513,13 @@ dissect_var_inst_header(tvbuff_t* tvb, proto_tree* tree, guint32 offset, guint8*
                         guint32* cyc_blk_size, guint32* evnt_size, guint32* servc_size)
 {
    guint8      temp_data;
-   proto_item *header_item;
    proto_tree *header_tree;
 
    /* Create the tree for the entire instance data header */
    *inst_number = tvb_get_guint8(tvb, offset);
 
-   header_item = proto_tree_add_text(tree, tvb, offset, 8, "Instance Data Header - Instance: %d", *inst_number);
-   header_tree = proto_item_add_subtree(header_item, ett_inst_data_header);
+   header_tree = proto_tree_add_subtree_format(tree, tvb, offset, 8, ett_inst_data_header, NULL,
+                                                "Instance Data Header - Instance: %d", *inst_number);
 
    /* Read the instance number field from the instance data header */
    proto_tree_add_item(header_tree, hf_var_devce_instance, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -1571,7 +1570,7 @@ dissect_var_cont_conn_header(tvbuff_t* tvb, proto_tree* tree, guint32* inst_coun
 {
    guint32     header_size;
    guint32     temp_data;
-   proto_item *header_item, *temp_proto_item;
+   proto_item *temp_proto_item;
    proto_tree *header_tree, *temp_proto_tree;
 
    /* Calculate the header size, start with the basic header size */
@@ -1591,8 +1590,7 @@ dissect_var_cont_conn_header(tvbuff_t* tvb, proto_tree* tree, guint32* inst_coun
    }
 
    /* Create the tree for the entire connection header */
-   header_item = proto_tree_add_text(tree, tvb, offset, header_size, "Connection Header");
-   header_tree = proto_item_add_subtree(header_item, ett_cont_dev_header);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, header_size, ett_cont_dev_header, NULL, "Connection Header");
 
    /* Add the connection header fields that are common to all types of messages */
    proto_tree_add_item(header_tree, hf_cip_format,   tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -1661,7 +1659,7 @@ dissect_var_devce_conn_header(tvbuff_t* tvb, proto_tree* tree, guint32* inst_cou
 {
    guint32     header_size;
    guint32     temp_data;
-   proto_item *header_item, *temp_proto_item;
+   proto_item *temp_proto_item;
    proto_tree *header_tree, *temp_proto_tree;
 
    /* Calculate the header size, start with the basic header size */
@@ -1686,8 +1684,7 @@ dissect_var_devce_conn_header(tvbuff_t* tvb, proto_tree* tree, guint32* inst_cou
    }
 
    /* Create the tree for the entire connection header */
-   header_item = proto_tree_add_text(tree, tvb, offset, header_size, "Connection Header");
-   header_tree = proto_item_add_subtree(header_item, ett_cont_dev_header);
+   header_tree = proto_tree_add_subtree(tree, tvb, offset, header_size, ett_cont_dev_header, NULL, "Connection Header");
 
    /* Add the connection header fields that are common to all types of messages */
    proto_tree_add_item(header_tree, hf_cip_format,   tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -2234,8 +2231,23 @@ proto_register_cipmotion(void)
           FT_UINT32, BASE_HEX, NULL, 0,
           "Axis I/O Status, Manufacturer Specific", HFILL}
       },
-      { &hf_cip_safety_status,
+      { &hf_cip_axis_safety_status,
         { "Axis Safety Status", "cipm.safetystatus",
+          FT_UINT32, BASE_HEX, NULL, 0,
+          NULL, HFILL}
+      },
+      { &hf_cip_axis_safety_status_mfg,
+        { "Axis Safety Status Mfg", "cipm.safetystatusmfg",
+          FT_UINT32, BASE_HEX, NULL, 0,
+          "Axis Safety Status, Manufacturer Specific", HFILL}
+      },
+      { &hf_cip_axis_safety_state,
+        { "Axis Safety State", "cipm.safetystate",
+          FT_UINT8, BASE_HEX, NULL, 0,
+          "Axis Safety Sate", HFILL}
+      },
+      { &hf_cip_drive_safety_status,
+        { "Drive Safety Status", "cipm.drivesafetystatus",
           FT_UINT32, BASE_HEX, NULL, 0,
           NULL, HFILL}
       },
@@ -2259,10 +2271,15 @@ proto_register_cipmotion(void)
           FT_BOOLEAN, 8, TFS(&tfs_true_false), STATUS_DATA_SET_AXIS_IO_STATUS,
           "Status Data Set: Axis I/O Status", HFILL}
       },
-      { &hf_cip_sts_safety,
+      { &hf_cip_sts_axis_safety,
         { "Axis Safety Status", "cipm.sts.safety",
           FT_BOOLEAN, 8, TFS(&tfs_true_false), STATUS_DATA_SET_AXIS_SAFETY,
           "Status Data Set: Axis Safety Status", HFILL}
+      },
+       { &hf_cip_sts_drive_safety,
+        { "Drive Safety Status", "cipm.sts.safety",
+          FT_BOOLEAN, 8, TFS(&tfs_true_false), STATUS_DATA_SET_DRIVE_SAFETY,
+          "Status Data Set: Drive Safety Status", HFILL}
       },
 
       { &hf_cip_intrp,
@@ -2895,7 +2912,7 @@ proto_register_cipmotion(void)
      "Common Industrial Protocol, Motion",  /* Full name of protocol        */
      "CIP Motion",           /* Short name of protocol       */
      "cipm");                /* Abbreviated name of protocol */
-
+;
    /* Register the header fields with the protocol */
    proto_register_field_array(proto_cipmotion, hf, array_length(hf));
 
@@ -2903,6 +2920,15 @@ proto_register_cipmotion(void)
    proto_register_subtree_array(cip_subtree, array_length(cip_subtree));
 
    register_dissector( "cipmotion", dissect_cipmotion, proto_cipmotion);
+}
+
+void proto_reg_handoff_cipmotion(void)
+{
+   dissector_handle_t cipmotion_handle;
+
+   /* Create and register dissector for I/O data handling */
+   cipmotion_handle = create_dissector_handle( dissect_cipmotion, proto_cipmotion );
+   dissector_add_for_decode_as("enip.io", cipmotion_handle );
 }
 
 /*

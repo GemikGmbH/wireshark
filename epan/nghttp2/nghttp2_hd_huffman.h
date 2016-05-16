@@ -26,7 +26,7 @@
 #define NGHTTP2_HD_HUFFMAN_H
 
 #ifdef HAVE_CONFIG_H
-#  include <config.h>
+#include <config.h>
 #endif /* HAVE_CONFIG_H */
 
 #include <nghttp2.h>
@@ -70,5 +70,8 @@ typedef struct {
   /* Huffman code aligned to LSB */
   uint32_t code;
 } nghttp2_huff_sym;
+
+extern const nghttp2_huff_sym huff_sym_table[];
+extern const nghttp2_huff_decode huff_decode_table[][16];
 
 #endif /* NGHTTP2_HD_HUFFMAN_H */

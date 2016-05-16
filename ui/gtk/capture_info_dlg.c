@@ -30,10 +30,10 @@
 
 #include <epan/packet.h>
 
-#include "../capture.h"
+#include "ui/capture.h"
 #include "../capture_info.h"
-#include "../capture_ui_utils.h"
-#include "../capture-pcap-util.h"
+
+#include "ui/capture_ui_utils.h"
 
 #include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/gui_utils.h"
@@ -42,8 +42,8 @@
 #include "ui/gtk/stock_icons.h"
 
 #ifdef HAVE_AIRPCAP
-#include <airpcap.h>
-#include "airpcap_loader.h"
+#include <caputils/airpcap.h>
+#include <caputils/airpcap_loader.h>
 #include "airpcap_gui_utils.h"
 #include "airpcap_dlg.h"
 #endif
@@ -118,7 +118,6 @@ capture_info_ui_create(capture_info *cinfo, capture_session *cap_session)
   capture_info_ui_t *info;
   gchar             *cap_w_title;
   gchar             *title_iface;
-  gchar             *descr;
   GString           *str;
 
   info = g_new0(capture_info_ui_t,1);
@@ -152,42 +151,10 @@ capture_info_ui_create(capture_info *cinfo, capture_session *cap_session)
   info->counts[13].value_ptr = &(cinfo->counts->i2c_data);
 
   /*
-   * Create the dialog window, with a title that includes the interface.
-   *
-   * If we have a descriptive name for the interface, show that,
-   * rather than its raw name.  On NT 5.x (2K/XP/Server2K3), the
-   * interface name is something like "\Device\NPF_{242423..."
-   * which is pretty useless to the normal user.  On other platforms,
-   * it might be less cryptic, but if a more descriptive name is
-   * available, we should still use that.
+   * Create the dialog window, with a title that includes the interfaces
+   * on which we're capturing.
    */
-  str = g_string_new("");
-#ifdef _WIN32
-  if (capture_opts->ifaces->len < 2)
-#else
-  if (capture_opts->ifaces->len < 4)
-#endif
-  {
-    for (i = 0; i < capture_opts->ifaces->len; i++) {
-      interface_options interface_opts;
-
-      interface_opts = g_array_index(capture_opts->ifaces, interface_options, i);
-      descr = get_interface_descriptive_name(interface_opts.name);
-      if (i > 0) {
-        if (capture_opts->ifaces->len > 2) {
-          g_string_append_printf(str, ",");
-        }
-        g_string_append_printf(str, " ");
-        if (i == capture_opts->ifaces->len - 1) {
-          g_string_append_printf(str, "and ");
-        }
-      }
-      g_string_append_printf(str, "%s", descr);
-      g_free(descr);
-    }
-  } else {
-    g_string_append_printf(str, "%u interfaces", capture_opts->ifaces->len);
-  }
+  str = get_iface_list_string(capture_opts, 0);
   title_iface = g_strdup_printf("Wireshark: Capture from %s", str->str);
   g_string_free(str, TRUE);
   cap_w_title = create_user_window_title(title_iface);
@@ -373,3 +340,16 @@ capture_info    *cinfo)
 
 
 #endif /* HAVE_LIBPCAP */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

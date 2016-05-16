@@ -31,11 +31,10 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include <epan/wmem/wmem.h>
 #include <epan/expert.h>
+#include <epan/crc10-tvb.h>
 #include <wsutil/crc10.h>
 #include <wsutil/crc6.h>
 
@@ -352,10 +351,10 @@ iuup_proto_tree_add_bits(proto_tree* tree, int hf, tvbuff_t* tvb, int offset, in
     return pi;
 }
 
-static void dissect_iuup_payload(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, guint rfci_id _U_, int offset) {
+static void dissect_iuup_payload(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, guint rfci_id _U_, int offset, guint32 circuit_id) {
     iuup_circuit_t* iuup_circuit;
     iuup_rfci_t *rfci;
-    int last_offset = tvb_length(tvb) - 1;
+    int last_offset = tvb_reported_length(tvb) - 1;
     guint bit_offset = 0;
     proto_item* pi;
 
@@ -363,8 +362,8 @@ static void dissect_iuup_payload(tvbuff_t* tvb, packet_info* pinfo, proto_tree* 
 
     if ( ! dissect_fields ) {
         return;
-    } else if ( ! pinfo->circuit_id
-                || ! ( iuup_circuit  = (iuup_circuit_t *)g_hash_table_lookup(circuits,GUINT_TO_POINTER(pinfo->circuit_id)) ) ) {
+    } else if ( ! circuit_id
+                || ! ( iuup_circuit  = (iuup_circuit_t *)g_hash_table_lookup(circuits,GUINT_TO_POINTER(circuit_id)) ) ) {
         expert_add_info(pinfo, pi, &ei_iuup_payload_undecoded);
         return;
     }
@@ -386,8 +385,7 @@ static void dissect_iuup_payload(tvbuff_t* tvb, packet_info* pinfo, proto_tree* 
         guint subflows = rfci->num_of_subflows;
         proto_tree* flow_tree;
 
-        pi = proto_tree_add_text(tree,tvb,offset,-1,"Payload Frame");
-        flow_tree = proto_item_add_subtree(pi,ett_payload_subflows);
+        flow_tree = proto_tree_add_subtree(tree,tvb,offset,-1,ett_payload_subflows,NULL,"Payload Frame");
 
         bit_offset = 0;
 
@@ -470,7 +468,7 @@ static guint dissect_rfcis(tvbuff_t* tvb, packet_info* pinfo _U_, proto_tree* tr
     return c - 1;
 }
 
-static void dissect_iuup_init(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree) {
+static void dissect_iuup_init(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tree, guint32 circuit_id) {
     int offset = 4;
     guint8 oct = tvb_get_guint8(tvb,offset);
     guint n = (oct & 0x0e) >> 1;
@@ -482,11 +480,11 @@ static void dissect_iuup_init(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tre
     proto_tree* iptis_tree;
     iuup_circuit_t* iuup_circuit = NULL;
 
-    if (pinfo->circuit_id) {
-        iuup_circuit = (iuup_circuit_t *)g_hash_table_lookup(circuits,GUINT_TO_POINTER(pinfo->circuit_id));
+    if (circuit_id) {
+        iuup_circuit = (iuup_circuit_t *)g_hash_table_lookup(circuits,GUINT_TO_POINTER(circuit_id));
 
         if (iuup_circuit) {
-            g_hash_table_remove(circuits,GUINT_TO_POINTER(pinfo->circuit_id));
+            g_hash_table_remove(circuits,GUINT_TO_POINTER(circuit_id));
         }
 
         iuup_circuit = wmem_new0(wmem_file_scope(), iuup_circuit_t);
@@ -494,12 +492,12 @@ static void dissect_iuup_init(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tre
         iuup_circuit = wmem_new0(wmem_packet_scope(), iuup_circuit_t);
     }
 
-    iuup_circuit->id = pinfo->circuit_id;
+    iuup_circuit->id = circuit_id;
     iuup_circuit->num_of_subflows = n;
     iuup_circuit->rfcis = NULL;
     iuup_circuit->last_rfci = NULL;
 
-    if (pinfo->circuit_id) {
+    if (circuit_id) {
         g_hash_table_insert(circuits,GUINT_TO_POINTER(iuup_circuit->id),iuup_circuit);
     }
 
@@ -517,8 +515,7 @@ static void dissect_iuup_init(tvbuff_t* tvb, packet_info* pinfo, proto_tree* tre
     if (!tree) return;
 
     if (ti) {
-        pi = proto_tree_add_text(tree,tvb,offset,(rfcis/2)+(rfcis%2),"IPTIs");
-        iptis_tree = proto_item_add_subtree(pi,ett_ipti);
+        iptis_tree = proto_tree_add_subtree(tree,tvb,offset,(rfcis/2)+(rfcis%2),ett_ipti,NULL,"IPTIs");
 
         for (i = 0; i <= rfcis; i++) {
             proto_tree_add_item(iptis_tree,hf_iuup_init_ipti[i],tvb,offset,1,ENC_BIG_ENDIAN);
@@ -576,12 +573,26 @@ static void add_hdr_crc(tvbuff_t* tvb, packet_info* pinfo, proto_item* iuup_tree
     }
 }
 
+static guint16
+update_crc10_by_bytes_iuup(tvbuff_t *tvb, int offset, int length)
+{
+    guint16 crc10;
+    guint16 extra_16bits;
+    guint8 extra_8bits[2];
+
+    crc10 = update_crc10_by_bytes_tvb(0, tvb, offset + 2, length);
+    extra_16bits = tvb_get_ntohs(tvb, offset) & 0x3FF;
+    extra_8bits[0] = extra_16bits >> 2;
+    extra_8bits[1] = (extra_16bits << 6) & 0xFF;
+    crc10 = update_crc10_by_bytes(crc10, extra_8bits, 2);
+    return crc10;
+}
+
 static void add_payload_crc(tvbuff_t* tvb, packet_info* pinfo, proto_item* iuup_tree)
 {
     proto_item *crc_item;
-    int length = tvb_length(tvb);
-    guint16 crc10 = tvb_get_ntohs(tvb, 2) & 0x3FF;
-    guint16 crccheck = update_crc10_by_bytes(crc10, tvb_get_ptr(tvb, 4, length - 4), length - 4);
+    int length = tvb_reported_length(tvb);
+    guint16 crccheck = update_crc10_by_bytes_iuup(tvb, 2, length - 4);
 
     crc_item = proto_tree_add_item(iuup_tree,hf_iuup_payload_crc,tvb,2,2,ENC_BIG_ENDIAN);
     if (crccheck) {
@@ -612,7 +623,7 @@ static void dissect_iuup(tvbuff_t* tvb_in, packet_info* pinfo, proto_tree* tree)
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "IuUP");
 
     if (two_byte_pseudoheader) {
-        int len = tvb_length(tvb_in) - 2;
+        int len = tvb_reported_length(tvb_in) - 2;
 
         phdr = tvb_get_ntohs(tvb,0);
 
@@ -623,7 +634,7 @@ static void dissect_iuup(tvbuff_t* tvb_in, packet_info* pinfo, proto_tree* tree)
 
         pinfo->circuit_id = phdr;
 
-        tvb = tvb_new_subset(tvb_in,2,len,len);
+        tvb = tvb_new_subset_length(tvb_in,2,len);
     }
 
     first_octet =  tvb_get_guint8(tvb,0);
@@ -657,7 +668,7 @@ static void dissect_iuup(tvbuff_t* tvb_in, packet_info* pinfo, proto_tree* tree)
             proto_tree_add_item(iuup_tree,hf_iuup_rfci,tvb,1,1,ENC_BIG_ENDIAN);
             add_hdr_crc(tvb, pinfo, iuup_tree, crccheck);
             add_payload_crc(tvb, pinfo, iuup_tree);
-            dissect_iuup_payload(tvb,pinfo,iuup_tree,second_octet & 0x3f,4);
+            dissect_iuup_payload(tvb,pinfo,iuup_tree,second_octet & 0x3f,4,pinfo->circuit_id);
             return;
         case PDUTYPE_DATA_NO_CRC:
             col_append_fstr(pinfo->cinfo, COL_INFO," RFCI %u", (guint)(second_octet & 0x3f));
@@ -673,7 +684,7 @@ static void dissect_iuup(tvbuff_t* tvb_in, packet_info* pinfo, proto_tree* tree)
                 return;
             proto_tree_add_item(iuup_tree,hf_iuup_rfci,tvb,1,1,ENC_BIG_ENDIAN);
             add_hdr_crc(tvb, pinfo, iuup_tree, crccheck);
-            dissect_iuup_payload(tvb,pinfo,iuup_tree,second_octet & 0x3f,3);
+            dissect_iuup_payload(tvb,pinfo,iuup_tree,second_octet & 0x3f,3,pinfo->circuit_id);
             return;
         case PDUTYPE_DATA_CONTROL_PROC:
             if (tree) {
@@ -726,7 +737,7 @@ static void dissect_iuup(tvbuff_t* tvb_in, packet_info* pinfo, proto_tree* tree)
             switch( second_octet & PROCEDURE_MASK ) {
                 case PROC_INIT:
                     if (tree) add_payload_crc(tvb, pinfo, iuup_tree);
-                    dissect_iuup_init(tvb,pinfo,iuup_tree);
+                    dissect_iuup_init(tvb,pinfo,iuup_tree,pinfo->circuit_id);
                     return;
                 case PROC_RATE:
                     if (!tree) return;
@@ -780,7 +791,7 @@ static void dissect_iuup(tvbuff_t* tvb_in, packet_info* pinfo, proto_tree* tree)
 
 
 static gboolean dissect_iuup_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
-    int len = tvb_length(tvb);
+    int len = tvb_captured_length(tvb);
 
     guint8 first_octet =  tvb_get_guint8(tvb,0);
     guint8 second_octet =  tvb_get_guint8(tvb,1);
@@ -791,7 +802,7 @@ static gboolean dissect_iuup_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     switch ( first_octet & 0xf0 ) {
         case 0x00: {
             if (len<7) return FALSE;
-            if (update_crc10_by_bytes((guint16)(tvb_get_ntohs(tvb, 4) & 0x3FF), tvb_get_ptr(tvb, 6, len-4), len-4) ) return FALSE;
+            if (update_crc10_by_bytes_iuup(tvb, 4, len-4) ) return FALSE;
             break;
         }
         case 0x10:
@@ -812,7 +823,7 @@ static gboolean dissect_iuup_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
 
 
 static void find_iuup(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
-    int len = tvb_length(tvb);
+    int len = tvb_captured_length(tvb);
     int offset = 0;
 
     while (len > 3) {
@@ -827,9 +838,11 @@ static void find_iuup(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 }
 
 static void init_iuup(void) {
-    if (circuits)
-        g_hash_table_destroy(circuits);
     circuits = g_hash_table_new(g_direct_hash,g_direct_equal);
+}
+
+static void cleanup_iuup(void) {
+    g_hash_table_destroy(circuits);
 }
 
 
@@ -991,6 +1004,7 @@ void proto_register_iuup(void) {
     register_dissector("find_iuup", find_iuup, proto_iuup);
 
     register_init_routine(&init_iuup);
+    register_cleanup_routine(&cleanup_iuup);
 
     iuup_module = prefs_register_protocol(proto_iuup, proto_reg_handoff_iuup);
 
@@ -1011,3 +1025,15 @@ void proto_register_iuup(void) {
                                    &global_dynamic_payload_type);
 }
 
+/*
+ * Editor modelines
+ *
+ * Local Variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

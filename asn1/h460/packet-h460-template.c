@@ -23,12 +23,9 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
-
-#include <string.h>
 
 #include "packet-per.h"
 #include "packet-h225.h"
@@ -61,7 +58,7 @@ dissect_ies(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 
   if (q931_ie_handle) {
     call_dissector(q931_ie_handle, tvb, pinfo, tree);
-    offset += tvb_length_remaining(tvb, offset);
+    offset += tvb_reported_length_remaining(tvb, offset);
   }
   return offset;
 }
@@ -72,7 +69,7 @@ dissect_ras(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 
   if (h225_ras_handle) {
     call_dissector(h225_ras_handle, tvb, pinfo, tree);
-    offset += tvb_length_remaining(tvb, offset);
+    offset += tvb_reported_length_remaining(tvb, offset);
   }
   return offset;
 }
@@ -229,9 +226,7 @@ dissect_h460_name(tvbuff_t *tvb _U_, packet_info *pinfo, proto_tree *tree, void 
   DISSECTOR_ASSERT(actx);
 
   if (tree) {
-    /* DEBUG */ /*proto_tree_add_text(tree, tvb, 0, 0, "*** DEBUG dissect_h460_name: %s", pinfo->match_string);*/
     ftr = find_ftr(pinfo->match_string);
-    /* DEBUG */ /*proto_tree_add_text(tree, tvb, 0, 0, "*** DEBUG dissect_h460_name: ftr %s", (ftr)?ftr->name:"-none-");*/
     if (ftr) {
       proto_item_append_text(actx->created_item, " - %s", ftr->name);
       proto_item_append_text(proto_item_get_parent(proto_tree_get_parent(tree)), ": %s", ftr->name);

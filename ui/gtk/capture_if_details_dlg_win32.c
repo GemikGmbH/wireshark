@@ -30,15 +30,15 @@
 
 #include <gtk/gtk.h>
 
-#include <epan/value_string.h>
-#include <epan/addr_resolv.h>
+#include "epan/value_string.h"
+#include "epan/addr_resolv.h"
 
-#include <wsutil/str_util.h>
+#include "wsutil/str_util.h"
 
 #include "../file.h"
-#include "../capture.h"
+#include "ui/capture.h"
 
-#include "ui/simple_dialog.h"
+#include "simple_dialog.h"
 
 #include "ui/gtk/main.h"
 #include "ui/gtk/dlg_utils.h"
@@ -56,9 +56,9 @@
 #include <Ntddndis.h>
 #endif
 
-#include "capture_win_ifnames.h"
+#include "caputils/capture_win_ifnames.h"
 
-#include "../capture_wpcap_packet.h"
+#include "caputils/capture_wpcap_packet.h"
 
 /* packet32.h requires sockaddr_storage
  * whether sockaddr_storage is defined or not depends on the Platform SDK
@@ -319,32 +319,60 @@ typedef struct _NDIS_TASK_OFFLOAD
 
 
 /* NDIS driver medium (OID_GEN_MEDIA_SUPPORTED / OID_GEN_MEDIA_IN_USE) */
+/* Do not use NdisMediumXXX to avoid any dependency on the SDK version installed */
 static const value_string win32_802_3_medium_vals[] = {
-    { NdisMedium802_3,                  "802.3 (Ethernet)" },  /* might as well be WLAN,... (see NDIS_PHYSICAL_MEDIUM)*/
-    { NdisMedium802_5,                  "802.5 (Token Ring)" },
-    { NdisMediumFddi,                   "FDDI" },
-    { NdisMediumWan,                    "WAN" },
-    { NdisMediumLocalTalk,              "Local Talk" },
-    { NdisMediumDix,                    "Dix" },
-    { NdisMediumArcnetRaw,              "Arcnet Raw" },
-    { NdisMediumArcnet878_2,            "Arcnet 878_2" },
-    { NdisMediumAtm,                    "ATM" },
-    { NdisMediumWirelessWan,            "Wireless WAN" },
-    { NdisMediumIrda,                   "Irda" },
+    { -6 /*WinPcap NdisMediumPpi*/,        "AirPcap 802.11 + PPI" },
+    { -5 /*WinPcap NdisMediumRadio80211*/, "AirPcap 802.11 + Radio" },
+    { -4 /*WinPcap NdisMediumBare80211*/,  "AirPcap 802.11" },
+    { -3 /*WinPcap NdisMediumPPPSerial*/,  "PPP Serial" },
+    { -2 /*WinPcap NdisMediumCHDLC*/,      "CHDLC" },
+    { -1 /*WinPcap NdisMediumNull*/,       "Null/Loopback" },
+    {  0 /*NdisMedium802_3*/,        "802.3 (Ethernet)" },
+    {  1 /*NdisMedium802_5*/,        "802.5 (Token Ring)" },
+    {  2 /*NdisMediumFddi*/,         "FDDI" },
+    {  3 /*NdisMediumWan*/,          "WAN" },
+    {  4 /*NdisMediumLocalTalk*/,    "Local Talk" },
+    {  5 /*NdisMediumDix*/,          "DIX" },
+    {  6 /*NdisMediumArcnetRaw*/,    "Arcnet Raw" },
+    {  7 /*NdisMediumArcnet878_2*/,  "Arcnet 878.2" },
+    {  8 /*NdisMediumAtm*/,          "ATM" },
+    {  9 /*NdisMediumWirelessWan*/,  "Wireless WAN" },
+    { 10 /*NdisMediumIrda*/,         "IrDA" },
+    { 11 /*NdisMediumBpc*/,          "Broadcast PC" },
+    { 12 /*NdisMediumCoWan*/,        "CoWAN" },
+    { 13 /*NdisMedium1394*/,         "IEEE 1394" },
+    { 14 /*NdisMediumInfiniBand*/,   "Infiniband" },
+    { 15 /*NdisMediumTunnel*/,       "Tunnel" },
+    { 16 /*NdisMediumNative802_11*/, "Native 802.11" },
+    { 17 /*NdisMediumLoopback*/,     "Loopback" },
+    { 18 /*NdisMediumWiMAX*/,        "WiMAX" },
+    { 19 /*NdisMediumIP*/,           "IP" },
     { 0, NULL }
 };
 
 /* NDIS physical driver medium (OID_GEN_PHYSICAL_MEDIUM) */
+/* Do not use NdisPhysicalMediumXXX to avoid any dependency on the SDK version installed */
 static const value_string win32_802_3_physical_medium_vals[] = {
-    { NdisPhysicalMediumUnspecified,    "Unspecified" },
-    { NdisPhysicalMediumWirelessLan,    "Wireless LAN" },
-    { NdisPhysicalMediumCableModem,     "Cable Modem (DOCSIS)" },
-    { NdisPhysicalMediumPhoneLine,      "Phone Line" },
-    { NdisPhysicalMediumPowerLine,      "Power Line" },
-    { NdisPhysicalMediumDSL,            "DSL" },
-    { NdisPhysicalMediumFibreChannel,   "Fibre Channel" },
-    { NdisPhysicalMedium1394,           "IEEE 1394" },
-    { NdisPhysicalMediumWirelessWan,    "Wireless WAN" },
+    {  0 /*NdisPhysicalMediumUnspecified*/,  "Unspecified" },
+    {  1 /*NdisPhysicalMediumWirelessLan*/,  "Wireless LAN" },
+    {  2 /*NdisPhysicalMediumCableModem*/,   "Cable Modem (DOCSIS)" },
+    {  3 /*NdisPhysicalMediumPhoneLine*/,    "Phone Line" },
+    {  4 /*NdisPhysicalMediumPowerLine*/,    "Power Line" },
+    {  5 /*NdisPhysicalMediumDSL*/,          "DSL" },
+    {  6 /*NdisPhysicalMediumFibreChannel*/, "Fibre Channel" },
+    {  7 /*NdisPhysicalMedium1394*/,         "IEEE 1394" },
+    {  8 /*NdisPhysicalMediumWirelessWan*/,  "Wireless WAN" },
+    {  9 /*NdisPhysicalMediumNative802_11*/, "Native 802.11" },
+    { 10 /*NdisPhysicalMediumBluetooth*/,    "Bluetooth" },
+    { 11 /*NdisPhysicalMediumInfiniband*/,   "Infiniband" },
+    { 12 /*NdisPhysicalMediumWiMax*/,        "WiMAX" },
+    { 13 /*NdisPhysicalMediumUWB*/,          "Ultra Wideband (UWB)" },
+    { 14 /*NdisPhysicalMedium802_3*/,        "802.3 (Ethernet)" },
+    { 15 /*NdisPhysicalMedium802_5*/,        "802.5 (Token Ring)" },
+    { 16 /*NdisPhysicalMediumIrda*/,         "IrDA" },
+    { 17 /*NdisPhysicalMediumWiredWAN*/,     "Wired WAN" },
+    { 18 /*NdisPhysicalMediumWiredCoWan*/,   "Wired CoWAN" },
+    { 19 /*NdisPhysicalMediumOther*/,        "Other" },
     { 0, NULL }
 };
 
@@ -655,7 +683,7 @@ supported_list(LPADAPTER adapter)
 {
     unsigned char values[10000];
     int           length;
-
+    gchar* tmp_str;
 
     g_warning("supported_list_unhandled");
     length = sizeof(values);
@@ -663,7 +691,9 @@ supported_list(LPADAPTER adapter)
         guint32 *value = (guint32 *)values;
 
         while (length >= 4) {
-            printf("OID: 0x%08X %s\n", *value, val_to_str(*value, oid_vals, "unknown"));
+            tmp_str = val_to_str_wmem(NULL, *value, oid_vals, "unknown (%d)");
+            printf("OID: 0x%08X %s\n", *value, tmp_str);
+            wmem_free(NULL, tmp_str);
 
             value++;
             length -= 4;
@@ -993,7 +1023,7 @@ hex(unsigned char *p, int len) {
 
     while (len) {
         g_warning("%u: 0x%x (%u) '%c'", i, *p, *p,
-            isprint(*p) ? *p : '.');
+            g_ascii_isprint(*p) ? *p : '.');
 
         i++;
         p++;
@@ -1009,6 +1039,7 @@ capture_if_details_802_11_bssid_list(GtkWidget *main_vb, struct ndis_bssid_list 
     unsigned char          mac[6];
     const gchar           *manuf_name;
     GString               *Rates;
+    gchar                 *tmp_str;
 
 
     if (bssid_list->num_items != 0) {
@@ -1073,16 +1104,19 @@ capture_if_details_802_11_bssid_list(GtkWidget *main_vb, struct ndis_bssid_list 
             }
 
             /* Network Type */
-            g_snprintf(nettype_buff, sizeof(nettype_buff), "%s",
-                val_to_str(bssid_item->net_type, win32_802_11_network_type_vals, "(0x%x)"));
+            tmp_str = val_to_str_wmem(NULL, bssid_item->net_type, win32_802_11_network_type_vals, "(0x%x)");
+            g_snprintf(nettype_buff, sizeof(nettype_buff), "%s", tmp_str);
+            wmem_free(NULL, tmp_str);
 
             /* Infrastructure Mode */
-            g_snprintf(infra_buff, sizeof(infra_buff), "%s",
-                val_to_str(bssid_item->mode, win32_802_11_infra_mode_vals, "(0x%x)"));
+            tmp_str = val_to_str_wmem(NULL, bssid_item->mode, win32_802_11_infra_mode_vals, "(0x%x)");
+            g_snprintf(infra_buff, sizeof(infra_buff), "%s", tmp_str);
+            wmem_free(NULL, tmp_str);
 
             /* Channel */
-            g_snprintf(freq_buff, sizeof(freq_buff), "%s",
-                val_to_str(bssid_item->config.ds_config, win32_802_11_channel_vals, "(%u kHz)"));
+            tmp_str = val_to_str_wmem(NULL, bssid_item->config.ds_config, win32_802_11_channel_vals, "(%u kHz)");
+            g_snprintf(freq_buff, sizeof(freq_buff), "%s", tmp_str);
+            wmem_free(NULL, tmp_str);
 
             /* XXX - IE Length is currently not really supported here */
             {
@@ -1118,8 +1152,9 @@ capture_if_details_802_11_bssid_list(GtkWidget *main_vb, struct ndis_bssid_list 
                     len -= 2;
 
 #ifdef DEBUG_IE
-                    g_warning("ID: %s (%u) Len: %u",
-                        val_to_str(id, ie_id_vals, "0x%x"), id, el_len);
+                    tmp_str = val_to_str_wmem(NULL, id, ie_id_vals, "0x%x");
+                    g_warning("ID: %s (%u) Len: %u", tmp_str, id, el_len);
+                    wmem_free(NULL, tmp_str);
 #endif
 
                     switch (id) {
@@ -1228,7 +1263,7 @@ capture_if_details_802_11(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPADA
     const gchar       *manuf_name;
     struct ndis_bssid_list    *bssid_list;
     struct ndis_configuration *configuration;
-
+    gchar* tmp_str;
 
     add_string_to_grid(grid, row, "Current network", "");
 
@@ -1265,8 +1300,9 @@ capture_if_details_802_11(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPADA
 
     /* Network type in use */
     if (wpcap_packet_request_uint(adapter, OID_802_11_NETWORK_TYPE_IN_USE, &uint_value)) {
-        add_string_to_grid(grid, row, "Network type used",
-            val_to_str(uint_value, win32_802_11_network_type_vals, "(0x%x)"));
+        tmp_str = val_to_str_wmem(NULL, uint_value, win32_802_11_network_type_vals, "(0x%x)");
+        add_string_to_grid(grid, row, "Network type used", tmp_str);
+        wmem_free(NULL, tmp_str);
         entries++;
     } else {
         add_string_to_grid(grid, row, "Network type used", "-");
@@ -1274,8 +1310,9 @@ capture_if_details_802_11(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPADA
 
     /* Infrastructure mode */
     if (wpcap_packet_request_ulong(adapter, OID_802_11_INFRASTRUCTURE_MODE, &uint_value)) {
-        add_string_to_grid(grid, row, "Infrastructure mode",
-            val_to_str(uint_value, win32_802_11_infra_mode_vals, "(0x%x)"));
+        tmp_str = val_to_str_wmem(NULL, uint_value, win32_802_11_infra_mode_vals, "(0x%x)");
+        add_string_to_grid(grid, row, "Infrastructure mode", tmp_str);
+        wmem_free(NULL, tmp_str);
         entries++;
     } else {
         add_string_to_grid(grid, row, "Infrastructure mode", "-");
@@ -1283,8 +1320,9 @@ capture_if_details_802_11(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPADA
 
     /* Authentication mode */
     if (wpcap_packet_request_ulong(adapter, OID_802_11_AUTHENTICATION_MODE, &uint_value)) {
-        add_string_to_grid(grid, row, "Authentication mode",
-            val_to_str(uint_value, win32_802_11_auth_mode_vals, "(0x%x)"));
+        tmp_str = val_to_str_wmem(NULL, uint_value, win32_802_11_auth_mode_vals, "(0x%x)");
+        add_string_to_grid(grid, row, "Authentication mode", tmp_str);
+        wmem_free(NULL, tmp_str);
         entries++;
     } else {
         add_string_to_grid(grid, row, "Authentication mode", "-");
@@ -1292,8 +1330,9 @@ capture_if_details_802_11(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPADA
 
     /* Encryption (WEP) status */
     if (wpcap_packet_request_ulong(adapter, OID_802_11_ENCRYPTION_STATUS, &uint_value)) {
-        add_string_to_grid(grid, row, "Encryption status",
-            val_to_str(uint_value, win32_802_11_encryption_status_vals, "(0x%x)"));
+        tmp_str = val_to_str_wmem(NULL, uint_value, win32_802_11_encryption_status_vals, "(0x%x)");
+        add_string_to_grid(grid, row, "Encryption status", tmp_str);
+        wmem_free(NULL, tmp_str);
         entries++;
     } else {
         add_string_to_grid(grid, row, "Encryption status", "-");
@@ -1438,8 +1477,9 @@ capture_if_details_802_11(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPADA
     if (wpcap_packet_request(adapter, OID_802_11_CONFIGURATION, FALSE /* !set */, (char *) values, &length)) {
         configuration = (struct ndis_configuration *) values;
 
-        add_string_to_grid(grid, row, "Channel",
-            val_to_str(configuration->ds_config, win32_802_11_channel_freq_vals, "(%u kHz)"));
+        tmp_str = val_to_str_wmem(NULL, configuration->ds_config, win32_802_11_channel_freq_vals, "(%u kHz)");
+        add_string_to_grid(grid, row, "Channel", tmp_str);
+        wmem_free(NULL, tmp_str);
         entries++;
     } else {
         add_string_to_grid(grid, row, "Channel", "-");
@@ -1794,7 +1834,7 @@ capture_if_details_general(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPAD
     int             length;
     unsigned short  ushort_value;
     int             entries = 0;
-    gchar          *size_str;
+    gchar          *size_str, *tmp_str;
 
 
     /* general */
@@ -1862,8 +1902,9 @@ capture_if_details_general(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPAD
         uint_array_size /= sizeof(unsigned int);
         i = 0;
         while (uint_array_size--) {
-            add_string_to_grid(grid, row, "Media supported",
-                val_to_str(uint_array[i], win32_802_3_medium_vals, "(0x%x)"));
+            tmp_str = val_to_str_wmem(NULL, uint_array[i], win32_802_3_medium_vals, "(0x%x)");
+            add_string_to_grid(grid, row, "Media supported", tmp_str);
+            wmem_free(NULL, tmp_str);
             i++;
         }
     } else {
@@ -1876,18 +1917,20 @@ capture_if_details_general(GtkWidget *grid, GtkWidget *main_vb, guint *row, LPAD
         uint_array_size /= sizeof(unsigned int);
         i = 0;
         while (uint_array_size--) {
-            add_string_to_grid(grid, row, "Medium in use",
-                  val_to_str(uint_array[i], win32_802_3_medium_vals, "(0x%x)"));
+            tmp_str = val_to_str_wmem(NULL, uint_array[i], win32_802_3_medium_vals, "(0x%x)");
+            add_string_to_grid(grid, row, "Media in use", tmp_str);
+            wmem_free(NULL, tmp_str);
             i++;
         }
     } else {
-        add_string_to_grid(grid, row, "Medium in use", "-");
+        add_string_to_grid(grid, row, "Media in use", "-");
     }
 
     if (wpcap_packet_request_uint(adapter, OID_GEN_PHYSICAL_MEDIUM, &physical_medium)) {
         entries++;
-        add_string_to_grid(grid, row, "Physical medium",
-            val_to_str(physical_medium, win32_802_3_physical_medium_vals, "(0x%x)"));
+        tmp_str = val_to_str_wmem(NULL, physical_medium, win32_802_3_physical_medium_vals, "(0x%x)");
+        add_string_to_grid(grid, row, "Physical medium", tmp_str);
+        wmem_free(NULL, tmp_str);
     } else {
         add_string_to_grid(grid, row, "Physical medium", "-");
     }

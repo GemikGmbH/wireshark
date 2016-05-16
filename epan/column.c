@@ -24,7 +24,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 #include <errno.h>
 
 #ifdef HAVE_UNISTD_H
@@ -286,28 +285,23 @@ get_timestamp_column_longest_string(const gint type, const gint precision)
     case(TS_ABSOLUTE_WITH_YMD):
     case(TS_UTC_WITH_YMD):
         switch(precision) {
-            case(TS_PREC_AUTO_SEC):
             case(TS_PREC_FIXED_SEC):
                 return "0000-00-00 00:00:00";
                 break;
-            case(TS_PREC_AUTO_DSEC):
             case(TS_PREC_FIXED_DSEC):
                 return "0000-00-00 00:00:00.0";
                 break;
-            case(TS_PREC_AUTO_CSEC):
             case(TS_PREC_FIXED_CSEC):
                 return "0000-00-00 00:00:00.00";
                 break;
-            case(TS_PREC_AUTO_MSEC):
             case(TS_PREC_FIXED_MSEC):
                 return "0000-00-00 00:00:00.000";
                 break;
-            case(TS_PREC_AUTO_USEC):
             case(TS_PREC_FIXED_USEC):
                 return "0000-00-00 00:00:00.000000";
                 break;
-            case(TS_PREC_AUTO_NSEC):
             case(TS_PREC_FIXED_NSEC):
+            case(TS_PREC_AUTO):    /* Leave enough room for the maximum */
                 return "0000-00-00 00:00:00.000000000";
                 break;
             default:
@@ -317,28 +311,23 @@ get_timestamp_column_longest_string(const gint type, const gint precision)
     case(TS_ABSOLUTE_WITH_YDOY):
     case(TS_UTC_WITH_YDOY):
         switch(precision) {
-            case(TS_PREC_AUTO_SEC):
             case(TS_PREC_FIXED_SEC):
                 return "0000/000 00:00:00";
                 break;
-            case(TS_PREC_AUTO_DSEC):
             case(TS_PREC_FIXED_DSEC):
                 return "0000/000 00:00:00.0";
                 break;
-            case(TS_PREC_AUTO_CSEC):
             case(TS_PREC_FIXED_CSEC):
                 return "0000/000 00:00:00.00";
                 break;
-            case(TS_PREC_AUTO_MSEC):
             case(TS_PREC_FIXED_MSEC):
                 return "0000/000 00:00:00.000";
                 break;
-            case(TS_PREC_AUTO_USEC):
             case(TS_PREC_FIXED_USEC):
                 return "0000/000 00:00:00.000000";
                 break;
-            case(TS_PREC_AUTO_NSEC):
             case(TS_PREC_FIXED_NSEC):
+            case(TS_PREC_AUTO):    /* Leave enough room for the maximum */
                 return "0000/000 00:00:00.000000000";
                 break;
             default:
@@ -348,28 +337,23 @@ get_timestamp_column_longest_string(const gint type, const gint precision)
     case(TS_ABSOLUTE):
     case(TS_UTC):
         switch(precision) {
-            case(TS_PREC_AUTO_SEC):
             case(TS_PREC_FIXED_SEC):
                 return "00:00:00";
                 break;
-            case(TS_PREC_AUTO_DSEC):
             case(TS_PREC_FIXED_DSEC):
                 return "00:00:00.0";
                 break;
-            case(TS_PREC_AUTO_CSEC):
             case(TS_PREC_FIXED_CSEC):
                 return "00:00:00.00";
                 break;
-            case(TS_PREC_AUTO_MSEC):
             case(TS_PREC_FIXED_MSEC):
                 return "00:00:00.000";
                 break;
-            case(TS_PREC_AUTO_USEC):
             case(TS_PREC_FIXED_USEC):
                 return "00:00:00.000000";
                 break;
-            case(TS_PREC_AUTO_NSEC):
             case(TS_PREC_FIXED_NSEC):
+            case(TS_PREC_AUTO):    /* Leave enough room for the maximum */
                 return "00:00:00.000000000";
                 break;
             default:
@@ -380,28 +364,23 @@ get_timestamp_column_longest_string(const gint type, const gint precision)
     case(TS_DELTA):
     case(TS_DELTA_DIS):
         switch(precision) {
-            case(TS_PREC_AUTO_SEC):
             case(TS_PREC_FIXED_SEC):
                 return "0000";
                 break;
-            case(TS_PREC_AUTO_DSEC):
             case(TS_PREC_FIXED_DSEC):
                 return "0000.0";
                 break;
-            case(TS_PREC_AUTO_CSEC):
             case(TS_PREC_FIXED_CSEC):
                 return "0000.00";
                 break;
-            case(TS_PREC_AUTO_MSEC):
             case(TS_PREC_FIXED_MSEC):
                 return "0000.000";
                 break;
-            case(TS_PREC_AUTO_USEC):
             case(TS_PREC_FIXED_USEC):
                 return "0000.000000";
                 break;
-            case(TS_PREC_AUTO_NSEC):
             case(TS_PREC_FIXED_NSEC):
+            case(TS_PREC_AUTO):    /* Leave enough room for the maximum */
                 return "0000.000000000";
                 break;
             default:
@@ -411,28 +390,23 @@ get_timestamp_column_longest_string(const gint type, const gint precision)
     case(TS_EPOCH):
         /* This is enough to represent 2^63 (signed 64-bit integer) + fractions */
         switch(precision) {
-            case(TS_PREC_AUTO_SEC):
             case(TS_PREC_FIXED_SEC):
                 return "0000000000000000000";
                 break;
-            case(TS_PREC_AUTO_DSEC):
             case(TS_PREC_FIXED_DSEC):
                 return "0000000000000000000.0";
                 break;
-            case(TS_PREC_AUTO_CSEC):
             case(TS_PREC_FIXED_CSEC):
                 return "0000000000000000000.00";
                 break;
-            case(TS_PREC_AUTO_MSEC):
             case(TS_PREC_FIXED_MSEC):
                 return "0000000000000000000.000";
                 break;
-            case(TS_PREC_AUTO_USEC):
             case(TS_PREC_FIXED_USEC):
                 return "0000000000000000000.000000";
                 break;
-            case(TS_PREC_AUTO_NSEC):
             case(TS_PREC_FIXED_NSEC):
+            case(TS_PREC_AUTO):    /* Leave enough room for the maximum */
                 return "0000000000000000000.000000000";
                 break;
             default:
@@ -450,18 +424,6 @@ get_timestamp_column_longest_string(const gint type, const gint precision)
     return "";
 }
 
-/* Returns the longer string of the column title or the hard-coded width of
- * its contents for building the packet list layout. */
-const gchar *
-get_column_width_string(const gint format, const gint col)
-{
-    if(strlen(get_column_longest_string(format)) >
-       strlen(get_column_title(col)))
-        return get_column_longest_string(format);
-    else
-        return get_column_title(col);
-}
-
 /* Returns a string representing the longest possible value for a
    particular column type.  See also get_column_width_string() above.
 
@@ -474,7 +436,7 @@ get_column_width_string(const gint format, const gint col)
    is done, and given that the width for COL...SRC and COL...DST columns
    is somewhat arbitrary in any case.  We should probably clean
    that up eventually, though. */
-const char *
+static const char *
 get_column_longest_string(const gint format)
 {
   switch (format) {
@@ -618,6 +580,18 @@ get_column_longest_string(const gint format)
       return "Source port: kerberos-master  Destination port: kerberos-master";
       break;
   }
+}
+
+/* Returns the longer string of the column title or the hard-coded width of
+ * its contents for building the packet list layout. */
+const gchar *
+get_column_width_string(const gint format, const gint col)
+{
+    if(strlen(get_column_longest_string(format)) >
+       strlen(get_column_title(col)))
+        return get_column_longest_string(format);
+    else
+        return get_column_title(col);
 }
 
 /* Returns the longest possible width, in characters, for a particular
@@ -810,47 +784,130 @@ set_column_custom_occurrence(const gint col, const gint custom_occurrence)
   cfmt->custom_occurrence = custom_occurrence;
 }
 
+static gchar *
+get_custom_field_tooltip (gchar *custom_field, gint occurrence)
+{
+    header_field_info *hfi = proto_registrar_get_byname(custom_field);
+    if (hfi == NULL) {
+        /* Not a valid field */
+        return g_strdup_printf("Unknown Field: %s", custom_field);
+    }
+
+    if (hfi->parent == -1) {
+        /* Protocol */
+        return g_strdup_printf("%s (%s)", hfi->name, hfi->abbrev);
+    }
+
+    if (occurrence == 0) {
+        /* All occurrences */
+        return g_strdup_printf("%s\n%s (%s)", proto_get_protocol_name(hfi->parent), hfi->name, hfi->abbrev);
+    }
+
+    /* One given occurence */
+    return g_strdup_printf("%s\n%s (%s#%d)", proto_get_protocol_name(hfi->parent), hfi->name, hfi->abbrev, occurrence);
+}
+
+gchar *
+get_column_tooltip(const gint col)
+{
+    GList    *clp = g_list_nth(prefs.col_list, col);
+    fmt_data *cfmt;
+    gchar   **fields;
+    gboolean  first = TRUE;
+    GString  *column_tooltip;
+    guint     i;
+
+    if (!clp)  /* Invalid column requested */
+        return NULL;
+
+    cfmt = (fmt_data *) clp->data;
+
+    if (cfmt->fmt != COL_CUSTOM) {
+        /* Use format description */
+        return g_strdup(col_format_desc(cfmt->fmt));
+    }
+
+    fields = g_regex_split_simple(COL_CUSTOM_PRIME_REGEX, cfmt->custom_field,
+                                  G_REGEX_ANCHORED, G_REGEX_MATCH_ANCHORED);
+    column_tooltip = g_string_new("");
+
+    for (i = 0; i < g_strv_length(fields); i++) {
+        if (fields[i] && *fields[i]) {
+            gchar *field_tooltip = get_custom_field_tooltip(fields[i], cfmt->custom_occurrence);
+            if (!first) {
+                g_string_append(column_tooltip, "\n\nOR\n\n");
+            }
+            g_string_append(column_tooltip, field_tooltip);
+            g_free (field_tooltip);
+            first = FALSE;
+        }
+    }
+
+    g_strfreev(fields);
+
+    return g_string_free (column_tooltip, FALSE);
+}
+
 void
 build_column_format_array(column_info *cinfo, const gint num_cols, const gboolean reset_fences)
 {
   int i;
+  col_item_t* col_item;
 
   /* Build the column format array */
   col_setup(cinfo, num_cols);
 
   for (i = 0; i < cinfo->num_cols; i++) {
-    cinfo->col_fmt[i] = get_column_format(i);
-    cinfo->col_title[i] = g_strdup(get_column_title(i));
+    col_item = &cinfo->columns[i];
+    col_item->col_fmt = get_column_format(i);
+    col_item->col_title = g_strdup(get_column_title(i));
 
-    if (cinfo->col_fmt[i] == COL_CUSTOM) {
-      cinfo->col_custom_field[i] = g_strdup(get_column_custom_field(i));
-      cinfo->col_custom_occurrence[i] = get_column_custom_occurrence(i);
-      if(!dfilter_compile(cinfo->col_custom_field[i], &cinfo->col_custom_dfilter[i])) {
+    if (col_item->col_fmt == COL_CUSTOM) {
+      col_item->col_custom_field = g_strdup(get_column_custom_field(i));
+      col_item->col_custom_occurrence = get_column_custom_occurrence(i);
+      if(!dfilter_compile(col_item->col_custom_field, &col_item->col_custom_dfilter, NULL)) {
         /* XXX: Should we issue a warning? */
-        g_free(cinfo->col_custom_field[i]);
-        cinfo->col_custom_field[i] = NULL;
-        cinfo->col_custom_occurrence[i] = 0;
-        cinfo->col_custom_dfilter[i] = NULL;
+        g_free(col_item->col_custom_field);
+        col_item->col_custom_field = NULL;
+        col_item->col_custom_occurrence = 0;
+        col_item->col_custom_dfilter = NULL;
+      }
+      if (col_item->col_custom_field) {
+        gchar **fields = g_regex_split(cinfo->prime_regex, col_item->col_custom_field,
+                                       G_REGEX_MATCH_ANCHORED);
+        guint i_field;
+
+        for (i_field = 0; i_field < g_strv_length(fields); i_field++) {
+          if (fields[i_field] && *fields[i_field]) {
+            header_field_info *hfinfo = proto_registrar_get_byname(fields[i_field]);
+            if (hfinfo) {
+              int *idx = g_new(int, 1);
+              *idx = hfinfo->id;
+              col_item->col_custom_field_ids = g_slist_append(col_item->col_custom_field_ids, idx);
+            }
+          }
+        }
+        g_strfreev(fields);
       }
     } else {
-      cinfo->col_custom_field[i] = NULL;
-      cinfo->col_custom_occurrence[i] = 0;
-      cinfo->col_custom_dfilter[i] = NULL;
+      col_item->col_custom_field = NULL;
+      col_item->col_custom_occurrence = 0;
+      col_item->col_custom_dfilter = NULL;
     }
 
-    cinfo->fmt_matx[i] = (gboolean *) g_malloc0(sizeof(gboolean) * NUM_COL_FMTS);
-    get_column_format_matches(cinfo->fmt_matx[i], cinfo->col_fmt[i]);
-    cinfo->col_data[i] = NULL;
+    col_item->fmt_matx = (gboolean *) g_malloc0(sizeof(gboolean) * NUM_COL_FMTS);
+    get_column_format_matches(col_item->fmt_matx, col_item->col_fmt);
+    col_item->col_data = NULL;
 
-    if (cinfo->col_fmt[i] == COL_INFO)
-      cinfo->col_buf[i] = (gchar *) g_malloc(sizeof(gchar) * COL_MAX_INFO_LEN);
+    if (col_item->col_fmt == COL_INFO)
+      col_item->col_buf = (gchar *) g_malloc(sizeof(gchar) * COL_MAX_INFO_LEN);
     else
-      cinfo->col_buf[i] = (gchar *) g_malloc(sizeof(gchar) * COL_MAX_LEN);
+      col_item->col_buf = (gchar *) g_malloc(sizeof(gchar) * COL_MAX_LEN);
 
     if(reset_fences)
-      cinfo->col_fence[i] = 0;
+      col_item->col_fence = 0;
 
-    cinfo->col_expr.col_expr[i] = (gchar *) g_malloc(sizeof(gchar) * COL_MAX_LEN);
+    cinfo->col_expr.col_expr[i] = "";
     cinfo->col_expr.col_expr_val[i] = (gchar *) g_malloc(sizeof(gchar) * COL_MAX_LEN);
   }
 
@@ -861,7 +918,7 @@ build_column_format_array(column_info *cinfo, const gint num_cols, const gboolea
     int j;
 
     for (j = 0; j < NUM_COL_FMTS; j++) {
-      if (!cinfo->fmt_matx[i][j])
+      if (!cinfo->columns[i].fmt_matx[j])
           continue;
 
       if (cinfo->col_first[j] == -1)

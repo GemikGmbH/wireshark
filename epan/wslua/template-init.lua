@@ -5,8 +5,6 @@
 --  This file is going to be executed before any other lua script.
 --  It can be used to load libraries, disable functions and more.
 --
--- $Id$
---
 -- Wireshark - Network traffic analyzer
 -- By Gerald Combs <gerald@wireshark.org>
 -- Copyright 1998 Gerald Combs
@@ -39,7 +37,7 @@ run_user_scripts_when_superuser = false
 
 -- disable potentialy harmful lua functions when running superuser
 if running_superuser then
-    local hint = "has been disabled due to running Wireshark as superuser. See http://wiki.wireshark.org/CaptureSetup/CapturePrivileges for help in running Wireshark as an unprivileged user."
+    local hint = "has been disabled due to running Wireshark as superuser. See https://wiki.wireshark.org/CaptureSetup/CapturePrivileges for help in running Wireshark as an unprivileged user."
     local disabled_lib = {}
     setmetatable(disabled_lib,{ __index = function() error("this package ".. hint) end } );
 
@@ -115,9 +113,14 @@ end
 
 -- %WTAP_FILETYPES%
 
+-- %WTAP_TSPRECS%
+
 -- %WTAP_COMMENTTYPES%
 
 -- %FT_TYPES%
+
+-- the following table is since 2.0
+-- %FT_FRAME_TYPES%
 
 -- the following table is since 1.12
 -- %WTAP_REC_TYPES%

@@ -22,7 +22,7 @@
 #ifndef TIME_SHIFT_DIALOG_H
 #define TIME_SHIFT_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
@@ -47,6 +47,9 @@ public:
 
 public slots:
     void setCaptureFile(capture_file *cf) { cap_file_ = cf; }
+
+signals:
+    void timeShifted();
 
 private:
     Ui::TimeShiftDialog *ts_ui_;

@@ -173,7 +173,7 @@ static const value_string gearman_command_names[] = {
 };
 
 static guint
-get_gearman_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_gearman_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
     return tvb_get_ntohl(tvb, offset+8)+GEARMAN_COMMAND_HEADER_SIZE;
 }
@@ -191,7 +191,7 @@ dissect_binary_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void*
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "Gearman");
   col_clear(pinfo->cinfo,COL_INFO);
 
-  magic_code = tvb_get_string(wmem_packet_scope(), tvb, 1, 3);
+  magic_code = tvb_get_string_enc(wmem_packet_scope(), tvb, 1, 3, ENC_ASCII);
   type = tvb_get_ntohl(tvb, 4);
   size = tvb_get_ntohl(tvb, 8);
 
@@ -206,9 +206,8 @@ dissect_binary_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void*
     ti = proto_tree_add_item(tree, proto_gearman, tvb, 0, -1, ENC_NA);
     gearman_tree = proto_item_add_subtree(ti, ett_gearman);
 
-    ti = proto_tree_add_text(gearman_tree, tvb, 0, GEARMAN_COMMAND_HEADER_SIZE+size,
+    command_tree = proto_tree_add_subtree_format(gearman_tree, tvb, 0, GEARMAN_COMMAND_HEADER_SIZE+size, ett_gearman_command, NULL,
                              "[%s] %s(%d) LEN=%d", magic_code, val_to_str(type, gearman_command_names, "Unknown (0x%08x)"), type, size);
-    command_tree = proto_item_add_subtree(ti, ett_gearman_command);
 
     proto_tree_add_string(command_tree, hf_gearman_magic_code, tvb, 0, 4, magic_code);
     proto_tree_add_item(command_tree, hf_gearman_pkt_type, tvb, 4, 4, ENC_BIG_ENDIAN);
@@ -415,7 +414,7 @@ dissect_binary_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void*
   }
 
   col_set_fence(pinfo->cinfo, COL_INFO);
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 static void
@@ -442,7 +441,7 @@ dissect_management_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       if (cmdlen == linelen && 0 == tvb_strneql(tvb, offset, GEARMAN_MGR_CMDS[i], cmdlen))
       {
         proto_tree_add_item(gearman_tree, hf_gearman_mgr_cmd, tvb, offset, cmdlen, ENC_ASCII|ENC_NA);
-        col_add_fstr(pinfo->cinfo, COL_INFO, "[MGR] %s", tvb_get_string(wmem_packet_scope(), tvb, offset, linelen));
+        col_add_fstr(pinfo->cinfo, COL_INFO, "[MGR] %s", tvb_get_string_enc(wmem_packet_scope(), tvb, offset, linelen, ENC_ASCII));
         type = 1;
         break;
       }
@@ -454,12 +453,12 @@ dissect_management_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
       if (type == 0)
       {
-        col_add_fstr(pinfo->cinfo, COL_INFO, "[MGR] %s", tvb_get_string(wmem_packet_scope(), tvb, offset, linelen));
+        col_add_fstr(pinfo->cinfo, COL_INFO, "[MGR] %s", tvb_get_string_enc(wmem_packet_scope(), tvb, offset, linelen, ENC_ASCII));
         type = -1;
       }
       else
       {
-        col_append_sep_fstr(pinfo->cinfo, COL_INFO, ",", "%s", tvb_get_string(wmem_packet_scope(), tvb, offset, linelen));
+        col_append_sep_fstr(pinfo->cinfo, COL_INFO, ",", "%s", tvb_get_string_enc(wmem_packet_scope(), tvb, offset, linelen, ENC_ASCII));
       }
     }
 
@@ -480,7 +479,7 @@ dissect_gearman(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
     dissect_management_packet(tvb, pinfo, tree);
   }
 
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 void

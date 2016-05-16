@@ -22,17 +22,12 @@
  */
 
 #include "config.h"
-#include <stdio.h>
-#include <string.h>
 
 #include <epan/packet.h>
 #include <epan/exceptions.h>
-#include <epan/conversation.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
 #include <epan/tap.h>
-#include <epan/wmem/wmem.h>
-
 #include "packet-mac-lte.h"
 #include "packet-rlc-lte.h"
 #include "packet-pdcp-lte.h"
@@ -40,7 +35,7 @@
 
 /* Described in:
  * 3GPP TS 36.322 Evolved Universal Terrestial Radio Access (E-UTRA)
- * Radio Link Control (RLC) Protocol specification v9.3.0
+ * Radio Link Control (RLC) Protocol specification v12.1.0
  */
 
 /* TODO:
@@ -77,7 +72,6 @@ static const enum_val_t pdcp_drb_col_vals[] = {
     {NULL, NULL, -1}
 };
 static gint global_rlc_lte_call_pdcp_for_drb = (gint)PDCP_drb_SN_signalled;
-static gint signalled_pdcp_sn_bits = 12;
 
 static gboolean global_rlc_lte_call_rrc_for_ccch = TRUE;
 static gboolean global_rlc_lte_call_rrc_for_mcch = FALSE;
@@ -86,11 +80,19 @@ static gboolean global_rlc_lte_call_ip_for_mtch = FALSE;
 /* Preference to expect RLC headers without payloads */
 static gboolean global_rlc_lte_headers_expected = FALSE;
 
-/* Heuristic dissection */
-static gboolean global_rlc_lte_heur = FALSE;
-
 /* Re-assembly of segments */
 static gboolean global_rlc_lte_reassembly = TRUE;
+
+/* Tree storing UE related parameters */
+#define NO_EXT_LI 0x0
+#define UL_EXT_LI 0x1
+#define DL_EXT_LI 0x2
+typedef struct rlc_ue_parameters {
+    guint32 id;
+    guint8 ext_li_field;
+    guint8 pdcp_sn_bits;
+} rlc_ue_parameters;
+static wmem_tree_t *ue_parameters_tree;
 
 /**************************************************/
 /* Initialize the protocol and registered fields. */
@@ -222,6 +224,7 @@ static expert_field ei_rlc_lte_um_sn_missing = EI_INIT;
 static expert_field ei_rlc_lte_sequence_analysis_ack_out_of_range_opposite_frame = EI_INIT;
 static expert_field ei_rlc_lte_sequence_analysis_last_segment_not_continued = EI_INIT;
 static expert_field ei_rlc_lte_reserved_bits_not_zero = EI_INIT;
+static expert_field ei_rlc_lte_no_per_frame_info = EI_INIT;
 
 /* Value-strings */
 static const value_string direction_vals[] =
@@ -345,7 +348,7 @@ static const value_string header_only_vals[] =
 /* These are for keeping track of UM/AM extension headers, and the lengths found  */
 /* in them                                                                        */
 static guint8  s_number_of_extensions = 0;
-#define MAX_RLC_SDUS 64
+#define MAX_RLC_SDUS 192
 static guint16 s_lengths[MAX_RLC_SDUS];
 
 
@@ -476,9 +479,7 @@ static void reassembly_add_segment(channel_sequence_analysis_status *status,
         return;
     }
 
-    segment_data = (guint8 *)wmem_alloc(wmem_file_scope(), length);
-    /* TODO: is there a better way to do this? */
-    memcpy(segment_data, tvb_get_ptr(tvb, offset, length), length);
+    segment_data = (guint8 *)tvb_memdup(wmem_file_scope(),tvb, offset, length);
 
     /* Add new segment */
     status->reassembly_info->segments[segment_number].frameNum = frame;
@@ -674,7 +675,8 @@ static void write_pdu_label_and_info_literal(proto_item *pdu_ti, proto_item *sub
 /* Dissect extension headers (common to both UM and AM) */
 static int dissect_rlc_lte_extension_header(tvbuff_t *tvb, packet_info *pinfo _U_,
                                             proto_tree *tree,
-                                            int offset)
+                                            int offset,
+                                            rlc_lte_info *p_rlc_lte_info)
 {
     guint8  isOdd;
     guint64 extension = 1;
@@ -687,8 +689,6 @@ static int dissect_rlc_lte_extension_header(tvbuff_t *tvb, packet_info *pinfo _U
         proto_tree *extension_part_tree;
         proto_item *extension_part_ti;
 
-        isOdd = (s_number_of_extensions % 2);
-
         /* Extension part subtree */
         extension_part_ti = proto_tree_add_string_format(tree,
                                                          hf_rlc_lte_extension_part,
@@ -698,33 +698,52 @@ static int dissect_rlc_lte_extension_header(tvbuff_t *tvb, packet_info *pinfo _U
         extension_part_tree = proto_item_add_subtree(extension_part_ti,
                                                      ett_rlc_lte_extension_part);
 
-        /* Read next extension */
-        proto_tree_add_bits_ret_val(extension_part_tree, hf_rlc_lte_extension_e, tvb,
-                                    (offset*8) + ((isOdd) ? 4 : 0),
-                                    1,
-                                    &extension, ENC_BIG_ENDIAN);
+        if (p_rlc_lte_info->extendedLiField == FALSE) {
+            isOdd = (s_number_of_extensions % 2);
 
-        /* Read length field */
-        proto_tree_add_bits_ret_val(extension_part_tree, hf_rlc_lte_extension_li, tvb,
-                                    (offset*8) + ((isOdd) ? 5 : 1),
-                                    11,
-                                    &length, ENC_BIG_ENDIAN);
+            /* Read next extension */
+            proto_tree_add_bits_ret_val(extension_part_tree, hf_rlc_lte_extension_e, tvb,
+                                        (offset*8) + ((isOdd) ? 4 : 0),
+                                        1,
+                                        &extension, ENC_BIG_ENDIAN);
+
+            /* Read length field */
+            proto_tree_add_bits_ret_val(extension_part_tree, hf_rlc_lte_extension_li, tvb,
+                                        (offset*8) + ((isOdd) ? 5 : 1),
+                                        11,
+                                        &length, ENC_BIG_ENDIAN);
+
+            /* Move on to byte of next extension */
+            if (isOdd) {
+                offset += 2;
+            } else {
+                offset++;
+            }
+        } else {
+            /* Read next extension */
+            proto_tree_add_bits_ret_val(extension_part_tree, hf_rlc_lte_extension_e, tvb,
+                                        (offset*8),
+                                        1,
+                                        &extension, ENC_BIG_ENDIAN);
+
+            /* Read length field */
+            proto_tree_add_bits_ret_val(extension_part_tree, hf_rlc_lte_extension_li, tvb,
+                                        (offset*8) + 1,
+                                        15,
+                                        &length, ENC_BIG_ENDIAN);
+
+            /* Move on to byte of next extension */
+            offset += 2;
+        }
 
         proto_item_append_text(extension_part_tree, " (length=%u)", (guint16)length);
-
-        /* Move on to byte of next extension */
-        if (isOdd) {
-            offset += 2;
-        } else {
-            offset++;
-        }
 
         s_lengths[s_number_of_extensions++] = (guint16)length;
     }
 
     /* May need to skip padding after last extension part */
     isOdd = (s_number_of_extensions % 2);
-    if (isOdd) {
+    if (isOdd && (p_rlc_lte_info->extendedLiField == FALSE)) {
         proto_tree_add_item(tree, hf_rlc_lte_extension_padding,
                             tvb, offset++, 1, ENC_BIG_ENDIAN);
     }
@@ -764,6 +783,10 @@ static void show_PDU_in_tree(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb
                              rlc_lte_info *rlc_info, gboolean whole_pdu, rlc_channel_reassembly_info *reassembly_info,
                              sequence_analysis_state state)
 {
+    wmem_tree_key_t key[3];
+    guint32 id;
+    rlc_ue_parameters *params;
+
     /* Add raw data (according to mode) */
     proto_item *data_ti = proto_tree_add_item(tree,
                                               (rlc_info->rlcMode == RLC_AM_MODE) ?
@@ -782,7 +805,7 @@ static void show_PDU_in_tree(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb
 
             /* Get tvb for passing to LTE PDCP dissector */
             if (reassembly_info == NULL) {
-                pdcp_tvb = tvb_new_subset(tvb, offset, length, length);
+                pdcp_tvb = tvb_new_subset_length(tvb, offset, length);
             }
             else {
                 /* Get combined tvb. */
@@ -824,7 +847,19 @@ static void show_PDU_in_tree(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb
                         break;
                     case PDCP_drb_SN_signalled:
                         /* Use whatever was signalled (e.g. in RRC) */
-                        p_pdcp_lte_info->seqnum_length = signalled_pdcp_sn_bits;
+                        id = (rlc_info->channelId << 16) | rlc_info->ueid;
+                        key[0].length = 1;
+                        key[0].key = &id;
+                        key[1].length = 1;
+                        key[1].key = &PINFO_FD_NUM(pinfo);
+                        key[2].length = 0;
+                        key[2].key = NULL;
+
+                        params = (rlc_ue_parameters *)wmem_tree_lookup32_array_le(ue_parameters_tree, key);
+                        if (params && (params->id != id)) {
+                            params = NULL;
+                        }
+                        p_pdcp_lte_info->seqnum_length = params ? params->pdcp_sn_bits : 12;
                         break;
 
                     default:
@@ -849,7 +884,7 @@ static void show_PDU_in_tree(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb
 
             /* Get tvb for passing to LTE RRC dissector */
             if (reassembly_info == NULL) {
-                rrc_tvb = tvb_new_subset(tvb, offset, length, length);
+                rrc_tvb = tvb_new_subset_length(tvb, offset, length);
             }
             else {
                 /* Get combined tvb. */
@@ -875,7 +910,7 @@ static void show_PDU_in_tree(packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb
 
             /* Get tvb for passing to IP dissector */
             if (reassembly_info == NULL) {
-                ip_tvb = tvb_new_subset(tvb, offset, length, length);
+                ip_tvb = tvb_new_subset_length(tvb, offset, length);
             }
             else {
                 /* Get combined tvb. */
@@ -2116,7 +2151,7 @@ static void dissect_rlc_lte_um(tvbuff_t *tvb, packet_info *pinfo,
     /*************************************/
     /* UM header extension               */
     if (fixed_extension) {
-        offset = dissect_rlc_lte_extension_header(tvb, pinfo, um_header_tree, offset);
+        offset = dissect_rlc_lte_extension_header(tvb, pinfo, um_header_tree, offset, p_rlc_lte_info);
     }
 
     /* Extract these 2 flags from framing_info */
@@ -2125,7 +2160,7 @@ static void dissect_rlc_lte_um(tvbuff_t *tvb, packet_info *pinfo,
 
     if (global_rlc_lte_headers_expected) {
         /* There might not be any data, if only headers (plus control data) were logged */
-        is_truncated = (tvb_reported_length_remaining(tvb, offset) == 0);
+        is_truncated = (tvb_captured_length_remaining(tvb, offset) == 0);
         truncated_ti = proto_tree_add_uint(tree, hf_rlc_lte_header_only, tvb, 0, 0,
                                            is_truncated);
         if (is_truncated) {
@@ -2205,6 +2240,10 @@ static void dissect_rlc_lte_um(tvbuff_t *tvb, packet_info *pinfo,
             show_PDU_in_info(pinfo, top_ti, s_lengths[n],
                              (n==0) ? first_includes_start : TRUE,
                              TRUE);
+            /* Make sure we don't lose the summary of this SDU */
+            col_append_str(pinfo->cinfo, COL_INFO, "  | ");
+            col_set_fence(pinfo->cinfo, COL_INFO);
+
             tvb_ensure_bytes_exist(tvb, offset, s_lengths[n]);
             offset += s_lengths[n];
         }
@@ -2417,6 +2456,9 @@ static void dissect_rlc_lte_am(tvbuff_t *tvb, packet_info *pinfo,
     proto_item *truncated_ti;
     rlc_channel_reassembly_info *reassembly_info = NULL;
     sequence_analysis_state seq_anal_state = SN_OK;
+    guint32 id;
+    wmem_tree_key_t key[3];
+    rlc_ue_parameters *params;
 
     /* Hidden AM root */
     am_ti = proto_tree_add_string_format(tree, hf_rlc_lte_am,
@@ -2501,7 +2543,21 @@ static void dissect_rlc_lte_am(tvbuff_t *tvb, packet_info *pinfo,
     /*************************************/
     /* AM header extension               */
     if (fixed_extension) {
-        offset = dissect_rlc_lte_extension_header(tvb, pinfo, am_header_tree, offset);
+        if (!PINFO_FD_VISITED(pinfo)) {
+            id = (p_rlc_lte_info->channelId << 16) | p_rlc_lte_info->ueid;
+            key[0].length = 1;
+            key[0].key = &id;
+            key[1].length = 1;
+            key[1].key = &PINFO_FD_NUM(pinfo);
+            key[2].length = 0;
+            key[2].key = NULL;
+            params = (rlc_ue_parameters *)wmem_tree_lookup32_array_le(ue_parameters_tree, key);
+            if (params && (params->id == id)) {
+                p_rlc_lte_info->extendedLiField = (p_rlc_lte_info->direction == DIRECTION_UPLINK) ?
+                                                   (params->ext_li_field & UL_EXT_LI): (params->ext_li_field & DL_EXT_LI);
+            }
+        }
+        offset = dissect_rlc_lte_extension_header(tvb, pinfo, am_header_tree, offset, p_rlc_lte_info);
     }
 
     /* Header is now complete */
@@ -2518,7 +2574,7 @@ static void dissect_rlc_lte_am(tvbuff_t *tvb, packet_info *pinfo,
 
     /* There might not be any data, if only headers (plus control data) were logged */
     if (global_rlc_lte_headers_expected) {
-        is_truncated = (tvb_reported_length_remaining(tvb, offset) == 0);
+        is_truncated = (tvb_captured_length_remaining(tvb, offset) == 0);
         truncated_ti = proto_tree_add_uint(tree, hf_rlc_lte_header_only, tvb, 0, 0,
                                            is_truncated);
         if (is_truncated) {
@@ -2579,9 +2635,11 @@ static void dissect_rlc_lte_am(tvbuff_t *tvb, packet_info *pinfo,
     /* Data                              */
 
     if (!first_includes_start) {
-    	    reassembly_info = (rlc_channel_reassembly_info *)g_hash_table_lookup(reassembly_report_hash,
-                                                                                 get_report_hash_key((guint16)sn, pinfo->fd->num,
-                                                                                                     p_rlc_lte_info, FALSE));
+        reassembly_info = (rlc_channel_reassembly_info *)g_hash_table_lookup(reassembly_report_hash,
+                                                                             get_report_hash_key((guint16)sn,
+                                                                                                 pinfo->fd->num,
+                                                                                                 p_rlc_lte_info,
+                                                                                                 FALSE));
     }
 
     if (s_number_of_extensions > 0) {
@@ -2595,6 +2653,10 @@ static void dissect_rlc_lte_am(tvbuff_t *tvb, packet_info *pinfo,
             show_PDU_in_info(pinfo, top_ti, s_lengths[n],
                              (n==0) ? first_includes_start : TRUE,
                              TRUE);
+            /* Make sure we don't lose the summary of this SDU */
+            col_append_str(pinfo->cinfo, COL_INFO, "  | ");
+            col_set_fence(pinfo->cinfo, COL_INFO);
+
             tvb_ensure_bytes_exist(tvb, offset, s_lengths[n]);
             offset += s_lengths[n];
         }
@@ -2634,15 +2696,6 @@ static gboolean dissect_rlc_lte_heur(tvbuff_t *tvb, packet_info *pinfo,
     guint8               tag = 0;
     gboolean             infoAlreadySet = FALSE;
     gboolean             umSeqNumLengthTagPresent = FALSE;
-
-    /* This is a heuristic dissector, which means we get all the UDP
-     * traffic not sent to a known dissector and not claimed by
-     * a heuristic dissector called before us!
-     */
-
-    if (!global_rlc_lte_heur) {
-        return FALSE;
-    }
 
     /* Do this again on re-dissection to re-discover offset of actual PDU */
 
@@ -2707,10 +2760,13 @@ static gboolean dissect_rlc_lte_heur(tvbuff_t *tvb, packet_info *pinfo,
                 p_rlc_lte_info->channelId = tvb_get_ntohs(tvb, offset);
                 offset += 2;
                 break;
+            case RLC_LTE_EXT_LI_FIELD_TAG:
+                p_rlc_lte_info->extendedLiField = TRUE;
+                break;
 
             case RLC_LTE_PAYLOAD_TAG:
                 /* Have reached data, so set payload length and get out of loop */
-                p_rlc_lte_info->pduLength= tvb_reported_length_remaining(tvb, offset);
+                p_rlc_lte_info->pduLength = tvb_reported_length_remaining(tvb, offset);
                 continue;
 
             default:
@@ -2776,9 +2832,7 @@ static void dissect_rlc_lte_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree
 
     /* Can't dissect anything without it... */
     if (p_rlc_lte_info == NULL) {
-        ti = proto_tree_add_text(rlc_lte_tree, tvb, offset, -1,
-                                 "Can't dissect LTE RLC frame because no per-frame info was attached!");
-        PROTO_ITEM_SET_GENERATED(ti);
+        proto_tree_add_expert(rlc_lte_tree, pinfo, &ei_rlc_lte_no_per_frame_info, tvb, offset, -1);
         return;
     }
 
@@ -2871,7 +2925,7 @@ static void dissect_rlc_lte_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree
     tap_info->UMSequenceNumberLength = p_rlc_lte_info->UMSequenceNumberLength;
     tap_info->loggedInMACFrame = (p_get_proto_data(wmem_file_scope(), pinfo, proto_mac_lte, 0) != NULL);
 
-    tap_info->time = pinfo->fd->abs_ts;
+    tap_info->rlc_lte_time = pinfo->fd->abs_ts;
 
     /* Reset this count */
     s_number_of_extensions = 0;
@@ -2915,44 +2969,90 @@ static void dissect_rlc_lte_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree
 
 /* Initializes the hash tables each time a new
  * file is loaded or re-loaded in wireshark */
-static void
-rlc_lte_init_protocol(void)
+static void rlc_lte_init_protocol(void)
 {
-    /* Destroy any existing hashes. */
-    if (sequence_analysis_channel_hash) {
-        g_hash_table_destroy(sequence_analysis_channel_hash);
-    }
-    if (sequence_analysis_report_hash) {
-        g_hash_table_destroy(sequence_analysis_report_hash);
-    }
-    if (repeated_nack_channel_hash) {
-        g_hash_table_destroy(repeated_nack_channel_hash);
-    }
-    if (repeated_nack_report_hash) {
-        g_hash_table_destroy(repeated_nack_report_hash);
-    }
-    if (reassembly_report_hash) {
-        g_hash_table_destroy(reassembly_report_hash);
-    }
-
-    /* Now create them over */
     sequence_analysis_channel_hash = g_hash_table_new(rlc_channel_hash_func, rlc_channel_equal);
     sequence_analysis_report_hash = g_hash_table_new(rlc_result_hash_func, rlc_result_hash_equal);
-
     repeated_nack_channel_hash = g_hash_table_new(rlc_channel_hash_func, rlc_channel_equal);
     repeated_nack_report_hash = g_hash_table_new(rlc_result_hash_func, rlc_result_hash_equal);
     reassembly_report_hash = g_hash_table_new(rlc_result_hash_func, rlc_result_hash_equal);
 }
 
-
-/* Configure number of PDCP SN bits to use for DRB channels.
-   TODO: currently assume all UEs/Channels will use the same SN length... */
-void set_rlc_lte_drb_pdcp_seqnum_length(guint16 ueid _U_, guint8 drbid _U_,
-                                        guint8 userplane_seqnum_length)
+static void rlc_lte_cleanup_protocol(void)
 {
-    signalled_pdcp_sn_bits = userplane_seqnum_length;
+    g_hash_table_destroy(sequence_analysis_channel_hash);
+    g_hash_table_destroy(sequence_analysis_report_hash);
+    g_hash_table_destroy(repeated_nack_channel_hash);
+    g_hash_table_destroy(repeated_nack_report_hash);
+    g_hash_table_destroy(reassembly_report_hash);
 }
 
+/* Configure number of PDCP SN bits to use for DRB channels */
+void set_rlc_lte_drb_pdcp_seqnum_length(packet_info *pinfo, guint16 ueid, guint8 drbid,
+                                        guint8 userplane_seqnum_length)
+{
+    wmem_tree_key_t key[3];
+    guint32 id;
+    rlc_ue_parameters *params;
+
+    if (PINFO_FD_VISITED(pinfo)) {
+        return;
+    }
+
+    id = (drbid << 16) | ueid;
+    key[0].length = 1;
+    key[0].key = &id;
+    key[1].length = 1;
+    key[1].key = &PINFO_FD_NUM(pinfo);
+    key[2].length = 0;
+    key[2].key = NULL;
+
+    params = (rlc_ue_parameters *)wmem_tree_lookup32_array_le(ue_parameters_tree, key);
+    if (params && (params->id != id)) {
+        params = NULL;
+    }
+    if (params == NULL) {
+        params = (rlc_ue_parameters *)wmem_new(wmem_file_scope(), rlc_ue_parameters);
+        params->id = id;
+        params->ext_li_field = NO_EXT_LI;
+        wmem_tree_insert32_array(ue_parameters_tree, key, (void *)params);
+    }
+    params->pdcp_sn_bits = userplane_seqnum_length;
+}
+
+/*Configure LI field for AM DRB channels */
+void set_rlc_lte_drb_li_field(packet_info *pinfo, guint16 ueid, guint8 drbid,
+                              gboolean ul_ext_li_field, gboolean dl_ext_li_field)
+{
+    wmem_tree_key_t key[3];
+    guint32 id;
+    rlc_ue_parameters *params;
+
+    if (PINFO_FD_VISITED(pinfo)) {
+        return;
+    }
+
+    id = (drbid << 16) | ueid;
+    key[0].length = 1;
+    key[0].key = &id;
+    key[1].length = 1;
+    key[1].key = &PINFO_FD_NUM(pinfo);
+    key[2].length = 0;
+    key[2].key = NULL;
+
+    params = (rlc_ue_parameters *)wmem_tree_lookup32_array_le(ue_parameters_tree, key);
+    if (params && (params->id != id)) {
+        params = NULL;
+    }
+    if (params == NULL) {
+        params = (rlc_ue_parameters *)wmem_new(wmem_file_scope(), rlc_ue_parameters);
+        params->id = id;
+        params->pdcp_sn_bits = 12;
+        wmem_tree_insert32_array(ue_parameters_tree, key, (void *)params);
+    }
+    params->ext_li_field = ul_ext_li_field ? UL_EXT_LI : NO_EXT_LI;
+    params->ext_li_field |= dl_ext_li_field ? DL_EXT_LI : NO_EXT_LI;
+}
 
 void proto_register_rlc_lte(void)
 {
@@ -3396,6 +3496,7 @@ void proto_register_rlc_lte(void)
         { &ei_rlc_lte_am_data_no_data_beyond_extensions, { "rlc-lte.am-data.no-data-beyond-extensions", PI_MALFORMED, PI_ERROR, "AM data PDU doesn't contain any data beyond extensions", EXPFILL }},
         { &ei_rlc_lte_am_data_no_data, { "rlc-lte.am-data.no-data", PI_MALFORMED, PI_ERROR, "AM data PDU doesn't contain any data", EXPFILL }},
         { &ei_rlc_lte_context_mode, { "rlc-lte.mode.invalid", PI_MALFORMED, PI_ERROR, "Unrecognised RLC Mode set", EXPFILL }},
+        { &ei_rlc_lte_no_per_frame_info, { "rlc-lte.no_per_frame_info", PI_UNDECODED, PI_ERROR, "Can't dissect LTE RLC frame because no per-frame info was attached!", EXPFILL }},
     };
 
     static const enum_val_t sequence_analysis_vals[] = {
@@ -3464,11 +3565,7 @@ void proto_register_rlc_lte(void)
         "only be called for complete PDUs (i.e. not segmented over RLC)",
         &global_rlc_lte_call_ip_for_mtch);
 
-    prefs_register_bool_preference(rlc_lte_module, "heuristic_rlc_lte_over_udp",
-        "Try Heuristic LTE-RLC over UDP framing",
-        "When enabled, use heuristic dissector to find RLC-LTE frames sent with "
-        "UDP framing",
-        &global_rlc_lte_heur);
+    prefs_register_obsolete_preference(rlc_lte_module, "heuristic_rlc_lte_over_udp");
 
     prefs_register_bool_preference(rlc_lte_module, "header_only_mode",
         "May see RLC headers only",
@@ -3484,16 +3581,30 @@ void proto_register_rlc_lte(void)
         "for reassembly to work",
         &global_rlc_lte_reassembly);
 
+    ue_parameters_tree = wmem_tree_new_autoreset(wmem_epan_scope(), wmem_file_scope());
 
     register_init_routine(&rlc_lte_init_protocol);
+    register_cleanup_routine(&rlc_lte_cleanup_protocol);
 }
 
-void
-proto_reg_handoff_rlc_lte(void)
+void proto_reg_handoff_rlc_lte(void)
 {
     /* Add as a heuristic UDP dissector */
-    heur_dissector_add("udp", dissect_rlc_lte_heur, proto_rlc_lte);
+    heur_dissector_add("udp", dissect_rlc_lte_heur, "RLC-LTE over UDP", "rlc_lte_udp", proto_rlc_lte, HEURISTIC_DISABLE);
 
     pdcp_lte_handle = find_dissector("pdcp-lte");
     ip_handle       = find_dissector("ip");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

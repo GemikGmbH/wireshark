@@ -34,7 +34,7 @@ mate.dll mate.exp mate.lib : $(OBJECTS) $(LINK_PLUGIN_WITH)
 !ENDIF
 
 clean:
-	rm -f $(OBJECTS) mate.dll mate.exp mate.lib *.pdb *.sbr
+	rm -f $(OBJECTS) mate.dll mate.exp mate.lib *.nativecodeanalysis.xml *.pdb *.sbr
 
 #
 # We remove the generated files with "distclean" because one of them,
@@ -55,7 +55,7 @@ mate_parser.c : mate_parser.l
 
 mate_grammar.h : mate_grammar.c
 mate_grammar.c : mate_grammar.lemon $(LEMON)\lemon.exe
-	$(LEMON)\lemon.exe t=$(LEMON)\lempar.c mate_grammar.lemon
+	$(LEMON)\lemon.exe T=$(LEMON)\lempar.c mate_grammar.lemon
 
 $(LEMON)\lemon.exe:
 	cd ../../tools

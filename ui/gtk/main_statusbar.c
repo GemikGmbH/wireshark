@@ -38,16 +38,18 @@
 #include "../file.h"
 #ifdef HAVE_LIBPCAP
 #include "../capture_opts.h"
-#include "../capture_session.h"
-#include "../capture_ui_utils.h"
-#include "../capture.h"
+#include <capchild/capture_session.h>
+#include "ui/capture.h"
 #endif
 
 #include <wsutil/str_util.h>
 
 #include "ui/main_statusbar.h"
 #include "ui/recent.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
+#ifdef HAVE_LIBPCAP
+#include "ui/capture_ui_utils.h"
+#endif
 
 #include "ui/gtk/main.h"
 #include "ui/gtk/main_statusbar_private.h"
@@ -56,7 +58,6 @@
 #include "ui/gtk/expert_comp_dlg.h"
 #include "ui/gtk/stock_icons.h"
 #include "ui/gtk/profile_dlg.h"
-#include "ui/gtk/main_welcome.h"
 #include "ui/gtk/expert_indicators.h"
 #include "ui/gtk/capture_comment_icons.h"
 #include "ui/gtk/keys.h"
@@ -805,31 +806,14 @@ statusbar_capture_prepared_cb(capture_session *cap_session _U_)
 {
     static const gchar msg[] = " Waiting for capture input data ...";
     statusbar_push_file_msg(msg);
-    welcome_header_push_msg(msg);
 }
 
 static GString *
 statusbar_get_interface_names(capture_options *capture_opts)
 {
-    guint i;
     GString *interface_names;
 
-    interface_names = g_string_new("");
-
-#ifdef _WIN32
-    if (capture_opts->ifaces->len < 2) {
-#else
-    if (capture_opts->ifaces->len < 4) {
-#endif
-        for (i = 0; i < capture_opts->ifaces->len; i++) {
-            if (i > 0) {
-                g_string_append_printf(interface_names, ", ");
-            }
-            g_string_append_printf(interface_names, "%s", get_iface_description_for_interface(capture_opts, i));
-        }
-    } else {
-        g_string_append_printf(interface_names, "%u interfaces", capture_opts->ifaces->len);
-    }
+    interface_names = get_iface_list_string(capture_opts, 0);
     if (strlen (interface_names->str) > 0) {
         g_string_append(interface_names, ":");
     }
@@ -844,7 +828,6 @@ statusbar_capture_update_started_cb(capture_session *cap_session)
     GString *interface_names;
 
     statusbar_pop_file_msg();
-    welcome_header_pop_msg();
 
     interface_names = statusbar_get_interface_names(capture_opts);
     statusbar_push_file_msg("%s<live capture in progress> to file: %s",
@@ -917,12 +900,10 @@ statusbar_capture_fixed_started_cb(capture_session *cap_session)
 static void
 statusbar_capture_fixed_continue_cb(capture_session *cap_session)
 {
-    capture_file *cf = (capture_file *)cap_session->cf;
     gchar *capture_msg;
 
-
     gtk_statusbar_pop(GTK_STATUSBAR(packets_bar), packets_ctx);
-    capture_msg = g_strdup_printf(" Packets: %u", cf_get_packet_count(cf));
+    capture_msg = g_strdup_printf(" Packets: %u", cap_session->count);
     gtk_statusbar_push(GTK_STATUSBAR(packets_bar), packets_ctx, capture_msg);
     g_free(capture_msg);
 }
@@ -937,7 +918,6 @@ statusbar_capture_fixed_finished_cb(capture_session *cap_session _U_)
 
     /* Pop the "<live capture in progress>" message off the status bar. */
     statusbar_pop_file_msg();
-    welcome_header_pop_msg();
 
     /* Pop the "<capturing>" message off the status bar */
     gtk_statusbar_pop(GTK_STATUSBAR(packets_bar), packets_ctx);
@@ -952,7 +932,6 @@ statusbar_capture_failed_cb(capture_session *cap_session _U_)
 
     /* Pop the "<live capture in progress>" message off the status bar. */
     statusbar_pop_file_msg();
-    welcome_header_pop_msg();
 
     /* Pop the "<capturing>" message off the status bar */
     gtk_statusbar_pop(GTK_STATUSBAR(packets_bar), packets_ctx);
@@ -1054,6 +1033,10 @@ statusbar_cf_callback(gint event, gpointer data, gpointer user_data _U_)
     case(cf_cb_file_rescan_finished):
         statusbar_cf_file_read_finished_cb((capture_file *)data);
         break;
+    case(cf_cb_file_retap_started):
+        break;
+    case(cf_cb_file_retap_finished):
+        break;
     case(cf_cb_file_fast_save_finished):
         break;
     case(cf_cb_packet_selected):
@@ -1133,3 +1116,16 @@ statusbar_capture_callback(gint event, capture_session *cap_session,
     }
 }
 #endif
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

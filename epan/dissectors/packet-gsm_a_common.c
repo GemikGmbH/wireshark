@@ -29,17 +29,13 @@
 
 #include <math.h>
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/to_str.h>
 #include <epan/expert.h>
 #include <epan/tap.h>
-#include <epan/wmem/wmem.h>
-
-#include "packet-bssap.h"
-#include "packet-sccp.h"
+#include <epan/stat_tap_ui.h>
 #include "packet-gsm_a_common.h"
+#include "packet-bssap.h"
 #include "packet-gmr1_common.h"
 #include "packet-e212.h"
 
@@ -453,7 +449,7 @@ static const value_string vamos_level_vals[] = {
     { 0, "VAMOS not supported" },
     { 1, "VAMOS I supported" },
     { 2, "VAMOS II supported" },
-    { 3, "Unused. If received, the network shall interpret this as VAMOS II supported" },
+    { 3, "VAMOS III supported" },
     { 0, NULL}
 };
 
@@ -556,8 +552,8 @@ static int proto_a_common = -1;
 int gsm_a_tap = -1;
 
 int hf_gsm_a_common_elem_id = -1;
+static int hf_gsm_a_common_elem_id_f0 = -1;
 static int hf_gsm_a_l_ext = -1;
-static int hf_gsm_a_imsi = -1;
 int hf_gsm_a_tmsi = -1;
 static int hf_gsm_a_imei = -1;
 static int hf_gsm_a_imeisv = -1;
@@ -585,6 +581,7 @@ static int hf_gsm_a_A5_3_algorithm_sup = -1;
 static int hf_gsm_a_A5_2_algorithm_sup = -1;
 
 static int hf_gsm_a_odd_even_ind = -1;
+static int hf_gsm_a_id_dig_1 = -1;
 static int hf_gsm_a_unused = -1;
 static int hf_gsm_a_mobile_identity_type = -1;
 static int hf_gsm_a_tmgi_mcc_mnc_ind = -1;
@@ -592,6 +589,7 @@ static int hf_gsm_a_mbs_ses_id_ind = -1;
 static int hf_gsm_a_mbs_service_id = -1;
 static int hf_gsm_a_mbs_session_id = -1;
 static int hf_gsm_a_length = -1;
+static int hf_gsm_a_element_value = -1;
 int hf_gsm_a_extension = -1;
 int hf_gsm_a_L3_protocol_discriminator = -1;
 int hf_gsm_a_call_prio = -1;
@@ -705,6 +703,12 @@ static int hf_gsm_a_selective_ciph_down_sacch = -1;
 static int hf_gsm_a_cs_to_ps_srvcc_geran_to_utra = -1;
 static int hf_gsm_a_cs_to_ps_srvcc_geran_to_eutra = -1;
 static int hf_gsm_a_geran_network_sharing_support = -1;
+static int hf_gsm_a_eutra_wb_rsrq_support = -1;
+static int hf_gsm_a_er_band_support = -1;
+static int hf_gsm_a_utra_mfbi_support = -1;
+static int hf_gsm_a_eutra_mfbi_support = -1;
+static int hf_gsm_a_ext_tsc_set_cap_support = -1;
+static int hf_gsm_a_ext_earfcn_value_range = -1;
 
 static int hf_gsm_a_geo_loc_type_of_shape = -1;
 static int hf_gsm_a_geo_loc_sign_of_lat = -1;
@@ -732,11 +736,27 @@ static int hf_gsm_a_geo_loc_uncertainty_radius = -1;
 static int hf_gsm_a_geo_loc_offset_angle = -1;
 static int hf_gsm_a_geo_loc_included_angle = -1;
 
+/* Generated from convert_proto_tree_add_text.pl */
+static int hf_gsm_a_filler = -1;
+static int hf_gsm_a_identity_digit1 = -1;
+static int hf_gsm_a_group_call_reference = -1;
+static int hf_gsm_a_service_flag = -1;
+static int hf_gsm_a_af_acknowledgement = -1;
+static int hf_gsm_a_call_priority = -1;
+static int hf_gsm_a_ciphering_info = -1;
+static int hf_gsm_a_sapi = -1;
+static int hf_gsm_a_mobile_country_code = -1;
+static int hf_gsm_a_mobile_network_code = -1;
+
+static int ett_gsm_a_plmn = -1;
+
 static expert_field ei_gsm_a_extraneous_data = EI_INIT;
+static expert_field ei_gsm_a_unknown_element = EI_INIT;
+static expert_field ei_gsm_a_unknown_pdu_type = EI_INIT;
+static expert_field ei_gsm_a_no_element_dissector = EI_INIT;
+static expert_field ei_gsm_a_format_not_supported = EI_INIT;
+static expert_field ei_gsm_a_mobile_identity_type = EI_INIT;
 
-static char a_bigbuf[1024];
-
-sccp_msg_info_t* sccp_msg;
 sccp_assoc_info_t* sccp_assoc;
 
 #define NUM_GSM_COMMON_ELEM (sizeof(gsm_common_elem_strings)/sizeof(value_string))
@@ -1240,7 +1260,7 @@ guint16 elem_tlv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 iei
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     oct = tvb_get_guint8(tvb, curr_offset);
 
@@ -1249,17 +1269,16 @@ guint16 elem_tlv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 iei
 
         elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
-        item =
-        proto_tree_add_text(tree,
-            tvb, curr_offset, parm_len + 1 + lengt_length,
-            "%s%s", elem_name ? elem_name : "Unknown - aborting dissection",
-            (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
-
         /* idx is out of range */
-        if (elem_name == NULL)
+        if (elem_name == NULL) {
+            proto_tree_add_expert_format(tree, pinfo, &ei_gsm_a_unknown_element,
+                tvb, curr_offset, parm_len + 1 + lengt_length,
+                "Unknown - aborting dissection%s", (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
             return consumed;
+        }
 
-        subtree = proto_item_add_subtree(item, elem_ett[idx]);
+        subtree = proto_tree_add_subtree_format(tree, tvb, curr_offset, parm_len + 1 + lengt_length, elem_ett[idx], &item,
+                                             "%s%s", elem_name, (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
 
         proto_tree_add_uint(subtree,
             get_hf_elem_id(pdu_type), tvb,
@@ -1272,9 +1291,7 @@ guint16 elem_tlv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 iei
         {
             if (elem_funcs[idx] == NULL)
             {
-                proto_tree_add_text(subtree,
-                    tvb, curr_offset + 1 + lengt_length, parm_len,
-                    "Element Value");
+                proto_tree_add_item(subtree, hf_gsm_a_element_value, tvb, curr_offset + 1 + lengt_length, parm_len, ENC_NA);
                 /* See ASSERT above */
                 consumed = (guint8)parm_len;
             }
@@ -1326,7 +1343,7 @@ guint16 elem_telv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 ie
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     oct = tvb_get_guint8(tvb, curr_offset);
 
@@ -1342,17 +1359,16 @@ guint16 elem_telv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 ie
 
         elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
-        item =
-        proto_tree_add_text(tree,
-            tvb, curr_offset, parm_len + 1 + lengt_length,
-            "%s%s", elem_name ? elem_name : "Unknown - aborting dissection",
-            (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
-
         /* idx is out of range */
-        if (elem_name == NULL)
+        if (elem_name == NULL) {
+            proto_tree_add_expert_format(tree, pinfo, &ei_gsm_a_unknown_element,
+                tvb, curr_offset, parm_len + 1 + lengt_length,
+                "Unknown - aborting dissection%s", (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
             return consumed;
+        }
 
-        subtree = proto_item_add_subtree(item, elem_ett[idx]);
+        subtree = proto_tree_add_subtree_format(tree, tvb, curr_offset, parm_len + 1 + lengt_length, elem_ett[idx], &item,
+                                             "%s%s", elem_name, (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
 
         proto_tree_add_uint(subtree,
             get_hf_elem_id(pdu_type), tvb,
@@ -1367,9 +1383,7 @@ guint16 elem_telv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 ie
         {
             if (elem_funcs[idx] == NULL)
             {
-                proto_tree_add_text(subtree,
-                    tvb, curr_offset + 1 + lengt_length, parm_len,
-                    "Element Value");
+                proto_tree_add_item(subtree, hf_gsm_a_element_value, tvb, curr_offset + 1 + lengt_length, parm_len, ENC_NA);
                 /* See ASSERT above */
                 consumed = parm_len;
             }
@@ -1418,7 +1432,7 @@ guint16 elem_tlv_e(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 i
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     oct = tvb_get_guint8(tvb, curr_offset);
 
@@ -1427,15 +1441,16 @@ guint16 elem_tlv_e(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 i
 
         elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
-        item = proto_tree_add_text(tree, tvb, curr_offset, parm_len + 1 + 2,
-            "%s%s", elem_name ? elem_name : "Unknown - aborting dissection",
-            (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
-
         /* idx is out of range */
-        if (elem_name == NULL)
+        if (elem_name == NULL) {
+            proto_tree_add_expert_format(tree, pinfo, &ei_gsm_a_unknown_element,
+                tvb, curr_offset, parm_len + 1 + 2,
+                "Unknown - aborting dissection%s", (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
             return consumed;
+        }
 
-        subtree = proto_item_add_subtree(item, elem_ett[idx]);
+        subtree = proto_tree_add_subtree_format(tree, tvb, curr_offset, parm_len + 1 + 2, elem_ett[idx], &item,
+                                             "%s%s", elem_name, (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
 
         proto_tree_add_uint(subtree,
             get_hf_elem_id(pdu_type), tvb,
@@ -1448,9 +1463,7 @@ guint16 elem_tlv_e(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 i
         {
             if (elem_funcs[idx] == NULL)
             {
-                proto_tree_add_text(subtree,
-                    tvb, curr_offset + 1 + 2, parm_len,
-                    "Element Value");
+                proto_tree_add_item(subtree, hf_gsm_a_element_value, tvb, curr_offset + 1 + 2, parm_len, ENC_NA);
                 /* See ASSERT above */
                 consumed = parm_len;
             }
@@ -1498,7 +1511,7 @@ guint16 elem_tv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 iei,
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     oct = tvb_get_guint8(tvb, curr_offset);
 
@@ -1506,16 +1519,16 @@ guint16 elem_tv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 iei,
     {
         elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
-        item =
-            proto_tree_add_text(tree, tvb, curr_offset, -1,
-                "%s%s", elem_name ? elem_name : "Unknown - aborting dissection",
-                (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
-
         /* idx is out of range */
-        if (elem_name == NULL)
+        if (elem_name == NULL) {
+            proto_tree_add_expert_format(tree, pinfo, &ei_gsm_a_unknown_element,
+                tvb, curr_offset, -1,
+                "Unknown - aborting dissection%s", (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
             return consumed;
+        }
 
-        subtree = proto_item_add_subtree(item, elem_ett[idx]);
+        subtree = proto_tree_add_subtree_format(tree, tvb, curr_offset, -1, elem_ett[idx], &item,
+                                             "%s%s", elem_name, (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
 
         proto_tree_add_uint(subtree,
             get_hf_elem_id(pdu_type), tvb,
@@ -1524,10 +1537,7 @@ guint16 elem_tv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint8 iei,
         if (elem_funcs[idx] == NULL)
         {
             /* BAD THING, CANNOT DETERMINE LENGTH */
-
-            proto_tree_add_text(subtree,
-                tvb, curr_offset + 1, 1,
-                "No element dissector, rest of dissection may be incorrect");
+            expert_add_info(pinfo, item, &ei_gsm_a_no_element_dissector);
 
             consumed = 1;
         }
@@ -1571,12 +1581,11 @@ guint16 elem_tv_short(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint
     gint               *elem_ett;
     const gchar        *elem_name;
     guint16 (**elem_funcs)(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guint len, gchar *add_string, int string_len);
-    char                buf[10+1];
 
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     oct = tvb_get_guint8(tvb, curr_offset);
 
@@ -1584,31 +1593,24 @@ guint16 elem_tv_short(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint
     {
         elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
-        item =
-            proto_tree_add_text(tree,
-                tvb, curr_offset, -1,
-                "%s%s", elem_name ? elem_name : "Unknown - aborting dissection",
-                (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
-
         /* idx is out of range */
-        if (elem_name == NULL)
+        if (elem_name == NULL) {
+            proto_tree_add_expert_format(tree, pinfo, &ei_gsm_a_unknown_element,
+                tvb, curr_offset, -1,
+                "Unknown - aborting dissection%s", (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
             return consumed;
+        }
 
-        subtree = proto_item_add_subtree(item, elem_ett[idx]);
+        subtree = proto_tree_add_subtree_format(tree, tvb, curr_offset, -1, elem_ett[idx], &item,
+                                             "%s%s", elem_name, (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
 
-        other_decode_bitfield_value(buf, oct, 0xf0, 8);
-        proto_tree_add_text(subtree,
-            tvb, curr_offset, 1,
-            "%s = Element ID: 0x%1x-",
-            buf, oct>>4);
+        proto_tree_add_uint_format_value(subtree, hf_gsm_a_common_elem_id_f0, tvb, curr_offset, 1, oct, "0x%1x-", oct>>4);
 
         if (elem_funcs[idx] == NULL)
         {
             /* BAD THING, CANNOT DETERMINE LENGTH */
 
-            proto_tree_add_text(subtree,
-                tvb, curr_offset, 1,
-                "No element dissector, rest of dissection may be incorrect");
+            expert_add_info(pinfo, item, &ei_gsm_a_no_element_dissector);
 
             consumed++;
         }
@@ -1647,7 +1649,7 @@ guint16 elem_t(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo _U_, guint8 i
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     (void)elem_ett;
     (void)elem_funcs;
@@ -1688,23 +1690,22 @@ elem_lv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gint pdu_type, int 
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     parm_len = tvb_get_guint8(tvb, curr_offset);
 
     elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
-    item =
-        proto_tree_add_text(tree,
-            tvb, curr_offset, parm_len + 1,
-            "%s%s", elem_name ? elem_name : "Unknown - aborting dissection",
-            (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
-
     /* idx is out of range */
-    if (elem_name == NULL)
+    if (elem_name == NULL) {
+        proto_tree_add_expert_format(tree, pinfo, &ei_gsm_a_unknown_element,
+            tvb, curr_offset, parm_len + 1,
+            "Unknown - aborting dissection%s", (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
         return consumed;
+    }
 
-    subtree = proto_item_add_subtree(item, elem_ett[idx]);
+    subtree = proto_tree_add_subtree_format(tree, tvb, curr_offset, parm_len + 1, elem_ett[idx], &item,
+                                            "%s%s", elem_name, (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
 
     proto_tree_add_uint(subtree, hf_gsm_a_length, tvb,
         curr_offset, 1, parm_len);
@@ -1713,9 +1714,7 @@ elem_lv(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gint pdu_type, int 
     {
         if (elem_funcs[idx] == NULL)
         {
-            proto_tree_add_text(subtree,
-                tvb, curr_offset + 1, parm_len,
-                "Element Value");
+            proto_tree_add_item(subtree, hf_gsm_a_element_value, tvb, curr_offset + 1, parm_len, ENC_NA);
 
             consumed = parm_len;
         }
@@ -1757,21 +1756,22 @@ guint16 elem_lv_e(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gint pdu_
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     parm_len = tvb_get_ntohs(tvb, curr_offset);
 
     elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
-    item = proto_tree_add_text(tree, tvb, curr_offset, parm_len + 2,
-            "%s%s", elem_name ? elem_name : "Unknown - aborting dissection",
-            (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
-
     /* idx is out of range */
-    if (elem_name == NULL)
+    if (elem_name == NULL) {
+        proto_tree_add_expert_format(tree, pinfo, &ei_gsm_a_unknown_element,
+            tvb, curr_offset, parm_len + 2,
+            "Unknown - aborting dissection%s", (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
         return consumed;
+    }
 
-    subtree = proto_item_add_subtree(item, elem_ett[idx]);
+    subtree = proto_tree_add_subtree_format(tree, tvb, curr_offset, parm_len + 2, elem_ett[idx], &item,
+                                            "%s%s", elem_name, (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
 
     proto_tree_add_uint(subtree, hf_gsm_a_length, tvb,
         curr_offset, 2, parm_len);
@@ -1780,9 +1780,7 @@ guint16 elem_lv_e(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gint pdu_
     {
         if (elem_funcs[idx] == NULL)
         {
-            proto_tree_add_text(subtree,
-                tvb, curr_offset + 2, parm_len,
-                "Element Value");
+            proto_tree_add_item(subtree, hf_gsm_a_element_value, tvb, curr_offset + 2, parm_len, ENC_NA);
 
             consumed = parm_len;
         }
@@ -1825,17 +1823,14 @@ guint16 elem_v(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gint pdu_typ
     curr_offset = offset;
     consumed = 0;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
     if (elem_name == NULL || elem_funcs[idx] == NULL)
     {
         /* BAD THING, CANNOT DETERMINE LENGTH */
-
-        proto_tree_add_text(tree,
-            tvb, curr_offset, 1,
-            "No element dissector, rest of dissection may be incorrect");
+        proto_tree_add_expert(tree, pinfo, &ei_gsm_a_no_element_dissector, tvb, curr_offset, 1);
 
         consumed = 1;
     }
@@ -1843,13 +1838,11 @@ guint16 elem_v(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gint pdu_typ
     {
         gchar *a_add_string;
 
-        item =
-            proto_tree_add_text(tree,
+        subtree =
+            proto_tree_add_subtree_format(tree,
                 tvb, curr_offset, 0,
-                "%s%s", elem_name,
+                elem_ett[idx], &item, "%s%s", elem_name,
                 (name_add == NULL) || (name_add[0] == '\0') ? "" : name_add);
-
-        subtree = proto_item_add_subtree(item, elem_ett[idx]);
 
         a_add_string= (gchar*)wmem_alloc(wmem_packet_scope(), 1024);
         a_add_string[0] = '\0';
@@ -1885,20 +1878,18 @@ guint16 elem_v_short(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gint p
 
     curr_offset = offset;
 
-    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs);
+    SET_ELEM_VARS(pdu_type, elem_names_ext, elem_ett, elem_funcs, &ei_gsm_a_unknown_pdu_type);
 
     elem_name = try_val_to_str_ext(idx, &elem_names_ext);
 
-    item = proto_tree_add_text(tree,
-            tvb, curr_offset, 0,
-            "%s%s", elem_name ? elem_name : "Unknown - aborting dissection",
-            "");
-
     /* idx is out of range */
-    if (elem_name == NULL)
+    if (elem_name == NULL) {
+        proto_tree_add_expert(tree, pinfo, &ei_gsm_a_unknown_element,
+            tvb, curr_offset, 0);
         return consumed;
+    }
 
-    subtree = proto_item_add_subtree(item, elem_ett[idx]);
+    subtree = proto_tree_add_subtree(tree, tvb, curr_offset, 0, elem_ett[idx], &item, elem_name);
 
     a_add_string= (gchar*)wmem_alloc(wmem_packet_scope(), 1024);
     a_add_string[0] = '\0';
@@ -1938,51 +1929,6 @@ static dgt_set_t Dgt1_9_bcd = {
 };
 
 /* FUNCTIONS */
-
-/*
- * Unpack BCD input pattern into output ASCII pattern
- *
- * Input Pattern is supplied using the same format as the digits
- *
- * Returns: length of unpacked pattern
- */
-int
-my_dgt_tbcd_unpack(
-    char    *out,       /* ASCII pattern out */
-    guchar  *in,        /* packed pattern in */
-    int     num_octs,   /* Number of octets to unpack */
-    dgt_set_t   *dgt        /* Digit definitions */
-    )
-{
-    int cnt = 0;
-    unsigned char i;
-
-    while (num_octs)
-    {
-        /*
-         * unpack first value in byte
-         */
-        i = *in++;
-        *out++ = dgt->out[i & 0x0f];
-        cnt++;
-
-        /*
-         * unpack second value in byte
-         */
-        i >>= 4;
-
-        if (i == 0x0f)  /* odd number bytes - hit filler */
-            break;
-
-        *out++ = dgt->out[i & 0xf];   /* ( '& 0xf' added to keep VS Code Analysis happy ) */
-        cnt++;
-        num_octs--;
-    }
-
-    *out = '\0';
-
-    return cnt;
-}
 
 /*
  * Decode the MCC/MNC from 3 octets in 'octs'
@@ -2149,11 +2095,9 @@ de_lai(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
 
     curr_offset = offset;
 
-    item = proto_tree_add_text(tree,
-                               tvb, curr_offset, 5, "%s",
+    subtree = proto_tree_add_subtree(tree,
+                               tvb, curr_offset, 5, ett_gsm_common_elem[DE_LAI], &item,
                                val_to_str_ext_const(DE_LAI, &gsm_common_elem_strings_ext, ""));
-
-    subtree = proto_item_add_subtree(item, ett_gsm_common_elem[DE_LAI]);
 
     octs[0] = tvb_get_guint8(tvb, curr_offset);
     octs[1] = tvb_get_guint8(tvb, curr_offset + 1);
@@ -2161,7 +2105,7 @@ de_lai(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
 
     mcc_mnc_aux(octs, mcc, mnc);
 
-    curr_offset = dissect_e212_mcc_mnc(tvb, pinfo, subtree, curr_offset, TRUE);
+    curr_offset = dissect_e212_mcc_mnc(tvb, pinfo, subtree, curr_offset, E212_LAI, TRUE);
 
     value = tvb_get_ntohs(tvb, curr_offset);
 
@@ -2190,10 +2134,10 @@ de_mid(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
 {
     guint8    oct;
     guint32   curr_offset;
-    guint8   *poctets;
     guint32   value;
     gboolean  odd;
     const gchar *digit_str;
+    proto_item* ti;
 
     curr_offset = offset;
 
@@ -2213,8 +2157,7 @@ de_mid(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
 
         if (len > 1)
         {
-            proto_tree_add_text(tree, tvb, curr_offset, len - 1,
-                "Format not supported");
+            expert_add_info(pinfo, tree, &ei_gsm_a_format_not_supported);
         }
 
         curr_offset += len - 1;
@@ -2224,27 +2167,26 @@ de_mid(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
         /* FALLTHRU */
 
     case 1: /* IMSI */
-        other_decode_bitfield_value(a_bigbuf, oct, 0xf0, 8);
-        proto_tree_add_text(tree,
-            tvb, curr_offset, 1,
-            "%s = Identity Digit 1: %c",
-            a_bigbuf,
-            Dgt1_9_bcd.out[(oct & 0xf0) >> 4]);
-
         odd = oct & 0x08;
-
+        proto_tree_add_item(tree, hf_gsm_a_id_dig_1, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
         proto_tree_add_item(tree, hf_gsm_a_odd_even_ind, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
-
         proto_tree_add_item(tree, hf_gsm_a_mobile_identity_type, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
 
-        digit_str = tvb_bcd_dig_to_wmem_packet_str(tvb ,curr_offset , len - (curr_offset - offset), NULL, TRUE);
+        if (curr_offset - offset >= len) /* Sanity check */
+            return (curr_offset - offset);
 
-        proto_tree_add_string_format(tree,
-            ((oct & 0x07) == 3) ? hf_gsm_a_imeisv : hf_gsm_a_imsi,
-            tvb, curr_offset, len - (curr_offset - offset),
-            digit_str,
-            "BCD Digits: %s",
-            digit_str);
+        if((oct & 0x07) == 3){
+            /* imeisv */
+            digit_str = tvb_bcd_dig_to_wmem_packet_str(tvb ,curr_offset , len - (curr_offset - offset), NULL, TRUE);
+            proto_tree_add_string_format(tree,
+                hf_gsm_a_imeisv,
+                tvb, curr_offset, len - (curr_offset - offset),
+                digit_str,
+                "BCD Digits: %s",
+                digit_str);
+        }else{
+            digit_str = dissect_e212_imsi(tvb, pinfo, tree,  curr_offset, len - (curr_offset - offset), TRUE);
+        }
 
         if (sccp_assoc && ! sccp_assoc->calling_party) {
             sccp_assoc->calling_party = wmem_strdup_printf(wmem_file_scope(),
@@ -2261,45 +2203,31 @@ de_mid(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
 
         if (!odd)
         {
-            oct = tvb_get_guint8(tvb, curr_offset - 1);
-
-            other_decode_bitfield_value(a_bigbuf, oct, 0xf0, 8);
-            proto_tree_add_text(tree,
-                tvb, curr_offset - 1, 1,
-                "%s = Filler",
-                a_bigbuf);
+            proto_tree_add_item(tree, hf_gsm_a_filler, tvb, curr_offset - 1, 1, ENC_NA);
         }
         break;
 
     case 2: /* IMEI */
-        other_decode_bitfield_value(a_bigbuf, oct, 0xf0, 8);
-        proto_tree_add_text(tree,
-            tvb, curr_offset, 1,
-            "%s = Identity Digit 1: %c",
-            a_bigbuf,
-            Dgt1_9_bcd.out[(oct & 0xf0) >> 4]);
+        proto_tree_add_uint_format_value(tree, hf_gsm_a_identity_digit1, tvb, curr_offset, 1, oct, "%c", Dgt1_9_bcd.out[(oct & 0xf0) >> 4]);
 
         proto_tree_add_item(tree, hf_gsm_a_odd_even_ind, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
 
         proto_tree_add_item(tree, hf_gsm_a_mobile_identity_type, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
 
-        a_bigbuf[0] = Dgt1_9_bcd.out[(oct & 0xf0) >> 4];
-        curr_offset++;
+        if (curr_offset - offset >= len) /* Sanity check */
+            return (curr_offset - offset);
 
-        poctets = (guint8 *)tvb_memdup(wmem_packet_scope(), tvb, curr_offset, len - (curr_offset - offset));
-
-        my_dgt_tbcd_unpack(&a_bigbuf[1], poctets, len - (curr_offset - offset),
-            &Dgt1_9_bcd);
+        digit_str = tvb_bcd_dig_to_wmem_packet_str(tvb, curr_offset, len - (curr_offset - offset), NULL, TRUE);
 
         proto_tree_add_string_format(tree,
             hf_gsm_a_imei,
             tvb, curr_offset, len - (curr_offset - offset),
-            a_bigbuf,
+            digit_str,
             "BCD Digits: %s",
-            a_bigbuf);
+            digit_str);
 
         if (add_string)
-            g_snprintf(add_string, string_len, " - IMEI (%s)", a_bigbuf);
+            g_snprintf(add_string, string_len, " - IMEI (%s)", digit_str);
 
         curr_offset += len - (curr_offset - offset);
         break;
@@ -2341,7 +2269,7 @@ de_mid(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
             /* MCC/MNC*/
             /* MCC, Mobile country code (octet 6a, octet 6b bits 1 to 4)*/
             /* MNC, Mobile network code (octet 6b bits 5 to 8, octet 6c) */
-            curr_offset = dissect_e212_mcc_mnc(tvb, pinfo, tree, curr_offset, TRUE);
+            curr_offset = dissect_e212_mcc_mnc(tvb, pinfo, tree, curr_offset, E212_NONE, TRUE);
         }
         if ((oct&0x20) == 0x20) {
             /* MBMS Session Identity (octet 7)
@@ -2355,9 +2283,8 @@ de_mid(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
 
     default:    /* Reserved */
         proto_tree_add_item(tree, hf_gsm_a_odd_even_ind, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
-        proto_tree_add_item(tree, hf_gsm_a_mobile_identity_type, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
-        proto_tree_add_text(tree, tvb, curr_offset, len,
-            "Mobile station identity Format %u, Format Unknown", (oct & 0x07));
+        ti = proto_tree_add_item(tree, hf_gsm_a_mobile_identity_type, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
+        expert_add_info_format(pinfo, ti, &ei_gsm_a_mobile_identity_type, "Unknown format %u", (oct & 0x07));
 
         if (add_string)
             g_snprintf(add_string, string_len, " - Format Unknown");
@@ -2366,7 +2293,7 @@ de_mid(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, guin
         break;
     }
 
-    EXTRANEOUS_DATA_CHECK_EXPERT(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
+    EXTRANEOUS_DATA_CHECK(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
 
     return (curr_offset - offset);
 }
@@ -2379,16 +2306,13 @@ de_ms_cm_1(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo _U_, guint32 offs
 {
     guint32     curr_offset;
     proto_tree *subtree;
-    proto_item *item;
 
     curr_offset = offset;
 
-    item =
-    proto_tree_add_text(tree,
-        tvb, curr_offset, 1, "%s",
+    subtree =
+    proto_tree_add_subtree(tree,
+        tvb, curr_offset, 1, ett_gsm_common_elem[DE_MS_CM_1], NULL,
         val_to_str_ext_const(DE_MS_CM_1, &gsm_common_elem_strings_ext, ""));
-
-    subtree = proto_item_add_subtree(item, ett_gsm_common_elem[DE_MS_CM_1]);
 
     proto_tree_add_item(subtree, hf_gsm_a_b8spare, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
 
@@ -2469,14 +2393,14 @@ de_ms_cm_2(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, 
 
     curr_offset++;
 
-    EXTRANEOUS_DATA_CHECK_EXPERT(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
+    EXTRANEOUS_DATA_CHECK(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
 
     return (curr_offset - offset);
 }
 
 /*
  * [3] 10.5.1.7 Mobile Station Classmark 3
- * 3GPP TS 24.008 version 11.7.0 Release 11
+ * 3GPP TS 24.008 version 12.10.0 Release 12
  */
 #define AVAILABLE_BITS_CHECK(n) \
     bits_left = ((len + offset) << 3) - bit_offset; \
@@ -3204,6 +3128,50 @@ de_ms_cm_3(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, 
     bit_offset = bit_offset + 1;
 
     /*
+     * < E-UTRA Wideband RSRQ measurements support : bit(1)>
+     */
+    AVAILABLE_BITS_CHECK(1);
+    proto_tree_add_bits_item(tree, hf_gsm_a_eutra_wb_rsrq_support, tvb, bit_offset, 1, ENC_BIG_ENDIAN);
+    bit_offset = bit_offset + 1;
+
+    /*
+     * Release 12 starts here
+     *
+     * < ER Band support : bit(1) > -- Release 12 starts here
+     */
+    AVAILABLE_BITS_CHECK(1);
+    proto_tree_add_bits_item(tree, hf_gsm_a_er_band_support, tvb, bit_offset, 1, ENC_BIG_ENDIAN);
+    bit_offset = bit_offset + 1;
+
+    /*
+     * < UTRA Multiple Frequency Band Indicators support : bit(1)>
+     */
+    AVAILABLE_BITS_CHECK(1);
+    proto_tree_add_bits_item(tree, hf_gsm_a_utra_mfbi_support, tvb, bit_offset, 1, ENC_BIG_ENDIAN);
+    bit_offset = bit_offset + 1;
+
+    /*
+     * < E-UTRA Multiple Frequency Band Indicators support : bit(1)>
+     */
+    AVAILABLE_BITS_CHECK(1);
+    proto_tree_add_bits_item(tree, hf_gsm_a_eutra_mfbi_support, tvb, bit_offset, 1, ENC_BIG_ENDIAN);
+    bit_offset = bit_offset + 1;
+
+    /*
+     * < Extended TSC Set Capability support : bit(1)>
+     */
+    AVAILABLE_BITS_CHECK(1);
+    proto_tree_add_bits_item(tree, hf_gsm_a_ext_tsc_set_cap_support, tvb, bit_offset, 1, ENC_BIG_ENDIAN);
+    bit_offset = bit_offset + 1;
+
+    /*
+     * < Extended EARFCN value range : bit(1)>
+     */
+    AVAILABLE_BITS_CHECK(1);
+    proto_tree_add_bits_item(tree, hf_gsm_a_ext_earfcn_value_range, tvb, bit_offset, 1, ENC_BIG_ENDIAN);
+    bit_offset = bit_offset + 1;
+
+    /*
      * Add spare bits until we reach an octet boundary
      */
     bits_left = (((len + offset) << 3) - bit_offset) & 0x07;
@@ -3215,7 +3183,7 @@ de_ms_cm_3(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset, 
 
     /* translate to byte offset (we already know that we are on an octet boundary) */
     curr_offset = bit_offset >> 3;
-    EXTRANEOUS_DATA_CHECK_EXPERT(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
+    EXTRANEOUS_DATA_CHECK(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
 
     return len;
 }
@@ -3242,66 +3210,32 @@ guint16 de_spare_nibble(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo _U_,
 /*
  * [3] 10.5.1.9 Descriptive group or broadcast call reference
  */
+static const true_false_string tfs_vgcs_vbs = { "VGCS (Group call reference)", "VBS (Broadcast call reference)" };
+
+static const value_string gsm_a_call_priority_vals[] = {
+    { 0, "no priority applied"},
+    { 1, "call priority level 4"},
+    { 2, "call priority level 3"},
+    { 3, "call priority level 2"},
+    { 4, "call priority level 1"},
+    { 5, "call priority level 0"},
+    { 6, "call priority level B"},
+    { 7, "call priority level A"},
+    { 0,    NULL }
+};
+
 guint16
 de_d_gb_call_ref(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo _U_, guint32 offset, guint len _U_, gchar *add_string _U_, int string_len _U_)
 {
-    guint8       oct;
-    guint32      value;
-    guint32      curr_offset;
-    const gchar *str;
+    guint32      curr_offset = offset;
 
-    curr_offset = offset;
-
-    value = tvb_get_ntohl(tvb, curr_offset);
-
-    other_decode_bitfield_value(a_bigbuf, value, 0xffffffe0, 32);
-    proto_tree_add_text(tree, tvb, curr_offset, 4,
-        "%s = Group or Broadcast call reference: %u (0x%04x)",
-        a_bigbuf,
-        (value & 0xffffffe0) >> 5,
-        (value & 0xffffffe0) >> 5);
-
-    other_decode_bitfield_value(a_bigbuf, value, 0x00000010, 32);
-    proto_tree_add_text(tree, tvb, curr_offset, 4,
-        "%s = SF Service Flag: %s",
-        a_bigbuf,
-        (value & 0x00000010) ?
-        "VGCS (Group call reference)" : "VBS (Broadcast call reference)");
-
-    other_decode_bitfield_value(a_bigbuf, value, 0x00000008, 32);
-    proto_tree_add_text(tree, tvb, curr_offset, 4,
-        "%s = AF Acknowledgement Flag: acknowledgment is %srequired",
-        a_bigbuf,
-        (value & 0x00000008) ? "" : "not ");
-
-    switch (value & 0x00000007)
-    {
-    case 1: str = "call priority level 4"; break;
-    case 2: str = "call priority level 3"; break;
-    case 3: str = "call priority level 2"; break;
-    case 4: str = "call priority level 1"; break;
-    case 5: str = "call priority level 0"; break;
-    case 6: str = "call priority level B"; break;
-    case 7: str = "call priority level A"; break;
-    default:
-    str = "no priority applied";
-    break;
-    }
-
-    other_decode_bitfield_value(a_bigbuf, value, 0x00000007, 32);
-    proto_tree_add_text(tree, tvb, curr_offset, 4,
-        "%s = Call Priority: %s",
-        a_bigbuf,
-        str);
-
+    proto_tree_add_item(tree, hf_gsm_a_group_call_reference, tvb, curr_offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(tree, hf_gsm_a_service_flag, tvb, curr_offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(tree, hf_gsm_a_af_acknowledgement, tvb, curr_offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(tree, hf_gsm_a_call_priority, tvb, curr_offset, 4, ENC_BIG_ENDIAN);
     curr_offset += 4;
 
-    oct = tvb_get_guint8(tvb, curr_offset);
-
-    other_decode_bitfield_value(a_bigbuf, oct, 0xf0, 8);
-    proto_tree_add_text(tree, tvb, curr_offset, 1,
-        "%s = Ciphering Information",
-        a_bigbuf);
+    proto_tree_add_item(tree, hf_gsm_a_ciphering_info, tvb, curr_offset, 1, ENC_NA);
 
     proto_tree_add_bits_item(tree, hf_gsm_a_spare_bits, tvb, (curr_offset<<3)+4, 4, ENC_BIG_ENDIAN);
     curr_offset++;
@@ -3314,42 +3248,30 @@ de_d_gb_call_ref(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo _U_, guint3
 /*
  * [3] 10.5.1.10a PD and SAPI $(CCBS)$
  */
+static const value_string gsm_a_sapi_vals[] = {
+    { 0, "SAPI 0"},
+    { 1, "Reserved"},
+    { 2, "Reserved"},
+    { 3, "SAPI 3"},
+    { 0,    NULL }
+};
+
 static guint16
 de_pd_sapi(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo _U_, guint32 offset, guint len _U_, gchar *add_string _U_, int string_len _U_)
 {
-    guint8       oct;
     guint32      curr_offset;
     proto_tree  *subtree;
-    proto_item  *item;
-    const gchar *str;
 
     curr_offset = offset;
 
-    oct = tvb_get_guint8(tvb, curr_offset);
-
-    item =
-    proto_tree_add_text(tree,
-        tvb, curr_offset, 1, "%s",
+    subtree =
+    proto_tree_add_subtree(tree,
+        tvb, curr_offset, 1, ett_gsm_dtap_elem[DE_PD_SAPI], NULL,
         val_to_str_ext_const(DE_PD_SAPI, &gsm_dtap_elem_strings_ext, ""));
-
-    subtree = proto_item_add_subtree(item, ett_gsm_dtap_elem[DE_PD_SAPI]);
 
     proto_tree_add_bits_item(tree, hf_gsm_a_spare_bits, tvb, curr_offset<<3, 2, ENC_BIG_ENDIAN);
 
-    switch ((oct & 0x30) >> 4)
-    {
-    case 0: str = "SAPI 0"; break;
-    case 3: str = "SAPI 3"; break;
-    default:
-    str = "Reserved";
-    break;
-    }
-
-    other_decode_bitfield_value(a_bigbuf, oct, 0x30, 8);
-    proto_tree_add_text(subtree, tvb, curr_offset, 1,
-        "%s = SAPI (Service Access Point Identifier): %s",
-        a_bigbuf,
-        str);
+    proto_tree_add_item(subtree, hf_gsm_a_sapi, tvb, curr_offset, 1, ENC_NA);
 
     proto_tree_add_item(tree, hf_gsm_a_L3_protocol_discriminator, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
 
@@ -3404,7 +3326,7 @@ de_cn_common_gsm_map_nas_sys_info(tvbuff_t *tvb, proto_tree *tree, packet_info *
     proto_tree_add_item(tree, hf_gsm_a_lac, tvb, curr_offset, 2, ENC_BIG_ENDIAN);
     curr_offset += 2;
 
-    EXTRANEOUS_DATA_CHECK_EXPERT(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
+    EXTRANEOUS_DATA_CHECK(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
 
     return (curr_offset - offset);
 }
@@ -3430,7 +3352,7 @@ de_cs_domain_spec_sys_info(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, 
     proto_tree_add_item(tree, hf_gsm_a_att, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
     curr_offset++;
 
-    EXTRANEOUS_DATA_CHECK_EXPERT(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
+    EXTRANEOUS_DATA_CHECK(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
 
     return (curr_offset - offset);
 }
@@ -3462,7 +3384,7 @@ de_ps_domain_spec_sys_info(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, 
     proto_tree_add_item(tree, hf_gsm_a_nmo, tvb, curr_offset, 1, ENC_BIG_ENDIAN);
     curr_offset++;
 
-    EXTRANEOUS_DATA_CHECK_EXPERT(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
+    EXTRANEOUS_DATA_CHECK(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
 
     return (curr_offset - offset);
 }
@@ -3478,35 +3400,33 @@ de_plmn_list(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint32 offset
     gchar   mcc[4];
     gchar   mnc[4];
     guint8  num_plmn;
+    proto_tree* subtree;
 
     curr_offset = offset;
 
     num_plmn = 0;
     while ((len - (curr_offset - offset)) >= 3)
     {
-    octs[0] = tvb_get_guint8(tvb, curr_offset);
-    octs[1] = tvb_get_guint8(tvb, curr_offset + 1);
-    octs[2] = tvb_get_guint8(tvb, curr_offset + 2);
+        octs[0] = tvb_get_guint8(tvb, curr_offset);
+        octs[1] = tvb_get_guint8(tvb, curr_offset + 1);
+        octs[2] = tvb_get_guint8(tvb, curr_offset + 2);
 
-    mcc_mnc_aux(octs, mcc, mnc);
+        mcc_mnc_aux(octs, mcc, mnc);
 
-    proto_tree_add_text(tree,
-        tvb, curr_offset, 3,
-        "PLMN[%u]  Mobile Country Code (MCC): %s, Mobile Network Code (MNC): %s",
-        num_plmn + 1,
-        mcc,
-        mnc);
+        subtree = proto_tree_add_subtree_format(tree, tvb, curr_offset, 3, ett_gsm_a_plmn, NULL, "PLMN[%u]", num_plmn + 1);
+        proto_tree_add_string(subtree, hf_gsm_a_mobile_country_code, tvb, curr_offset, 3, mcc);
+        proto_tree_add_string(subtree, hf_gsm_a_mobile_network_code, tvb, curr_offset, 3, mnc);
 
-    curr_offset += 3;
+        curr_offset += 3;
 
-    num_plmn++;
+        num_plmn++;
     }
 
     if (add_string)
-    g_snprintf(add_string, string_len, " - %u PLMN%s",
-        num_plmn, plurality(num_plmn, "", "s"));
+        g_snprintf(add_string, string_len, " - %u PLMN%s",
+            num_plmn, plurality(num_plmn, "", "s"));
 
-    EXTRANEOUS_DATA_CHECK_EXPERT(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
+    EXTRANEOUS_DATA_CHECK(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
 
     return (curr_offset - offset);
 }
@@ -3542,7 +3462,7 @@ de_nas_cont_for_ps_ho(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, guint
     proto_tree_add_item(tree, hf_gsm_a_iov_ui, tvb, curr_offset, 4, ENC_BIG_ENDIAN);
     curr_offset += 4;
 
-    EXTRANEOUS_DATA_CHECK_EXPERT(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
+    EXTRANEOUS_DATA_CHECK(len, curr_offset - offset, pinfo, &ei_gsm_a_extraneous_data);
 
     return (curr_offset - offset);
 }
@@ -3596,6 +3516,214 @@ guint16 (*common_elem_fcn[])(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo
     NULL,                   /* NONE */
 };
 
+/* TAP STAT INFO */
+typedef enum
+{
+    IEI_COLUMN,
+    MSG_NAME_COLUMN,
+    COUNT_COLUMN
+} gsm_a_stat_columns;
+
+static stat_tap_table_item gsm_a_stat_fields[] = {
+    {TABLE_ITEM_UINT, TAP_ALIGN_RIGHT, "IEI", "%d"},
+    {TABLE_ITEM_STRING, TAP_ALIGN_LEFT, "Message Name", "%-25s"},
+    {TABLE_ITEM_UINT, TAP_ALIGN_RIGHT, "Count", "%d"}
+    };
+
+static void gsm_a_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data, const char *table_title, const value_string *msg_strings)
+{
+    int num_fields = sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item);
+    new_stat_tap_table* table;
+    guint i;
+    stat_tap_table_item_type items[sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item)];
+
+    items[IEI_COLUMN].type = TABLE_ITEM_UINT;
+    items[MSG_NAME_COLUMN].type = TABLE_ITEM_STRING;
+    items[COUNT_COLUMN].type = TABLE_ITEM_UINT;
+    items[COUNT_COLUMN].value.uint_value = 0;
+
+    table = new_stat_tap_init_table(table_title, num_fields, 0, NULL, gui_callback, gui_data);
+    new_stat_tap_add_table(new_stat, table);
+
+    /* Add a row for each value type */
+    for (i = 0; i < 256; i++)
+    {
+        const char *msg_str = try_val_to_str(i, msg_strings);
+        char *col_str;
+        if (msg_str) {
+            col_str = g_strdup(msg_str);
+        } else {
+            col_str = g_strdup_printf("Unknown message %d", i);
+        }
+
+        items[IEI_COLUMN].value.uint_value = i;
+        items[MSG_NAME_COLUMN].value.string_value = col_str;
+        new_stat_tap_init_table_row(table, i, num_fields, items);
+    }
+}
+
+static void gsm_a_bssmap_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F BSSMAP Statistics", gsm_a_bssmap_msg_strings);
+}
+
+static void gsm_a_dtap_mm_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F DTAP Mobility Management Statistics", gsm_a_dtap_msg_mm_strings);
+}
+
+static void gsm_a_dtap_rr_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F DTAP Radio Resource Management Statistics", gsm_a_dtap_msg_rr_strings);
+}
+
+static void gsm_a_dtap_cc_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F DTAP Call Control Statistics", gsm_a_dtap_msg_cc_strings);
+}
+
+static void gsm_a_dtap_gmm_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F DTAP GPRS Mobility Management Statistics", gsm_a_dtap_msg_gmm_strings);
+}
+
+static void gsm_a_dtap_sm_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F DTAP GPRS Session Management Statistics", gsm_a_dtap_msg_sm_strings);
+}
+
+static void gsm_a_dtap_sms_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F DTAP Short Message Service Statistics", gsm_a_dtap_msg_sms_strings);
+}
+
+static void gsm_a_dtap_tp_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F DTAP Special Conformance Testing Functions", gsm_a_dtap_msg_tp_strings);
+}
+
+static void gsm_a_dtap_ss_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F DTAP Supplementary Services Statistics", gsm_a_dtap_msg_ss_strings);
+}
+
+static void gsm_a_sacch_rr_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    gsm_a_stat_init(new_stat, gui_callback, gui_data,
+                    "GSM A-I/F SACCH Statistics", gsm_a_rr_short_pd_msg_strings);
+}
+
+static gboolean
+gsm_a_stat_packet(void *tapdata, const void *gatr_ptr, guint8 pdu_type, int protocol_disc)
+{
+    new_stat_data_t* stat_data = (new_stat_data_t*)tapdata;
+    const gsm_a_tap_rec_t *gatr = (const gsm_a_tap_rec_t *) gatr_ptr;
+    new_stat_tap_table* table;
+    stat_tap_table_item_type* msg_data;
+    guint i = 0;
+
+    if (gatr->pdu_type != pdu_type) return FALSE;
+    if (pdu_type == BSSAP_PDU_TYPE_DTAP && (int)gatr->protocol_disc != protocol_disc) return FALSE;
+    if (pdu_type == GSM_A_PDU_TYPE_SACCH && gatr->protocol_disc != 0) return FALSE;
+
+    table = g_array_index(stat_data->new_stat_tap_data->tables, new_stat_tap_table*, i);
+    msg_data = new_stat_tap_get_field_data(table, gatr->message_type, COUNT_COLUMN);
+    msg_data->value.uint_value++;
+    new_stat_tap_set_field_data(table, gatr->message_type, COUNT_COLUMN, msg_data);
+
+    return TRUE;
+}
+
+static gboolean
+gsm_a_bssmap_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_BSSMAP, 0);
+}
+
+static gboolean
+gsm_a_dtap_mm_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_DTAP, PD_MM);
+}
+
+static gboolean
+gsm_a_dtap_rr_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_DTAP, PD_RR);
+}
+
+static gboolean
+gsm_a_dtap_cc_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_DTAP, PD_CC);
+}
+
+static gboolean
+gsm_a_dtap_gmm_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_DTAP, PD_GMM);
+}
+
+static gboolean
+gsm_a_dtap_sms_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_DTAP, PD_SMS);
+}
+
+static gboolean
+gsm_a_dtap_sm_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_DTAP, PD_SM);
+}
+
+static gboolean
+gsm_a_dtap_ss_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_DTAP, PD_SS);
+}
+
+static gboolean
+gsm_a_dtap_tp_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, BSSAP_PDU_TYPE_DTAP, PD_TP);
+}
+
+static gboolean
+gsm_a_sacch_rr_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *gatr_ptr)
+{
+    return gsm_a_stat_packet(tapdata, gatr_ptr, GSM_A_PDU_TYPE_SACCH, 0);
+}
+
+static void
+gsm_a_stat_reset(new_stat_tap_table* table)
+{
+    guint element;
+    stat_tap_table_item_type* item_data;
+
+    for (element = 0; element < table->num_elements; element++)
+    {
+        item_data = new_stat_tap_get_field_data(table, element, COUNT_COLUMN);
+        item_data->value.uint_value = 0;
+        new_stat_tap_set_field_data(table, element, COUNT_COLUMN, item_data);
+    }
+}
+
+static void
+gsm_a_stat_free_table_item(new_stat_tap_table* table _U_, guint row _U_, guint column, stat_tap_table_item_type* field_data)
+{
+    if (column != MSG_NAME_COLUMN) return;
+    g_free((char*)field_data->value.string_value);
+}
+
 /* Register the protocol with Wireshark */
 void
 proto_register_gsm_a_common(void)
@@ -3611,14 +3739,14 @@ proto_register_gsm_a_common(void)
         FT_UINT8, BASE_HEX, NULL, 0,
         NULL, HFILL }
     },
+    { &hf_gsm_a_common_elem_id_f0,
+        { "Element ID", "gsm_a.common.elem_id",
+        FT_UINT8, BASE_HEX, NULL, 0xF0,
+        NULL, HFILL }
+    },
     { &hf_gsm_a_l_ext,
         { "ext",    "gsm_a.l_ext",
         FT_UINT8, BASE_DEC, NULL, 0x80,
-        NULL, HFILL }
-    },
-    { &hf_gsm_a_imsi,
-        { "IMSI",   "gsm_a.imsi",
-        FT_STRING, BASE_NONE, 0, 0,
         NULL, HFILL }
     },
     { &hf_gsm_a_tmsi,
@@ -3746,6 +3874,11 @@ proto_register_gsm_a_common(void)
         FT_UINT8, BASE_DEC, VALS(mobile_identity_type_vals), 0x07,
         NULL, HFILL }
     },
+    { &hf_gsm_a_id_dig_1,
+        { "Identity Digit 1", "gsm_a.id_dig_1",
+        FT_UINT8, BASE_DEC, NULL, 0xf0,
+        NULL, HFILL }
+    },
     { &hf_gsm_a_odd_even_ind,
         { "Odd/even indication", "gsm_a.oddevenind",
         FT_BOOLEAN, 8, TFS(&oddevenind_vals), 0x08,
@@ -3779,6 +3912,11 @@ proto_register_gsm_a_common(void)
     { &hf_gsm_a_length,
         { "Length",     "gsm_a.len",
         FT_UINT16, BASE_DEC, NULL, 0,
+        NULL, HFILL }
+    },
+    { &hf_gsm_a_element_value,
+        { "Element Value",     "gsm_a.element_value",
+        FT_BYTES, BASE_NONE, NULL, 0,
         NULL, HFILL }
     },
     { &hf_gsm_a_extension,
@@ -4322,8 +4460,38 @@ proto_register_gsm_a_common(void)
         NULL, HFILL}
     },
     { &hf_gsm_a_geran_network_sharing_support,
-        { "GERAN Network Sharing support", "gsm_a.classmark3.ggeran_network_sharing_support",
+        { "GERAN Network Sharing support", "gsm_a.classmark3.geran_network_sharing_support",
         FT_BOOLEAN, BASE_NONE, TFS(&true_false_vals), 0x00,
+        NULL, HFILL}
+    },
+    { &hf_gsm_a_eutra_wb_rsrq_support,
+        { "E-UTRA Wideband RSRQ measurements support", "gsm_a.classmark3.eutra_wb_rsrq_support",
+        FT_BOOLEAN, BASE_NONE, TFS(&true_false_vals), 0x00,
+        NULL, HFILL}
+    },
+    { &hf_gsm_a_er_band_support,
+        { "ER Band support", "gsm_a.classmark3.er_band_support",
+        FT_BOOLEAN, BASE_NONE, TFS(&true_false_vals), 0x00,
+        NULL, HFILL}
+    },
+    { &hf_gsm_a_utra_mfbi_support,
+        { "UTRA Multiple Frequency Band Indicators support", "gsm_a.classmark3.utra_mfbi_support",
+        FT_BOOLEAN, BASE_NONE, TFS(&true_false_vals), 0x00,
+        NULL, HFILL}
+    },
+    { &hf_gsm_a_eutra_mfbi_support,
+        { "E-UTRA Multiple Frequency Band Indicators support", "gsm_a.classmark3.eutra_mfbi_support",
+        FT_BOOLEAN, BASE_NONE, TFS(&true_false_vals), 0x00,
+        NULL, HFILL}
+    },
+    { &hf_gsm_a_ext_tsc_set_cap_support,
+        { "Extended TSC Set Capability support", "gsm_a.classmark3.ext_tsc_set_cap_support",
+        FT_BOOLEAN, BASE_NONE, TFS(&true_false_vals), 0x00,
+        NULL, HFILL}
+    },
+    { &hf_gsm_a_ext_earfcn_value_range,
+        { "Extended EARFCN value range", "gsm_a.classmark3.ext_earfcn_value_range",
+        FT_BOOLEAN, BASE_NONE, TFS(&tfs_supported_not_supported), 0x00,
         NULL, HFILL}
     },
     { &hf_gsm_a_geo_loc_type_of_shape,
@@ -4343,7 +4511,7 @@ proto_register_gsm_a_common(void)
     },
     { &hf_gsm_a_geo_loc_deg_of_long,
         { "Degrees of longitude", "gsm_a.gad.deg_of_longitude",
-        FT_INT24, BASE_DEC, NULL, 0x0,
+        FT_INT24, BASE_DEC, NULL, 0xffffff,
         NULL, HFILL }
     },
     { &hf_gsm_a_geo_loc_uncertainty_code,
@@ -4466,21 +4634,192 @@ proto_register_gsm_a_common(void)
         FT_UINT8, BASE_DEC_HEX, NULL, 0x00,
         NULL, HFILL }
     },
+      /* Generated from convert_proto_tree_add_text.pl */
+      { &hf_gsm_a_filler, { "Filler", "gsm_a.filler", FT_UINT8, BASE_HEX, NULL, 0xF0, NULL, HFILL }},
+      { &hf_gsm_a_identity_digit1, { "Identity Digit 1", "gsm_a.identity_digit1", FT_UINT8, BASE_HEX, NULL, 0xF0, NULL, HFILL }},
+      { &hf_gsm_a_group_call_reference, { "Group or Broadcast call reference", "gsm_a.group_call_reference", FT_UINT32, BASE_DEC_HEX, NULL, 0xffffffe0, NULL, HFILL }},
+      { &hf_gsm_a_service_flag, { "SF Service Flag", "gsm_a.service_flag", FT_BOOLEAN, 32, TFS(&tfs_vgcs_vbs), 0x00000010, NULL, HFILL }},
+      { &hf_gsm_a_af_acknowledgement, { "AF Acknowledgement", "gsm_a.af_acknowledgement", FT_BOOLEAN, 32, TFS(&tfs_required_not_required), 0x00000008, NULL, HFILL }},
+      { &hf_gsm_a_call_priority, { "Call Priority", "gsm_a.call_priority", FT_UINT32, BASE_DEC, VALS(gsm_a_call_priority_vals), 0x00000007, NULL, HFILL }},
+      { &hf_gsm_a_ciphering_info, { "Ciphering Information", "gsm_a.ciphering_info", FT_UINT8, BASE_HEX, NULL, 0xf0, NULL, HFILL }},
+      { &hf_gsm_a_sapi, { "SAPI (Service Access Point Identifier)", "gsm_a.sapi", FT_UINT8, BASE_DEC, VALS(gsm_a_sapi_vals), 0x30, NULL, HFILL }},
+      { &hf_gsm_a_mobile_country_code, { "Mobile Country Code (MCC)", "gsm_a.mobile_country_code", FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_gsm_a_mobile_network_code, { "Mobile Network Code (MNC)", "gsm_a.mobile_network_code", FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL }},
     };
 
     /* Setup protocol subtree array */
-#define NUM_INDIVIDUAL_ELEMS    0
+#define NUM_INDIVIDUAL_ELEMS    1
     static gint *ett[NUM_INDIVIDUAL_ELEMS +
             NUM_GSM_COMMON_ELEM];
 
     static ei_register_info ei[] = {
         { &ei_gsm_a_extraneous_data, { "gsm_a.extraneous_data", PI_PROTOCOL, PI_NOTE, "Extraneous Data, dissector bug or later version spec(report to wireshark.org)", EXPFILL }},
+        { &ei_gsm_a_unknown_element, { "gsm_a.unknown_element", PI_PROTOCOL, PI_ERROR, "Unknown - aborting dissection", EXPFILL }},
+        { &ei_gsm_a_unknown_pdu_type, { "gsm_a.unknown_pdu_type", PI_PROTOCOL, PI_WARN, "Unknown PDU type", EXPFILL }},
+        { &ei_gsm_a_no_element_dissector, { "gsm_a.no_element_dissector", PI_PROTOCOL, PI_WARN, "No element dissector, rest of dissection may be incorrect", EXPFILL }},
+        { &ei_gsm_a_format_not_supported, { "gsm_a.format_not_supported", PI_PROTOCOL, PI_WARN, "Format not supported", EXPFILL }},
+        { &ei_gsm_a_mobile_identity_type, { "gsm_a.ie.mobileid.type.unknown", PI_PROTOCOL, PI_WARN, "Format unknown", EXPFILL }},
     };
 
     expert_module_t* expert_a_common;
 
+    static tap_param gsm_a_stat_params[] = {
+        { PARAM_FILTER, "filter", "Filter", NULL, TRUE }
+    };
+
+    static new_stat_tap_ui gsm_a_bssmap_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface BSSMAP",
+        "gsm_a",
+        "gsm_a,bssmap",
+        gsm_a_bssmap_stat_init,
+        gsm_a_bssmap_stat_packet,
+        gsm_a_stat_reset,
+        gsm_a_stat_free_table_item,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_dtap_mm_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface DTAP Mobility Management",
+        "gsm_a",
+        "gsm_a,dtap_mm",
+        gsm_a_dtap_mm_stat_init,
+        gsm_a_dtap_mm_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_dtap_rr_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface DTAP Radio Resource Management",
+        "gsm_a",
+        "gsm_a,dtap_rr",
+        gsm_a_dtap_rr_stat_init,
+        gsm_a_dtap_rr_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_dtap_cc_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface DTAP Call Control",
+        "gsm_a",
+        "gsm_a,dtap_cc",
+        gsm_a_dtap_cc_stat_init,
+        gsm_a_dtap_cc_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_dtap_gmm_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface DTAP GPRS Mobility Management",
+        "gsm_a",
+        "gsm_a,dtap_gmm",
+        gsm_a_dtap_gmm_stat_init,
+        gsm_a_dtap_gmm_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_dtap_sm_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface DTAP GPRS Session Management",
+        "gsm_a",
+        "gsm_a,dtap_sm",
+        gsm_a_dtap_sm_stat_init,
+        gsm_a_dtap_sm_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_dtap_sms_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface DTAP Short Message Service",
+        "gsm_a",
+        "gsm_a,dtap_sms",
+        gsm_a_dtap_sms_stat_init,
+        gsm_a_dtap_sms_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_dtap_tp_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface DTAP Special Conformance Testing Functions",
+        "gsm_a",
+        "gsm_a,dtap_tp",
+        gsm_a_dtap_tp_stat_init,
+        gsm_a_dtap_tp_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_dtap_ss_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface DTAP Supplementary Services",
+        "gsm_a",
+        "gsm_a,dtap_ss",
+        gsm_a_dtap_ss_stat_init,
+        gsm_a_dtap_ss_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
+    static new_stat_tap_ui gsm_a_sacch_rr_stat_table = {
+        REGISTER_STAT_GROUP_TELEPHONY_GSM,
+        "A-Interface SACCH",
+        "gsm_a",
+        "gsm_a,dtap_sacch",
+        gsm_a_sacch_rr_stat_init,
+        gsm_a_sacch_rr_stat_packet,
+        gsm_a_stat_reset,
+        NULL,
+        NULL,
+        sizeof(gsm_a_stat_fields)/sizeof(stat_tap_table_item), gsm_a_stat_fields,
+        sizeof(gsm_a_stat_params)/sizeof(tap_param), gsm_a_stat_params,
+        NULL
+    };
+
     last_offset = NUM_INDIVIDUAL_ELEMS;
 
+    ett[0] = &ett_gsm_a_plmn;
     for (i=0; i < NUM_GSM_COMMON_ELEM; i++, last_offset++)
     {
         ett_gsm_common_elem[i] = -1;
@@ -4500,5 +4839,28 @@ proto_register_gsm_a_common(void)
 
 
     gsm_a_tap = register_tap("gsm_a");
+
+    register_new_stat_tap_ui(&gsm_a_bssmap_stat_table);
+    register_new_stat_tap_ui(&gsm_a_dtap_mm_stat_table);
+    register_new_stat_tap_ui(&gsm_a_dtap_rr_stat_table);
+    register_new_stat_tap_ui(&gsm_a_dtap_cc_stat_table);
+    register_new_stat_tap_ui(&gsm_a_dtap_gmm_stat_table);
+    register_new_stat_tap_ui(&gsm_a_dtap_sms_stat_table);
+    register_new_stat_tap_ui(&gsm_a_dtap_sm_stat_table);
+    register_new_stat_tap_ui(&gsm_a_dtap_ss_stat_table);
+    register_new_stat_tap_ui(&gsm_a_dtap_tp_stat_table);
+    register_new_stat_tap_ui(&gsm_a_sacch_rr_stat_table);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

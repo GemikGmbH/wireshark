@@ -28,8 +28,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/to_str.h>
@@ -116,7 +114,7 @@ dissect_mactelnet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
     guint16     type;
 
     /* Check that there's enough data */
-    if (tvb_length(tvb) < 18)
+    if (tvb_captured_length(tvb) < 18)
         return 0;
 
     /*  Get the type byte */
@@ -411,3 +409,16 @@ proto_reg_handoff_mactelnet(void)
     current_port = global_mactelnet_port;
     dissector_add_uint("udp.port", current_port, mactelnet_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

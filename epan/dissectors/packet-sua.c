@@ -29,7 +29,6 @@
 
 #include "config.h"
 
-#include <string.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/sctpppids.h>
@@ -38,8 +37,6 @@
 
 #include "packet-mtp3.h"
 #include "packet-sccp.h"
-#include <epan/wmem/wmem.h>
-
 void proto_register_sua(void);
 void proto_reg_handoff_sua(void);
 
@@ -315,6 +312,8 @@ static int hf_sua_sequence_number_more_data_bit = -1;
 static int hf_sua_receive_sequence_number_reserved = -1;
 static int hf_sua_receive_sequence_number_number = -1;
 static int hf_sua_receive_sequence_number_spare_bit = -1;
+static int hf_sua_protocol_classes = -1;
+static int hf_sua_protocol_class_flags = -1;
 static int hf_sua_asp_capabilities_reserved = -1;
 static int hf_sua_asp_capabilities_reserved_bits = -1;
 static int hf_sua_asp_capabilities_a_bit =-1;
@@ -336,6 +335,7 @@ static int hf_sua_protocol_class_reserved = -1;
 static int hf_sua_return_on_error_bit = -1;
 static int hf_sua_protocol_class = -1;
 static int hf_sua_sequence_control = -1;
+static int hf_sua_first_remaining = -1;
 static int hf_sua_first_bit = -1;
 static int hf_sua_number_of_remaining_segments = -1;
 static int hf_sua_segmentation_reference = -1;
@@ -397,15 +397,15 @@ typedef struct _sua_assoc_info_t {
 } sua_assoc_info_t;
 
 static wmem_tree_t* assocs = NULL;
-sua_assoc_info_t* assoc;
-sua_assoc_info_t no_sua_assoc = {
+static sua_assoc_info_t* assoc;
+static sua_assoc_info_t no_sua_assoc = {
     0,      /* assoc_id */
     0,      /* calling_routing_ind */
     0,      /* called_routing_ind */
     0,      /* calling_dpc */
     0,      /* called_dpc */
-    0,      /* calling_ssn */
-    0,      /* called_ssn */
+    INVALID_SSN,      /* calling_ssn */
+    INVALID_SSN,      /* called_ssn */
     FALSE,  /* has_bw_key */
     FALSE   /* has_fw_key */
 };
@@ -592,14 +592,14 @@ dissect_info_string_parameter(tvbuff_t *parameter_tvb, packet_info *pinfo, proto
   info_string_length = tvb_get_ntohs(parameter_tvb, PARAMETER_LENGTH_OFFSET) - PARAMETER_HEADER_LENGTH;
   /* If we have a SUA Info String sub dissector call it */
   if(sua_info_str_handle) {
-    next_tvb = tvb_new_subset(parameter_tvb, INFO_STRING_OFFSET, info_string_length, info_string_length);
+    next_tvb = tvb_new_subset_length(parameter_tvb, INFO_STRING_OFFSET, info_string_length);
     call_dissector(sua_info_str_handle, next_tvb, pinfo, parameter_tree);
     return;
   }
 
   proto_tree_add_item(parameter_tree, hf_sua_info_string, parameter_tvb, INFO_STRING_OFFSET, info_string_length, ENC_UTF_8|ENC_NA);
   proto_item_append_text(parameter_item, " (%.*s)", info_string_length,
-                         tvb_get_string_enc(wmem_packet_scope(), parameter_tvb, INFO_STRING_OFFSET, info_string_length, ENC_UTF_8|ENC_NA));
+                         tvb_format_text(parameter_tvb, INFO_STRING_OFFSET, info_string_length));
 }
 
 #define ROUTING_CONTEXT_LENGTH 4
@@ -926,7 +926,6 @@ static const value_string routing_indicator_values[] = {
 static void
 dissect_source_address_parameter(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *parameter_tree, guint8 *ssn)
 {
-  proto_item *address_indicator_item;
   proto_tree *address_indicator_tree;
   tvbuff_t *parameters_tvb;
 
@@ -934,8 +933,7 @@ dissect_source_address_parameter(tvbuff_t *parameter_tvb, packet_info *pinfo, pr
 
   if(parameter_tree) {
     proto_tree_add_item(parameter_tree, hf_sua_source_address_routing_indicator, parameter_tvb, ROUTING_INDICATOR_OFFSET, ROUTING_INDICATOR_LENGTH, ENC_BIG_ENDIAN);
-    address_indicator_item = proto_tree_add_text(parameter_tree, parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, "Address Indicator");
-    address_indicator_tree = proto_item_add_subtree(address_indicator_item, ett_sua_source_address_indicator);
+    address_indicator_tree = proto_tree_add_subtree(parameter_tree, parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, ett_sua_source_address_indicator, NULL, "Address Indicator");
     proto_tree_add_item(address_indicator_tree, hf_sua_source_address_reserved_bits, parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, ENC_BIG_ENDIAN);
     proto_tree_add_item(address_indicator_tree, hf_sua_source_address_gt_bit,        parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, ENC_BIG_ENDIAN);
     proto_tree_add_item(address_indicator_tree, hf_sua_source_address_pc_bit,        parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, ENC_BIG_ENDIAN);
@@ -949,7 +947,6 @@ dissect_source_address_parameter(tvbuff_t *parameter_tvb, packet_info *pinfo, pr
 static void
 dissect_destination_address_parameter(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *parameter_tree, guint8 *ssn)
 {
-  proto_item *address_indicator_item;
   proto_tree *address_indicator_tree;
   tvbuff_t *parameters_tvb;
 
@@ -957,8 +954,7 @@ dissect_destination_address_parameter(tvbuff_t *parameter_tvb, packet_info *pinf
 
   if(parameter_tree) {
     proto_tree_add_item(parameter_tree, hf_sua_destination_address_routing_indicator, parameter_tvb, ROUTING_INDICATOR_OFFSET, ROUTING_INDICATOR_LENGTH, ENC_BIG_ENDIAN);
-    address_indicator_item = proto_tree_add_text(parameter_tree, parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, "Address Indicator");
-    address_indicator_tree = proto_item_add_subtree(address_indicator_item, ett_sua_destination_address_indicator);
+    address_indicator_tree = proto_tree_add_subtree(parameter_tree, parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, ett_sua_destination_address_indicator, NULL, "Address Indicator");
     proto_tree_add_item(address_indicator_tree, hf_sua_destination_address_reserved_bits, parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, ENC_BIG_ENDIAN);
     proto_tree_add_item(address_indicator_tree, hf_sua_destination_address_gt_bit,        parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, ENC_BIG_ENDIAN);
     proto_tree_add_item(address_indicator_tree, hf_sua_destination_address_pc_bit,        parameter_tvb, ADDRESS_INDICATOR_OFFSET, ADDRESS_INDICATOR_LENGTH, ENC_BIG_ENDIAN);
@@ -1064,20 +1060,18 @@ static const true_false_string more_data_bit_value = {
 static void
 dissect_sequence_number_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree)
 {
-  proto_item *sent_sequence_number_item;
   proto_tree *sent_sequence_number_tree;
-  proto_item *receive_sequence_number_item;
   proto_tree *receive_sequence_number_tree;
 
   proto_tree_add_item(parameter_tree, hf_sua_sequence_number_reserved, parameter_tvb, PARAMETER_VALUE_OFFSET, RESERVED_2_LENGTH, ENC_NA);
 
-  receive_sequence_number_item = proto_tree_add_text(parameter_tree, parameter_tvb, SEQUENCE_NUMBER_REC_SEQ_OFFSET, SEQUENCE_NUMBER_REC_SEQ_LENGTH, "Receive Sequence Number");
-  receive_sequence_number_tree = proto_item_add_subtree(receive_sequence_number_item, ett_sua_sequence_number_rec_number);
+  receive_sequence_number_tree = proto_tree_add_subtree(parameter_tree, parameter_tvb, SEQUENCE_NUMBER_REC_SEQ_OFFSET, SEQUENCE_NUMBER_REC_SEQ_LENGTH,
+                                            ett_sua_sequence_number_rec_number, NULL, "Receive Sequence Number");
   proto_tree_add_item(receive_sequence_number_tree, hf_sua_sequence_number_rec_number,    parameter_tvb, SEQUENCE_NUMBER_REC_SEQ_OFFSET, SEQUENCE_NUMBER_REC_SEQ_LENGTH, ENC_BIG_ENDIAN);
   proto_tree_add_item(receive_sequence_number_tree, hf_sua_sequence_number_more_data_bit, parameter_tvb, SEQUENCE_NUMBER_REC_SEQ_OFFSET, SEQUENCE_NUMBER_REC_SEQ_LENGTH, ENC_BIG_ENDIAN);
 
-  sent_sequence_number_item = proto_tree_add_text(parameter_tree, parameter_tvb, SEQUENCE_NUMBER_SENT_SEQ_OFFSET, SEQUENCE_NUMBER_SENT_SEQ_LENGTH, "Sent Sequence Number");
-  sent_sequence_number_tree = proto_item_add_subtree(sent_sequence_number_item, ett_sua_sequence_number_sent_number);
+  sent_sequence_number_tree = proto_tree_add_subtree(parameter_tree, parameter_tvb, SEQUENCE_NUMBER_SENT_SEQ_OFFSET, SEQUENCE_NUMBER_SENT_SEQ_LENGTH,
+                                            ett_sua_sequence_number_sent_number, NULL, "Sent Sequence Number");
   proto_tree_add_item(sent_sequence_number_tree, hf_sua_sequence_number_sent_number, parameter_tvb, SEQUENCE_NUMBER_SENT_SEQ_OFFSET, SEQUENCE_NUMBER_SENT_SEQ_LENGTH, ENC_BIG_ENDIAN);
   proto_tree_add_item(sent_sequence_number_tree, hf_sua_sequence_number_spare_bit,   parameter_tvb, SEQUENCE_NUMBER_SENT_SEQ_OFFSET, SEQUENCE_NUMBER_SENT_SEQ_LENGTH, ENC_BIG_ENDIAN);
 }
@@ -1088,12 +1082,11 @@ dissect_sequence_number_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter
 static void
 dissect_receive_sequence_number_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree)
 {
-  proto_item *receive_sequence_number_item;
   proto_tree *receive_sequence_number_tree;
 
   proto_tree_add_item(parameter_tree, hf_sua_receive_sequence_number_reserved, parameter_tvb, PARAMETER_VALUE_OFFSET, RESERVED_3_LENGTH, ENC_NA);
-  receive_sequence_number_item = proto_tree_add_text(parameter_tree, parameter_tvb, RECEIVE_SEQUENCE_NUMBER_REC_SEQ_OFFSET, RECEIVE_SEQUENCE_NUMBER_REC_SEQ_LENGTH, "Receive Sequence Number");
-  receive_sequence_number_tree = proto_item_add_subtree(receive_sequence_number_item, ett_sua_receive_sequence_number_number);
+  receive_sequence_number_tree = proto_tree_add_subtree(parameter_tree, parameter_tvb, RECEIVE_SEQUENCE_NUMBER_REC_SEQ_OFFSET, RECEIVE_SEQUENCE_NUMBER_REC_SEQ_LENGTH,
+                            ett_sua_receive_sequence_number_number, NULL, "Receive Sequence Number");
   proto_tree_add_item(receive_sequence_number_tree, hf_sua_receive_sequence_number_number,    parameter_tvb, RECEIVE_SEQUENCE_NUMBER_REC_SEQ_OFFSET, RECEIVE_SEQUENCE_NUMBER_REC_SEQ_LENGTH, ENC_BIG_ENDIAN);
   proto_tree_add_item(receive_sequence_number_tree, hf_sua_receive_sequence_number_spare_bit, parameter_tvb, RECEIVE_SEQUENCE_NUMBER_REC_SEQ_OFFSET, RECEIVE_SEQUENCE_NUMBER_REC_SEQ_LENGTH, ENC_BIG_ENDIAN);
 }
@@ -1119,17 +1112,17 @@ static const value_string interworking_values[] = {
 static void
 dissect_asp_capabilities_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree)
 {
-  proto_item *protocol_classes_item;
-  proto_tree *protocol_classes_tree;
+  static const int * capabilities[] = {
+    &hf_sua_asp_capabilities_reserved_bits,
+    &hf_sua_asp_capabilities_a_bit,
+    &hf_sua_asp_capabilities_b_bit,
+    &hf_sua_asp_capabilities_c_bit,
+    &hf_sua_asp_capabilities_d_bit,
+    NULL
+   };
 
   proto_tree_add_item(parameter_tree, hf_sua_asp_capabilities_reserved, parameter_tvb, PARAMETER_VALUE_OFFSET, RESERVED_2_LENGTH, ENC_NA);
-  protocol_classes_item = proto_tree_add_text(parameter_tree, parameter_tvb, PROTOCOL_CLASSES_OFFSET, PROTOCOL_CLASSES_LENGTH, "Protocol classes");
-  protocol_classes_tree = proto_item_add_subtree(protocol_classes_item, ett_sua_protcol_classes);
-  proto_tree_add_item(protocol_classes_tree, hf_sua_asp_capabilities_reserved_bits, parameter_tvb, PROTOCOL_CLASSES_OFFSET, PROTOCOL_CLASSES_LENGTH, ENC_BIG_ENDIAN);
-  proto_tree_add_item(protocol_classes_tree, hf_sua_asp_capabilities_a_bit, parameter_tvb, PROTOCOL_CLASSES_OFFSET, PROTOCOL_CLASSES_LENGTH, ENC_BIG_ENDIAN);
-  proto_tree_add_item(protocol_classes_tree, hf_sua_asp_capabilities_b_bit, parameter_tvb, PROTOCOL_CLASSES_OFFSET, PROTOCOL_CLASSES_LENGTH, ENC_BIG_ENDIAN);
-  proto_tree_add_item(protocol_classes_tree, hf_sua_asp_capabilities_c_bit, parameter_tvb, PROTOCOL_CLASSES_OFFSET, PROTOCOL_CLASSES_LENGTH, ENC_BIG_ENDIAN);
-  proto_tree_add_item(protocol_classes_tree, hf_sua_asp_capabilities_d_bit, parameter_tvb, PROTOCOL_CLASSES_OFFSET, PROTOCOL_CLASSES_LENGTH, ENC_BIG_ENDIAN);
+  proto_tree_add_bitmask(parameter_tree, parameter_tvb, PROTOCOL_CLASSES_OFFSET, hf_sua_protocol_classes, ett_sua_protcol_classes, capabilities, ENC_BIG_ENDIAN);
   proto_tree_add_item(parameter_tree, hf_sua_asp_capabilities_interworking, parameter_tvb, INTERWORKING_OFFSET, INTERWORKING_LENGTH, ENC_BIG_ENDIAN);
 }
 
@@ -1159,7 +1152,7 @@ dissect_data_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree, prot
 
   if(data_tvb)
   {
-    *data_tvb = tvb_new_subset(parameter_tvb, PARAMETER_VALUE_OFFSET, data_length, data_length);
+    *data_tvb = tvb_new_subset_length(parameter_tvb, PARAMETER_VALUE_OFFSET, data_length);
   }
 }
 
@@ -1291,16 +1284,14 @@ static const true_false_string return_on_error_bit_value = {
 static void
 dissect_protocol_class_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree, proto_item *parameter_item)
 {
-  proto_item *protocol_class_item;
-  proto_tree *protocol_class_tree;
+  static const int * capabilities[] = {
+    &hf_sua_return_on_error_bit,
+    &hf_sua_protocol_class,
+    NULL
+   };
 
   proto_tree_add_item(parameter_tree, hf_sua_protocol_class_reserved, parameter_tvb, PARAMETER_VALUE_OFFSET, RESERVED_3_LENGTH, ENC_NA);
-
-  protocol_class_item = proto_tree_add_text(parameter_tree, parameter_tvb, PROTOCOL_CLASS_OFFSET, PROTOCOL_CLASS_LENGTH, "Protocol Class");
-  protocol_class_tree = proto_item_add_subtree(protocol_class_item, ett_sua_return_on_error_bit_and_protocol_class);
-
-  proto_tree_add_item(protocol_class_tree, hf_sua_return_on_error_bit, parameter_tvb, PROTOCOL_CLASS_OFFSET, PROTOCOL_CLASS_LENGTH, ENC_BIG_ENDIAN);
-  proto_tree_add_item(protocol_class_tree, hf_sua_protocol_class,      parameter_tvb, PROTOCOL_CLASS_OFFSET, PROTOCOL_CLASS_LENGTH, ENC_BIG_ENDIAN);
+  proto_tree_add_bitmask(parameter_tree, parameter_tvb, PROTOCOL_CLASS_OFFSET, hf_sua_protocol_class_flags, ett_sua_return_on_error_bit_and_protocol_class, capabilities, ENC_BIG_ENDIAN);
   proto_item_append_text(parameter_item, " (%d)", tvb_get_guint8(parameter_tvb, PROTOCOL_CLASS_OFFSET) & PROTOCOL_CLASS_MASK);
 }
 
@@ -1330,13 +1321,13 @@ static const true_false_string first_bit_value = {
 static void
 dissect_segmentation_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree)
 {
-  proto_item *first_remaining_item;
-  proto_tree *first_remaining_tree;
+  static const int * first_remaining[] = {
+    &hf_sua_first_bit,
+    &hf_sua_number_of_remaining_segments,
+    NULL
+   };
 
-  first_remaining_item = proto_tree_add_text(parameter_tree, parameter_tvb, FIRST_REMAINING_OFFSET, FIRST_REMAINING_LENGTH, "First / Remaining");
-  first_remaining_tree = proto_item_add_subtree(first_remaining_item, ett_sua_first_remaining);
-  proto_tree_add_item(first_remaining_tree, hf_sua_first_bit,                    parameter_tvb, FIRST_REMAINING_OFFSET, FIRST_REMAINING_LENGTH, ENC_BIG_ENDIAN);
-  proto_tree_add_item(first_remaining_tree, hf_sua_number_of_remaining_segments, parameter_tvb, FIRST_REMAINING_OFFSET, FIRST_REMAINING_LENGTH, ENC_BIG_ENDIAN);
+  proto_tree_add_bitmask(parameter_tree, parameter_tvb, FIRST_REMAINING_OFFSET, hf_sua_first_remaining, ett_sua_first_remaining, first_remaining, ENC_BIG_ENDIAN);
   proto_tree_add_item(parameter_tree, hf_sua_segmentation_reference, parameter_tvb, SEGMENTATION_REFERENCE_OFFSET, SEGMENTATION_REFERENCE_LENGTH, ENC_BIG_ENDIAN);
 }
 
@@ -1512,7 +1503,7 @@ dissect_hostname_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree, 
   hostname_length = tvb_get_ntohs(parameter_tvb, PARAMETER_LENGTH_OFFSET) - PARAMETER_HEADER_LENGTH;
   proto_tree_add_item(parameter_tree, source ? hf_sua_source_hostname : hf_sua_dest_hostname, parameter_tvb, HOSTNAME_OFFSET, hostname_length, ENC_ASCII|ENC_NA);
   proto_item_append_text(parameter_item, " (%.*s)", hostname_length,
-                         tvb_get_string(wmem_packet_scope(), parameter_tvb, HOSTNAME_OFFSET, hostname_length));
+                         tvb_format_text(parameter_tvb, HOSTNAME_OFFSET, hostname_length));
 }
 
 #define IPV6_ADDRESS_LENGTH 16
@@ -1636,20 +1627,14 @@ dissect_v8_parameter(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *tr
   /* extract tag and length from the parameter */
   tag            = tvb_get_ntohs(parameter_tvb, PARAMETER_TAG_OFFSET);
   length         = tvb_get_ntohs(parameter_tvb, PARAMETER_LENGTH_OFFSET);
-  padding_length = tvb_length(parameter_tvb) - length;
+  padding_length = tvb_reported_length(parameter_tvb) - length;
 
-  if (tree) {
-    /* create proto_tree stuff */
-    parameter_item   = proto_tree_add_text(tree, parameter_tvb, PARAMETER_HEADER_OFFSET, tvb_length(parameter_tvb), "%s", val_to_str_const(tag, v8_parameter_tag_values, "Unknown parameter"));
-    parameter_tree   = proto_item_add_subtree(parameter_item, ett_sua_parameter);
+  /* create proto_tree stuff */
+  parameter_tree = proto_tree_add_subtree(tree, parameter_tvb, PARAMETER_HEADER_OFFSET, -1, ett_sua_parameter, &parameter_item, val_to_str_const(tag, v8_parameter_tag_values, "Unknown parameter"));
 
-    /* add tag and length to the sua tree */
-    proto_tree_add_item(parameter_tree, hf_sua_v8_parameter_tag,    parameter_tvb, PARAMETER_TAG_OFFSET,    PARAMETER_TAG_LENGTH,    ENC_BIG_ENDIAN);
-    proto_tree_add_item(parameter_tree, hf_sua_parameter_length, parameter_tvb, PARAMETER_LENGTH_OFFSET, PARAMETER_LENGTH_LENGTH, ENC_BIG_ENDIAN);
-  } else {
-    parameter_tree = NULL;
-    parameter_item = NULL;
-  }
+  /* add tag and length to the sua tree */
+  proto_tree_add_item(parameter_tree, hf_sua_v8_parameter_tag,    parameter_tvb, PARAMETER_TAG_OFFSET,    PARAMETER_TAG_LENGTH,    ENC_BIG_ENDIAN);
+  proto_tree_add_item(parameter_tree, hf_sua_parameter_length, parameter_tvb, PARAMETER_LENGTH_OFFSET, PARAMETER_LENGTH_LENGTH, ENC_BIG_ENDIAN);
 
   /*
   ** If no tree, only the data and ssn parameters in the source and destination
@@ -1921,33 +1906,27 @@ dissect_parameter(tvbuff_t *parameter_tvb,  packet_info *pinfo, proto_tree *tree
   /* Extract tag and length from the parameter */
   tag            = tvb_get_ntohs(parameter_tvb, PARAMETER_TAG_OFFSET);
   length         = tvb_get_ntohs(parameter_tvb, PARAMETER_LENGTH_OFFSET);
-  padding_length = tvb_length(parameter_tvb) - length;
+  padding_length = tvb_reported_length(parameter_tvb) - length;
 
-  if (tree) {
-    /* Create proto_tree stuff */
-    /* If it's a known parameter it's present in the value_string.
-     * If param_tag_str = NULL then this is an unknown parameter
-     */
-        param_tag_str    = try_val_to_str(tag, parameter_tag_values);
-        if(param_tag_str) {
-            /* The parameter exists */
-            parameter_item   = proto_tree_add_text(tree, parameter_tvb, PARAMETER_HEADER_OFFSET, tvb_length(parameter_tvb), "%s", param_tag_str);
-        } else {
-            if(dissector_try_uint(sua_parameter_table, tag, parameter_tvb, pinfo,tree)) {
-                return;
-            } else {
-                parameter_item   = proto_tree_add_text(tree, parameter_tvb, PARAMETER_HEADER_OFFSET, tvb_length(parameter_tvb), "Unknown parameter");
-            }
-        }
-        parameter_tree   = proto_item_add_subtree(parameter_item, ett_sua_parameter);
-
-        /* Add tag and length to the sua tree */
-        proto_tree_add_item(parameter_tree, hf_sua_parameter_tag,    parameter_tvb, PARAMETER_TAG_OFFSET,    PARAMETER_TAG_LENGTH,    ENC_BIG_ENDIAN);
-        proto_tree_add_item(parameter_tree, hf_sua_parameter_length, parameter_tvb, PARAMETER_LENGTH_OFFSET, PARAMETER_LENGTH_LENGTH, ENC_BIG_ENDIAN);
+  /* Create proto_tree stuff */
+  /* If it's a known parameter it's present in the value_string.
+   * If param_tag_str = NULL then this is an unknown parameter
+   */
+  param_tag_str    = try_val_to_str(tag, parameter_tag_values);
+  if(param_tag_str) {
+    /* The parameter exists */
+    parameter_tree = proto_tree_add_subtree(tree, parameter_tvb, PARAMETER_HEADER_OFFSET, -1, ett_sua_parameter, &parameter_item, param_tag_str);
   } else {
-        parameter_tree = NULL;
-        parameter_item = NULL;
+    if(dissector_try_uint(sua_parameter_table, tag, parameter_tvb, pinfo,tree)) {
+       return;
+    }
+
+    parameter_tree = proto_tree_add_subtree(tree, parameter_tvb, PARAMETER_HEADER_OFFSET, -1, ett_sua_parameter, &parameter_item, "Unknown parameter");
   }
+
+  /* Add tag and length to the sua tree */
+  proto_tree_add_item(parameter_tree, hf_sua_parameter_tag,    parameter_tvb, PARAMETER_TAG_OFFSET,    PARAMETER_TAG_LENGTH,    ENC_BIG_ENDIAN);
+  proto_tree_add_item(parameter_tree, hf_sua_parameter_length, parameter_tvb, PARAMETER_LENGTH_OFFSET, PARAMETER_LENGTH_LENGTH, ENC_BIG_ENDIAN);
 
   /*
   ** If no tree, only the data, ssn, PC, and GT parameters in the source and destination
@@ -2130,13 +2109,13 @@ dissect_parameters(tvbuff_t *parameters_tvb, packet_info *pinfo, proto_tree *tre
   tvbuff_t *parameter_tvb;
 
   offset = 0;
-  while((remaining_length = tvb_length_remaining(parameters_tvb, offset))) {
+  while((remaining_length = tvb_reported_length_remaining(parameters_tvb, offset))) {
     length       = tvb_get_ntohs(parameters_tvb, offset + PARAMETER_LENGTH_OFFSET);
     total_length = ADD_PADDING(length);
     if (remaining_length >= length)
       total_length = MIN(total_length, remaining_length);
     /* create a tvb for the parameter including the padding bytes */
-    parameter_tvb  = tvb_new_subset(parameters_tvb, offset, total_length, total_length);
+    parameter_tvb  = tvb_new_subset_length(parameters_tvb, offset, total_length);
     switch(version) {
       case SUA_V08:
         dissect_v8_parameter(parameter_tvb, pinfo, tree, data_tvb, source_ssn, dest_ssn);
@@ -2164,6 +2143,7 @@ dissect_sua_message(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *sua_t
   guint8 source_ssn = INVALID_SSN;
   guint8 dest_ssn = INVALID_SSN;
   proto_item *assoc_item;
+  struct _sccp_msg_info_t* sccp_info = NULL;
 
   message_class = 0;
   message_type = 0;
@@ -2183,7 +2163,7 @@ dissect_sua_message(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *sua_t
   sua_source_gt = NULL;
   sua_destination_gt = NULL;
 
-  common_header_tvb = tvb_new_subset(message_tvb, COMMON_HEADER_OFFSET, COMMON_HEADER_LENGTH, COMMON_HEADER_LENGTH);
+  common_header_tvb = tvb_new_subset_length(message_tvb, COMMON_HEADER_OFFSET, COMMON_HEADER_LENGTH);
   dissect_common_header(common_header_tvb, pinfo, sua_tree);
 
   parameters_tvb = tvb_new_subset_remaining(message_tvb, COMMON_HEADER_LENGTH);
@@ -2196,7 +2176,7 @@ dissect_sua_message(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *sua_t
        * or with "load sharing"?
        */
       sccp_assoc_info_t* sccp_assoc;
-      reset_sccp_assoc();
+      sccp_decode_context_t sccp_decode;
       /* sua assoc */
 
       switch (message_type) {
@@ -2239,22 +2219,24 @@ dissect_sua_message(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *sua_t
           PROTO_ITEM_SET_GENERATED(assoc_item);
 #if 0
           assoc_tree = proto_item_add_subtree(assoc_item, ett_sua_assoc);
-          proto_tree_add_text(assoc_tree, message_tvb, 0, 0, "routing_ind %u", assoc->calling_routing_ind);
-          proto_tree_add_text(assoc_tree, message_tvb, 0, 0, "routing_ind %u", assoc->called_routing_ind);
-          proto_tree_add_text(assoc_tree, message_tvb, 0, 0, "calling_ssn %u", assoc->calling_ssn);
-          proto_tree_add_text(assoc_tree, message_tvb, 0, 0, "called_ssn %u", assoc->called_ssn);
+          proto_tree_add_debug_text(assoc_tree, message_tvb, 0, 0, "routing_ind %u", assoc->calling_routing_ind);
+          proto_tree_add_debug_text(assoc_tree, message_tvb, 0, 0, "routing_ind %u", assoc->called_routing_ind);
+          proto_tree_add_debug_text(assoc_tree, message_tvb, 0, 0, "calling_ssn %u", assoc->calling_ssn);
+          proto_tree_add_debug_text(assoc_tree, message_tvb, 0, 0, "called_ssn %u", assoc->called_ssn);
 #endif /* 0 */
       }
 
-      sccp_assoc = get_sccp_assoc(pinfo, tvb_offset_from_real_beginning(message_tvb), srn, drn, message_type);
+      sccp_decode.message_type = message_type;
+      sccp_decode.dlr = drn;
+      sccp_decode.slr = srn;
+      sccp_decode.assoc = NULL;
+      sccp_decode.sccp_msg = NULL; /* Unused, but initialized */
+
+      sccp_assoc = get_sccp_assoc(pinfo, tvb_offset_from_real_beginning(message_tvb), &sccp_decode);
       if (sccp_assoc && sccp_assoc->curr_msg) {
-              pinfo->sccp_info = sccp_assoc->curr_msg;
+              sccp_info = sccp_assoc->curr_msg;
               tap_queue_packet(sua_tap,pinfo,sccp_assoc->curr_msg);
-      } else {
-               pinfo->sccp_info = NULL;
       }
-  } else {
-      pinfo->sccp_info = NULL;
   }
 
   if (set_addresses) {
@@ -2264,9 +2246,9 @@ dissect_sua_message(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *sua_t
       SET_ADDRESS(&pinfo->dst, AT_SS7PC, sizeof(mtp3_addr_pc_t), (guint8 *) sua_dpc);
 
     if (sua_source_gt)
-      SET_ADDRESS(&pinfo->src, AT_STRINGZ, 1+(int)strlen(sua_source_gt), sua_source_gt);
+      SET_ADDRESS(&pinfo->src, AT_STRINGZ, 1+(int)strlen(sua_source_gt), wmem_strdup(pinfo->pool, sua_source_gt));
     if (sua_destination_gt)
-      SET_ADDRESS(&pinfo->dst, AT_STRINGZ, 1+(int)strlen(sua_destination_gt), sua_destination_gt);
+      SET_ADDRESS(&pinfo->dst, AT_STRINGZ, 1+(int)strlen(sua_destination_gt), wmem_strdup(pinfo->pool, sua_destination_gt));
   }
 
   /* If there was SUA data it could be dissected */
@@ -2274,12 +2256,12 @@ dissect_sua_message(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *sua_t
   {
     /* Try subdissectors (if we found a valid SSN on the current message) */
     if ((dest_ssn == INVALID_SSN ||
-       !dissector_try_uint(sccp_ssn_dissector_table, dest_ssn, data_tvb, pinfo, tree))
+       !dissector_try_uint_new(sccp_ssn_dissector_table, dest_ssn, data_tvb, pinfo, tree, TRUE, sccp_info))
        && (source_ssn == INVALID_SSN ||
-       !dissector_try_uint(sccp_ssn_dissector_table, source_ssn, data_tvb, pinfo, tree)))
+       !dissector_try_uint_new(sccp_ssn_dissector_table, source_ssn, data_tvb, pinfo, tree, TRUE, sccp_info)))
     {
       /* try heuristic subdissector list to see if there are any takers */
-      if (dissector_try_heuristic(heur_subdissector_list, data_tvb, pinfo, tree, &hdtbl_entry, NULL)) {
+      if (dissector_try_heuristic(heur_subdissector_list, data_tvb, pinfo, tree, &hdtbl_entry, sccp_info)) {
         return;
       }
       /* No sub-dissection occurred, treat it as raw data */
@@ -2411,6 +2393,8 @@ proto_register_sua(void)
     { &hf_sua_receive_sequence_number_number,        { "Receive Sequence Number P(R)", "sua.receive_sequence_number_number",            FT_UINT8,   BASE_DEC,  NULL,                               SEQ_NUM_MASK,             NULL, HFILL } },
     { &hf_sua_receive_sequence_number_spare_bit,     { "Spare Bit",                    "sua.receive_sequence_number_spare_bit",         FT_UINT8,   BASE_DEC,  NULL,                               SPARE_BIT_MASK,           NULL, HFILL } },
     { &hf_sua_asp_capabilities_reserved,             { "Reserved",                     "sua.asp_capabilities_reserved",                 FT_BYTES,   BASE_NONE, NULL,                               0x0,                      NULL, HFILL } },
+    { &hf_sua_protocol_classes,                      { "Protocol classes",             "sua.protocol_classes",                          FT_UINT8,   BASE_HEX,  NULL,                               0x0,                      NULL, HFILL } },
+    { &hf_sua_protocol_class_flags,                  { "Protocol class",               "sua.protocol_class_flags",                      FT_UINT8,   BASE_HEX,  NULL,                               0x0,                      NULL, HFILL } },
     { &hf_sua_asp_capabilities_reserved_bits,        { "Reserved Bits",                "sua.asp_capabilities_reserved_bits",            FT_UINT8,   BASE_HEX,  NULL,                               RESERVED_BITS_MASK,       NULL, HFILL } },
     { &hf_sua_asp_capabilities_a_bit,                { "Protocol Class 3",             "sua.asp_capabilities_a_bit",                    FT_BOOLEAN, 8,         TFS(&tfs_supported_not_supported),  A_BIT_MASK,               NULL, HFILL } },
     { &hf_sua_asp_capabilities_b_bit,                { "Protocol Class 2",             "sua.asp_capabilities_b_bit",                    FT_BOOLEAN, 8,         TFS(&tfs_supported_not_supported),  B_BIT_MASK,               NULL, HFILL } },
@@ -2431,6 +2415,7 @@ proto_register_sua(void)
     { &hf_sua_return_on_error_bit,                   { "Return On Error Bit",          "sua.protocol_class_return_on_error_bit",        FT_BOOLEAN, 8,         TFS(&return_on_error_bit_value),    RETURN_ON_ERROR_BIT_MASK, NULL, HFILL } },
     { &hf_sua_protocol_class,                        { "Protocol Class",               "sua.protocol_class_class",                      FT_UINT8,   BASE_DEC,  NULL,                               PROTOCOL_CLASS_MASK,      NULL, HFILL } },
     { &hf_sua_sequence_control,                      { "Sequence Control",             "sua.sequence_control_sequence_control",         FT_UINT32,  BASE_DEC,  NULL,                               0x0,                      NULL, HFILL } },
+    { &hf_sua_first_remaining,                       { "First / Remaining",            "sua.first_remaining",                           FT_UINT8,   BASE_HEX,  NULL,                               0x0,                      NULL, HFILL } },
     { &hf_sua_first_bit,                             { "First Segment Bit",            "sua.segmentation_first_bit",                    FT_BOOLEAN, 8,         TFS(&first_bit_value),              FIRST_BIT_MASK,           NULL, HFILL } },
     { &hf_sua_number_of_remaining_segments,          { "Number of Remaining Segments", "sua.segmentation_number_of_remaining_segments", FT_UINT8,   BASE_DEC,  NULL,                               NUMBER_OF_SEGMENTS_MASK,  NULL, HFILL } },
     { &hf_sua_segmentation_reference,                { "Segmentation Reference",       "sua.segmentation_reference",                    FT_UINT24,  BASE_DEC,  NULL,                               0x0,                      NULL, HFILL } },
@@ -2486,7 +2471,7 @@ proto_register_sua(void)
                                  "Set the source and destination addresses to the PC or GT digits, depending on the routing indicator."
                                  "  This may affect TCAP's ability to recognize which messages belong to which TCAP session.", &set_addresses);
 
-  register_heur_dissector_list("sua", &heur_subdissector_list);
+  heur_subdissector_list = register_heur_dissector_list("sua");
   sua_parameter_table = register_dissector_table("sua.prop.tags", "SUA Proprietary Tags", FT_UINT16, BASE_DEC);
   sua_tap = register_tap("sua");
 
@@ -2508,3 +2493,16 @@ proto_reg_handoff_sua(void)
   sccp_ssn_dissector_table = find_dissector_table("sccp.ssn");
 
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

@@ -39,21 +39,15 @@ struct filter_expression **pfilter_expression_head = &_filter_expression_head;
  */
 struct filter_expression *
 filter_expression_new(const gchar *label, const gchar *expr,
-    const gboolean enabled)
+		      const gboolean enabled)
 {
 	struct filter_expression *expression;
 	struct filter_expression *prev;
 
-	expression = (struct filter_expression *)g_malloc(sizeof(struct filter_expression));
-	memset(expression, '\0', sizeof(struct filter_expression));
-	expression->button = NULL;
+    expression = (struct filter_expression *)g_malloc0(sizeof(struct filter_expression));
 	expression->label = g_strdup(label);
 	expression->expression = g_strdup(expr);
 	expression->enabled = enabled;
-	expression->deleted = FALSE;
-	expression->index = 0;
-
-	expression->next = NULL;
 
 	/* Add it at the end so the button order is always the same*/
 	if (*pfilter_expression_head == NULL) {
@@ -75,3 +69,29 @@ filter_expression_init(gboolean enable_prefs)
 	if (enable_prefs)
 		prefs.filter_expressions = pfilter_expression_head;
 }
+
+void
+filter_expression_free(struct filter_expression *list_head)
+{
+    if (list_head == NULL)
+        return;
+    filter_expression_free(list_head->next);
+    g_free(list_head->label);
+    g_free(list_head->expression);
+    g_free(list_head);
+}
+
+
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

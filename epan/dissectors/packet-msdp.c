@@ -25,8 +25,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/to_str.h>
 
@@ -156,6 +154,10 @@ static int hf_msdp_not_res = -1;
 static int hf_msdp_not_entry_count = -1;
 static int hf_msdp_not_sprefix_len = -1;
 
+static int hf_msdp_tlv_contents = -1;
+static int hf_msdp_trailing_junk = -1;
+static int hf_msdp_unknown_encap = -1;
+static int hf_msdp_unknown_data = -1;
 
 static gint ett_msdp = -1;
 static gint ett_msdp_sa_entry = -1;
@@ -219,15 +221,14 @@ dissect_msdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                         break;
                 default:
                         if (length > 0)
-                                proto_tree_add_text(msdp_tree, tvb, offset, length, "TLV contents");
+                                proto_tree_add_item(msdp_tree, hf_msdp_tlv_contents, tvb, offset, length, ENC_NA);
                         offset += length;
                         break;
                 }
         }
 
-        if (tvb_length_remaining(tvb, offset) > 0)
-                proto_tree_add_text(msdp_tree, tvb, offset,
-                                    -1, "Trailing junk");
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
+                proto_tree_add_item(msdp_tree, hf_msdp_trailing_junk, tvb, offset, -1, ENC_NA);
 
         return;
 }
@@ -260,18 +261,17 @@ static void dissect_msdp_sa(tvbuff_t *tvb, packet_info *pinfo,
          * This is probably visually better.
          */
         while (entries-- > 0) {
-                proto_item *ei;
                 proto_tree *entry_tree;
 
                 if (length < 12) {
                         *offset += length;
                         return;
                 }
-                ei = proto_tree_add_text(tree, tvb, *offset, 12, "(S,G) block: %s/%u -> %s",
+                entry_tree = proto_tree_add_subtree_format(tree, tvb, *offset, 12, ett_msdp_sa_entry, NULL,
+                                         "(S,G) block: %s/%u -> %s",
                                          tvb_ip_to_str(tvb, *offset + 8),
                                          tvb_get_guint8(tvb, *offset + 3),
                                          tvb_ip_to_str(tvb, *offset + 4));
-                entry_tree = proto_item_add_subtree(ei, ett_msdp_sa_entry);
 
                 proto_tree_add_item(entry_tree, hf_msdp_sa_reserved, tvb, *offset, 3, ENC_BIG_ENDIAN);
                 *offset += 3;
@@ -291,17 +291,15 @@ static void dissect_msdp_sa(tvbuff_t *tvb, packet_info *pinfo,
          * Check if an encapsulated multicast IPv4 packet follows
          */
         if (length > 0) {
-                proto_item *ei;
                 proto_tree *enc_tree;
                 gint available_length, reported_length;
                 tvbuff_t *next_tvb;
 
-                ei = proto_tree_add_text(tree, tvb, *offset, length,
-                                         "Encapsulated IPv4 packet: %u bytes",
+                enc_tree = proto_tree_add_subtree_format(tree, tvb, *offset, length,
+                                         ett_msdp_sa_enc_data, NULL, "Encapsulated IPv4 packet: %u bytes",
                                          length);
-                enc_tree = proto_item_add_subtree(ei, ett_msdp_sa_enc_data);
 
-                available_length = tvb_length_remaining(tvb, *offset);
+                available_length = tvb_captured_length_remaining(tvb, *offset);
                 reported_length = tvb_reported_length_remaining(tvb, *offset);
                 DISSECTOR_ASSERT(available_length >= 0);
                 DISSECTOR_ASSERT(reported_length >= 0);
@@ -385,7 +383,6 @@ static void dissect_msdp_notification(tvbuff_t *tvb, packet_info *pinfo, proto_t
          * correctly. Ugly.
          */
         switch (error) {
-                tvbuff_t *next_tvb;
         case SA_REQUEST_ERROR:
                 add_notification_data_ipv4addr(tvb, tree, offset, hf_msdp_not_group_address);
                 break;
@@ -412,21 +409,18 @@ static void dissect_msdp_notification(tvbuff_t *tvb, packet_info *pinfo, proto_t
                 } else if (error_sub == 6) {
                         /* No break, causes fall through to next label */
                 } else if (error_sub == 7) {
-                        proto_tree_add_text(tree, tvb, *offset, tlv_len - 5,
-                                            "Packet with unknown encapsulation: %u bytes",
-                                            tlv_len - 5);
+                        proto_tree_add_item(tree, hf_msdp_unknown_encap, tvb, *offset, tlv_len - 5, ENC_NA);
                         *offset += tlv_len - 5;
                         break;
                 } else {
-                        proto_tree_add_text(tree, tvb, *offset, tlv_len - 5,
-                                            "<Unknown data>: %u bytes",
-                                            tlv_len -5);
+                        proto_tree_add_item(tree, hf_msdp_unknown_data, tvb, *offset, tlv_len - 5, ENC_NA);
                         *offset += tlv_len - 5;
                         break;
                 }
                 /* Fall through */
         case MESSAGE_HEADER_ERROR:
-        case NOTIFICATION:
+        case NOTIFICATION: {
+                tvbuff_t *next_tvb;
                 /* Data contains the message that had an error. Even a
                  * broken Notification message causes a Notification
                  * message with Error Code set to Notification to be
@@ -434,6 +428,7 @@ static void dissect_msdp_notification(tvbuff_t *tvb, packet_info *pinfo, proto_t
                  */
                 next_tvb = tvb_new_subset_remaining(tvb, *offset);
                 dissect_msdp(next_tvb, pinfo, tree);
+                }
                 break;
         case FSM_ERROR:
         case HOLD_TIMER_EXPIRED:
@@ -442,9 +437,7 @@ static void dissect_msdp_notification(tvbuff_t *tvb, packet_info *pinfo, proto_t
                 break;
         default:
                 if (tlv_len - 5 > 0)
-                proto_tree_add_text(tree, tvb, *offset, tlv_len - 5,
-                                    "<Unknown data>: %u bytes",
-                                    tlv_len -5);
+                proto_tree_add_item(tree, hf_msdp_unknown_data, tvb, *offset, tlv_len - 5, ENC_NA);
                 *offset += tlv_len - 5;
                 break;
         }
@@ -550,6 +543,26 @@ proto_register_msdp(void)
                         { "Sprefix len",           "msdp.not.sprefix_len",
                         FT_UINT8, BASE_DEC, NULL, 0,
                         "Source prefix length in Notification messages", HFILL }
+                },
+                { &hf_msdp_tlv_contents,
+                        { "TLV contents",           "msdp.tlv_contents",
+                        FT_BYTES, BASE_NONE, NULL, 0,
+                        NULL, HFILL }
+                },
+                { &hf_msdp_trailing_junk,
+                        { "Trailing junk",           "msdp.trailing_junk",
+                        FT_BYTES, BASE_NONE, NULL, 0,
+                        NULL, HFILL }
+                },
+                { &hf_msdp_unknown_encap,
+                        { "Packet with unknown encapsulation",           "msdp.unknown_encap",
+                        FT_BYTES, BASE_NONE, NULL, 0,
+                        NULL, HFILL }
+                },
+                { &hf_msdp_unknown_data,
+                        { "Unknown data",           "msdp.unknown_data",
+                        FT_BYTES, BASE_NONE, NULL, 0,
+                        NULL, HFILL }
                 },
         };
 

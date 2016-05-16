@@ -23,7 +23,6 @@
 #include <string.h>
 #include "wtap-int.h"
 #include "file_wrappers.h"
-#include <wsutil/buffer.h>
 #include "aethra.h"
 
 /* Magic number in Aethra PC108 files. */
@@ -119,36 +118,27 @@ static gboolean aethra_seek_read(wtap *wth, gint64 seek_off,
 static gboolean aethra_read_rec_header(wtap *wth, FILE_T fh, struct aethrarec_hdr *hdr,
     struct wtap_pkthdr *phdr, int *err, gchar **err_info);
 
-int aethra_open(wtap *wth, int *err, gchar **err_info)
+wtap_open_return_val aethra_open(wtap *wth, int *err, gchar **err_info)
 {
-	int bytes_read;
 	struct aethra_hdr hdr;
 	struct tm tm;
 	aethra_t *aethra;
 
 	/* Read in the string that should be at the start of a "aethra" file */
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(hdr.magic, sizeof hdr.magic, wth->fh);
-	if (bytes_read != sizeof hdr.magic) {
-		*err = file_error(wth->fh, err_info);
-		if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-			return -1;
-		return 0;
+	if (!wtap_read_bytes(wth->fh, hdr.magic, sizeof hdr.magic, err,
+	    err_info)) {
+		if (*err != WTAP_ERR_SHORT_READ)
+			return WTAP_OPEN_ERROR;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
 	if (memcmp(hdr.magic, aethra_magic, sizeof aethra_magic) != 0)
-		return 0;
+		return WTAP_OPEN_NOT_MINE;
 
 	/* Read the rest of the header. */
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read((char *)&hdr + sizeof hdr.magic,
-	    sizeof hdr - sizeof hdr.magic, wth->fh);
-	if (bytes_read != sizeof hdr - sizeof hdr.magic) {
-		*err = file_error(wth->fh, err_info);
-		if (*err == 0)
-			*err = WTAP_ERR_SHORT_READ;
-		return -1;
-	}
+	if (!wtap_read_bytes(wth->fh, (char *)&hdr + sizeof hdr.magic,
+	    sizeof hdr - sizeof hdr.magic, err, err_info))
+		return WTAP_OPEN_ERROR;
 	wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_AETHRA;
 	aethra = (aethra_t *)g_malloc(sizeof(aethra_t));
 	wth->priv = (void *)aethra;
@@ -173,8 +163,8 @@ int aethra_open(wtap *wth, int *err, gchar **err_info)
 	 */
 	wth->file_encap = WTAP_ENCAP_ISDN;
 	wth->snapshot_length = 0;	/* not available in header */
-	wth->tsprecision = WTAP_FILE_TSPREC_MSEC;
-	return 1;
+	wth->file_tsprec = WTAP_TSPREC_MSEC;
+	return WTAP_OPEN_MINE;
 }
 
 #if 0
@@ -303,20 +293,13 @@ aethra_read_rec_header(wtap *wth, FILE_T fh, struct aethrarec_hdr *hdr,
     struct wtap_pkthdr *phdr, int *err, gchar **err_info)
 {
 	aethra_t *aethra = (aethra_t *)wth->priv;
-	int	bytes_read;
 	guint32 rec_size;
 	guint32	packet_size;
 	guint32	msecs;
 
 	/* Read record header. */
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(hdr, sizeof *hdr, fh);
-	if (bytes_read != sizeof *hdr) {
-		*err = file_error(fh, err_info);
-		if (*err == 0 && bytes_read != 0)
-			*err = WTAP_ERR_SHORT_READ;
+	if (!wtap_read_bytes_or_eof(fh, hdr, sizeof *hdr, err, err_info))
 		return FALSE;
-	}
 
 	rec_size = pletoh16(hdr->rec_size);
 	if (rec_size < (sizeof *hdr - sizeof hdr->rec_size)) {
@@ -342,3 +325,16 @@ aethra_read_rec_header(wtap *wth, FILE_T fh, struct aethrarec_hdr *hdr,
 
 	return TRUE;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

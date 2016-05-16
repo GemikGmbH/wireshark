@@ -70,25 +70,6 @@ mpeg_resync(FILE_T fh, int *err)
 	return count;
 }
 
-static int
-mpeg_read_header(FILE_T fh, int *err, gchar **err_info, guint32 *n)
-{
-	int bytes_read;
-
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(n, sizeof *n, fh);
-	if (bytes_read != sizeof *n) {
-		*err = file_error(fh, err_info);
-		if (*err == 0 && bytes_read != 0)
-			*err = WTAP_ERR_SHORT_READ;
-		return -1;
-	}
-	*n = g_ntohl(*n);
-	if (file_seek(fh, -(gint64)(sizeof *n), SEEK_CUR, err) == -1)
-		return -1;
-	return bytes_read;
-}
-
 #define SCRHZ 27000000
 
 static gboolean
@@ -97,25 +78,34 @@ mpeg_read_packet(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
 {
 	mpeg_t *mpeg = (mpeg_t *)wth->priv;
 	guint32 n;
-	int bytes_read;
 	unsigned int packet_size;
 	nstime_t ts = mpeg->now;
 
-	bytes_read = mpeg_read_header(fh, err, err_info, &n);
-	if (bytes_read == -1)
+	/*
+	 * All packets have at least 4 bytes in them.  Read the first
+	 * 4 bytes and determine whether it's a PES packet or not
+	 * based on that.
+	 *
+	 * XXX - can an MPEG file contain a mixture of PES and non-PES
+	 * packets?  If not, can we determine whether the packets will
+	 * be PES packets or not based on the magic number (i.e., if the
+	 * file begins with 0x00 0x00 0x01, it contains PES packets,
+	 * otherwise it doesn't)?
+	 */
+	if (!wtap_read_bytes_or_eof(fh, &n, sizeof n, err, err_info))
 		return FALSE;
+	if (file_seek(fh, -(gint64)(sizeof n), SEEK_CUR, err) == -1)
+		return FALSE;
+	n = g_ntohl(n);
 	if (PES_VALID(n)) {
 		gint64 offset = file_tell(fh);
 		guint8 stream;
 
-		if (file_seek(fh, 3, SEEK_CUR, err) == -1)
+		if (!file_skip(fh, 3, err))
 			return FALSE;
 
-		bytes_read = file_read(&stream, sizeof stream, fh);
-		if (bytes_read != sizeof stream) {
-			*err = file_error(fh, err_info);
+		if (!wtap_read_bytes(fh, &stream, sizeof stream, err, err_info))
 			return FALSE;
-		}
 
 		if (stream == 0xba) {
 			guint32 pack1;
@@ -123,32 +113,19 @@ mpeg_read_packet(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
 			guint64 pack;
 			guint8 stuffing;
 
-			bytes_read = file_read(&pack1, sizeof pack1, fh);
-			if (bytes_read != sizeof pack1) {
-				*err = file_error(fh, err_info);
-				if (*err == 0 && bytes_read != 0)
-					*err = WTAP_ERR_SHORT_READ;
+			if (!wtap_read_bytes(fh, &pack1, sizeof pack1, err, err_info))
 				return FALSE;
-			}
-			bytes_read = file_read(&pack0, sizeof pack0, fh);
-			if (bytes_read != sizeof pack0) {
-				*err = file_error(fh, err_info);
-				if (*err == 0 && bytes_read != 0)
-					*err = WTAP_ERR_SHORT_READ;
+			if (!wtap_read_bytes(fh, &pack0, sizeof pack0, err, err_info))
 				return FALSE;
-			}
 			pack = (guint64)g_ntohl(pack1) << 32 | g_ntohl(pack0);
 
 			switch (pack >> 62) {
 				case 1:
-					if (file_seek(fh, 1, SEEK_CUR, err) == -1)
+					if (!file_skip(fh, 1, err))
 						return FALSE;
-					bytes_read = file_read(&stuffing,
-							sizeof stuffing, fh);
-					if (bytes_read != sizeof stuffing) {
-						*err = file_error(fh, err_info);
+					if (!wtap_read_bytes(fh, &stuffing,
+					    sizeof stuffing, err, err_info))
 						return FALSE;
-					}
 					stuffing &= 0x07;
 					packet_size = 14 + stuffing;
 
@@ -173,13 +150,8 @@ mpeg_read_packet(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
 			}
 		} else {
 			guint16 length;
-			bytes_read = file_read(&length, sizeof length, fh);
-			if (bytes_read != sizeof length) {
-				*err = file_error(fh, err_info);
-				if (*err == 0 && bytes_read != 0)
-					*err = WTAP_ERR_SHORT_READ;
+			if (!wtap_read_bytes(fh, &length, sizeof length, err, err_info))
 				return FALSE;
-			}
 			length = g_ntohs(length);
 			packet_size = 6 + length;
 		}
@@ -259,21 +231,18 @@ struct _mpeg_magic {
 	{ 0, NULL }
 };
 
-int
+wtap_open_return_val
 mpeg_open(wtap *wth, int *err, gchar **err_info)
 {
-	int bytes_read;
 	char magic_buf[16];
 	struct _mpeg_magic* m;
 	mpeg_t *mpeg;
 
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(magic_buf, sizeof magic_buf, wth->fh);
-	if (bytes_read != (int) sizeof magic_buf) {
-		*err = file_error(wth->fh, err_info);
-		if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-			return -1;
-		return 0;
+	if (!wtap_read_bytes(wth->fh, magic_buf, sizeof magic_buf,
+	    err, err_info)) {
+		if (*err != WTAP_ERR_SHORT_READ)
+			return WTAP_OPEN_ERROR;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
 	for (m=magic; m->match; m++) {
@@ -281,16 +250,16 @@ mpeg_open(wtap *wth, int *err, gchar **err_info)
 			goto good_magic;
 	}
 
-	return 0;
+	return WTAP_OPEN_NOT_MINE;
 
 good_magic:
 	/* This appears to be a file with MPEG data. */
 	if (file_seek(wth->fh, 0, SEEK_SET, err) == -1)
-		return -1;
+		return WTAP_OPEN_ERROR;
 
 	wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_MPEG;
 	wth->file_encap = WTAP_ENCAP_MPEG;
-	wth->tsprecision = WTAP_FILE_TSPREC_NSEC;
+	wth->file_tsprec = WTAP_TSPREC_NSEC;
 	wth->subtype_read = mpeg_read;
 	wth->subtype_seek_read = mpeg_seek_read;
 	wth->snapshot_length = 0;
@@ -301,5 +270,18 @@ good_magic:
 	mpeg->now.nsecs = 0;
 	mpeg->t0 = mpeg->now.secs;
 
-	return 1;
+	return WTAP_OPEN_MINE;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

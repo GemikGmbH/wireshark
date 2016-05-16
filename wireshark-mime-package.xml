@@ -86,7 +86,7 @@
   </mime-type>
 
   <mime-type type="application/x-etherpeek">
-    <comment>Packet Capture (Wildpackets/Etherpeek/Airopeek tagged/v9)</comment>
+    <comment>Packet Capture (Savvius/Etherpeek/Airopeek tagged/v9)</comment>
     <generic-icon name="application-wireshark-doc"/>
     <magic>
       <match type="string" offset="0" value="\177ver"/>
@@ -125,5 +125,15 @@
     </magic>
     <glob pattern="*.5vw"/>
     <glob pattern="*.5vw.gz"/>
+  </mime-type>
+
+  <mime-type type="application/x-tektronix-rf5">
+    <comment>Packet Capture (Tektronix rf5)</comment>
+    <generic-icon name="application-wireshark-doc"/>
+    <magic>
+      <match type="string" offset="0" value="\x00\x00\x02\x00\x12\x05\x00\x10"/>
+    </magic>
+    <glob pattern="*.rf5"/>
+    <glob pattern="*.rf5.gz"/>
   </mime-type>
 </mime-info>

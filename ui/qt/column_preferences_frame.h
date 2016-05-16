@@ -23,8 +23,10 @@
 #define COLUMN_PREFERENCES_FRAME_H
 
 #include <QFrame>
-#include <QComboBox>
-#include <QTreeWidgetItem>
+
+class QComboBox;
+class QLineEdit;
+class QTreeWidgetItem;
 
 namespace Ui {
 class ColumnPreferencesFrame;
@@ -53,17 +55,16 @@ private:
     int saved_combo_idx_;
 
     void addColumn(bool visible, const char *title, int fmt, const char *custom_field, int custom_occurrence);
-    void updateWidgets(void);
 
 private slots:
-    void on_columnTreeWidget_currentItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *previous);
+    void updateWidgets(void);
+    void on_columnTreeWidget_currentItemChanged(QTreeWidgetItem *, QTreeWidgetItem *previous);
     void on_columnTreeWidget_itemActivated(QTreeWidgetItem *item, int column);
     void lineEditDestroyed();
     void comboDestroyed();
     void columnTitleEditingFinished();
     void columnTypeCurrentIndexChanged(int index);
     void customFieldEditingFinished();
-    void customOccurrenceTextChanged(QString);
     void customOccurrenceEditingFinished();
     void on_newToolButton_clicked();
     void on_deleteToolButton_clicked();

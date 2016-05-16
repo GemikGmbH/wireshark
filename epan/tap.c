@@ -51,12 +51,38 @@ static tap_dissector_t *tap_dissector_list=NULL;
  * in order to be as fast as possible as we need to build and tear down the
  * queued list at least once for each packet we see and thus we must be able
  * to build and tear it down as fast as possible.
+ *
+ * XXX - some fields in packet_info get overwritten in the dissection
+ * process, such as the addresses and the "this is an error packet" flag.
+ * A packet may be queued at multiple protocol layers, but the packet_info
+ * structure will, when the tap listeners are run, contain the values as
+ * set by the topmost protocol layers.
+ *
+ * This means that the tap listener code can't rely on pinfo->flags.in_error_pkt
+ * to determine whether the packet should be handed to the listener, as, for
+ * a protocol with error report packets that include a copy of the
+ * packet in error (ICMP, ICMPv6, CLNP), that flag changes during the
+ * processing of the packet depending on whether we're currently dissecting
+ * the packet in error or not.
+ *
+ *
+ * It also means that a tap listener can't depend on the source and destination
+ * addresses being the correct ones for the packet being processed if, for
+ * example, you have some tunneling that causes multiple layers of the same
+ * protocol.
+ *
+ * For now, we handle the error packet flag by setting a bit in the flags
+ * field of the tap_packet_t structure.  We may ultimately want stacks of
+ * addresses for this and other reasons.
  */
 typedef struct _tap_packet_t {
 	int tap_id;
+	guint32 flags;
 	packet_info *pinfo;
 	const void *tap_specific_data;
 } tap_packet_t;
+
+#define TAP_PACKET_IS_ERROR_PACKET	0x00000001	/* packet being queued is an error packet */
 
 #define TAP_PACKET_QUEUE_LEN 5000
 static tap_packet_t tap_packet_array[TAP_PACKET_QUEUE_LEN];
@@ -67,6 +93,7 @@ typedef struct _tap_listener_t {
 	int tap_id;
 	gboolean needs_redraw;
 	guint flags;
+	gchar *fstring;
 	dfilter_t *code;
 	void *tapdata;
 	tap_reset_cb reset;
@@ -245,6 +272,9 @@ tap_queue_packet(int tap_id, packet_info *pinfo, const void *tap_specific_data)
 
 	tpt=&tap_packet_array[tap_packet_index];
 	tpt->tap_id=tap_id;
+	tpt->flags = 0;
+	if (pinfo->flags.in_error_pkt)
+		tpt->flags |= TAP_PACKET_IS_ERROR_PACKET;
 	tpt->pinfo=pinfo;
 	tpt->tap_specific_data=tap_specific_data;
 	tap_packet_index++;
@@ -322,15 +352,19 @@ tap_push_tapped_queue(epan_dissect_t *edt)
 	for(i=0;i<tap_packet_index;i++){
 		for(tl=(tap_listener_t *)tap_listener_queue;tl;tl=tl->next){
 			tp=&tap_packet_array[i];
-			if(tp->tap_id==tl->tap_id){
-				gboolean passed=TRUE;
-				if(tl->code){
-					passed=dfilter_apply_edt(tl->code, edt);
+			/* Don't tap the packet if it's an "error" unless the listener tells us to */
+			if (!(tp->flags & TAP_PACKET_IS_ERROR_PACKET) || (tl->flags & TL_REQUIRES_ERROR_PACKETS))
+			{
+				if(tp->tap_id==tl->tap_id){
+					gboolean passed=TRUE;
+					if(tl->code){
+						passed=dfilter_apply_edt(tl->code, edt);
+					}
+					if(passed && tl->packet){
+						tl->needs_redraw|=tl->packet(tl->tapdata, tp->pinfo, edt, tp->tap_specific_data);
+					}
 				}
-				if(passed && tl->packet){
-					tl->needs_redraw|=tl->packet(tl->tapdata, tp->pinfo, edt, tp->tap_specific_data);
-				}
-			}
+            }
 		}
 	}
 }
@@ -467,11 +501,12 @@ find_tap_id(const char *name)
  */
 GString *
 register_tap_listener(const char *tapname, void *tapdata, const char *fstring,
-    guint flags, tap_reset_cb reset, tap_packet_cb packet, tap_draw_cb draw)
+		      guint flags, tap_reset_cb reset, tap_packet_cb packet, tap_draw_cb draw)
 {
 	tap_listener_t *tl;
 	int tap_id;
 	GString *error_string;
+	gchar *err_msg;
 
 	tap_id=find_tap_id(tapname);
 	if(!tap_id){
@@ -485,15 +520,17 @@ register_tap_listener(const char *tapname, void *tapdata, const char *fstring,
 	tl->needs_redraw=TRUE;
 	tl->flags=flags;
 	if(fstring){
-		if(!dfilter_compile(fstring, &tl->code)){
+		if(!dfilter_compile(fstring, &tl->code, &err_msg)){
 			error_string = g_string_new("");
 			g_string_printf(error_string,
 			    "Filter \"%s\" is invalid - %s",
-			    fstring, dfilter_error_msg);
+			    fstring, err_msg);
+			g_free(err_msg);
 			g_free(tl);
 			return error_string;
 		}
 	}
+	tl->fstring=g_strdup(fstring);
 
 	tl->tap_id=tap_id;
 	tl->tapdata=tapdata;
@@ -514,6 +551,7 @@ set_tap_dfilter(void *tapdata, const char *fstring)
 {
 	tap_listener_t *tl=NULL,*tl2;
 	GString *error_string;
+	gchar *err_msg;
 
 	if(!tap_listener_queue){
 		return NULL;
@@ -537,18 +575,46 @@ set_tap_dfilter(void *tapdata, const char *fstring)
 			tl->code=NULL;
 		}
 		tl->needs_redraw=TRUE;
+		g_free(tl->fstring);
 		if(fstring){
-			if(!dfilter_compile(fstring, &tl->code)){
+			if(!dfilter_compile(fstring, &tl->code, &err_msg)){
+				tl->fstring=NULL;
 				error_string = g_string_new("");
 				g_string_printf(error_string,
 						 "Filter \"%s\" is invalid - %s",
-						 fstring, dfilter_error_msg);
+						 fstring, err_msg);
+				g_free(err_msg);
 				return error_string;
 			}
 		}
+		tl->fstring=g_strdup(fstring);
 	}
 
 	return NULL;
+}
+
+/* this function recompiles dfilter for all registered tap listeners
+ */
+void
+tap_listeners_dfilter_recompile(void)
+{
+	tap_listener_t *tl;
+	gchar *err_msg;
+
+	for(tl=(tap_listener_t *)tap_listener_queue;tl;tl=tl->next){
+		if(tl->code){
+			dfilter_free(tl->code);
+			tl->code=NULL;
+		}
+		tl->needs_redraw=TRUE;
+		if(tl->fstring){
+			if(!dfilter_compile(tl->fstring, &tl->code, &err_msg)){
+				g_free(err_msg);
+				/* Not valid, make a dfilter matching no packets */
+				dfilter_compile("frame.number == 0", &tl->code, &err_msg);
+			}
+		}
+	}
 }
 
 /* this function removes a tap listener
@@ -580,6 +646,7 @@ remove_tap_listener(void *tapdata)
 		if(tl->code){
 			dfilter_free(tl->code);
 		}
+		g_free(tl->fstring);
 		g_free(tl);
 	}
 
@@ -653,3 +720,16 @@ union_of_tap_listener_flags(void)
 	}
 	return flags;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

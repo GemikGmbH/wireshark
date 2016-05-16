@@ -4,7 +4,7 @@
  * Copyright 2008, Ericsson AB
  * By Balint Reczey <balint.reczey@ericsson.com>
  *
- * most functions are copied from ui/gtk/rtp_stream.c and ui/gtk/rtp_analisys.c
+ * most functions are copied from ui/gtk/rtp_stream.c and ui/gtk/rtp_analysis.c
  * Copyright 2003, Alcatel Business Systems
  * By Lars Ruoff <lars.ruoff@gmx.net>
  *
@@ -29,11 +29,11 @@
 
 #include "config.h"
 
-#include <stdio.h>
+#include <glib.h>
+
 #include <math.h>
 #include "globals.h"
 
-#include <epan/tap.h>
 #include <string.h>
 #include <epan/rtp_pt.h>
 #include <epan/addr_resolv.h>
@@ -47,8 +47,16 @@
  */
 
 /****************************************************************************/
+/* Type for storing and writing rtpdump information */
+typedef struct st_rtpdump_info {
+    double rec_time;        /**< milliseconds since start of recording */
+    guint16 num_samples;   /**< number of bytes in *frame */
+    const guint8 *samples;                 /**< data bytes */
+} rtpdump_info_t;
+
+/****************************************************************************/
 /* GCompareFunc style comparison function for _rtp_stream_info */
-gint rtp_stream_info_cmp(gconstpointer aa, gconstpointer bb)
+static gint rtp_stream_info_cmp(gconstpointer aa, gconstpointer bb)
 {
 	const struct _rtp_stream_info* a = (const struct _rtp_stream_info*)aa;
 	const struct _rtp_stream_info* b = (const struct _rtp_stream_info*)bb;
@@ -88,14 +96,17 @@ void rtpstream_reset(rtpstream_tapinfo_t *tapinfo)
 		tapinfo->npackets = 0;
 	}
 
-	++(tapinfo->launch_count);
-
 	return;
 }
 
 void rtpstream_reset_cb(void *arg)
 {
-	rtpstream_reset((rtpstream_tapinfo_t *)arg);
+	rtpstream_tapinfo_t *ti =(rtpstream_tapinfo_t *)arg;
+	if (ti->tap_reset) {
+		/* Give listeners a chance to cleanup references. */
+		ti->tap_reset(ti);
+	}
+	rtpstream_reset(ti);
 }
 
 /*
@@ -129,13 +140,15 @@ void rtp_write_header(rtp_stream_info_t *strinfo, FILE *file)
 	size_t sourcelen;
 	guint16 port;          /* UDP port */
 	guint16 padding;       /* 2 padding bytes */
+	char* addr_str = (char*)address_to_display(NULL, &(strinfo->dest_addr));
 
 	fprintf(file, "#!rtpplay%s %s/%u\n", RTPFILE_VERSION,
-		ep_address_to_display(&(strinfo->dest_addr)),
+		addr_str,
 		strinfo->dest_port);
+	wmem_free(NULL, addr_str);
 
-	start_sec = g_htonl(strinfo->start_sec);
-	start_usec = g_htonl(strinfo->start_usec);
+	start_sec = g_htonl(strinfo->start_fd->abs_ts.secs);
+	start_usec = g_htonl(strinfo->start_fd->abs_ts.nsecs / 1000000);
 	/* rtpdump only accepts guint32 as source, will be fake for IPv6 */
 	memset(&source, 0, sizeof source);
 	sourcelen = strinfo->src_addr.len;
@@ -158,16 +171,16 @@ void rtp_write_header(rtp_stream_info_t *strinfo, FILE *file)
 }
 
 /* utility function for writing a sample to file in rtpdump -F dump format (.rtp)*/
-void rtp_write_sample(rtp_sample_t* sample, FILE* file)
+static void rtp_write_sample(rtpdump_info_t* rtpdump_info, FILE* file)
 {
 	guint16 length;    /* length of packet, including this header (may
 	                     be smaller than plen if not whole packet recorded) */
 	guint16 plen;      /* actual header+payload length for RTP, 0 for RTCP */
 	guint32 offset;    /* milliseconds since the start of recording */
 
-	length = g_htons(sample->header.frame_length + 8);
-	plen = g_htons(sample->header.frame_length);
-	offset = g_htonl(sample->header.rec_time);
+	length = g_htons(rtpdump_info->num_samples + 8);
+	plen = g_htons(rtpdump_info->num_samples);
+	offset = g_htonl(rtpdump_info->rec_time);
 
 	if (fwrite(&length, 2, 1, file) == 0)
 		return;
@@ -175,7 +188,7 @@ void rtp_write_sample(rtp_sample_t* sample, FILE* file)
 		return;
 	if (fwrite(&offset, 4, 1, file) == 0)
 		return;
-	if (fwrite(sample->frame, sample->header.frame_length, 1, file) == 0)
+	if (fwrite(rtpdump_info->samples, rtpdump_info->num_samples, 1, file) == 0)
 		return;
 }
 
@@ -186,95 +199,67 @@ int rtpstream_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, con
 {
 	rtpstream_tapinfo_t *tapinfo = (rtpstream_tapinfo_t *)arg;
 	const struct _rtp_info *rtpinfo = (const struct _rtp_info *)arg2;
-	rtp_stream_info_t tmp_strinfo;
-	rtp_stream_info_t *strinfo = NULL;
+	rtp_stream_info_t new_stream_info;
+	rtp_stream_info_t *stream_info = NULL;
 	GList* list;
-	rtp_sample_t sample;
+	rtpdump_info_t rtpdump_info;
 
 	struct _rtp_conversation_info *p_conv_data = NULL;
 
 	/* gather infos on the stream this packet is part of */
-	COPY_ADDRESS(&(tmp_strinfo.src_addr), &(pinfo->src));
-	tmp_strinfo.src_port = pinfo->srcport;
-	COPY_ADDRESS(&(tmp_strinfo.dest_addr), &(pinfo->dst));
-	tmp_strinfo.dest_port = pinfo->destport;
-	tmp_strinfo.ssrc = rtpinfo->info_sync_src;
-	tmp_strinfo.pt = rtpinfo->info_payload_type;
-	tmp_strinfo.info_payload_type_str = rtpinfo->info_payload_type_str;
+	memset(&new_stream_info, 0, sizeof(rtp_stream_info_t));
+	COPY_ADDRESS(&(new_stream_info.src_addr), &(pinfo->src));
+	new_stream_info.src_port = pinfo->srcport;
+	COPY_ADDRESS(&(new_stream_info.dest_addr), &(pinfo->dst));
+	new_stream_info.dest_port = pinfo->destport;
+	new_stream_info.ssrc = rtpinfo->info_sync_src;
+	new_stream_info.payload_type = rtpinfo->info_payload_type;
+	new_stream_info.payload_type_name = g_strdup(rtpinfo->info_payload_type_str);
 
 	if (tapinfo->mode == TAP_ANALYSE) {
 		/* check whether we already have a stream with these parameters in the list */
 		list = g_list_first(tapinfo->strinfo_list);
 		while (list)
 		{
-			if (rtp_stream_info_cmp(&tmp_strinfo, (rtp_stream_info_t*)(list->data))==0)
+			if (rtp_stream_info_cmp(&new_stream_info, (rtp_stream_info_t*)(list->data))==0)
 			{
-				strinfo = (rtp_stream_info_t*)(list->data);  /*found!*/
+				stream_info = (rtp_stream_info_t*)(list->data);  /*found!*/
 				break;
 			}
 			list = g_list_next(list);
 		}
 
 		/* not in the list? then create a new entry */
-		if (!strinfo) {
-			tmp_strinfo.npackets = 0;
-			tmp_strinfo.first_frame_num = pinfo->fd->num;
-			tmp_strinfo.start_sec = (guint32) pinfo->fd->abs_ts.secs;
-			tmp_strinfo.start_usec = pinfo->fd->abs_ts.nsecs/1000;
-			tmp_strinfo.start_rel_sec = (guint32) pinfo->rel_ts.secs;
-			tmp_strinfo.start_rel_usec = pinfo->rel_ts.nsecs/1000;
-			tmp_strinfo.tag_vlan_error = 0;
-			tmp_strinfo.tag_diffserv_error = 0;
-			tmp_strinfo.vlan_id = 0;
-			tmp_strinfo.problem = FALSE;
+		if (!stream_info) {
+			new_stream_info.start_fd = pinfo->fd;
+			new_stream_info.start_rel_time = pinfo->rel_ts;
 
 			/* reset RTP stats */
-			tmp_strinfo.rtp_stats.first_packet = TRUE;
-			tmp_strinfo.rtp_stats.max_delta = 0;
-			tmp_strinfo.rtp_stats.max_jitter = 0;
-			tmp_strinfo.rtp_stats.mean_jitter = 0;
-			tmp_strinfo.rtp_stats.delta = 0;
-			tmp_strinfo.rtp_stats.diff = 0;
-			tmp_strinfo.rtp_stats.jitter = 0;
-			tmp_strinfo.rtp_stats.bandwidth = 0;
-			tmp_strinfo.rtp_stats.total_bytes = 0;
-			tmp_strinfo.rtp_stats.bw_start_index = 0;
-			tmp_strinfo.rtp_stats.bw_index = 0;
-			tmp_strinfo.rtp_stats.timestamp = 0;
-			tmp_strinfo.rtp_stats.max_nr = 0;
-			tmp_strinfo.rtp_stats.total_nr = 0;
-			tmp_strinfo.rtp_stats.sequence = 0;
-			tmp_strinfo.rtp_stats.start_seq_nr = 0;
-			tmp_strinfo.rtp_stats.stop_seq_nr = 0;
-			tmp_strinfo.rtp_stats.cycles = 0;
-			tmp_strinfo.rtp_stats.under = FALSE;
-			tmp_strinfo.rtp_stats.start_time = 0;
-			tmp_strinfo.rtp_stats.time = 0;
-			tmp_strinfo.rtp_stats.reg_pt = PT_UNDEFINED;
+			new_stream_info.rtp_stats.first_packet = TRUE;
+			new_stream_info.rtp_stats.reg_pt = PT_UNDEFINED;
 
 			/* Get the Setup frame number who set this RTP stream */
 			p_conv_data = (struct _rtp_conversation_info *)p_get_proto_data(wmem_file_scope(), pinfo, proto_get_id_by_filter_name("rtp"), 0);
 			if (p_conv_data)
-				tmp_strinfo.setup_frame_number = p_conv_data->frame_number;
+				new_stream_info.setup_frame_number = p_conv_data->frame_number;
 			else
-				tmp_strinfo.setup_frame_number = 0xFFFFFFFF;
+				new_stream_info.setup_frame_number = 0xFFFFFFFF;
 
-			strinfo = g_new(rtp_stream_info_t,1);
-			*strinfo = tmp_strinfo;  /* memberwise copy of struct */
-			tapinfo->strinfo_list = g_list_append(tapinfo->strinfo_list, strinfo);
+			stream_info = g_new(rtp_stream_info_t,1);
+			*stream_info = new_stream_info;  /* memberwise copy of struct */
+			tapinfo->strinfo_list = g_list_append(tapinfo->strinfo_list, stream_info);
 		}
 
 		/* get RTP stats for the packet */
-		rtp_packet_analyse(&(strinfo->rtp_stats), pinfo, rtpinfo);
-		if (strinfo->rtp_stats.flags & STAT_FLAG_WRONG_TIMESTAMP
-			|| strinfo->rtp_stats.flags & STAT_FLAG_WRONG_SEQ)
-			strinfo->problem = TRUE;
+		rtp_packet_analyse(&(stream_info->rtp_stats), pinfo, rtpinfo);
+		if (stream_info->rtp_stats.flags & STAT_FLAG_WRONG_TIMESTAMP
+				|| stream_info->rtp_stats.flags & STAT_FLAG_WRONG_SEQ)
+			stream_info->problem = TRUE;
 
 
 		/* increment the packets counter for this stream */
-		++(strinfo->npackets);
-		strinfo->stop_rel_sec = (guint32) pinfo->rel_ts.secs;
-		strinfo->stop_rel_usec = pinfo->rel_ts.nsecs/1000;
+		++(stream_info->packet_count);
+		stream_info->stop_rel_time = pinfo->rel_ts;
 
 		/* increment the packets counter of all streams */
 		++(tapinfo->npackets);
@@ -282,26 +267,23 @@ int rtpstream_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, con
 		return 1;  /* refresh output */
 	}
 	else if (tapinfo->mode == TAP_SAVE) {
-		if (rtp_stream_info_cmp(&tmp_strinfo, tapinfo->filter_stream_fwd)==0) {
+		if (rtp_stream_info_cmp(&new_stream_info, tapinfo->filter_stream_fwd)==0) {
 			/* XXX - what if rtpinfo->info_all_data_present is
 			   FALSE, so that we don't *have* all the data? */
-			sample.header.rec_time =
-				(pinfo->fd->abs_ts.nsecs/1000 + 1000000 - tapinfo->filter_stream_fwd->start_usec)/1000
-				+ (guint32) (pinfo->fd->abs_ts.secs - tapinfo->filter_stream_fwd->start_sec - 1)*1000;
-			sample.header.frame_length = rtpinfo->info_data_len;
-			sample.frame = rtpinfo->info_data;
-			rtp_write_sample(&sample, tapinfo->save_file);
+			rtpdump_info.rec_time = nstime_to_msec(&pinfo->fd->abs_ts) -
+				nstime_to_msec(&tapinfo->filter_stream_fwd->start_fd->abs_ts);
+			rtpdump_info.num_samples = rtpinfo->info_data_len;
+			rtpdump_info.samples = rtpinfo->info_data;
+			rtp_write_sample(&rtpdump_info, tapinfo->save_file);
 		}
 	}
-#ifdef __GTK_H__
-	else if (tapinfo->mode == TAP_MARK) {
-		if (rtp_stream_info_cmp(&tmp_strinfo, tapinfo->filter_stream_fwd)==0
-			|| rtp_stream_info_cmp(&tmp_strinfo, tapinfo->filter_stream_rev)==0)
+	else if (tapinfo->mode == TAP_MARK && tapinfo->tap_mark_packet) {
+		if (rtp_stream_info_cmp(&new_stream_info, tapinfo->filter_stream_fwd)==0
+		    || rtp_stream_info_cmp(&new_stream_info, tapinfo->filter_stream_rev)==0)
 		{
-			cf_mark_frame(&cfile, pinfo->fd);
+			tapinfo->tap_mark_packet(tapinfo, pinfo->fd);
 		}
 	}
-#endif
 	return 0;
 }
 
@@ -396,20 +378,20 @@ static const mimetype_and_clock mimetype_and_clock_map[] = {
 	{"G729D",	8000},			/* [RFC3551][RFC4856] */
 	{"G729E",	8000},			/* [RFC3551][RFC4856] */
 	{"GSM-EFR",	8000},			/* [RFC3551] */
-	{"H263-1998",	90000},		/* [RFC2429],[RFC3555] */
-	{"H263-2000",	90000},		/* [RFC2429],[RFC3555] */
-	{"H264",	90000},         /* [RFC3984] */
+	{"H263-1998",	90000},			/* [RFC2429],[RFC3555] */
+	{"H263-2000",	90000},			/* [RFC2429],[RFC3555] */
+	{"H264",	90000},			/* [RFC3984] */
 	{"MP1S",	90000},			/* [RFC2250],[RFC3555] */
 	{"MP2P",	90000},			/* [RFC2250],[RFC3555] */
 	{"MP4V-ES",	90000},			/* [RFC3016] */
-	{"mpa-robust",	90000},		/* [RFC3119] */
+	{"mpa-robust",	90000},			/* [RFC3119] */
 	{"pointer",	90000},			/* [RFC2862] */
 	{"raw",		90000},			/* [RFC4175] */
 	{"red",		1000},			/* [RFC4102] */
 	{"SMV",		8000},			/* [RFC3558] */
 	{"SMV0",	8000},			/* [RFC3558] */
 	{"t140",	1000},			/* [RFC4103] */
-	{"telephone-event", 8000},  /* [RFC4733] */
+	{"telephone-event", 8000},		/* [RFC4733] */
 };
 
 #define NUM_DYN_CLOCK_VALUES	(sizeof mimetype_and_clock_map / sizeof mimetype_and_clock_map[0])
@@ -430,7 +412,8 @@ get_dyn_pt_clock_rate(const gchar *payload_type_str)
 }
 
 /****************************************************************************/
-int rtp_packet_analyse(tap_rtp_stat_t *statinfo,
+void
+rtp_packet_analyse(tap_rtp_stat_t *statinfo,
 		       packet_info *pinfo,
 		       const struct _rtp_info *rtpinfo)
 {
@@ -478,7 +461,7 @@ int rtp_packet_analyse(tap_rtp_stat_t *statinfo,
 			statinfo->flags |= STAT_FLAG_MARKER;
 		}
 		statinfo->first_packet = FALSE;
-		return 0;
+		return;
 	}
 
 	/* Reset flags */
@@ -489,7 +472,7 @@ int rtp_packet_analyse(tap_rtp_stat_t *statinfo,
 		if(!ADDRESSES_EQUAL(&(statinfo->first_packet_mac_addr), &(pinfo->dl_src))){
 			statinfo->flags |= STAT_FLAG_DUP_PKT;
 			statinfo->delta = current_time-(statinfo->time);
-			return 0;
+			return;
 		}
 	}
 
@@ -568,7 +551,7 @@ int rtp_packet_analyse(tap_rtp_stat_t *statinfo,
 	statinfo->pt = rtpinfo->info_payload_type;
 
 	/*
-	 * Return 0 for unknown payload types
+	 * Return for unknown payload types
 	 * Ignore jitter calculation for clockrate = 0
 	 */
 	if (statinfo->pt < 96 ){
@@ -587,7 +570,7 @@ int rtp_packet_analyse(tap_rtp_stat_t *statinfo,
 				if(rtpinfo->info_payload_rate !=0){
 					clock_rate = rtpinfo->info_payload_rate;
 				}else{
-					clock_rate = get_dyn_pt_clock_rate(rtpinfo-> info_payload_type_str);
+					clock_rate = get_dyn_pt_clock_rate(rtpinfo->info_payload_type_str);
 				}
 			}
 		}else{
@@ -714,7 +697,7 @@ int rtp_packet_analyse(tap_rtp_stat_t *statinfo,
 	statinfo->stop_seq_nr = rtpinfo->info_seq_num;
 	statinfo->total_nr++;
 
-	return 0;
+	return;
 }
 
 /*

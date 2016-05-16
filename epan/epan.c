@@ -21,10 +21,6 @@
 
 #include "config.h"
 
-#ifdef HAVE_PYTHON
-#include <Python.h> /* to get the Python version number (PY_VERSION) */
-#endif
-
 #ifdef HAVE_LIBGCRYPT
 #include <wsutil/wsgcrypt.h>
 #endif /* HAVE_LIBGCRYPT */
@@ -49,9 +45,9 @@
 #include "tap.h"
 #include "addr_resolv.h"
 #include "oids.h"
-#include "emem.h"
 #include "wmem/wmem.h"
 #include "expert.h"
+#include "print.h"
 
 #ifdef HAVE_LUA
 #include <lua.h>
@@ -95,8 +91,7 @@ epan_init(void (*register_all_protocols_func)(register_cb cb, gpointer client_da
 	  register_cb cb,
 	  gpointer client_data)
 {
-	/* initialize memory allocation subsystems */
-	emem_init();
+	/* initialize memory allocation subsystem */
 	wmem_init();
 
 	/* initialize the GUID to name mapping table */
@@ -124,6 +119,7 @@ epan_init(void (*register_all_protocols_func)(register_cb cb, gpointer client_da
 	packet_cache_proto_handles();
 	dfilter_init();
 	final_registration_all_protocols();
+	print_cache_field_handles();
 	expert_packet_init();
 #ifdef HAVE_LUA
 	wslua_init(cb, client_data);
@@ -336,7 +332,6 @@ epan_dissect_run(epan_dissect_t *edt, int file_type_subtype,
 	dissect_record(edt, file_type_subtype, phdr, tvb, fd, cinfo);
 
 	/* free all memory allocated */
-	ep_free_all();
 	wmem_leave_packet_scope();
 }
 
@@ -351,7 +346,6 @@ epan_dissect_run_with_taps(epan_dissect_t *edt, int file_type_subtype,
 	tap_push_tapped_queue(edt);
 
 	/* free all memory allocated */
-	ep_free_all();
 	wmem_leave_packet_scope();
 }
 
@@ -366,7 +360,6 @@ epan_dissect_file_run(epan_dissect_t *edt, struct wtap_pkthdr *phdr,
 	dissect_file(edt, phdr, tvb, fd, cinfo);
 
 	/* free all memory allocated */
-	ep_free_all();
 	wmem_leave_packet_scope();
 }
 
@@ -380,7 +373,6 @@ epan_dissect_file_run_with_taps(epan_dissect_t *edt, struct wtap_pkthdr *phdr,
 	tap_push_tapped_queue(edt);
 
 	/* free all memory allocated */
-	ep_free_all();
 	wmem_leave_packet_scope();
 }
 
@@ -428,12 +420,12 @@ epan_dissect_prime_dfilter(epan_dissect_t *edt, const dfilter_t* dfcode)
 
 /* ----------------------- */
 const gchar *
-epan_custom_set(epan_dissect_t *edt, int field_id,
+epan_custom_set(epan_dissect_t *edt, GSList *field_ids,
                              gint occurrence,
                              gchar *result,
                              gchar *expr, const int size )
 {
-    return proto_custom_set(edt->tree, field_id, occurrence, result, expr, size);
+    return proto_custom_set(edt->tree, field_ids, occurrence, result, expr, size);
 }
 
 void
@@ -501,16 +493,6 @@ epan_get_compiled_version_info(GString *str)
 	g_string_append(str, "without Lua");
 #endif /* HAVE_LUA */
 
-	g_string_append(str, ", ");
-#ifdef HAVE_PYTHON
-	g_string_append(str, "with Python");
-#ifdef PY_VERSION
-	g_string_append(str, " " PY_VERSION);
-#endif /* PY_VERSION */
-#else
-	g_string_append(str, "without Python");
-#endif /* HAVE_PYTHON */
-
         /* GnuTLS */
 	g_string_append(str, ", ");
 #ifdef HAVE_LIBGNUTLS
@@ -563,12 +545,12 @@ _U_
 {
         /* GnuTLS */
 #ifdef HAVE_LIBGNUTLS
-	g_string_append_printf(str, ", GnuTLS %s", gnutls_check_version(NULL));
+	g_string_append_printf(str, ", with GnuTLS %s", gnutls_check_version(NULL));
 #endif /* HAVE_LIBGNUTLS */
 
         /* Gcrypt */
 #ifdef HAVE_LIBGCRYPT
-	g_string_append_printf(str, ", Gcrypt %s", gcry_check_version(NULL));
+	g_string_append_printf(str, ", with Gcrypt %s", gcry_check_version(NULL));
 #endif /* HAVE_LIBGCRYPT */
 }
 

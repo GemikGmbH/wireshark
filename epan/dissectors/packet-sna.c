@@ -24,13 +24,14 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/llcsaps.h>
 #include <epan/ppptypes.h>
-#include <epan/sna-utils.h>
+#include <epan/address_types.h>
 #include <epan/prefs.h>
 #include <epan/reassemble.h>
+#include <epan/to_str-int.h>
+#include "wsutil/pint.h"
 
 /*
  * http://www.wanresources.com/snacell.html
@@ -84,6 +85,12 @@ static int hf_sna_th_sa = -1;
 static int hf_sna_th_cmd_fmt = -1;
 static int hf_sna_th_cmd_type = -1;
 static int hf_sna_th_cmd_sn = -1;
+static int hf_sna_th_byte1 = -1;
+static int hf_sna_th_byte2 = -1;
+static int hf_sna_th_byte3 = -1;
+static int hf_sna_th_byte4 = -1;
+static int hf_sna_th_byte6 = -1;
+static int hf_sna_th_byte16 = -1;
 
 static int hf_sna_nlp_nhdr = -1;
 static int hf_sna_nlp_nhdr_0 = -1;
@@ -248,6 +255,9 @@ static int hf_sna_control_05_type = -1;
 static int hf_sna_control_05_ptp = -1;
 static int hf_sna_control_0e_type = -1;
 static int hf_sna_control_0e_value = -1;
+static int hf_sna_padding = -1;
+static int hf_sna_reserved = -1;
+static int hf_sna_biu_segment_data = -1;
 
 static gint ett_sna = -1;
 static gint ett_sna_th = -1;
@@ -294,6 +304,8 @@ static gint ett_sna_control_05hpr_type = -1;
 static gint ett_sna_control_0e = -1;
 
 static dissector_handle_t data_handle;
+
+static int sna_address_type = -1;
 
 /* Defragment fragmented SNA BIUs*/
 static gboolean sna_defragment = TRUE;
@@ -787,14 +799,25 @@ static const value_string sna_control_0e_type_vals[] = {
 /* Values to direct the top-most dissector what to dissect
  * after the TH. */
 enum next_dissection_enum {
-    stop_here,
-    rh_only,
-    everything
+	stop_here,
+	rh_only,
+	everything
 };
 
 enum parse {
-    LT,
-    KL
+	LT,
+	KL
+};
+
+/*
+ * Structure used to represent an FID Type 4 address; gives the layout of the
+ * data pointed to by an AT_SNA "address" structure if the size is
+ * SNA_FID_TYPE_4_ADDR_LEN.
+ */
+#define	SNA_FID_TYPE_4_ADDR_LEN	6
+struct sna_fid_type_4_addr {
+	guint32	saf;
+	guint16	ef;
 };
 
 typedef enum next_dissection_enum next_dissection_t;
@@ -806,6 +829,51 @@ static void dissect_gds (tvbuff_t*, packet_info*, proto_tree*, proto_tree*);
 static void dissect_rh (tvbuff_t*, int, proto_tree*);
 static void dissect_control(tvbuff_t*, int, int, proto_tree*, int, enum parse);
 
+static int sna_fid_to_str_buf(const address *addr, gchar *buf, int buf_len _U_)
+{
+	const guint8 *addrdata;
+	struct sna_fid_type_4_addr sna_fid_type_4_addr;
+	gchar *bufp = buf;
+
+	switch (addr->len) {
+
+	case 1:
+		addrdata = (const guint8 *)addr->data;
+		word_to_hex(buf, addrdata[0]);
+		buf[4] = '\0';
+		break;
+
+	case 2:
+		addrdata = (const guint8 *)addr->data;
+		word_to_hex(buf, pntoh16(&addrdata[0]));
+		buf[4] = '\0';
+		break;
+
+	case SNA_FID_TYPE_4_ADDR_LEN:
+		/* FID Type 4 */
+		memcpy(&sna_fid_type_4_addr, addr->data, SNA_FID_TYPE_4_ADDR_LEN);
+
+		bufp = dword_to_hex(bufp, sna_fid_type_4_addr.saf);
+		*bufp++ = '.';
+		bufp = word_to_hex(bufp, sna_fid_type_4_addr.ef);
+		*bufp++ = '\0'; /* NULL terminate */
+		break;
+	default:
+		buf[0] = '\0';
+		return 1;
+	}
+
+	return (int)strlen(buf)+1;
+}
+
+
+static int sna_address_str_len(const address* addr _U_)
+{
+	/* We could do this based on address length, but 14 bytes isn't THAT much space */
+	return 14;
+}
+
+
 /* --------------------------------------------------------------------
  * Chapter 2 High-Performance Routing (HPR) Headers
  * --------------------------------------------------------------------
@@ -814,31 +882,24 @@ static void dissect_control(tvbuff_t*, int, int, proto_tree*, int, enum parse);
 static void
 dissect_optional_0d(tvbuff_t *tvb, proto_tree *tree)
 {
-	int		bits, offset, len, pad;
-	proto_tree	*sub_tree;
-	proto_item	*sub_ti = NULL;
+	int		offset, len, pad;
+	static const int * fields[] = {
+		&hf_sna_nlp_opti_0d_target,
+		&hf_sna_nlp_opti_0d_arb,
+		&hf_sna_nlp_opti_0d_reliable,
+		&hf_sna_nlp_opti_0d_dedicated,
+		NULL
+	};
 
 	if (!tree)
 		return;
 
 	proto_tree_add_item(tree, hf_sna_nlp_opti_0d_version, tvb, 2, 2, ENC_BIG_ENDIAN);
-	bits = tvb_get_guint8(tvb, 4);
 
-	sub_ti = proto_tree_add_uint(tree, hf_sna_nlp_opti_0d_4,
-	    tvb, 4, 1, bits);
-	sub_tree = proto_item_add_subtree(sub_ti,
-	    ett_sna_nlp_opti_0d_4);
+	proto_tree_add_bitmask(tree, tvb, 4, hf_sna_nlp_opti_0d_4,
+			       ett_sna_nlp_opti_0d_4, fields, ENC_NA);
 
-	proto_tree_add_boolean(sub_tree, hf_sna_nlp_opti_0d_target,
-	    tvb, 4, 1, bits);
-	proto_tree_add_boolean(sub_tree, hf_sna_nlp_opti_0d_arb,
-	    tvb, 4, 1, bits);
-	proto_tree_add_boolean(sub_tree, hf_sna_nlp_opti_0d_reliable,
-	    tvb, 4, 1, bits);
-	proto_tree_add_boolean(sub_tree, hf_sna_nlp_opti_0d_dedicated,
-	    tvb, 4, 1, bits);
-
-	proto_tree_add_text(tree, tvb, 5, 3, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 5, 3, ENC_NA);
 
 	offset = 8;
 
@@ -848,8 +909,7 @@ dissect_optional_0d(tvbuff_t *tvb, proto_tree *tree)
 			dissect_control(tvb, offset, len, tree, 1, LT);
 			pad = (len+3) & 0xfffc;
 			if (pad > len)
-				proto_tree_add_text(tree, tvb, offset+len,
-				    pad-len, "Padding");
+				proto_tree_add_item(tree, hf_sna_padding, tvb, offset+len, pad-len, ENC_NA);
 			offset += pad;
 		} else {
 			/* Avoid endless loop */
@@ -862,36 +922,32 @@ static void
 dissect_optional_0e(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
 	int		bits, offset;
-	proto_tree	*sub_tree;
-	proto_item	*sub_ti = NULL;
+	static const int * fields[] = {
+		&hf_sna_nlp_opti_0e_gap,
+		&hf_sna_nlp_opti_0e_idle,
+		NULL
+	};
 
 	bits = tvb_get_guint8(tvb, 2);
 	offset = 20;
 
-	if (tree) {
-		sub_ti = proto_tree_add_item(tree, hf_sna_nlp_opti_0e_stat,
-		    tvb, 2, 1, ENC_BIG_ENDIAN);
-		sub_tree = proto_item_add_subtree(sub_ti,
-		    ett_sna_nlp_opti_0e_stat);
+	proto_tree_add_bitmask(tree, tvb, 2, hf_sna_nlp_opti_0e_stat,
+			    ett_sna_nlp_opti_0e_stat, fields, ENC_NA);
 
-		proto_tree_add_boolean(sub_tree, hf_sna_nlp_opti_0e_gap,
-		    tvb, 2, 1, bits);
-		proto_tree_add_boolean(sub_tree, hf_sna_nlp_opti_0e_idle,
-		    tvb, 2, 1, bits);
-		proto_tree_add_item(tree, hf_sna_nlp_opti_0e_nabsp,
-		    tvb, 3, 1, ENC_BIG_ENDIAN);
-		proto_tree_add_item(tree, hf_sna_nlp_opti_0e_sync,
-		    tvb, 4, 2, ENC_BIG_ENDIAN);
-		proto_tree_add_item(tree, hf_sna_nlp_opti_0e_echo,
-		    tvb, 6, 2, ENC_BIG_ENDIAN);
-		proto_tree_add_item(tree, hf_sna_nlp_opti_0e_rseq,
-		    tvb, 8, 4, ENC_BIG_ENDIAN);
-		proto_tree_add_text(tree, tvb, 12, 8, "Reserved");
+	proto_tree_add_item(tree, hf_sna_nlp_opti_0e_nabsp,
+		tvb, 3, 1, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sna_nlp_opti_0e_sync,
+		tvb, 4, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sna_nlp_opti_0e_echo,
+		tvb, 6, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sna_nlp_opti_0e_rseq,
+		tvb, 8, 4, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 12, 8, ENC_NA);
 
-		if (tvb_offset_exists(tvb, offset))
-			call_dissector(data_handle,
-			    tvb_new_subset_remaining(tvb, 4), pinfo, tree);
-	}
+	if (tvb_offset_exists(tvb, offset))
+		call_dissector(data_handle,
+			tvb_new_subset_remaining(tvb, 4), pinfo, tree);
+
 	if (bits & 0x40) {
 		col_set_str(pinfo->cinfo, COL_INFO, "HPR Idle Message");
 	} else {
@@ -902,9 +958,6 @@ dissect_optional_0e(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 static void
 dissect_optional_0f(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	if (!tree)
-		return;
-
 	proto_tree_add_item(tree, hf_sna_nlp_opti_0f_bits, tvb, 2, 2, ENC_BIG_ENDIAN);
 	if (tvb_offset_exists(tvb, 4))
 		call_dissector(data_handle,
@@ -914,10 +967,7 @@ dissect_optional_0f(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 static void
 dissect_optional_10(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	if (!tree)
-		return;
-
-	proto_tree_add_text(tree, tvb, 2, 2, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 2, 2, ENC_NA);
 	proto_tree_add_item(tree, hf_sna_nlp_opti_10_tcid, tvb, 4, 8, ENC_NA);
 	if (tvb_offset_exists(tvb, 12))
 		call_dissector(data_handle,
@@ -927,24 +977,30 @@ dissect_optional_10(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 static void
 dissect_optional_12(tvbuff_t *tvb, proto_tree *tree)
 {
-	if (!tree)
-		return;
-
-	proto_tree_add_text(tree, tvb, 2, 2, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 2, 2, ENC_NA);
 	proto_tree_add_item(tree, hf_sna_nlp_opti_12_sense, tvb, 4, -1, ENC_NA);
 }
 
 static void
 dissect_optional_14(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	proto_tree	*sub_tree, *bf_tree;
-	proto_item	*sub_item, *bf_item;
-	int		len, pad, type, bits, offset, num, sublen;
+	proto_tree	*sub_tree;
+	int		len, pad, type, offset, num, sublen;
+	static const int * opti_14_si_fields[] = {
+		&hf_sna_nlp_opti_14_si_refifo,
+		&hf_sna_nlp_opti_14_si_mobility,
+		&hf_sna_nlp_opti_14_si_dirsearch,
+		&hf_sna_nlp_opti_14_si_limitres,
+		&hf_sna_nlp_opti_14_si_ncescope,
+		&hf_sna_nlp_opti_14_si_mnpsrscv,
+		NULL
+	};
+	static const int * opti_14_rr_fields[] = {
+		&hf_sna_nlp_opti_14_rr_bfe,
+		NULL
+	};
 
-	if (!tree)
-		return;
-
-	proto_tree_add_text(tree, tvb, 2, 2, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 2, 2, ENC_NA);
 
 	offset = 4;
 
@@ -957,34 +1013,18 @@ dissect_optional_14(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		    tvb_new_subset_remaining(tvb, offset), pinfo, tree);
 		return;
 	}
-	sub_item = proto_tree_add_text(tree, tvb, offset, len,
-	    "Switching Information Control Vector");
-	sub_tree = proto_item_add_subtree(sub_item, ett_sna_nlp_opti_14_si);
+	sub_tree = proto_tree_add_subtree(tree, tvb, offset, len,
+	    ett_sna_nlp_opti_14_si, NULL, "Switching Information Control Vector");
 
 	proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_14_si_len,
 	    tvb, offset, 1, len);
 	proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_14_si_key,
 	    tvb, offset+1, 1, type);
 
-	bits = tvb_get_guint8(tvb, offset+2);
-	bf_item = proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_14_si_2,
-	    tvb, offset+2, 1, bits);
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_nlp_opti_14_si_2);
+	proto_tree_add_bitmask(tree, tvb, offset+2, hf_sna_nlp_opti_14_si_2,
+			       ett_sna_nlp_opti_14_si_2, opti_14_si_fields, ENC_NA);
 
-	proto_tree_add_boolean(bf_tree, hf_sna_nlp_opti_14_si_refifo,
-	    tvb, offset+2, 1, bits);
-	proto_tree_add_boolean(bf_tree, hf_sna_nlp_opti_14_si_mobility,
-	    tvb, offset+2, 1, bits);
-	proto_tree_add_boolean(bf_tree, hf_sna_nlp_opti_14_si_dirsearch,
-	    tvb, offset+2, 1, bits);
-	proto_tree_add_boolean(bf_tree, hf_sna_nlp_opti_14_si_limitres,
-	    tvb, offset+2, 1, bits);
-	proto_tree_add_boolean(bf_tree, hf_sna_nlp_opti_14_si_ncescope,
-	    tvb, offset+2, 1, bits);
-	proto_tree_add_boolean(bf_tree, hf_sna_nlp_opti_14_si_mnpsrscv,
-	    tvb, offset+2, 1, bits);
-
-	proto_tree_add_text(sub_tree, tvb, offset+3, 1, "Reserved");
+	proto_tree_add_item(sub_tree, hf_sna_reserved, tvb, offset+3, 1, ENC_NA);
 	proto_tree_add_item(sub_tree, hf_sna_nlp_opti_14_si_maxpsize,
 	    tvb, offset+4, 4, ENC_BIG_ENDIAN);
 	proto_tree_add_item(sub_tree, hf_sna_nlp_opti_14_si_switch,
@@ -996,8 +1036,7 @@ dissect_optional_14(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	pad = (len+3) & 0xfffc;
 	if (pad > len)
-		proto_tree_add_text(sub_tree, tvb, offset+len, pad-len,
-		    "Padding");
+		proto_tree_add_item(sub_tree, hf_sna_padding, tvb, offset+len, pad-len, ENC_NA);
 	offset += pad;
 
 	len = tvb_get_guint8(tvb, offset);
@@ -1009,22 +1048,16 @@ dissect_optional_14(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		    tvb_new_subset_remaining(tvb, offset), pinfo, tree);
 		return;
 	}
-	sub_item = proto_tree_add_text(tree, tvb, offset, len,
-	    "Return Route TG Descriptor Control Vector");
-	sub_tree = proto_item_add_subtree(sub_item, ett_sna_nlp_opti_14_rr);
+	sub_tree = proto_tree_add_subtree(tree, tvb, offset, len,
+	    ett_sna_nlp_opti_14_rr, NULL, "Return Route TG Descriptor Control Vector");
 
 	proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_14_rr_len,
 	    tvb, offset, 1, len);
 	proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_14_rr_key,
 	    tvb, offset+1, 1, type);
 
-	bits = tvb_get_guint8(tvb, offset+2);
-	bf_item = proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_14_rr_2,
-	    tvb, offset+2, 1, bits);
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_nlp_opti_14_rr_2);
-
-	proto_tree_add_boolean(bf_tree, hf_sna_nlp_opti_14_rr_bfe,
-	    tvb, offset+2, 1, bits);
+	proto_tree_add_bitmask(tree, tvb, offset+2, hf_sna_nlp_opti_14_rr_2,
+			       ett_sna_nlp_opti_14_rr_2, opti_14_rr_fields, ENC_NA);
 
 	num = tvb_get_guint8(tvb, offset+3);
 
@@ -1052,39 +1085,28 @@ dissect_optional_14(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 static void
 dissect_optional_22(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	proto_tree	*bf_tree;
-	proto_item	*bf_item;
 	int		bits, type;
-
-	if (!tree)
-		return;
+	static const int * opti_22_2_fields[] = {
+		&hf_sna_nlp_opti_22_type,
+		&hf_sna_nlp_opti_22_raa,
+		&hf_sna_nlp_opti_22_parity,
+		&hf_sna_nlp_opti_22_arb,
+		NULL
+	};
+	static const int * opti_22_3_fields[] = {
+		&hf_sna_nlp_opti_22_ratereq,
+		&hf_sna_nlp_opti_22_raterep,
+		NULL
+	};
 
 	bits = tvb_get_guint8(tvb, 2);
 	type = (bits & 0xc0) >> 6;
 
-	bf_item = proto_tree_add_uint(tree, hf_sna_nlp_opti_22_2,
-	    tvb, 2, 1, bits);
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_nlp_opti_22_2);
+	proto_tree_add_bitmask(tree, tvb, 2, hf_sna_nlp_opti_22_2,
+			       ett_sna_nlp_opti_22_2, opti_22_2_fields, ENC_NA);
 
-	proto_tree_add_uint(bf_tree, hf_sna_nlp_opti_22_type,
-	    tvb, 2, 1, bits);
-	proto_tree_add_uint(bf_tree, hf_sna_nlp_opti_22_raa,
-	    tvb, 2, 1, bits);
-	proto_tree_add_boolean(bf_tree, hf_sna_nlp_opti_22_parity,
-	    tvb, 2, 1, bits);
-	proto_tree_add_uint(bf_tree, hf_sna_nlp_opti_22_arb,
-	    tvb, 2, 1, bits);
-
-	bits = tvb_get_guint8(tvb, 3);
-
-	bf_item = proto_tree_add_uint(tree, hf_sna_nlp_opti_22_3,
-	    tvb, 3, 1, bits);
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_nlp_opti_22_3);
-
-	proto_tree_add_uint(bf_tree, hf_sna_nlp_opti_22_ratereq,
-	    tvb, 3, 1, bits);
-	proto_tree_add_uint(bf_tree, hf_sna_nlp_opti_22_raterep,
-	    tvb, 3, 1, bits);
+	proto_tree_add_bitmask(tree, tvb, 3, hf_sna_nlp_opti_22_3,
+			       ett_sna_nlp_opti_22_3, opti_22_3_fields, ENC_NA);
 
 	proto_tree_add_item(tree, hf_sna_nlp_opti_22_field1,
 	    tvb, 4, 4, ENC_BIG_ENDIAN);
@@ -1111,7 +1133,6 @@ static void
 dissect_optional(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
 	proto_tree	*sub_tree;
-	proto_item	*sub_item;
 	int		offset, type, len;
 	gint		ett;
 
@@ -1140,11 +1161,10 @@ dissect_optional(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		if(type == 0x14) ett = ett_sna_nlp_opti_14;
 		if(type == 0x22) ett = ett_sna_nlp_opti_22;
 		if (tree) {
-			sub_item = proto_tree_add_text(tree, tvb,
-			    offset, len << 2, "%s",
+			sub_tree = proto_tree_add_subtree(tree, tvb,
+			    offset, len << 2, ett, NULL,
 			    val_to_str(type, sna_nlp_opti_vals,
 			    "Unknown Segment Type"));
-			sub_tree = proto_item_add_subtree(sub_item, ett);
 			proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_len,
 			    tvb, offset, 1, len);
 			proto_tree_add_uint(sub_tree, hf_sna_nlp_opti_type,
@@ -1190,13 +1210,40 @@ dissect_optional(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 static void
 dissect_nlp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
-    proto_tree *parent_tree)
+	    proto_tree *parent_tree)
 {
-	proto_tree	*nlp_tree, *bf_tree;
-	proto_item	*nlp_item, *bf_item;
+	proto_tree	*nlp_tree;
+	proto_item	*nlp_item;
 	guint8		nhdr_0, nhdr_1, nhdr_x, thdr_8, thdr_9, fid;
 	guint32		thdr_len, thdr_dlf;
 	guint16		subindx;
+	static const int * nlp_nhdr_0_fields[] = {
+		&hf_sna_nlp_sm,
+		&hf_sna_nlp_tpf,
+		NULL
+	};
+	static const int * nlp_nhdr_1_fields[] = {
+		&hf_sna_nlp_ft,
+		&hf_sna_nlp_tspi,
+		&hf_sna_nlp_slowdn1,
+		&hf_sna_nlp_slowdn2,
+		NULL
+	};
+	static const int * nlp_nhdr_8_fields[] = {
+		&hf_sna_nlp_setupi,
+		&hf_sna_nlp_somi,
+		&hf_sna_nlp_eomi,
+		&hf_sna_nlp_sri,
+		&hf_sna_nlp_rasapi,
+		&hf_sna_nlp_retryi,
+		NULL
+	};
+	static const int * nlp_nhdr_9_fields[] = {
+		&hf_sna_nlp_lmi,
+		&hf_sna_nlp_cqfi,
+		&hf_sna_nlp_osi,
+		NULL
+	};
 
 	int indx = 0, counter = 0;
 
@@ -1215,27 +1262,11 @@ dissect_nlp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 		    indx, -1, ENC_NA);
 		nlp_tree = proto_item_add_subtree(nlp_item, ett_sna_nlp_nhdr);
 
-		bf_item = proto_tree_add_uint(nlp_tree, hf_sna_nlp_nhdr_0, tvb,
-		    indx, 1, nhdr_0);
-		bf_tree = proto_item_add_subtree(bf_item, ett_sna_nlp_nhdr_0);
+		proto_tree_add_bitmask(nlp_tree, tvb, indx, hf_sna_nlp_nhdr_0,
+			       ett_sna_nlp_nhdr_0, nlp_nhdr_0_fields, ENC_NA);
 
-		proto_tree_add_uint(bf_tree, hf_sna_nlp_sm, tvb, indx, 1,
-		    nhdr_0);
-		proto_tree_add_uint(bf_tree, hf_sna_nlp_tpf, tvb, indx, 1,
-		    nhdr_0);
-
-		bf_item = proto_tree_add_uint(nlp_tree, hf_sna_nlp_nhdr_1, tvb,
-		    indx+1, 1, nhdr_1);
-		bf_tree = proto_item_add_subtree(bf_item, ett_sna_nlp_nhdr_1);
-
-		proto_tree_add_uint(bf_tree, hf_sna_nlp_ft, tvb,
-		    indx+1, 1, nhdr_1);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_tspi, tvb,
-		    indx+1, 1, nhdr_1);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_slowdn1, tvb,
-		    indx+1, 1, nhdr_1);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_slowdn2, tvb,
-		    indx+1, 1, nhdr_1);
+		proto_tree_add_bitmask(nlp_tree, tvb, indx+1, hf_sna_nlp_nhdr_1,
+			       ett_sna_nlp_nhdr_1, nlp_nhdr_1_fields, ENC_NA);
 	}
 	/* ANR or FR lists */
 
@@ -1247,23 +1278,18 @@ dissect_nlp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 			nhdr_x = tvb_get_guint8(tvb, indx + counter);
 			counter ++;
 		} while (nhdr_x != 0xff);
-		if (tree)
-			proto_tree_add_item(nlp_tree,
+		proto_tree_add_item(nlp_tree,
 			    hf_sna_nlp_fra, tvb, indx, counter, ENC_NA);
 		indx += counter;
-		if (tree)
-			proto_tree_add_text(nlp_tree, tvb, indx, 1,
-			    "Reserved");
+		proto_tree_add_item(nlp_tree, hf_sna_reserved, tvb, indx, 1, ENC_NA);
 		indx++;
 
 		if (tree)
 			proto_item_set_len(nlp_item, indx);
 
 		if ((nhdr_1 & 0xf0) == 0x10) {
-			nhdr_x = tvb_get_guint8(tvb, indx);
-			if (tree)
-				proto_tree_add_uint(tree, hf_sna_nlp_frh,
-				    tvb, indx, 1, nhdr_x);
+			proto_tree_add_item(tree, hf_sna_nlp_frh,
+				    tvb, indx, 1, ENC_BIG_ENDIAN);
 			indx ++;
 
 			if (tvb_offset_exists(tvb, indx))
@@ -1278,14 +1304,11 @@ dissect_nlp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 			nhdr_x = tvb_get_guint8(tvb, indx + counter);
 			counter ++;
 		} while (nhdr_x != 0xff);
-		if (tree)
-			proto_tree_add_item(nlp_tree, hf_sna_nlp_anr,
+		proto_tree_add_item(nlp_tree, hf_sna_nlp_anr,
 			    tvb, indx, counter, ENC_NA);
 		indx += counter;
 
-		if (tree)
-			proto_tree_add_text(nlp_tree, tvb, indx, 1,
-			    "Reserved");
+		proto_tree_add_item(nlp_tree, hf_sna_reserved, tvb, indx, 1, ENC_NA);
 		indx++;
 
 		if (tree)
@@ -1304,33 +1327,12 @@ dissect_nlp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
 		proto_tree_add_item(nlp_tree, hf_sna_nlp_tcid, tvb,
 		    indx, 8, ENC_NA);
-		bf_item = proto_tree_add_uint(nlp_tree, hf_sna_nlp_thdr_8, tvb,
-		    indx+8, 1, thdr_8);
-		bf_tree = proto_item_add_subtree(bf_item, ett_sna_nlp_thdr_8);
 
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_setupi, tvb,
-		    indx+8, 1, thdr_8);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_somi, tvb, indx+8,
-		    1, thdr_8);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_eomi, tvb, indx+8,
-		    1, thdr_8);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_sri, tvb, indx+8,
-		    1, thdr_8);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_rasapi, tvb,
-		    indx+8, 1, thdr_8);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_retryi, tvb,
-		    indx+8, 1, thdr_8);
+		proto_tree_add_bitmask(nlp_tree, tvb, indx+8, hf_sna_nlp_thdr_8,
+			       ett_sna_nlp_thdr_8, nlp_nhdr_8_fields, ENC_NA);
 
-		bf_item = proto_tree_add_uint(nlp_tree, hf_sna_nlp_thdr_9, tvb,
-		    indx+9, 1, thdr_9);
-		bf_tree = proto_item_add_subtree(bf_item, ett_sna_nlp_thdr_9);
-
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_lmi, tvb, indx+9,
-		    1, thdr_9);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_cqfi, tvb, indx+9,
-		    1, thdr_9);
-		proto_tree_add_boolean(bf_tree, hf_sna_nlp_osi, tvb, indx+9,
-		    1, thdr_9);
+		proto_tree_add_bitmask(nlp_tree, tvb, indx+9, hf_sna_nlp_thdr_9,
+			       ett_sna_nlp_thdr_9, nlp_nhdr_9_fields, ENC_NA);
 
 		proto_tree_add_uint(nlp_tree, hf_sna_nlp_offset, tvb, indx+10,
 		    2, thdr_len);
@@ -1396,10 +1398,7 @@ dissect_nlp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 static void
 dissect_xid1(tvbuff_t *tvb, proto_tree *tree)
 {
-	if (!tree)
-		return;
-
-	proto_tree_add_text(tree, tvb, 0, 2, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 0, 2, ENC_NA);
 
 }
 
@@ -1425,86 +1424,72 @@ dissect_xid2(tvbuff_t *tvb, proto_tree *tree)
 static void
 dissect_xid3(tvbuff_t *tvb, proto_tree *tree)
 {
-	proto_tree	*sub_tree;
-	proto_item	*sub_ti = NULL;
-	guint		val, dlen, offset;
+	guint		dlen, offset;
+	static const int * sna_xid_3_fields[] = {
+		&hf_sna_xid_3_init_self,
+		&hf_sna_xid_3_stand_bind,
+		&hf_sna_xid_3_gener_bind,
+		&hf_sna_xid_3_recve_bind,
+		&hf_sna_xid_3_actpu,
+		&hf_sna_xid_3_nwnode,
+		&hf_sna_xid_3_cp,
+		&hf_sna_xid_3_cpcp,
+		&hf_sna_xid_3_state,
+		&hf_sna_xid_3_nonact,
+		&hf_sna_xid_3_cpchange,
+		NULL
+	};
+	static const int * sna_xid_10_fields[] = {
+		&hf_sna_xid_3_asend_bind,
+		&hf_sna_xid_3_arecv_bind,
+		&hf_sna_xid_3_quiesce,
+		&hf_sna_xid_3_pucap,
+		&hf_sna_xid_3_pbn,
+		&hf_sna_xid_3_pacing,
+		NULL
+	};
+	static const int * sna_xid_11_fields[] = {
+		&hf_sna_xid_3_tgshare,
+		&hf_sna_xid_3_dedsvc,
+		NULL
+	};
+	static const int * sna_xid_12_fields[] = {
+		&hf_sna_xid_3_negcsup,
+		&hf_sna_xid_3_negcomp,
+		NULL
+	};
+	static const int * sna_xid_15_fields[] = {
+		&hf_sna_xid_3_partg,
+		&hf_sna_xid_3_dlur,
+		&hf_sna_xid_3_dlus,
+		&hf_sna_xid_3_exbn,
+		&hf_sna_xid_3_genodai,
+		&hf_sna_xid_3_branch,
+		&hf_sna_xid_3_brnn,
+		NULL
+	};
 
 	if (!tree)
 		return;
 
-	proto_tree_add_text(tree, tvb, 0, 2, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 0, 2, ENC_NA);
 
-	val = tvb_get_ntohs(tvb, 2);
+	proto_tree_add_bitmask(tree, tvb, 2, hf_sna_xid_3_8,
+			       ett_sna_xid_3_8, sna_xid_3_fields, ENC_BIG_ENDIAN);
 
-	sub_ti = proto_tree_add_uint(tree, hf_sna_xid_3_8, tvb,
-	    2, 2, val);
-	sub_tree = proto_item_add_subtree(sub_ti, ett_sna_xid_3_8);
+	proto_tree_add_bitmask(tree, tvb, 4, hf_sna_xid_3_10,
+			       ett_sna_xid_3_10, sna_xid_10_fields, ENC_BIG_ENDIAN);
 
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_init_self, tvb, 2, 2,
-	    val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_stand_bind, tvb, 2, 2,
-	    val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_gener_bind, tvb, 2, 2,
-	    val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_recve_bind, tvb, 2, 2,
-	    val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_actpu, tvb, 2, 2, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_nwnode, tvb, 2, 2, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_cp, tvb, 2, 2, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_cpcp, tvb, 2, 2, val);
-	proto_tree_add_uint(sub_tree, hf_sna_xid_3_state, tvb, 2, 2, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_nonact, tvb, 2, 2, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_cpchange, tvb, 2, 2,
-	    val);
+	proto_tree_add_bitmask(tree, tvb, 5, hf_sna_xid_3_11,
+			       ett_sna_xid_3_11, sna_xid_11_fields, ENC_BIG_ENDIAN);
 
-	val = tvb_get_guint8(tvb, 4);
+	proto_tree_add_bitmask(tree, tvb, 6, hf_sna_xid_3_12,
+			       ett_sna_xid_3_12, sna_xid_12_fields, ENC_BIG_ENDIAN);
 
-	sub_ti = proto_tree_add_uint(tree, hf_sna_xid_3_10, tvb,
-	    4, 1, val);
-	sub_tree = proto_item_add_subtree(sub_ti, ett_sna_xid_3_10);
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 7, 2, ENC_NA);
 
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_asend_bind, tvb, 4, 1,
-	    val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_arecv_bind, tvb, 4, 1,
-	    val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_quiesce, tvb, 4, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_pucap, tvb, 4, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_pbn, tvb, 4, 1, val);
-	proto_tree_add_uint(sub_tree, hf_sna_xid_3_pacing, tvb, 4, 1, val);
-
-	val = tvb_get_guint8(tvb, 5);
-
-	sub_ti = proto_tree_add_uint(tree, hf_sna_xid_3_11, tvb,
-	    5, 1, val);
-	sub_tree = proto_item_add_subtree(sub_ti, ett_sna_xid_3_11);
-
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_tgshare, tvb, 5, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_dedsvc, tvb, 5, 1, val);
-
-	val = tvb_get_guint8(tvb, 6);
-
-	sub_ti = proto_tree_add_item(tree, hf_sna_xid_3_12, tvb,
-	    6, 1, ENC_BIG_ENDIAN);
-	sub_tree = proto_item_add_subtree(sub_ti, ett_sna_xid_3_12);
-
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_negcsup, tvb, 6, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_negcomp, tvb, 6, 1, val);
-
-	proto_tree_add_text(tree, tvb, 7, 2, "Reserved");
-
-	val = tvb_get_guint8(tvb, 9);
-
-	sub_ti = proto_tree_add_item(tree, hf_sna_xid_3_15, tvb,
-	    9, 1, ENC_BIG_ENDIAN);
-	sub_tree = proto_item_add_subtree(sub_ti, ett_sna_xid_3_15);
-
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_partg, tvb, 9, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_dlur, tvb, 9, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_dlus, tvb, 9, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_exbn, tvb, 9, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_genodai, tvb, 9, 1, val);
-	proto_tree_add_uint(sub_tree, hf_sna_xid_3_branch, tvb, 9, 1, val);
-	proto_tree_add_boolean(sub_tree, hf_sna_xid_3_brnn, tvb, 9, 1, val);
+	proto_tree_add_bitmask(tree, tvb, 9, hf_sna_xid_3_15,
+			       ett_sna_xid_3_15, sna_xid_15_fields, ENC_BIG_ENDIAN);
 
 	proto_tree_add_item(tree, hf_sna_xid_3_tg, tvb, 10, 1, ENC_BIG_ENDIAN);
 	proto_tree_add_item(tree, hf_sna_xid_3_dlc, tvb, 11, 1, ENC_BIG_ENDIAN);
@@ -1526,7 +1511,7 @@ dissect_xid3(tvbuff_t *tvb, proto_tree *tree)
 
 static void
 dissect_xid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
-    proto_tree *parent_tree)
+	    proto_tree *parent_tree)
 {
 	proto_tree	*sub_tree;
 	proto_item	*sub_ti = NULL;
@@ -1650,7 +1635,7 @@ mpf_value(guint8 th_byte)
  */
 static tvbuff_t*
 defragment_by_sequence(packet_info *pinfo, tvbuff_t *tvb, int offset, int mpf,
-    int id)
+		       int id)
 {
 	fragment_head *fd_head;
 	int frag_number = -1;
@@ -1721,7 +1706,6 @@ dissect_fid0_1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	proto_tree	*bf_tree;
 	proto_item	*bf_item;
 	guint8		th_0;
-	const guint8	*ptr;
 
 	const int bytes_in_header = 10;
 
@@ -1737,28 +1721,21 @@ dissect_fid0_1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		proto_tree_add_uint(bf_tree, hf_sna_th_efi, tvb, 0, 1, th_0);
 
 		/* Byte 1 */
-		proto_tree_add_text(tree, tvb, 1, 1, "Reserved");
+		proto_tree_add_item(tree, hf_sna_reserved, tvb, 1, 1, ENC_NA);
 
 		/* Bytes 2-3 */
 		proto_tree_add_item(tree, hf_sna_th_daf, tvb, 2, 2, ENC_BIG_ENDIAN);
 	}
 
 	/* Set DST addr */
-	ptr = tvb_get_ptr(tvb, 2, SNA_FID01_ADDR_LEN);
-	SET_ADDRESS(&pinfo->net_dst, AT_SNA, SNA_FID01_ADDR_LEN, ptr);
-	SET_ADDRESS(&pinfo->dst, AT_SNA, SNA_FID01_ADDR_LEN, ptr);
+	TVB_SET_ADDRESS(&pinfo->net_dst, sna_address_type, tvb, 2, SNA_FID01_ADDR_LEN);
+	COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->net_dst);
 
-	if (tree)
-		proto_tree_add_item(tree, hf_sna_th_oaf, tvb, 4, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sna_th_oaf, tvb, 4, 2, ENC_BIG_ENDIAN);
 
 	/* Set SRC addr */
-	ptr = tvb_get_ptr(tvb, 4, SNA_FID01_ADDR_LEN);
-	SET_ADDRESS(&pinfo->net_src, AT_SNA, SNA_FID01_ADDR_LEN, ptr);
-	SET_ADDRESS(&pinfo->src, AT_SNA, SNA_FID01_ADDR_LEN, ptr);
-
-	/* If we're not filling a proto_tree, return now */
-	if (tree)
-		return bytes_in_header;
+	TVB_SET_ADDRESS(&pinfo->net_src, sna_address_type, tvb, 4, SNA_FID01_ADDR_LEN);
+	COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->net_src);
 
 	proto_tree_add_item(tree, hf_sna_th_snf, tvb, 6, 2, ENC_BIG_ENDIAN);
 	proto_tree_add_item(tree, hf_sna_th_dcf, tvb, 8, 2, ENC_BIG_ENDIAN);
@@ -1771,12 +1748,11 @@ dissect_fid0_1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 /* FID Type 2 */
 static int
 dissect_fid2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
-        tvbuff_t **rh_tvb_ptr, next_dissection_t *continue_dissecting)
+	     tvbuff_t **rh_tvb_ptr, next_dissection_t *continue_dissecting)
 {
 	proto_tree	*bf_tree;
 	proto_item	*bf_item;
 	guint8		th_0;
-	const guint8	*ptr;
 	unsigned int	mpf, id;
 
 	const int bytes_in_header = 6;
@@ -1787,34 +1763,32 @@ dissect_fid2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 	if (tree) {
 
 		/* Byte 0 */
-		bf_item = proto_tree_add_item(tree, hf_sna_th_0, tvb, 0, 1, ENC_NA);
+		bf_item = proto_tree_add_item(tree, hf_sna_th_0, tvb, 0, 1, ENC_BIG_ENDIAN);
 		bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
 
-		proto_tree_add_item(bf_tree, hf_sna_th_fid, tvb, 0, 1, ENC_NA);
-		proto_tree_add_item(bf_tree, hf_sna_th_mpf, tvb, 0, 1, ENC_NA);
-		proto_tree_add_item(bf_tree, hf_sna_th_odai,tvb, 0, 1, ENC_NA);
-		proto_tree_add_item(bf_tree, hf_sna_th_efi, tvb, 0, 1, ENC_NA);
+		proto_tree_add_item(bf_tree, hf_sna_th_fid, tvb, 0, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(bf_tree, hf_sna_th_mpf, tvb, 0, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(bf_tree, hf_sna_th_odai,tvb, 0, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(bf_tree, hf_sna_th_efi, tvb, 0, 1, ENC_BIG_ENDIAN);
 
 
 		/* Byte 1 */
-		proto_tree_add_text(tree, tvb, 1, 1, "Reserved");
+		proto_tree_add_item(tree, hf_sna_reserved, tvb, 1, 1, ENC_NA);
 
 		/* Byte 2 */
-		proto_tree_add_item(tree, hf_sna_th_daf, tvb, 2, 1, ENC_NA);
+		proto_tree_add_item(tree, hf_sna_th_daf, tvb, 2, 1, ENC_BIG_ENDIAN);
 	}
 
 	/* Set DST addr */
-	ptr = tvb_get_ptr(tvb, 2, SNA_FID2_ADDR_LEN);
-	SET_ADDRESS(&pinfo->net_dst, AT_SNA, SNA_FID2_ADDR_LEN, ptr);
-	SET_ADDRESS(&pinfo->dst, AT_SNA, SNA_FID2_ADDR_LEN, ptr);
+	TVB_SET_ADDRESS(&pinfo->net_dst, sna_address_type, tvb, 2, SNA_FID2_ADDR_LEN);
+	COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->net_dst);
 
 	/* Byte 3 */
-	proto_tree_add_item(tree, hf_sna_th_oaf, tvb, 3, 1, ENC_NA);
+	proto_tree_add_item(tree, hf_sna_th_oaf, tvb, 3, 1, ENC_BIG_ENDIAN);
 
 	/* Set SRC addr */
-	ptr = tvb_get_ptr(tvb, 3, SNA_FID2_ADDR_LEN);
-	SET_ADDRESS(&pinfo->net_src, AT_SNA, SNA_FID2_ADDR_LEN, ptr);
-	SET_ADDRESS(&pinfo->src, AT_SNA, SNA_FID2_ADDR_LEN, ptr);
+	TVB_SET_ADDRESS(&pinfo->net_src, sna_address_type, tvb, 3, SNA_FID2_ADDR_LEN);
+	COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->net_src);
 
 	id = tvb_get_ntohs(tvb, 4);
 	proto_tree_add_item(tree, hf_sna_th_snf, tvb, 4, 2, ENC_BIG_ENDIAN);
@@ -1867,14 +1841,69 @@ dissect_fid3(tvbuff_t *tvb, proto_tree *tree)
 static int
 dissect_fid4(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	proto_tree	*bf_tree;
-	proto_item	*bf_item;
 	int		offset = 0;
 	guint8		th_byte, mft;
-	guint16		th_word;
 	guint16		def, oef;
 	guint32		dsaf, osaf;
-	static struct sna_fid_type_4_addr src, dst; /* has to be static due to SET_ADDRESS */
+	static const int * byte0_fields[] = {
+		&hf_sna_th_fid,
+		&hf_sna_th_tg_sweep,
+		&hf_sna_th_er_vr_supp_ind,
+		&hf_sna_th_vr_pac_cnt_ind,
+		&hf_sna_th_ntwk_prty,
+		NULL
+	};
+	static const int * byte1_fields[] = {
+		&hf_sna_th_tgsf,
+		&hf_sna_th_mft,
+		&hf_sna_th_piubf,
+		NULL
+	};
+	static const int * byte2_mft_fields[] = {
+		&hf_sna_th_nlpoi,
+		&hf_sna_th_nlp_cp,
+		&hf_sna_th_ern,
+		NULL
+	};
+	static const int * byte2_fields[] = {
+		&hf_sna_th_iern,
+		&hf_sna_th_ern,
+		NULL
+	};
+	static const int * byte3_fields[] = {
+		&hf_sna_th_vrn,
+		&hf_sna_th_tpf,
+		NULL
+	};
+	static const int * byte4_fields[] = {
+		&hf_sna_th_vr_cwi,
+		&hf_sna_th_tg_nonfifo_ind,
+		&hf_sna_th_vr_sqti,
+	    /* I'm not sure about byte-order on this one... */
+		&hf_sna_th_tg_snf,
+		NULL
+	};
+	static const int * byte6_fields[] = {
+		&hf_sna_th_vrprq,
+		&hf_sna_th_vrprs,
+		&hf_sna_th_vr_cwri,
+		&hf_sna_th_vr_rwi,
+	    /* I'm not sure about byte-order on this one... */
+		&hf_sna_th_vr_snf_send,
+		NULL
+	};
+	static const int * byte16_fields[] = {
+		&hf_sna_th_snai,
+	/* We luck out here because in their infinite wisdom the SNA
+	 * architects placed the MPF and EFI fields in the same bitfield
+	 * locations, even though for FID4 they're not in byte 0.
+	 * Thank you IBM! */
+		&hf_sna_th_mpf,
+		&hf_sna_th_efi,
+		NULL
+	};
+
+	struct sna_fid_type_4_addr *src, *dst;
 
 	const int bytes_in_header = 26;
 
@@ -1882,119 +1911,44 @@ dissect_fid4(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	if (!tree)
 		return bytes_in_header;
 
-	th_byte = tvb_get_guint8(tvb, offset);
-
-	/* Create the bitfield tree */
-	bf_item = proto_tree_add_uint(tree, hf_sna_th_0, tvb, offset,
-	    1, th_byte);
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
-
 	/* Byte 0 */
-	proto_tree_add_uint(bf_tree, hf_sna_th_fid, tvb,
-	    offset, 1, th_byte);
-	proto_tree_add_uint(bf_tree, hf_sna_th_tg_sweep, tvb,
-	    offset, 1, th_byte);
-	proto_tree_add_uint(bf_tree, hf_sna_th_er_vr_supp_ind, tvb,
-	    offset, 1, th_byte);
-	proto_tree_add_uint(bf_tree, hf_sna_th_vr_pac_cnt_ind, tvb,
-	    offset, 1, th_byte);
-	proto_tree_add_uint(bf_tree, hf_sna_th_ntwk_prty, tvb,
-	    offset, 1, th_byte);
+	proto_tree_add_bitmask(tree, tvb, offset, hf_sna_th_0,
+			       ett_sna_th_fid, byte0_fields, ENC_NA);
 
 	offset += 1;
 	th_byte = tvb_get_guint8(tvb, offset);
 
-	/* Create the bitfield tree */
-	bf_item = proto_tree_add_text(tree, tvb, offset, 1,
-	    "Transmission Header Byte 1");
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
-
 	/* Byte 1 */
-	proto_tree_add_uint(bf_tree, hf_sna_th_tgsf, tvb, offset, 1,
-	    th_byte);
-	proto_tree_add_boolean(bf_tree, hf_sna_th_mft, tvb, offset, 1,
-	    th_byte);
-	proto_tree_add_uint(bf_tree, hf_sna_th_piubf, tvb, offset, 1,
-	    th_byte);
+	proto_tree_add_bitmask(tree, tvb, offset, hf_sna_th_byte1,
+			       ett_sna_th_fid, byte1_fields, ENC_NA);
 
 	mft = th_byte & 0x04;
 	offset += 1;
-	th_byte = tvb_get_guint8(tvb, offset);
-
-	/* Create the bitfield tree */
-	bf_item = proto_tree_add_text(tree, tvb, offset, 1,
-	    "Transmission Header Byte 2");
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
 
 	/* Byte 2 */
 	if (mft) {
-		proto_tree_add_uint(bf_tree, hf_sna_th_nlpoi, tvb,
-		    offset, 1, th_byte);
-		proto_tree_add_uint(bf_tree, hf_sna_th_nlp_cp, tvb,
-		    offset, 1, th_byte);
+		proto_tree_add_bitmask(tree, tvb, offset, hf_sna_th_byte2,
+			       ett_sna_th_fid, byte2_mft_fields, ENC_NA);
 	} else {
-		proto_tree_add_uint(bf_tree, hf_sna_th_iern, tvb,
-		    offset, 1, th_byte);
+		proto_tree_add_bitmask(tree, tvb, offset, hf_sna_th_byte2,
+			       ett_sna_th_fid, byte2_fields, ENC_NA);
 	}
-	proto_tree_add_uint(bf_tree, hf_sna_th_ern, tvb, offset, 1,
-	    th_byte);
 
 	offset += 1;
-	th_byte = tvb_get_guint8(tvb, offset);
-
-	/* Create the bitfield tree */
-	bf_item = proto_tree_add_text(tree, tvb, offset, 1,
-	    "Transmission Header Byte 3");
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
 
 	/* Byte 3 */
-	proto_tree_add_uint(bf_tree, hf_sna_th_vrn, tvb, offset, 1,
-	    th_byte);
-	proto_tree_add_uint(bf_tree, hf_sna_th_tpf, tvb, offset, 1,
-	    th_byte);
-
+	proto_tree_add_bitmask(tree, tvb, offset, hf_sna_th_byte3,
+			       ett_sna_th_fid, byte3_fields, ENC_NA);
 	offset += 1;
-	th_word = tvb_get_ntohs(tvb, offset);
-
-	/* Create the bitfield tree */
-	bf_item = proto_tree_add_text(tree, tvb, offset, 2,
-	    "Transmission Header Bytes 4-5");
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
 
 	/* Bytes 4-5 */
-	proto_tree_add_uint(bf_tree, hf_sna_th_vr_cwi, tvb,
-	    offset, 2, th_word);
-	proto_tree_add_boolean(bf_tree, hf_sna_th_tg_nonfifo_ind, tvb,
-	    offset, 2, th_word);
-	proto_tree_add_uint(bf_tree, hf_sna_th_vr_sqti, tvb,
-	    offset, 2, th_word);
-
-	/* I'm not sure about byte-order on this one... */
-	proto_tree_add_uint(bf_tree, hf_sna_th_tg_snf, tvb,
-	    offset, 2, th_word);
-
+	proto_tree_add_bitmask(tree, tvb, offset, hf_sna_th_byte4,
+			       ett_sna_th_fid, byte4_fields, ENC_BIG_ENDIAN);
 	offset += 2;
-	th_word = tvb_get_ntohs(tvb, offset);
 
 	/* Create the bitfield tree */
-	bf_item = proto_tree_add_text(tree, tvb, offset, 2,
-	    "Transmission Header Bytes 6-7");
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
-
-	/* Bytes 6-7 */
-	proto_tree_add_boolean(bf_tree, hf_sna_th_vrprq, tvb, offset,
-	    2, th_word);
-	proto_tree_add_boolean(bf_tree, hf_sna_th_vrprs, tvb, offset,
-	    2, th_word);
-	proto_tree_add_uint(bf_tree, hf_sna_th_vr_cwri, tvb, offset,
-	    2, th_word);
-	proto_tree_add_boolean(bf_tree, hf_sna_th_vr_rwi, tvb, offset,
-	    2, th_word);
-
-	/* I'm not sure about byte-order on this one... */
-	proto_tree_add_uint(bf_tree, hf_sna_th_vr_snf_send, tvb,
-	    offset, 2, th_word);
-
+	proto_tree_add_bitmask(tree, tvb, offset, hf_sna_th_byte6,
+			       ett_sna_th_fid, byte6_fields, ENC_BIG_ENDIAN);
 	offset += 2;
 
 	dsaf = tvb_get_ntohl(tvb, 8);
@@ -2008,48 +1962,34 @@ dissect_fid4(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	proto_tree_add_uint(tree, hf_sna_th_osaf, tvb, offset, 4, osaf);
 
 	offset += 4;
-	th_byte = tvb_get_guint8(tvb, offset);
-
-	/* Create the bitfield tree */
-	bf_item = proto_tree_add_text(tree, tvb, offset, 2,
-	    "Transmission Header Byte 16");
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
 
 	/* Byte 16 */
-	proto_tree_add_boolean(bf_tree, hf_sna_th_snai, tvb, offset, 1, th_byte);
+	proto_tree_add_bitmask(tree, tvb, offset, hf_sna_th_byte16,
+			       ett_sna_th_fid, byte16_fields, ENC_NA);
 
-	/* We luck out here because in their infinite wisdom the SNA
-	 * architects placed the MPF and EFI fields in the same bitfield
-	 * locations, even though for FID4 they're not in byte 0.
-	 * Thank you IBM! */
-	proto_tree_add_uint(bf_tree, hf_sna_th_mpf, tvb, offset, 1, th_byte);
-	proto_tree_add_uint(bf_tree, hf_sna_th_efi, tvb, offset, 1, th_byte);
-
-	offset += 2;
 	/* 1 for byte 16, 1 for byte 17 which is reserved */
+	offset += 2;
 
 	def = tvb_get_ntohs(tvb, 18);
 	/* Bytes 18-25 */
 	proto_tree_add_uint(tree, hf_sna_th_def, tvb, offset, 2, def);
 
 	/* Addresses in FID 4 are discontiguous, sigh */
-	dst.saf = dsaf;
-	dst.ef = def;
-	SET_ADDRESS(&pinfo->net_dst, AT_SNA, SNA_FID_TYPE_4_ADDR_LEN,
-	    (guint8* )&dst);
-	SET_ADDRESS(&pinfo->dst, AT_SNA, SNA_FID_TYPE_4_ADDR_LEN,
-	    (guint8 *)&dst);
+	dst = wmem_new0(pinfo->pool, struct sna_fid_type_4_addr);
+	dst->saf = dsaf;
+	dst->ef = def;
+	SET_ADDRESS(&pinfo->net_dst, sna_address_type, SNA_FID_TYPE_4_ADDR_LEN, dst);
+	COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->net_dst);
 
 	oef = tvb_get_ntohs(tvb, 20);
 	proto_tree_add_uint(tree, hf_sna_th_oef, tvb, offset+2, 2, oef);
 
 	/* Addresses in FID 4 are discontiguous, sigh */
-	src.saf = osaf;
-	src.ef = oef;
-	SET_ADDRESS(&pinfo->net_src, AT_SNA, SNA_FID_TYPE_4_ADDR_LEN,
-	    (guint8 *)&src);
-	SET_ADDRESS(&pinfo->src, AT_SNA, SNA_FID_TYPE_4_ADDR_LEN,
-	    (guint8 *)&src);
+	src = wmem_new0(pinfo->pool, struct sna_fid_type_4_addr);
+	src->saf = osaf;
+	src->ef = oef;
+	SET_ADDRESS(&pinfo->net_src, sna_address_type, SNA_FID_TYPE_4_ADDR_LEN, src);
+	COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->net_src);
 
 	proto_tree_add_item(tree, hf_sna_th_snf, tvb, offset+4, 2, ENC_BIG_ENDIAN);
 	proto_tree_add_item(tree, hf_sna_th_dcf, tvb, offset+6, 2, ENC_BIG_ENDIAN);
@@ -2081,7 +2021,7 @@ dissect_fid5(tvbuff_t *tvb, proto_tree *tree)
 	proto_tree_add_uint(bf_tree, hf_sna_th_mpf, tvb, 0, 1, th_0);
 	proto_tree_add_uint(bf_tree, hf_sna_th_efi, tvb, 0, 1, th_0);
 
-	proto_tree_add_text(tree, tvb, 1, 1, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 1, 1, ENC_NA);
 	proto_tree_add_item(tree, hf_sna_th_snf, tvb, 2, 2, ENC_BIG_ENDIAN);
 
 	proto_tree_add_item(tree, hf_sna_th_sa, tvb, 4, 8, ENC_NA);
@@ -2111,14 +2051,14 @@ dissect_fidf(tvbuff_t *tvb, proto_tree *tree)
 	bf_tree = proto_item_add_subtree(bf_item, ett_sna_th_fid);
 
 	proto_tree_add_uint(bf_tree, hf_sna_th_fid, tvb, 0, 1, th_0);
-	proto_tree_add_text(tree, tvb, 1, 1, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 1, 1, ENC_NA);
 
 	proto_tree_add_item(tree, hf_sna_th_cmd_fmt, tvb,  2, 1, ENC_BIG_ENDIAN);
 	proto_tree_add_item(tree, hf_sna_th_cmd_type, tvb, 3, 1, ENC_BIG_ENDIAN);
 	proto_tree_add_item(tree, hf_sna_th_cmd_sn, tvb,   4, 2, ENC_BIG_ENDIAN);
 
 	/* Yup, bytes 6-23 are reserved! */
-	proto_tree_add_text(tree, tvb, 6, 18, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 6, 18, ENC_NA);
 
 	proto_tree_add_item(tree, hf_sna_th_dcf, tvb, 24, 2, ENC_BIG_ENDIAN);
 
@@ -2127,7 +2067,7 @@ dissect_fidf(tvbuff_t *tvb, proto_tree *tree)
 
 static void
 dissect_fid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
-    proto_tree *parent_tree)
+	    proto_tree *parent_tree)
 {
 
 	proto_tree	*th_tree = NULL, *rh_tree = NULL;
@@ -2186,10 +2126,7 @@ dissect_fid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
 	/* Short-circuit ? */
 	if (continue_dissecting == stop_here) {
-		if (tree) {
-			proto_tree_add_text(tree, tvb, offset, -1,
-			    "BIU segment data");
-		}
+		proto_tree_add_item(tree, hf_sna_biu_segment_data, tvb, offset, -1, ENC_NA);
 		return;
 	}
 
@@ -2215,11 +2152,9 @@ dissect_fid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 	if (tvb_offset_exists(rh_tvb, rh_offset)) {
 		/* Short-circuit ? */
 		if (continue_dissecting == rh_only) {
-			if (tree)
-				proto_tree_add_text(tree, rh_tvb, rh_offset, -1,
-				    "BIU segment data");
+			proto_tree_add_item(tree, hf_sna_biu_segment_data, rh_tvb, rh_offset, -1, ENC_NA);
 			return;
-        	}
+		}
 
 		call_dissector(data_handle,
 		    tvb_new_subset_remaining(rh_tvb, rh_offset),
@@ -2235,10 +2170,45 @@ dissect_fid(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 static void
 dissect_rh(tvbuff_t *tvb, int offset, proto_tree *tree)
 {
-	proto_tree	*bf_tree;
-	proto_item	*bf_item;
 	gboolean	is_response;
-	guint8		rh_0, rh_1, rh_2;
+	guint8		rh_0;
+	static const int * sna_rh_fields[] = {
+		&hf_sna_rh_rri,
+		&hf_sna_rh_ru_category,
+		&hf_sna_rh_fi,
+		&hf_sna_rh_sdi,
+		&hf_sna_rh_bci,
+		&hf_sna_rh_eci,
+		NULL
+	};
+	static const int * sna_rh_1_req_fields[] = {
+		&hf_sna_rh_dr1,
+		&hf_sna_rh_lcci,
+		&hf_sna_rh_dr2,
+		&hf_sna_rh_eri,
+		&hf_sna_rh_rlwi,
+		&hf_sna_rh_qri,
+		&hf_sna_rh_pi,
+		NULL
+	};
+	static const int * sna_rh_1_rsp_fields[] = {
+		&hf_sna_rh_dr1,
+		&hf_sna_rh_dr2,
+		&hf_sna_rh_rti,
+		&hf_sna_rh_qri,
+		&hf_sna_rh_pi,
+		NULL
+	};
+	static const int * sna_rh_2_req_fields[] = {
+		&hf_sna_rh_bbi,
+		&hf_sna_rh_ebi,
+		&hf_sna_rh_cdi,
+		&hf_sna_rh_csi,
+		&hf_sna_rh_edi,
+		&hf_sna_rh_pdi,
+		&hf_sna_rh_cebi,
+		NULL
+	};
 
 	if (!tree)
 		return;
@@ -2247,68 +2217,26 @@ dissect_rh(tvbuff_t *tvb, int offset, proto_tree *tree)
 	rh_0 = tvb_get_guint8(tvb, offset);
 	is_response = (rh_0 & 0x80);
 
-	bf_item = proto_tree_add_uint(tree, hf_sna_rh_0, tvb, offset, 1, rh_0);
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_rh_0);
-
-	proto_tree_add_uint(bf_tree, hf_sna_rh_rri, tvb, offset, 1, rh_0);
-	proto_tree_add_uint(bf_tree, hf_sna_rh_ru_category, tvb, offset, 1,
-	    rh_0);
-	proto_tree_add_boolean(bf_tree, hf_sna_rh_fi, tvb, offset, 1, rh_0);
-	proto_tree_add_boolean(bf_tree, hf_sna_rh_sdi, tvb, offset, 1, rh_0);
-	proto_tree_add_boolean(bf_tree, hf_sna_rh_bci, tvb, offset, 1, rh_0);
-	proto_tree_add_boolean(bf_tree, hf_sna_rh_eci, tvb, offset, 1, rh_0);
-
+	proto_tree_add_bitmask(tree, tvb, offset, hf_sna_rh_0,
+			       ett_sna_rh_0, sna_rh_fields, ENC_BIG_ENDIAN);
 	offset += 1;
-	rh_1 = tvb_get_guint8(tvb, offset);
 
 	/* Create the bitfield tree for byte 1*/
-	bf_item = proto_tree_add_uint(tree, hf_sna_rh_1, tvb, offset, 1, rh_1);
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_rh_1);
-
-	proto_tree_add_boolean(bf_tree, hf_sna_rh_dr1, tvb,  offset, 1, rh_1);
-
-	if (!is_response)
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_lcci, tvb, offset, 1,
-		    rh_1);
-
-	proto_tree_add_boolean(bf_tree, hf_sna_rh_dr2, tvb,  offset, 1, rh_1);
-
 	if (is_response) {
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_rti, tvb,  offset, 1,
-		    rh_1);
+		proto_tree_add_bitmask(tree, tvb, offset, hf_sna_rh_1,
+			       ett_sna_rh_1, sna_rh_1_rsp_fields, ENC_BIG_ENDIAN);
 	} else {
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_eri, tvb,  offset, 1,
-		    rh_1);
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_rlwi, tvb, offset, 1,
-		    rh_1);
+		proto_tree_add_bitmask(tree, tvb, offset, hf_sna_rh_1,
+			       ett_sna_rh_1, sna_rh_1_req_fields, ENC_BIG_ENDIAN);
 	}
-
-	proto_tree_add_boolean(bf_tree, hf_sna_rh_qri, tvb, offset, 1, rh_1);
-	proto_tree_add_boolean(bf_tree, hf_sna_rh_pi, tvb,  offset, 1, rh_1);
-
 	offset += 1;
-	rh_2 = tvb_get_guint8(tvb, offset);
 
 	/* Create the bitfield tree for byte 2*/
-	bf_item = proto_tree_add_uint(tree, hf_sna_rh_2, tvb, offset, 1, rh_2);
-
 	if (!is_response) {
-		bf_tree = proto_item_add_subtree(bf_item, ett_sna_rh_2);
-
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_bbi, tvb,  offset, 1,
-		    rh_2);
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_ebi, tvb,  offset, 1,
-		    rh_2);
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_cdi, tvb,  offset, 1,
-		    rh_2);
-		proto_tree_add_uint(bf_tree, hf_sna_rh_csi, tvb,  offset, 1,
-		    rh_2);
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_edi, tvb,  offset, 1,
-		    rh_2);
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_pdi, tvb,  offset, 1,
-		    rh_2);
-		proto_tree_add_boolean(bf_tree, hf_sna_rh_cebi, tvb, offset, 1,
-		    rh_2);
+		proto_tree_add_bitmask(tree, tvb, offset, hf_sna_rh_2,
+			       ett_sna_rh_2, sna_rh_2_req_fields, ENC_BIG_ENDIAN);
+	} else {
+		proto_tree_add_item(tree, hf_sna_rh_2, tvb, offset, 1, ENC_BIG_ENDIAN);
 	}
 
 	/* XXX - check for sdi. If TRUE, the next 4 bytes will be sense data */
@@ -2326,24 +2254,21 @@ dissect_rh(tvbuff_t *tvb, int offset, proto_tree *tree)
 
 static void
 dissect_control_05hpr(tvbuff_t *tvb, proto_tree *tree, int hpr,
-    enum parse parse)
+		      enum parse parse)
 {
-	proto_tree	*bf_tree;
-	proto_item	*bf_item;
-	guint8		type;
 	guint16		offset, len, pad;
+	static const int * sna_control_05hpr_fields[] = {
+		&hf_sna_control_05_ptp,
+		NULL
+	};
 
 	if (!tree)
 		return;
 
-	type = tvb_get_guint8(tvb, 2);
+	proto_tree_add_bitmask(tree, tvb, 2, hf_sna_control_05_type,
+			       ett_sna_control_05hpr_type, sna_control_05hpr_fields, ENC_BIG_ENDIAN);
 
-	bf_item = proto_tree_add_uint(tree, hf_sna_control_05_type, tvb,
-	    2, 1, type);
-	bf_tree = proto_item_add_subtree(bf_item, ett_sna_control_05hpr_type);
-
-	proto_tree_add_boolean(bf_tree, hf_sna_control_05_ptp, tvb, 2, 1, type);
-	proto_tree_add_text(tree, tvb, 3, 1, "Reserved");
+	proto_tree_add_item(tree, hf_sna_reserved, tvb, 3, 1, ENC_NA);
 
 	offset = 4;
 
@@ -2356,12 +2281,9 @@ dissect_control_05hpr(tvbuff_t *tvb, proto_tree *tree, int hpr,
 		if (len) {
 			dissect_control(tvb, offset, len, tree, hpr, parse);
 			pad = (len+3) & 0xfffc;
-            if (pad > len) {
-                /* XXX - fix this, ensure tvb is large enough for pad */
-                tvb_ensure_bytes_exist(tvb, offset+len, pad-len);
-				proto_tree_add_text(tree, tvb, offset+len,
-				    pad-len, "Padding");
-            }
+			if (pad > len) {
+				proto_tree_add_item(tree, hf_sna_padding, tvb, offset+len, pad-len, ENC_NA);
+			}
 			offset += pad;
 		} else {
 			return;
@@ -2397,16 +2319,15 @@ dissect_control_0e(tvbuff_t *tvb, proto_tree *tree)
 
 static void
 dissect_control(tvbuff_t *parent_tvb, int offset, int control_len,
-    proto_tree *tree, int hpr, enum parse parse)
+		proto_tree *tree, int hpr, enum parse parse)
 {
 	tvbuff_t	*tvb;
 	gint		length, reported_length;
 	proto_tree	*sub_tree;
-	proto_item	*sub_item;
 	int		len, key;
 	gint		ett;
 
-	length = tvb_length_remaining(parent_tvb, offset);
+	length = tvb_captured_length_remaining(parent_tvb, offset);
 	reported_length = tvb_reported_length_remaining(parent_tvb, offset);
 	if (control_len < length)
 		length = control_len;
@@ -2433,14 +2354,13 @@ dissect_control(tvbuff_t *parent_tvb, int offset, int control_len,
 		if (key == 0x0e) ett = ett_sna_control_0e;
 
 		if (((key == 0) || (key == 3) || (key == 5)) && hpr)
-			sub_item = proto_tree_add_text(tree, tvb, 0, -1, "%s",
+			sub_tree = proto_tree_add_subtree(tree, tvb, 0, -1, ett, NULL,
 			    val_to_str_const(key, sna_control_hpr_vals,
 			    "Unknown Control Vector"));
 		else
-			sub_item = proto_tree_add_text(tree, tvb, 0, -1, "%s",
+			sub_tree = proto_tree_add_subtree(tree, tvb, 0, -1, ett, NULL,
 			    val_to_str_const(key, sna_control_vals,
 			    "Unknown Control Vector"));
-		sub_tree = proto_item_add_subtree(sub_item, ett);
 		if (parse == LT) {
 			proto_tree_add_uint(sub_tree, hf_sna_control_len,
 			    tvb, 0, 1, len);
@@ -2492,36 +2412,28 @@ dissect_control(tvbuff_t *parent_tvb, int offset, int control_len,
 
 static void
 dissect_gds(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
-    proto_tree *parent_tree)
+	    proto_tree *parent_tree)
 {
 	guint16		length;
-	guint16		type;
 	int		cont;
 	int		offset = 0;
-	proto_tree	*gds_tree;
-	proto_item	*gds_item;
+	static const int * flags[] = {
+		&hf_sna_gds_len,
+		&hf_sna_gds_cont,
+		&hf_sna_gds_type,
+		NULL
+	};
 
 	do {
 		length = tvb_get_ntohs(tvb, offset) & 0x7fff;
 		cont   = (tvb_get_ntohs(tvb, offset) & 0x8000) ? 1 : 0;
-		type   = tvb_get_ntohs(tvb, offset+2);
 
 		if (length < 2 ) /* escape sequence ? */
 			return;
-		if (tree) {
-			gds_item = proto_tree_add_item(tree, hf_sna_gds, tvb,
-			    offset, length, ENC_NA);
-			gds_tree = proto_item_add_subtree(gds_item,
-			    ett_sna_gds);
 
-			proto_tree_add_uint(gds_tree, hf_sna_gds_len, tvb,
-			    offset, 2, length);
-			proto_tree_add_boolean(gds_tree, hf_sna_gds_cont, tvb,
-			    offset, 2, cont);
-			proto_tree_add_uint(gds_tree, hf_sna_gds_type, tvb,
-			    offset+2, 2, type);
-		}
+		proto_tree_add_bitmask(tree, tvb, offset, hf_sna_gds, ett_sna_gds, flags, ENC_BIG_ENDIAN);
 		offset += length;
+
 	} while(cont);
 	if (tvb_offset_exists(tvb, offset))
 		call_dissector(data_handle,
@@ -2599,883 +2511,926 @@ sna_init(void)
 	    &addresses_reassembly_table_functions);
 }
 
+static void
+sna_cleanup(void)
+{
+	reassembly_table_destroy(&sna_reassembly_table);
+}
+
 
 void
 proto_register_sna(void)
 {
-        static hf_register_info hf[] = {
-                { &hf_sna_th,
-                { "Transmission Header", "sna.th", FT_NONE, BASE_NONE,
-		     NULL, 0x0, NULL, HFILL }},
+	static hf_register_info hf[] = {
+		{ &hf_sna_th,
+		  { "Transmission Header", "sna.th", FT_NONE, BASE_NONE,
+		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_0,
-                { "Transmission Header Byte 0", "sna.th.0", FT_UINT8, BASE_HEX,
+		{ &hf_sna_th_0,
+		  { "Transmission Header Byte 0", "sna.th.0", FT_UINT8, BASE_HEX,
 		    NULL, 0x0,
 		    "TH Byte 0", HFILL }},
 
-                { &hf_sna_th_fid,
-                { "Format Identifier", "sna.th.fid", FT_UINT8, BASE_HEX,
+		{ &hf_sna_th_fid,
+		  { "Format Identifier", "sna.th.fid", FT_UINT8, BASE_HEX,
 		    VALS(sna_th_fid_vals), 0xf0, NULL, HFILL }},
 
-                { &hf_sna_th_mpf,
-                { "Mapping Field", "sna.th.mpf", FT_UINT8,
+		{ &hf_sna_th_mpf,
+		  { "Mapping Field", "sna.th.mpf", FT_UINT8,
 		    BASE_DEC, VALS(sna_th_mpf_vals), 0x0c, NULL, HFILL }},
 
 		{ &hf_sna_th_odai,
-		{ "ODAI Assignment Indicator", "sna.th.odai", FT_UINT8,
+		  { "ODAI Assignment Indicator", "sna.th.odai", FT_UINT8,
 		    BASE_DEC, NULL, 0x02, NULL, HFILL }},
 
-                { &hf_sna_th_efi,
-                { "Expedited Flow Indicator", "sna.th.efi", FT_UINT8,
+		{ &hf_sna_th_efi,
+		  { "Expedited Flow Indicator", "sna.th.efi", FT_UINT8,
 		    BASE_DEC, VALS(sna_th_efi_vals), 0x01, NULL, HFILL }},
 
-                { &hf_sna_th_daf,
-                { "Destination Address Field", "sna.th.daf", FT_UINT16,
+		{ &hf_sna_th_daf,
+		  { "Destination Address Field", "sna.th.daf", FT_UINT16,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_oaf,
-                { "Origin Address Field", "sna.th.oaf", FT_UINT16, BASE_HEX,
+		{ &hf_sna_th_oaf,
+		  { "Origin Address Field", "sna.th.oaf", FT_UINT16, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_snf,
-                { "Sequence Number Field", "sna.th.snf", FT_UINT16, BASE_DEC,
+		{ &hf_sna_th_snf,
+		  { "Sequence Number Field", "sna.th.snf", FT_UINT16, BASE_DEC,
 		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_dcf,
-                { "Data Count Field", "sna.th.dcf", FT_UINT16, BASE_DEC,
+		{ &hf_sna_th_dcf,
+		  { "Data Count Field", "sna.th.dcf", FT_UINT16, BASE_DEC,
 		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_lsid,
-                { "Local Session Identification", "sna.th.lsid", FT_UINT8,
+		{ &hf_sna_th_lsid,
+		  { "Local Session Identification", "sna.th.lsid", FT_UINT8,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_tg_sweep,
-                { "Transmission Group Sweep", "sna.th.tg_sweep", FT_UINT8,
+		{ &hf_sna_th_tg_sweep,
+		  { "Transmission Group Sweep", "sna.th.tg_sweep", FT_UINT8,
 		    BASE_DEC, VALS(sna_th_tg_sweep_vals), 0x08, NULL, HFILL }},
 
-                { &hf_sna_th_er_vr_supp_ind,
-                { "ER and VR Support Indicator", "sna.th.er_vr_supp_ind",
+		{ &hf_sna_th_er_vr_supp_ind,
+		  { "ER and VR Support Indicator", "sna.th.er_vr_supp_ind",
 		    FT_UINT8, BASE_DEC, VALS(sna_th_er_vr_supp_ind_vals),
 		    0x04, NULL, HFILL }},
 
-                { &hf_sna_th_vr_pac_cnt_ind,
-                { "Virtual Route Pacing Count Indicator",
+		{ &hf_sna_th_vr_pac_cnt_ind,
+		  { "Virtual Route Pacing Count Indicator",
 		    "sna.th.vr_pac_cnt_ind", FT_UINT8, BASE_DEC,
 		    VALS(sna_th_vr_pac_cnt_ind_vals), 0x02, NULL, HFILL }},
 
-                { &hf_sna_th_ntwk_prty,
-                { "Network Priority", "sna.th.ntwk_prty", FT_UINT8, BASE_DEC,
+		{ &hf_sna_th_ntwk_prty,
+		  { "Network Priority", "sna.th.ntwk_prty", FT_UINT8, BASE_DEC,
 		    VALS(sna_th_ntwk_prty_vals), 0x01, NULL, HFILL }},
 
-                { &hf_sna_th_tgsf,
-                { "Transmission Group Segmenting Field", "sna.th.tgsf",
+		{ &hf_sna_th_tgsf,
+		  { "Transmission Group Segmenting Field", "sna.th.tgsf",
 		    FT_UINT8, BASE_HEX, VALS(sna_th_tgsf_vals), 0xc0,
 		    NULL, HFILL }},
 
-                { &hf_sna_th_mft,
-                { "MPR FID4 Type", "sna.th.mft", FT_BOOLEAN, 8,
+		{ &hf_sna_th_mft,
+		  { "MPR FID4 Type", "sna.th.mft", FT_BOOLEAN, 8,
 		    NULL, 0x04, NULL, HFILL }},
 
-                { &hf_sna_th_piubf,
-                { "PIU Blocking Field", "sna.th.piubf", FT_UINT8, BASE_HEX,
+		{ &hf_sna_th_piubf,
+		  { "PIU Blocking Field", "sna.th.piubf", FT_UINT8, BASE_HEX,
 		    VALS(sna_th_piubf_vals), 0x03, NULL, HFILL }},
 
-                { &hf_sna_th_iern,
-                { "Initial Explicit Route Number", "sna.th.iern", FT_UINT8,
+		{ &hf_sna_th_iern,
+		  { "Initial Explicit Route Number", "sna.th.iern", FT_UINT8,
 		    BASE_DEC, NULL, 0xf0, NULL, HFILL }},
 
-                { &hf_sna_th_nlpoi,
-                { "NLP Offset Indicator", "sna.th.nlpoi", FT_UINT8, BASE_DEC,
+		{ &hf_sna_th_nlpoi,
+		  { "NLP Offset Indicator", "sna.th.nlpoi", FT_UINT8, BASE_DEC,
 		    VALS(sna_th_nlpoi_vals), 0x80, NULL, HFILL }},
 
-                { &hf_sna_th_nlp_cp,
-                { "NLP Count or Padding", "sna.th.nlp_cp", FT_UINT8, BASE_DEC,
+		{ &hf_sna_th_nlp_cp,
+		  { "NLP Count or Padding", "sna.th.nlp_cp", FT_UINT8, BASE_DEC,
 		    NULL, 0x70, NULL, HFILL }},
 
-                { &hf_sna_th_ern,
-                { "Explicit Route Number", "sna.th.ern", FT_UINT8, BASE_DEC,
+		{ &hf_sna_th_ern,
+		  { "Explicit Route Number", "sna.th.ern", FT_UINT8, BASE_DEC,
 		    NULL, 0x0f, NULL, HFILL }},
 
-                { &hf_sna_th_vrn,
-                { "Virtual Route Number", "sna.th.vrn", FT_UINT8, BASE_DEC,
+		{ &hf_sna_th_vrn,
+		  { "Virtual Route Number", "sna.th.vrn", FT_UINT8, BASE_DEC,
 		    NULL, 0xf0, NULL, HFILL }},
 
-                { &hf_sna_th_tpf,
-                { "Transmission Priority Field", "sna.th.tpf", FT_UINT8,
+		{ &hf_sna_th_tpf,
+		  { "Transmission Priority Field", "sna.th.tpf", FT_UINT8,
 		    BASE_HEX, VALS(sna_th_tpf_vals), 0x03, NULL, HFILL }},
 
-                { &hf_sna_th_vr_cwi,
-                { "Virtual Route Change Window Indicator", "sna.th.vr_cwi",
+		{ &hf_sna_th_vr_cwi,
+		  { "Virtual Route Change Window Indicator", "sna.th.vr_cwi",
 		    FT_UINT16, BASE_DEC, VALS(sna_th_vr_cwi_vals), 0x8000,
 		    "Change Window Indicator", HFILL }},
 
-                { &hf_sna_th_tg_nonfifo_ind,
-                { "Transmission Group Non-FIFO Indicator",
+		{ &hf_sna_th_tg_nonfifo_ind,
+		  { "Transmission Group Non-FIFO Indicator",
 		    "sna.th.tg_nonfifo_ind", FT_BOOLEAN, 16,
 		    TFS(&sna_th_tg_nonfifo_ind_truth), 0x4000, NULL, HFILL }},
 
-                { &hf_sna_th_vr_sqti,
-                { "Virtual Route Sequence and Type Indicator", "sna.th.vr_sqti",
+		{ &hf_sna_th_vr_sqti,
+		  { "Virtual Route Sequence and Type Indicator", "sna.th.vr_sqti",
 		    FT_UINT16, BASE_HEX, VALS(sna_th_vr_sqti_vals), 0x3000,
 		    "Route Sequence and Type", HFILL }},
 
-                { &hf_sna_th_tg_snf,
-                { "Transmission Group Sequence Number Field", "sna.th.tg_snf",
+		{ &hf_sna_th_tg_snf,
+		  { "Transmission Group Sequence Number Field", "sna.th.tg_snf",
 		    FT_UINT16, BASE_DEC, NULL, 0x0fff, NULL, HFILL }},
 
-                { &hf_sna_th_vrprq,
-                { "Virtual Route Pacing Request", "sna.th.vrprq", FT_BOOLEAN,
+		{ &hf_sna_th_vrprq,
+		  { "Virtual Route Pacing Request", "sna.th.vrprq", FT_BOOLEAN,
 		    16, TFS(&sna_th_vrprq_truth), 0x8000, NULL, HFILL }},
 
-                { &hf_sna_th_vrprs,
-                { "Virtual Route Pacing Response", "sna.th.vrprs", FT_BOOLEAN,
+		{ &hf_sna_th_vrprs,
+		  { "Virtual Route Pacing Response", "sna.th.vrprs", FT_BOOLEAN,
 		    16, TFS(&sna_th_vrprs_truth), 0x4000, NULL, HFILL }},
 
-                { &hf_sna_th_vr_cwri,
-                { "Virtual Route Change Window Reply Indicator",
+		{ &hf_sna_th_vr_cwri,
+		  { "Virtual Route Change Window Reply Indicator",
 		    "sna.th.vr_cwri", FT_UINT16, BASE_DEC,
 		    VALS(sna_th_vr_cwri_vals), 0x2000, NULL, HFILL }},
 
-                { &hf_sna_th_vr_rwi,
-                { "Virtual Route Reset Window Indicator", "sna.th.vr_rwi",
+		{ &hf_sna_th_vr_rwi,
+		  { "Virtual Route Reset Window Indicator", "sna.th.vr_rwi",
 		    FT_BOOLEAN, 16, TFS(&sna_th_vr_rwi_truth), 0x1000,
 		    NULL, HFILL }},
 
-                { &hf_sna_th_vr_snf_send,
-                { "Virtual Route Send Sequence Number Field",
+		{ &hf_sna_th_vr_snf_send,
+		  { "Virtual Route Send Sequence Number Field",
 		    "sna.th.vr_snf_send", FT_UINT16, BASE_DEC, NULL, 0x0fff,
 		    "Send Sequence Number Field", HFILL }},
 
-                { &hf_sna_th_dsaf,
-                { "Destination Subarea Address Field", "sna.th.dsaf",
+		{ &hf_sna_th_dsaf,
+		  { "Destination Subarea Address Field", "sna.th.dsaf",
 		    FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_osaf,
-                { "Origin Subarea Address Field", "sna.th.osaf", FT_UINT32,
+		{ &hf_sna_th_osaf,
+		  { "Origin Subarea Address Field", "sna.th.osaf", FT_UINT32,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_snai,
-                { "SNA Indicator", "sna.th.snai", FT_BOOLEAN, 8, NULL, 0x10,
+		{ &hf_sna_th_snai,
+		  { "SNA Indicator", "sna.th.snai", FT_BOOLEAN, 8, NULL, 0x10,
 		    "Used to identify whether the PIU originated or is destined for an SNA or non-SNA device.", HFILL }},
 
-                { &hf_sna_th_def,
-                { "Destination Element Field", "sna.th.def", FT_UINT16,
+		{ &hf_sna_th_def,
+		  { "Destination Element Field", "sna.th.def", FT_UINT16,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_oef,
-                { "Origin Element Field", "sna.th.oef", FT_UINT16, BASE_HEX,
+		{ &hf_sna_th_oef,
+		  { "Origin Element Field", "sna.th.oef", FT_UINT16, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_sa,
-                { "Session Address", "sna.th.sa", FT_BYTES, BASE_NONE,
+		{ &hf_sna_th_sa,
+		  { "Session Address", "sna.th.sa", FT_BYTES, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_cmd_fmt,
-                { "Command Format", "sna.th.cmd_fmt", FT_UINT8, BASE_HEX,
+		{ &hf_sna_th_cmd_fmt,
+		  { "Command Format", "sna.th.cmd_fmt", FT_UINT8, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_cmd_type,
-                { "Command Type", "sna.th.cmd_type", FT_UINT8, BASE_HEX,
+		{ &hf_sna_th_cmd_type,
+		  { "Command Type", "sna.th.cmd_type", FT_UINT8, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_th_cmd_sn,
-                { "Command Sequence Number", "sna.th.cmd_sn", FT_UINT16,
+		{ &hf_sna_th_cmd_sn,
+		  { "Command Sequence Number", "sna.th.cmd_sn", FT_UINT16,
 		    BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_nhdr,
-                { "Network Layer Packet Header", "sna.nlp.nhdr", FT_NONE,
-		    BASE_NONE, NULL, 0x0, "NHDR", HFILL }},
-
-                { &hf_sna_nlp_nhdr_0,
-                { "Network Layer Packet Header Byte 0",	"sna.nlp.nhdr.0",
-		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
-
-                { &hf_sna_nlp_nhdr_1,
-                { "Network Layer Packet Header Byte 1", "sna.nlp.nhdr.1",
-		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
-
-                { &hf_sna_nlp_sm,
-                { "Switching Mode Field", "sna.nlp.nhdr.sm", FT_UINT8,
-		    BASE_HEX, VALS(sna_nlp_sm_vals), 0xe0, NULL, HFILL }},
-
-                { &hf_sna_nlp_tpf,
-                { "Transmission Priority Field", "sna.nlp.nhdr.tpf", FT_UINT8,
-		    BASE_HEX, VALS(sna_th_tpf_vals), 0x06, NULL, HFILL }},
-
-                { &hf_sna_nlp_ft,
-                { "Function Type", "sna.nlp.nhdr.ft", FT_UINT8, BASE_HEX,
-		    VALS(sna_nlp_ft_vals), 0xF0, NULL, HFILL }},
-
-                { &hf_sna_nlp_tspi,
-                { "Time Sensitive Packet Indicator", "sna.nlp.nhdr.tspi",
-		    FT_BOOLEAN, 8, TFS(&sna_nlp_tspi_truth), 0x08, NULL, HFILL }},
-
-                { &hf_sna_nlp_slowdn1,
-                { "Slowdown 1", "sna.nlp.nhdr.slowdn1", FT_BOOLEAN, 8,
-		    TFS(&sna_nlp_slowdn1_truth), 0x04, NULL, HFILL }},
-
-                { &hf_sna_nlp_slowdn2,
-                { "Slowdown 2", "sna.nlp.nhdr.slowdn2", FT_BOOLEAN, 8,
-		    TFS(&sna_nlp_slowdn2_truth), 0x02, NULL, HFILL }},
-
-                { &hf_sna_nlp_fra,
-                { "Function Routing Address Entry", "sna.nlp.nhdr.fra",
-		    FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
-
-                { &hf_sna_nlp_anr,
-                { "Automatic Network Routing Entry", "sna.nlp.nhdr.anr",
-		    FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
-
-                { &hf_sna_nlp_frh,
-                { "Transmission Priority Field", "sna.nlp.frh", FT_UINT8,
-		    BASE_HEX, VALS(sna_nlp_frh_vals), 0, NULL, HFILL }},
-
-                { &hf_sna_nlp_thdr,
-                { "RTP Transport Header", "sna.nlp.thdr", FT_NONE, BASE_NONE,
-		    NULL, 0x0, "THDR", HFILL }},
-
-                { &hf_sna_nlp_tcid,
-                { "Transport Connection Identifier", "sna.nlp.thdr.tcid",
-		    FT_BYTES, BASE_NONE, NULL, 0x0, "TCID", HFILL }},
-
-                { &hf_sna_nlp_thdr_8,
-                { "RTP Transport Packet Header Byte 8", "sna.nlp.thdr.8",
-		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
-
-                { &hf_sna_nlp_setupi,
-                { "Setup Indicator", "sna.nlp.thdr.setupi", FT_BOOLEAN, 8,
-		    TFS(&sna_nlp_setupi_truth), 0x40, NULL, HFILL }},
-
-                { &hf_sna_nlp_somi,
-                { "Start Of Message Indicator", "sna.nlp.thdr.somi",
-		    FT_BOOLEAN, 8, TFS(&sna_nlp_somi_truth), 0x20, NULL, HFILL }},
-
-                { &hf_sna_nlp_eomi,
-                { "End Of Message Indicator", "sna.nlp.thdr.eomi", FT_BOOLEAN,
-		    8, TFS(&sna_nlp_eomi_truth), 0x10, NULL, HFILL }},
-
-                { &hf_sna_nlp_sri,
-                { "Session Request Indicator", "sna.nlp.thdr.sri", FT_BOOLEAN,
-		    8, TFS(&sna_nlp_sri_truth), 0x08, NULL, HFILL }},
-
-                { &hf_sna_nlp_rasapi,
-                { "Reply ASAP Indicator", "sna.nlp.thdr.rasapi", FT_BOOLEAN,
-		    8, TFS(&sna_nlp_rasapi_truth), 0x04, NULL, HFILL }},
-
-                { &hf_sna_nlp_retryi,
-                { "Retry Indicator", "sna.nlp.thdr.retryi", FT_BOOLEAN,
-		    8, TFS(&sna_nlp_retryi_truth), 0x02, NULL, HFILL }},
-
-                { &hf_sna_nlp_thdr_9,
-                { "RTP Transport Packet Header Byte 9", "sna.nlp.thdr.9",
-		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
-
-                { &hf_sna_nlp_lmi,
-                { "Last Message Indicator", "sna.nlp.thdr.lmi", FT_BOOLEAN,
-		    8, TFS(&sna_nlp_lmi_truth), 0x80, NULL, HFILL }},
-
-                { &hf_sna_nlp_cqfi,
-                { "Connection Qualifier Field Indicator", "sna.nlp.thdr.cqfi",
-		    FT_BOOLEAN, 8, TFS(&sna_nlp_cqfi_truth), 0x08, NULL, HFILL }},
-
-                { &hf_sna_nlp_osi,
-                { "Optional Segments Present Indicator", "sna.nlp.thdr.osi",
-		    FT_BOOLEAN, 8, TFS(&sna_nlp_osi_truth), 0x04, NULL, HFILL }},
-
-                { &hf_sna_nlp_offset,
-                { "Data Offset/4", "sna.nlp.thdr.offset", FT_UINT16, BASE_HEX,
-		    NULL, 0x0, "Data Offset in Words", HFILL }},
-
-                { &hf_sna_nlp_dlf,
-                { "Data Length Field", "sna.nlp.thdr.dlf", FT_UINT32, BASE_HEX,
-		    NULL, 0x0, NULL, HFILL }},
-
-                { &hf_sna_nlp_bsn,
-                { "Byte Sequence Number", "sna.nlp.thdr.bsn", FT_UINT32,
+		{ &hf_sna_th_byte1,
+		  { "Transmission Header Bytes 1", "sna.th.byte1", FT_UINT8,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_len,
-                { "Optional Segment Length/4", "sna.nlp.thdr.optional.len",
+		{ &hf_sna_th_byte2,
+		  { "Transmission Header Bytes 2", "sna.th.byte2", FT_UINT8,
+		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_th_byte3,
+		  { "Transmission Header Bytes 3", "sna.th.byte3", FT_UINT8,
+		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_th_byte4,
+		  { "Transmission Header Bytes 4-5", "sna.th.byte4", FT_UINT16,
+		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_th_byte6,
+		  { "Transmission Header Bytes 6-7", "sna.th.byte6", FT_UINT16,
+		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_th_byte16,
+		  { "Transmission Header Bytes 16", "sna.th.byte16", FT_UINT8,
+		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_nhdr,
+		  { "Network Layer Packet Header", "sna.nlp.nhdr", FT_NONE,
+		    BASE_NONE, NULL, 0x0, "NHDR", HFILL }},
+
+		{ &hf_sna_nlp_nhdr_0,
+		  { "Network Layer Packet Header Byte 0",	"sna.nlp.nhdr.0",
+		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_nhdr_1,
+		  { "Network Layer Packet Header Byte 1", "sna.nlp.nhdr.1",
+		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_sm,
+		  { "Switching Mode Field", "sna.nlp.nhdr.sm", FT_UINT8,
+		    BASE_HEX, VALS(sna_nlp_sm_vals), 0xe0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_tpf,
+		  { "Transmission Priority Field", "sna.nlp.nhdr.tpf", FT_UINT8,
+		    BASE_HEX, VALS(sna_th_tpf_vals), 0x06, NULL, HFILL }},
+
+		{ &hf_sna_nlp_ft,
+		  { "Function Type", "sna.nlp.nhdr.ft", FT_UINT8, BASE_HEX,
+		    VALS(sna_nlp_ft_vals), 0xF0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_tspi,
+		  { "Time Sensitive Packet Indicator", "sna.nlp.nhdr.tspi",
+		    FT_BOOLEAN, 8, TFS(&sna_nlp_tspi_truth), 0x08, NULL, HFILL }},
+
+		{ &hf_sna_nlp_slowdn1,
+		  { "Slowdown 1", "sna.nlp.nhdr.slowdn1", FT_BOOLEAN, 8,
+		    TFS(&sna_nlp_slowdn1_truth), 0x04, NULL, HFILL }},
+
+		{ &hf_sna_nlp_slowdn2,
+		  { "Slowdown 2", "sna.nlp.nhdr.slowdn2", FT_BOOLEAN, 8,
+		    TFS(&sna_nlp_slowdn2_truth), 0x02, NULL, HFILL }},
+
+		{ &hf_sna_nlp_fra,
+		  { "Function Routing Address Entry", "sna.nlp.nhdr.fra",
+		    FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_anr,
+		  { "Automatic Network Routing Entry", "sna.nlp.nhdr.anr",
+		    FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_frh,
+		  { "Transmission Priority Field", "sna.nlp.frh", FT_UINT8,
+		    BASE_HEX, VALS(sna_nlp_frh_vals), 0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_thdr,
+		  { "RTP Transport Header", "sna.nlp.thdr", FT_NONE, BASE_NONE,
+		    NULL, 0x0, "THDR", HFILL }},
+
+		{ &hf_sna_nlp_tcid,
+		  { "Transport Connection Identifier", "sna.nlp.thdr.tcid",
+		    FT_BYTES, BASE_NONE, NULL, 0x0, "TCID", HFILL }},
+
+		{ &hf_sna_nlp_thdr_8,
+		  { "RTP Transport Packet Header Byte 8", "sna.nlp.thdr.8",
+		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_setupi,
+		  { "Setup Indicator", "sna.nlp.thdr.setupi", FT_BOOLEAN, 8,
+		    TFS(&sna_nlp_setupi_truth), 0x40, NULL, HFILL }},
+
+		{ &hf_sna_nlp_somi,
+		  { "Start Of Message Indicator", "sna.nlp.thdr.somi",
+		    FT_BOOLEAN, 8, TFS(&sna_nlp_somi_truth), 0x20, NULL, HFILL }},
+
+		{ &hf_sna_nlp_eomi,
+		  { "End Of Message Indicator", "sna.nlp.thdr.eomi", FT_BOOLEAN,
+		    8, TFS(&sna_nlp_eomi_truth), 0x10, NULL, HFILL }},
+
+		{ &hf_sna_nlp_sri,
+		  { "Session Request Indicator", "sna.nlp.thdr.sri", FT_BOOLEAN,
+		    8, TFS(&sna_nlp_sri_truth), 0x08, NULL, HFILL }},
+
+		{ &hf_sna_nlp_rasapi,
+		  { "Reply ASAP Indicator", "sna.nlp.thdr.rasapi", FT_BOOLEAN,
+		    8, TFS(&sna_nlp_rasapi_truth), 0x04, NULL, HFILL }},
+
+		{ &hf_sna_nlp_retryi,
+		  { "Retry Indicator", "sna.nlp.thdr.retryi", FT_BOOLEAN,
+		    8, TFS(&sna_nlp_retryi_truth), 0x02, NULL, HFILL }},
+
+		{ &hf_sna_nlp_thdr_9,
+		  { "RTP Transport Packet Header Byte 9", "sna.nlp.thdr.9",
+		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_lmi,
+		  { "Last Message Indicator", "sna.nlp.thdr.lmi", FT_BOOLEAN,
+		    8, TFS(&sna_nlp_lmi_truth), 0x80, NULL, HFILL }},
+
+		{ &hf_sna_nlp_cqfi,
+		  { "Connection Qualifier Field Indicator", "sna.nlp.thdr.cqfi",
+		    FT_BOOLEAN, 8, TFS(&sna_nlp_cqfi_truth), 0x08, NULL, HFILL }},
+
+		{ &hf_sna_nlp_osi,
+		  { "Optional Segments Present Indicator", "sna.nlp.thdr.osi",
+		    FT_BOOLEAN, 8, TFS(&sna_nlp_osi_truth), 0x04, NULL, HFILL }},
+
+		{ &hf_sna_nlp_offset,
+		  { "Data Offset/4", "sna.nlp.thdr.offset", FT_UINT16, BASE_HEX,
+		    NULL, 0x0, "Data Offset in Words", HFILL }},
+
+		{ &hf_sna_nlp_dlf,
+		  { "Data Length Field", "sna.nlp.thdr.dlf", FT_UINT32, BASE_HEX,
+		    NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_bsn,
+		  { "Byte Sequence Number", "sna.nlp.thdr.bsn", FT_UINT32,
+		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
+
+		{ &hf_sna_nlp_opti_len,
+		  { "Optional Segment Length/4", "sna.nlp.thdr.optional.len",
 		    FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_type,
-                { "Optional Segment Type", "sna.nlp.thdr.optional.type",
+		{ &hf_sna_nlp_opti_type,
+		  { "Optional Segment Type", "sna.nlp.thdr.optional.type",
 		    FT_UINT8, BASE_HEX, VALS(sna_nlp_opti_vals), 0x0, NULL,
 		    HFILL }},
 
-                { &hf_sna_nlp_opti_0d_version,
-                { "Version", "sna.nlp.thdr.optional.0d.version",
+		{ &hf_sna_nlp_opti_0d_version,
+		  { "Version", "sna.nlp.thdr.optional.0d.version",
 		    FT_UINT16, BASE_HEX, VALS(sna_nlp_opti_0d_version_vals),
 		    0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0d_4,
-                { "Connection Setup Byte 4", "sna.nlp.thdr.optional.0e.4",
+		{ &hf_sna_nlp_opti_0d_4,
+		  { "Connection Setup Byte 4", "sna.nlp.thdr.optional.0e.4",
 		    FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0d_target,
-                { "Target Resource ID Present",
+		{ &hf_sna_nlp_opti_0d_target,
+		  { "Target Resource ID Present",
 		    "sna.nlp.thdr.optional.0d.target",
 		    FT_BOOLEAN, 8, NULL, 0x80, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0d_arb,
-                { "ARB Flow Control", "sna.nlp.thdr.optional.0d.arb",
+		{ &hf_sna_nlp_opti_0d_arb,
+		  { "ARB Flow Control", "sna.nlp.thdr.optional.0d.arb",
 		    FT_BOOLEAN, 8, NULL, 0x10, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0d_reliable,
-                { "Reliable Connection", "sna.nlp.thdr.optional.0d.reliable",
+		{ &hf_sna_nlp_opti_0d_reliable,
+		  { "Reliable Connection", "sna.nlp.thdr.optional.0d.reliable",
 		    FT_BOOLEAN, 8, NULL, 0x08, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0d_dedicated,
-                { "Dedicated RTP Connection",
+		{ &hf_sna_nlp_opti_0d_dedicated,
+		  { "Dedicated RTP Connection",
 		    "sna.nlp.thdr.optional.0d.dedicated",
 		    FT_BOOLEAN, 8, NULL, 0x04, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0e_stat,
-                { "Status", "sna.nlp.thdr.optional.0e.stat",
+		{ &hf_sna_nlp_opti_0e_stat,
+		  { "Status", "sna.nlp.thdr.optional.0e.stat",
 		    FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0e_gap,
-                { "Gap Detected", "sna.nlp.thdr.optional.0e.gap",
+		{ &hf_sna_nlp_opti_0e_gap,
+		  { "Gap Detected", "sna.nlp.thdr.optional.0e.gap",
 		    FT_BOOLEAN, 8, NULL, 0x80, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0e_idle,
-                { "RTP Idle Packet", "sna.nlp.thdr.optional.0e.idle",
+		{ &hf_sna_nlp_opti_0e_idle,
+		  { "RTP Idle Packet", "sna.nlp.thdr.optional.0e.idle",
 		    FT_BOOLEAN, 8, NULL, 0x40, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0e_nabsp,
-                { "Number Of ABSP", "sna.nlp.thdr.optional.0e.nabsp",
+		{ &hf_sna_nlp_opti_0e_nabsp,
+		  { "Number Of ABSP", "sna.nlp.thdr.optional.0e.nabsp",
 		    FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0e_sync,
-                { "Status Report Number", "sna.nlp.thdr.optional.0e.sync",
+		{ &hf_sna_nlp_opti_0e_sync,
+		  { "Status Report Number", "sna.nlp.thdr.optional.0e.sync",
 		    FT_UINT16, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0e_echo,
-                { "Status Acknowledge Number", "sna.nlp.thdr.optional.0e.echo",
+		{ &hf_sna_nlp_opti_0e_echo,
+		  { "Status Acknowledge Number", "sna.nlp.thdr.optional.0e.echo",
 		    FT_UINT16, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_0e_rseq,
-                { "Received Sequence Number", "sna.nlp.thdr.optional.0e.rseq",
+		{ &hf_sna_nlp_opti_0e_rseq,
+		  { "Received Sequence Number", "sna.nlp.thdr.optional.0e.rseq",
 		    FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
 #if 0
-                { &hf_sna_nlp_opti_0e_abspbeg,
-                { "ABSP Begin", "sna.nlp.thdr.optional.0e.abspbeg",
+		{ &hf_sna_nlp_opti_0e_abspbeg,
+		  { "ABSP Begin", "sna.nlp.thdr.optional.0e.abspbeg",
 		    FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 #endif
 
 #if 0
-                { &hf_sna_nlp_opti_0e_abspend,
-                { "ABSP End", "sna.nlp.thdr.optional.0e.abspend",
+		{ &hf_sna_nlp_opti_0e_abspend,
+		  { "ABSP End", "sna.nlp.thdr.optional.0e.abspend",
 		    FT_UINT32, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 #endif
 
-                { &hf_sna_nlp_opti_0f_bits,
-                { "Client Bits", "sna.nlp.thdr.optional.0f.bits",
+		{ &hf_sna_nlp_opti_0f_bits,
+		  { "Client Bits", "sna.nlp.thdr.optional.0f.bits",
 		    FT_UINT8, BASE_HEX, VALS(sna_nlp_opti_0f_bits_vals),
 		    0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_10_tcid,
-                { "Transport Connection Identifier",
+		{ &hf_sna_nlp_opti_10_tcid,
+		  { "Transport Connection Identifier",
 		    "sna.nlp.thdr.optional.10.tcid",
 		    FT_BYTES, BASE_NONE, NULL, 0x0, "TCID", HFILL }},
 
-                { &hf_sna_nlp_opti_12_sense,
-                { "Sense Data", "sna.nlp.thdr.optional.12.sense",
+		{ &hf_sna_nlp_opti_12_sense,
+		  { "Sense Data", "sna.nlp.thdr.optional.12.sense",
 		    FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_len,
-                { "Length", "sna.nlp.thdr.optional.14.si.len",
+		{ &hf_sna_nlp_opti_14_si_len,
+		  { "Length", "sna.nlp.thdr.optional.14.si.len",
 		    FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_key,
-                { "Key", "sna.nlp.thdr.optional.14.si.key",
+		{ &hf_sna_nlp_opti_14_si_key,
+		  { "Key", "sna.nlp.thdr.optional.14.si.key",
 		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_2,
-                { "Switching Information Byte 2",
+		{ &hf_sna_nlp_opti_14_si_2,
+		  { "Switching Information Byte 2",
 		    "sna.nlp.thdr.optional.14.si.2",
 		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_refifo,
-                { "Resequencing (REFIFO) Indicator",
+		{ &hf_sna_nlp_opti_14_si_refifo,
+		  { "Resequencing (REFIFO) Indicator",
 		    "sna.nlp.thdr.optional.14.si.refifo",
 		    FT_BOOLEAN, 8, NULL, 0x80, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_mobility,
-                { "Mobility Indicator",
+		{ &hf_sna_nlp_opti_14_si_mobility,
+		  { "Mobility Indicator",
 		    "sna.nlp.thdr.optional.14.si.mobility",
 		    FT_BOOLEAN, 8, NULL, 0x40, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_dirsearch,
-                { "Directory Search Required on Path Switch Indicator",
+		{ &hf_sna_nlp_opti_14_si_dirsearch,
+		  { "Directory Search Required on Path Switch Indicator",
 		    "sna.nlp.thdr.optional.14.si.dirsearch",
 		    FT_BOOLEAN, 8, NULL, 0x20, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_limitres,
-                { "Limited Resource Link Indicator",
+		{ &hf_sna_nlp_opti_14_si_limitres,
+		  { "Limited Resource Link Indicator",
 		    "sna.nlp.thdr.optional.14.si.limitres",
 		    FT_BOOLEAN, 8, NULL, 0x10, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_ncescope,
-                { "NCE Scope Indicator",
+		{ &hf_sna_nlp_opti_14_si_ncescope,
+		  { "NCE Scope Indicator",
 		    "sna.nlp.thdr.optional.14.si.ncescope",
 		    FT_BOOLEAN, 8, NULL, 0x08, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_mnpsrscv,
-                { "MNPS RSCV Retention Indicator",
+		{ &hf_sna_nlp_opti_14_si_mnpsrscv,
+		  { "MNPS RSCV Retention Indicator",
 		    "sna.nlp.thdr.optional.14.si.mnpsrscv",
 		    FT_BOOLEAN, 8, NULL, 0x04, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_maxpsize,
-                { "Maximum Packet Size On Return Path",
+		{ &hf_sna_nlp_opti_14_si_maxpsize,
+		  { "Maximum Packet Size On Return Path",
 		    "sna.nlp.thdr.optional.14.si.maxpsize",
 		    FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_switch,
-                { "Path Switch Time", "sna.nlp.thdr.optional.14.si.switch",
+		{ &hf_sna_nlp_opti_14_si_switch,
+		  { "Path Switch Time", "sna.nlp.thdr.optional.14.si.switch",
 		    FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_si_alive,
-                { "RTP Alive Timer", "sna.nlp.thdr.optional.14.si.alive",
+		{ &hf_sna_nlp_opti_14_si_alive,
+		  { "RTP Alive Timer", "sna.nlp.thdr.optional.14.si.alive",
 		    FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_rr_len,
-                { "Length", "sna.nlp.thdr.optional.14.rr.len",
+		{ &hf_sna_nlp_opti_14_rr_len,
+		  { "Length", "sna.nlp.thdr.optional.14.rr.len",
 		    FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_rr_key,
-                { "Key", "sna.nlp.thdr.optional.14.rr.key",
+		{ &hf_sna_nlp_opti_14_rr_key,
+		  { "Key", "sna.nlp.thdr.optional.14.rr.key",
 		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_rr_2,
-                { "Return Route TG Descriptor Byte 2",
+		{ &hf_sna_nlp_opti_14_rr_2,
+		  { "Return Route TG Descriptor Byte 2",
 		    "sna.nlp.thdr.optional.14.rr.2",
 		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_rr_bfe,
-                { "BF Entry Indicator",
+		{ &hf_sna_nlp_opti_14_rr_bfe,
+		  { "BF Entry Indicator",
 		    "sna.nlp.thdr.optional.14.rr.bfe",
 		    FT_BOOLEAN, 8, NULL, 0x80, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_14_rr_num,
-                { "Number Of TG Control Vectors",
+		{ &hf_sna_nlp_opti_14_rr_num,
+		  { "Number Of TG Control Vectors",
 		    "sna.nlp.thdr.optional.14.rr.num",
 		    FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_2,
-                { "Adaptive Rate Based Segment Byte 2",
+		{ &hf_sna_nlp_opti_22_2,
+		  { "Adaptive Rate Based Segment Byte 2",
 		    "sna.nlp.thdr.optional.22.2",
 		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_type,
-                { "Message Type",
+		{ &hf_sna_nlp_opti_22_type,
+		  { "Message Type",
 		    "sna.nlp.thdr.optional.22.type",
 		    FT_UINT8, BASE_HEX,
 		    VALS(sna_nlp_opti_22_type_vals), 0xc0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_raa,
-                { "Rate Adjustment Action",
+		{ &hf_sna_nlp_opti_22_raa,
+		  { "Rate Adjustment Action",
 		    "sna.nlp.thdr.optional.22.raa",
 		    FT_UINT8, BASE_HEX,
 		    VALS(sna_nlp_opti_22_raa_vals), 0x38, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_parity,
-                { "Parity Indicator",
+		{ &hf_sna_nlp_opti_22_parity,
+		  { "Parity Indicator",
 		    "sna.nlp.thdr.optional.22.parity",
 		    FT_BOOLEAN, 8, NULL, 0x04, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_arb,
-                { "ARB Mode",
+		{ &hf_sna_nlp_opti_22_arb,
+		  { "ARB Mode",
 		    "sna.nlp.thdr.optional.22.arb",
 		    FT_UINT8, BASE_HEX,
 		    VALS(sna_nlp_opti_22_arb_vals), 0x03, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_3,
-                { "Adaptive Rate Based Segment Byte 3",
+		{ &hf_sna_nlp_opti_22_3,
+		  { "Adaptive Rate Based Segment Byte 3",
 		    "sna.nlp.thdr.optional.22.3",
 		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_ratereq,
-                { "Rate Request Correlator",
+		{ &hf_sna_nlp_opti_22_ratereq,
+		  { "Rate Request Correlator",
 		    "sna.nlp.thdr.optional.22.ratereq",
 		    FT_UINT8, BASE_DEC, NULL, 0xf0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_raterep,
-                { "Rate Reply Correlator",
+		{ &hf_sna_nlp_opti_22_raterep,
+		  { "Rate Reply Correlator",
 		    "sna.nlp.thdr.optional.22.raterep",
 		    FT_UINT8, BASE_DEC, NULL, 0x0f, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_field1,
-                { "Field 1", "sna.nlp.thdr.optional.22.field1",
+		{ &hf_sna_nlp_opti_22_field1,
+		  { "Field 1", "sna.nlp.thdr.optional.22.field1",
 		    FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_field2,
-                { "Field 2", "sna.nlp.thdr.optional.22.field2",
+		{ &hf_sna_nlp_opti_22_field2,
+		  { "Field 2", "sna.nlp.thdr.optional.22.field2",
 		    FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_field3,
-                { "Field 3", "sna.nlp.thdr.optional.22.field3",
+		{ &hf_sna_nlp_opti_22_field3,
+		  { "Field 3", "sna.nlp.thdr.optional.22.field3",
 		    FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_nlp_opti_22_field4,
-                { "Field 4", "sna.nlp.thdr.optional.22.field4",
+		{ &hf_sna_nlp_opti_22_field4,
+		  { "Field 4", "sna.nlp.thdr.optional.22.field4",
 		    FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_rh,
-                { "Request/Response Header", "sna.rh", FT_NONE, BASE_NONE,
+		{ &hf_sna_rh,
+		  { "Request/Response Header", "sna.rh", FT_NONE, BASE_NONE,
 		    NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_rh_0,
-                { "Request/Response Header Byte 0", "sna.rh.0", FT_UINT8,
+		{ &hf_sna_rh_0,
+		  { "Request/Response Header Byte 0", "sna.rh.0", FT_UINT8,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_rh_1,
-                { "Request/Response Header Byte 1", "sna.rh.1", FT_UINT8,
+		{ &hf_sna_rh_1,
+		  { "Request/Response Header Byte 1", "sna.rh.1", FT_UINT8,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_rh_2,
-                { "Request/Response Header Byte 2", "sna.rh.2", FT_UINT8,
+		{ &hf_sna_rh_2,
+		  { "Request/Response Header Byte 2", "sna.rh.2", FT_UINT8,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_rh_rri,
-                { "Request/Response Indicator", "sna.rh.rri", FT_UINT8,
+		{ &hf_sna_rh_rri,
+		  { "Request/Response Indicator", "sna.rh.rri", FT_UINT8,
 		    BASE_DEC, VALS(sna_rh_rri_vals), 0x80, NULL, HFILL }},
 
-                { &hf_sna_rh_ru_category,
-                { "Request/Response Unit Category", "sna.rh.ru_category",
+		{ &hf_sna_rh_ru_category,
+		  { "Request/Response Unit Category", "sna.rh.ru_category",
 		    FT_UINT8, BASE_HEX, VALS(sna_rh_ru_category_vals), 0x60,
 		    NULL, HFILL }},
 
 		{ &hf_sna_rh_fi,
-		{ "Format Indicator", "sna.rh.fi", FT_BOOLEAN, 8,
+		  { "Format Indicator", "sna.rh.fi", FT_BOOLEAN, 8,
 		    TFS(&sna_rh_fi_truth), 0x08, NULL, HFILL }},
 
 		{ &hf_sna_rh_sdi,
-		{ "Sense Data Included", "sna.rh.sdi", FT_BOOLEAN, 8,
+		  { "Sense Data Included", "sna.rh.sdi", FT_BOOLEAN, 8,
 		    TFS(&sna_rh_sdi_truth), 0x04, NULL, HFILL }},
 
 		{ &hf_sna_rh_bci,
-		{ "Begin Chain Indicator", "sna.rh.bci", FT_BOOLEAN, 8,
+		  { "Begin Chain Indicator", "sna.rh.bci", FT_BOOLEAN, 8,
 		    TFS(&sna_rh_bci_truth), 0x02, NULL, HFILL }},
 
 		{ &hf_sna_rh_eci,
-		{ "End Chain Indicator", "sna.rh.eci", FT_BOOLEAN, 8,
+		  { "End Chain Indicator", "sna.rh.eci", FT_BOOLEAN, 8,
 		    TFS(&sna_rh_eci_truth), 0x01, NULL, HFILL }},
 
 		{ &hf_sna_rh_dr1,
-		{ "Definite Response 1 Indicator", "sna.rh.dr1", FT_BOOLEAN,
+		  { "Definite Response 1 Indicator", "sna.rh.dr1", FT_BOOLEAN,
 		    8, NULL, 0x80, NULL, HFILL }},
 
 		{ &hf_sna_rh_lcci,
-		{ "Length-Checked Compression Indicator", "sna.rh.lcci",
+		  { "Length-Checked Compression Indicator", "sna.rh.lcci",
 		    FT_BOOLEAN, 8, TFS(&sna_rh_lcci_truth), 0x40, NULL, HFILL }},
 
 		{ &hf_sna_rh_dr2,
-		{ "Definite Response 2 Indicator", "sna.rh.dr2", FT_BOOLEAN,
+		  { "Definite Response 2 Indicator", "sna.rh.dr2", FT_BOOLEAN,
 		    8, NULL, 0x20, NULL, HFILL }},
 
 		{ &hf_sna_rh_eri,
-		{ "Exception Response Indicator", "sna.rh.eri", FT_BOOLEAN,
+		  { "Exception Response Indicator", "sna.rh.eri", FT_BOOLEAN,
 		    8, NULL, 0x10, NULL, HFILL }},
 
 		{ &hf_sna_rh_rti,
-		{ "Response Type Indicator", "sna.rh.rti", FT_BOOLEAN,
+		  { "Response Type Indicator", "sna.rh.rti", FT_BOOLEAN,
 		    8, TFS(&sna_rh_rti_truth), 0x10, NULL, HFILL }},
 
 		{ &hf_sna_rh_rlwi,
-		{ "Request Larger Window Indicator", "sna.rh.rlwi", FT_BOOLEAN,
+		  { "Request Larger Window Indicator", "sna.rh.rlwi", FT_BOOLEAN,
 		    8, NULL, 0x04, NULL, HFILL }},
 
 		{ &hf_sna_rh_qri,
-		{ "Queued Response Indicator", "sna.rh.qri", FT_BOOLEAN,
+		  { "Queued Response Indicator", "sna.rh.qri", FT_BOOLEAN,
 		    8, TFS(&sna_rh_qri_truth), 0x02, NULL, HFILL }},
 
 		{ &hf_sna_rh_pi,
-		{ "Pacing Indicator", "sna.rh.pi", FT_BOOLEAN,
+		  { "Pacing Indicator", "sna.rh.pi", FT_BOOLEAN,
 		    8, NULL, 0x01, NULL, HFILL }},
 
 		{ &hf_sna_rh_bbi,
-		{ "Begin Bracket Indicator", "sna.rh.bbi", FT_BOOLEAN,
+		  { "Begin Bracket Indicator", "sna.rh.bbi", FT_BOOLEAN,
 		    8, NULL, 0x80, NULL, HFILL }},
 
 		{ &hf_sna_rh_ebi,
-		{ "End Bracket Indicator", "sna.rh.ebi", FT_BOOLEAN,
+		  { "End Bracket Indicator", "sna.rh.ebi", FT_BOOLEAN,
 		    8, NULL, 0x40, NULL, HFILL }},
 
 		{ &hf_sna_rh_cdi,
-		{ "Change Direction Indicator", "sna.rh.cdi", FT_BOOLEAN,
+		  { "Change Direction Indicator", "sna.rh.cdi", FT_BOOLEAN,
 		    8, NULL, 0x20, NULL, HFILL }},
 
 		{ &hf_sna_rh_csi,
-		{ "Code Selection Indicator", "sna.rh.csi", FT_UINT8, BASE_DEC,
+		  { "Code Selection Indicator", "sna.rh.csi", FT_UINT8, BASE_DEC,
 		    VALS(sna_rh_csi_vals), 0x08, NULL, HFILL }},
 
 		{ &hf_sna_rh_edi,
-		{ "Enciphered Data Indicator", "sna.rh.edi", FT_BOOLEAN, 8,
+		  { "Enciphered Data Indicator", "sna.rh.edi", FT_BOOLEAN, 8,
 		    NULL, 0x04, NULL, HFILL }},
 
 		{ &hf_sna_rh_pdi,
-		{ "Padded Data Indicator", "sna.rh.pdi", FT_BOOLEAN, 8, NULL,
+		  { "Padded Data Indicator", "sna.rh.pdi", FT_BOOLEAN, 8, NULL,
 		    0x02, NULL, HFILL }},
 
 		{ &hf_sna_rh_cebi,
-		{ "Conditional End Bracket Indicator", "sna.rh.cebi",
+		  { "Conditional End Bracket Indicator", "sna.rh.cebi",
 		    FT_BOOLEAN, 8, NULL, 0x01, NULL, HFILL }},
 
 /*		{ &hf_sna_ru,
 		{ "Request/Response Unit", "sna.ru", FT_NONE, BASE_NONE,
-		    NULL, 0x0, NULL, HFILL }},*/
+		NULL, 0x0, NULL, HFILL }},*/
 
 		{ &hf_sna_gds,
-		{ "GDS Variable", "sna.gds", FT_NONE, BASE_NONE, NULL, 0x0,
+		  { "GDS Variable", "sna.gds", FT_NONE, BASE_NONE, NULL, 0x0,
 		    NULL, HFILL }},
 
 		{ &hf_sna_gds_len,
-		{ "GDS Variable Length", "sna.gds.len", FT_UINT16, BASE_DEC,
+		  { "GDS Variable Length", "sna.gds.len", FT_UINT16, BASE_DEC,
 		    NULL, 0x7fff, NULL, HFILL }},
 
 		{ &hf_sna_gds_cont,
-		{ "Continuation Flag", "sna.gds.cont", FT_BOOLEAN, 16, NULL,
+		  { "Continuation Flag", "sna.gds.cont", FT_BOOLEAN, 16, NULL,
 		    0x8000, NULL, HFILL }},
 
 		{ &hf_sna_gds_type,
-		{ "Type of Variable", "sna.gds.type", FT_UINT16, BASE_HEX,
+		  { "Type of Variable", "sna.gds.type", FT_UINT16, BASE_HEX,
 		    VALS(sna_gds_var_vals), 0x0, NULL, HFILL }},
 
 #if 0
 		{ &hf_sna_xid,
-		{ "XID", "sna.xid", FT_NONE, BASE_NONE, NULL, 0x0,
+		  { "XID", "sna.xid", FT_NONE, BASE_NONE, NULL, 0x0,
 		    "XID Frame", HFILL }},
 #endif
 
 		{ &hf_sna_xid_0,
-		{ "XID Byte 0", "sna.xid.0", FT_UINT8, BASE_HEX, NULL, 0x0,
+		  { "XID Byte 0", "sna.xid.0", FT_UINT8, BASE_HEX, NULL, 0x0,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_format,
-		{ "XID Format", "sna.xid.format", FT_UINT8, BASE_DEC, NULL,
+		  { "XID Format", "sna.xid.format", FT_UINT8, BASE_DEC, NULL,
 		    0xf0, NULL, HFILL }},
 
 		{ &hf_sna_xid_type,
-		{ "XID Type", "sna.xid.type", FT_UINT8, BASE_DEC,
+		  { "XID Type", "sna.xid.type", FT_UINT8, BASE_DEC,
 		    VALS(sna_xid_type_vals), 0x0f, NULL, HFILL }},
 
 		{ &hf_sna_xid_len,
-		{ "XID Length", "sna.xid.len", FT_UINT8, BASE_DEC, NULL, 0x0,
+		  { "XID Length", "sna.xid.len", FT_UINT8, BASE_DEC, NULL, 0x0,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_id,
-		{ "Node Identification", "sna.xid.id", FT_UINT32, BASE_HEX,
+		  { "Node Identification", "sna.xid.id", FT_UINT32, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
 		{ &hf_sna_xid_idblock,
-		{ "ID Block", "sna.xid.idblock", FT_UINT32, BASE_HEX, NULL,
+		  { "ID Block", "sna.xid.idblock", FT_UINT32, BASE_HEX, NULL,
 		    0xfff00000, NULL, HFILL }},
 
 		{ &hf_sna_xid_idnum,
-		{ "ID Number", "sna.xid.idnum", FT_UINT32, BASE_HEX, NULL,
+		  { "ID Number", "sna.xid.idnum", FT_UINT32, BASE_HEX, NULL,
 		    0x0fffff, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_8,
-		{ "Characteristics of XID sender", "sna.xid.type3.8", FT_UINT16,
+		  { "Characteristics of XID sender", "sna.xid.type3.8", FT_UINT16,
 		    BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_init_self,
-		{ "INIT-SELF support", "sna.xid.type3.initself",
+		  { "INIT-SELF support", "sna.xid.type3.initself",
 		    FT_BOOLEAN, 16, NULL, 0x8000, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_stand_bind,
-		{ "Stand-Alone BIND Support", "sna.xid.type3.stand_bind",
+		  { "Stand-Alone BIND Support", "sna.xid.type3.stand_bind",
 		    FT_BOOLEAN, 16, NULL, 0x4000, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_gener_bind,
-		{ "Whole BIND PIU generated indicator",
+		  { "Whole BIND PIU generated indicator",
 		    "sna.xid.type3.gener_bind", FT_BOOLEAN, 16, NULL, 0x2000,
 		    "Whole BIND PIU generated", HFILL }},
 
 		{ &hf_sna_xid_3_recve_bind,
-		{ "Whole BIND PIU required indicator",
+		  { "Whole BIND PIU required indicator",
 		    "sna.xid.type3.recve_bind", FT_BOOLEAN, 16, NULL, 0x1000,
 		    "Whole BIND PIU required", HFILL }},
 
 		{ &hf_sna_xid_3_actpu,
-		{ "ACTPU suppression indicator", "sna.xid.type3.actpu",
+		  { "ACTPU suppression indicator", "sna.xid.type3.actpu",
 		    FT_BOOLEAN, 16, NULL, 0x0080, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_nwnode,
-		{ "Sender is network node", "sna.xid.type3.nwnode",
+		  { "Sender is network node", "sna.xid.type3.nwnode",
 		    FT_BOOLEAN, 16, NULL, 0x0040, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_cp,
-		{ "Control Point Services", "sna.xid.type3.cp",
+		  { "Control Point Services", "sna.xid.type3.cp",
 		    FT_BOOLEAN, 16, NULL, 0x0020, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_cpcp,
-		{ "CP-CP session support", "sna.xid.type3.cpcp",
+		  { "CP-CP session support", "sna.xid.type3.cpcp",
 		    FT_BOOLEAN, 16, NULL, 0x0010, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_state,
-		{ "XID exchange state indicator", "sna.xid.type3.state",
+		  { "XID exchange state indicator", "sna.xid.type3.state",
 		    FT_UINT16, BASE_HEX, VALS(sna_xid_3_state_vals),
 		    0x000c, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_nonact,
-		{ "Nonactivation Exchange", "sna.xid.type3.nonact",
+		  { "Nonactivation Exchange", "sna.xid.type3.nonact",
 		    FT_BOOLEAN, 16, NULL, 0x0002, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_cpchange,
-		{ "CP name change support", "sna.xid.type3.cpchange",
+		  { "CP name change support", "sna.xid.type3.cpchange",
 		    FT_BOOLEAN, 16, NULL, 0x0001, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_10,
-		{ "XID Type 3 Byte 10", "sna.xid.type3.10", FT_UINT8, BASE_HEX,
+		  { "XID Type 3 Byte 10", "sna.xid.type3.10", FT_UINT8, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_asend_bind,
-		{ "Adaptive BIND pacing support as sender",
+		  { "Adaptive BIND pacing support as sender",
 		    "sna.xid.type3.asend_bind", FT_BOOLEAN, 8, NULL, 0x80,
 		    "Pacing support as sender", HFILL }},
 
 		{ &hf_sna_xid_3_arecv_bind,
-		{ "Adaptive BIND pacing support as receiver",
+		  { "Adaptive BIND pacing support as receiver",
 		    "sna.xid.type3.asend_recv", FT_BOOLEAN, 8, NULL, 0x40,
 		    "Pacing support as receive", HFILL }},
 
 		{ &hf_sna_xid_3_quiesce,
-		{ "Quiesce TG Request",
+		  { "Quiesce TG Request",
 		    "sna.xid.type3.quiesce", FT_BOOLEAN, 8, NULL, 0x20,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_pucap,
-		{ "PU Capabilities",
+		  { "PU Capabilities",
 		    "sna.xid.type3.pucap", FT_BOOLEAN, 8, NULL, 0x10,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_pbn,
-		{ "Peripheral Border Node",
+		  { "Peripheral Border Node",
 		    "sna.xid.type3.pbn", FT_BOOLEAN, 8, NULL, 0x08,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_pacing,
-		{ "Qualifier for adaptive BIND pacing support",
+		  { "Qualifier for adaptive BIND pacing support",
 		    "sna.xid.type3.pacing", FT_UINT8, BASE_HEX, NULL, 0x03,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_11,
-		{ "XID Type 3 Byte 11", "sna.xid.type3.11", FT_UINT8, BASE_HEX,
+		  { "XID Type 3 Byte 11", "sna.xid.type3.11", FT_UINT8, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_tgshare,
-		{ "TG Sharing Prohibited Indicator",
+		  { "TG Sharing Prohibited Indicator",
 		    "sna.xid.type3.tgshare", FT_BOOLEAN, 8, NULL, 0x40,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_dedsvc,
-		{ "Dedicated SVC Indicator",
+		  { "Dedicated SVC Indicator",
 		    "sna.xid.type3.dedsvc", FT_BOOLEAN, 8, NULL, 0x20,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_12,
-		{ "XID Type 3 Byte 12", "sna.xid.type3.12", FT_UINT8, BASE_HEX,
+		  { "XID Type 3 Byte 12", "sna.xid.type3.12", FT_UINT8, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_negcsup,
-		{ "Negotiation Complete Supported",
+		  { "Negotiation Complete Supported",
 		    "sna.xid.type3.negcsup", FT_BOOLEAN, 8, NULL, 0x80,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_negcomp,
-		{ "Negotiation Complete",
+		  { "Negotiation Complete",
 		    "sna.xid.type3.negcomp", FT_BOOLEAN, 8, NULL, 0x40,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_15,
-		{ "XID Type 3 Byte 15", "sna.xid.type3.15", FT_UINT8, BASE_HEX,
+		  { "XID Type 3 Byte 15", "sna.xid.type3.15", FT_UINT8, BASE_HEX,
 		    NULL, 0x0, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_partg,
-		{ "Parallel TG Support",
+		  { "Parallel TG Support",
 		    "sna.xid.type3.partg", FT_BOOLEAN, 8, NULL, 0x80,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_dlur,
-		{ "Dependent LU Requester Indicator",
+		  { "Dependent LU Requester Indicator",
 		    "sna.xid.type3.dlur", FT_BOOLEAN, 8, NULL, 0x40,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_dlus,
-		{ "DLUS Served LU Registration Indicator",
+		  { "DLUS Served LU Registration Indicator",
 		    "sna.xid.type3.dlus", FT_BOOLEAN, 8, NULL, 0x20,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_exbn,
-		{ "Extended HPR Border Node",
+		  { "Extended HPR Border Node",
 		    "sna.xid.type3.exbn", FT_BOOLEAN, 8, NULL, 0x10,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_genodai,
-		{ "Generalized ODAI Usage Option",
+		  { "Generalized ODAI Usage Option",
 		    "sna.xid.type3.genodai", FT_BOOLEAN, 8, NULL, 0x08,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_branch,
-		{ "Branch Indicator", "sna.xid.type3.branch",
+		  { "Branch Indicator", "sna.xid.type3.branch",
 		    FT_UINT8, BASE_HEX, VALS(sna_xid_3_branch_vals),
 		    0x06, NULL, HFILL }},
 
 		{ &hf_sna_xid_3_brnn,
-		{ "Option Set 1123 Indicator",
+		  { "Option Set 1123 Indicator",
 		    "sna.xid.type3.brnn", FT_BOOLEAN, 8, NULL, 0x01,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_tg,
-		{ "XID TG", "sna.xid.type3.tg", FT_UINT8, BASE_HEX, NULL, 0x0,
+		  { "XID TG", "sna.xid.type3.tg", FT_UINT8, BASE_HEX, NULL, 0x0,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_dlc,
-		{ "XID DLC", "sna.xid.type3.dlc", FT_UINT8, BASE_HEX, NULL, 0x0,
+		  { "XID DLC", "sna.xid.type3.dlc", FT_UINT8, BASE_HEX, NULL, 0x0,
 		    NULL, HFILL }},
 
 		{ &hf_sna_xid_3_dlen,
-		{ "DLC Dependent Section Length", "sna.xid.type3.dlen",
+		  { "DLC Dependent Section Length", "sna.xid.type3.dlen",
 		    FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_control_len,
-                { "Control Vector Length", "sna.control.len",
+		{ &hf_sna_control_len,
+		  { "Control Vector Length", "sna.control.len",
 		    FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_control_key,
-                { "Control Vector Key", "sna.control.key",
+		{ &hf_sna_control_key,
+		  { "Control Vector Key", "sna.control.key",
 		    FT_UINT8, BASE_HEX, VALS(sna_control_vals), 0x0, NULL,
 		    HFILL }},
 
-                { &hf_sna_control_hprkey,
-                { "Control Vector HPR Key", "sna.control.hprkey",
+		{ &hf_sna_control_hprkey,
+		  { "Control Vector HPR Key", "sna.control.hprkey",
 		    FT_UINT8, BASE_HEX, VALS(sna_control_hpr_vals), 0x0, NULL,
 		    HFILL }},
 
-                { &hf_sna_control_05_delay,
-                { "Channel Delay", "sna.control.05.delay",
+		{ &hf_sna_control_05_delay,
+		  { "Channel Delay", "sna.control.05.delay",
 		    FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_control_05_type,
-                { "Network Address Type", "sna.control.05.type",
+		{ &hf_sna_control_05_type,
+		  { "Network Address Type", "sna.control.05.type",
 		    FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 
-                { &hf_sna_control_05_ptp,
-                { "Point-to-point", "sna.control.05.ptp",
+		{ &hf_sna_control_05_ptp,
+		  { "Point-to-point", "sna.control.05.ptp",
 		    FT_BOOLEAN, 8, NULL, 0x80, NULL, HFILL }},
 
-                { &hf_sna_control_0e_type,
-                { "Type", "sna.control.0e.type",
+		{ &hf_sna_control_0e_type,
+		  { "Type", "sna.control.0e.type",
 		    FT_UINT8, BASE_HEX, VALS(sna_control_0e_type_vals),
 		    0, NULL, HFILL }},
 
-                { &hf_sna_control_0e_value,
-                { "Value", "sna.control.0e.value",
+		{ &hf_sna_control_0e_value,
+		  { "Value", "sna.control.0e.value",
 		    FT_STRING, BASE_NONE, NULL, 0, NULL, HFILL }},
-        };
+
+		{ &hf_sna_padding,
+		  { "Padding", "sna.padding",
+		    FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
+
+		{ &hf_sna_reserved,
+		  { "Reserved", "sna.reserved",
+		    FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
+
+		{ &hf_sna_biu_segment_data,
+		  { "BIU segment data", "sna.biu_segment_data",
+		    FT_BYTES, BASE_NONE, NULL, 0, NULL, HFILL }},
+
+	};
 	static gint *ett[] = {
 		&ett_sna,
 		&ett_sna_th,
@@ -3533,6 +3488,8 @@ proto_register_sna(void)
 	    "Systems Network Architecture XID", "SNA XID", "sna_xid");
 	register_dissector("sna_xid", dissect_sna_xid, proto_sna_xid);
 
+	sna_address_type = address_type_dissector_register("AT_SNA", "SNA Address", sna_fid_to_str_buf, sna_address_str_len, NULL, NULL, NULL, NULL);
+
 	/* Register configuration options */
 	sna_module = prefs_register_protocol(proto_sna, NULL);
 	prefs_register_bool_preference(sna_module, "defragment",
@@ -3541,6 +3498,7 @@ proto_register_sna(void)
 		&sna_defragment);
 
 	register_init_routine(sna_init);
+	register_cleanup_routine(sna_cleanup);
 }
 
 void
@@ -3555,6 +3513,7 @@ proto_reg_handoff_sna(void)
 	dissector_add_uint("llc.dsap", SAP_SNA1, sna_handle);
 	dissector_add_uint("llc.dsap", SAP_SNA2, sna_handle);
 	dissector_add_uint("llc.dsap", SAP_SNA3, sna_handle);
+	dissector_add_uint("llc.dsap", SAP_SNA4, sna_handle);
 	dissector_add_uint("llc.xid_dsap", SAP_SNA_PATHCTRL, sna_xid_handle);
 	dissector_add_uint("llc.xid_dsap", SAP_SNA1, sna_xid_handle);
 	dissector_add_uint("llc.xid_dsap", SAP_SNA2, sna_xid_handle);
@@ -3564,3 +3523,16 @@ proto_reg_handoff_sna(void)
 	data_handle = find_dissector("data");
 
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

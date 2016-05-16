@@ -27,7 +27,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-rx.h"
 #include <epan/addr_resolv.h>
@@ -160,7 +159,7 @@ dissect_rx_response_encrypted(tvbuff_t *tvb, proto_tree *parent_tree, int offset
 	proto_tree_add_item(tree, hf_rx_cid, tvb, offset, 4, ENC_BIG_ENDIAN);
 	offset += 4;
 
-	/*FIXME dont know how to handle this checksum, skipping it */
+	/*FIXME don't know how to handle this checksum, skipping it */
 	offset += 4;
 
 	/* sequrityindex : 1 byte */
@@ -204,8 +203,8 @@ dissect_rx_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
 			"Destination Port: %s  ",
 			(unsigned long)seq,
 			(unsigned long)callnumber,
-			ep_udp_port_to_display(pinfo->srcport),
-			ep_udp_port_to_display(pinfo->destport)
+			udp_port_to_display(wmem_packet_scope(), pinfo->srcport),
+			udp_port_to_display(wmem_packet_scope(), pinfo->destport)
 		);
 
 	item = proto_tree_add_item(parent_tree, hf_rx_response, tvb, offset, -1, ENC_NA);
@@ -233,7 +232,6 @@ dissect_rx_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
 			offset, 4, tl);
 		offset += 4;
 
-		tvb_ensure_bytes_exist(tvb, offset, tl);
 		proto_tree_add_item(tree, hf_rx_ticket, tvb, offset, tl, ENC_NA);
 		offset += tl;
 	}
@@ -257,8 +255,8 @@ dissect_rx_abort(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int
 			"Destination Port: %s  ",
 			(unsigned long)seq,
 			(unsigned long)callnumber,
-			ep_udp_port_to_display(pinfo->srcport),
-			ep_udp_port_to_display(pinfo->destport)
+			udp_port_to_display(wmem_packet_scope(), pinfo->srcport),
+			udp_port_to_display(wmem_packet_scope(), pinfo->destport)
 		);
 
 	item = proto_tree_add_item(parent_tree, hf_rx_abort, tvb, offset, -1, ENC_NA);
@@ -289,8 +287,8 @@ dissect_rx_challenge(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree,
 			"Destination Port: %s  ",
 			(unsigned long)seq,
 			(unsigned long)callnumber,
-			ep_udp_port_to_display(pinfo->srcport),
-			ep_udp_port_to_display(pinfo->destport)
+			udp_port_to_display(wmem_packet_scope(), pinfo->srcport),
+			udp_port_to_display(wmem_packet_scope(), pinfo->destport)
 		);
 
 	item = proto_tree_add_item(parent_tree, hf_rx_challenge, tvb, offset, -1, ENC_NA);
@@ -329,8 +327,8 @@ dissect_rx_acks(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int 
 			"Destination Port: %s  ",
 			(unsigned long)seq,
 			(unsigned long)callnumber,
-			ep_udp_port_to_display(pinfo->srcport),
-			ep_udp_port_to_display(pinfo->destport)
+			udp_port_to_display(wmem_packet_scope(), pinfo->srcport),
+			udp_port_to_display(wmem_packet_scope(), pinfo->destport)
 		);
 
 	item = proto_tree_add_item(parent_tree, hf_rx_ack, tvb, offset, -1, ENC_NA);
@@ -372,16 +370,16 @@ dissect_rx_acks(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int 
 		offset += 1;
 	}
 
-	/* Some implementations adds some extra fields.
+	/* Some implementations add some extra fields.
 	 * As far as I can see, these first add 3 padding bytes and then
 	 * up to 4 32-bit values. (0,3,4 have been witnessed)
 	 *
-	 * RX as a protocol seems to be completely nondefined and seems to lack
+	 * RX as a protocol seems to be completely undefined and seems to lack
 	 * any sort of documentation other than "read the source of any of the
 	 * (compatible?) implementations.
 	 */
-	if (tvb_length_remaining(tvb, offset)>3) {
-		offset += 3;	/* guess. some implementations adds 3 bytes */
+	if (tvb_reported_length_remaining(tvb, offset)>3) {
+		offset += 3;	/* guess. some implementations add 3 bytes */
 
 		if (tvb_reported_length_remaining(tvb, offset) >= 4){
 			proto_tree_add_item(tree, hf_rx_maxmtu, tvb, offset, 4,
@@ -413,27 +411,18 @@ dissect_rx_acks(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int 
 static int
 dissect_rx_flags(tvbuff_t *tvb, struct rxinfo *rxinfo, proto_tree *parent_tree, int offset)
 {
-	proto_tree *tree;
-	proto_item *item;
-	guint8 flags;
+	static const int * flags[] = {
+		&hf_rx_flags_free_packet,
+		&hf_rx_flags_more_packets,
+		&hf_rx_flags_last_packet,
+		&hf_rx_flags_request_ack,
+		&hf_rx_flags_clientinit,
+		NULL
+	};
 
-	flags = tvb_get_guint8(tvb, offset);
-	rxinfo->flags = flags;
+	rxinfo->flags = tvb_get_guint8(tvb, offset);
 
-	item = proto_tree_add_uint(parent_tree, hf_rx_flags, tvb,
-		offset, 1, flags);
-	tree = proto_item_add_subtree(item, ett_rx_flags);
-
-	proto_tree_add_boolean(tree, hf_rx_flags_free_packet, tvb,
-		offset, 1, flags);
-	proto_tree_add_boolean(tree, hf_rx_flags_more_packets, tvb,
-		offset, 1, flags);
-	proto_tree_add_boolean(tree, hf_rx_flags_last_packet, tvb,
-		offset, 1, flags);
-	proto_tree_add_boolean(tree, hf_rx_flags_request_ack, tvb,
-		offset, 1, flags);
-	proto_tree_add_boolean(tree, hf_rx_flags_clientinit, tvb,
-		offset, 1, flags);
+	proto_tree_add_bitmask(parent_tree, tvb, offset, hf_rx_flags, ett_rx_flags, flags, ENC_NA);
 
 	offset += 1;
 	return offset;
@@ -452,7 +441,7 @@ dissect_rx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *dat
 	guint16 serviceid;
 
 	/* Ensure we have enough data */
-	if (tvb_length(tvb) < 28)
+	if (tvb_captured_length(tvb) < 28)
 		return 0;
 
 	/* Make sure it's a known type */
@@ -535,8 +524,8 @@ dissect_rx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *dat
 	switch (type) {
 	case RX_PACKET_TYPE_ACK:
 		/*dissect_rx_acks(tvb, pinfo, parent_tree, offset,
-			cant create it in a parallell tree, then ett seasrch
-			wont work */
+			can't create it in a parallel tree, then ett search
+			won't work */
 		dissect_rx_acks(tvb, pinfo, tree, offset,
 			seq, callnumber);
 		break;
@@ -550,8 +539,8 @@ dissect_rx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *dat
 				"Destination Port: %s  ",
 				(unsigned long)seq,
 				(unsigned long)callnumber,
-				ep_udp_port_to_display(pinfo->srcport),
-				ep_udp_port_to_display(pinfo->destport)
+				udp_port_to_display(wmem_packet_scope(), pinfo->srcport),
+				udp_port_to_display(wmem_packet_scope(), pinfo->destport)
 			);
 		break;
 	case RX_PACKET_TYPE_CHALLENGE:
@@ -572,7 +561,7 @@ dissect_rx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *dat
 		break;
 	}
 
-	return(tvb_length(tvb));
+	return(tvb_captured_length(tvb));
 }
 
 void

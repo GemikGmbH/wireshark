@@ -27,7 +27,6 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 
@@ -39,7 +38,7 @@ static int hf_rs_attr_schema_opnum = -1;
 
 
 static gint ett_rs_attr_schema = -1;
-static e_uuid_t uuid_rs_attr_schema =
+static e_guid_t uuid_rs_attr_schema =
   { 0xb47c9460, 0x567f, 0x11cb, {0x8c, 0x09, 0x08, 0x00, 0x1e, 0x04, 0xde,
                                  0x8c} };
 static guint16 ver_rs_attr_schema = 0;
@@ -86,3 +85,16 @@ proto_reg_handoff_rs_attr_schema (void)
                     &uuid_rs_attr_schema, ver_rs_attr_schema,
                     rs_attr_schema_dissectors, hf_rs_attr_schema_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

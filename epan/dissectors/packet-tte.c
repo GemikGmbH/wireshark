@@ -29,8 +29,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/etypes.h>
@@ -72,7 +70,7 @@ dissect_tte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
     proto_tree *tte_tree, *tte_macdest_tree;
 
     /* Check that there's enough data */
-    if (tvb_length(tvb) < TTE_HEADER_LENGTH)
+    if (tvb_reported_length(tvb) < TTE_HEADER_LENGTH)
         return 0;
 
     /* check if data of pcf frame */
@@ -89,7 +87,14 @@ dissect_tte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
     /* Make entries in Protocol column and Info column on summary display */
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "TTE ");
 
-    col_set_str(pinfo->cinfo, COL_INFO, "Bogus TTEthernet Frame");
+    if (tvb_get_ntohs(tvb, TTE_MAC_LENGTH * 2) <= IEEE_802_3_MAX_LEN)
+    {
+        col_set_str(pinfo->cinfo, COL_INFO, "TTEthernet Frame");
+    }
+    else
+    {
+        col_set_str(pinfo->cinfo, COL_INFO, "Bogus TTEthernet Frame");
+    }
 
     if (tree) {
 
@@ -132,7 +137,7 @@ dissect_tte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
     ethertype_data.fcs_len = 0;
 
     call_dissector_with_data(ethertype_handle, tvb, pinfo, tree, &ethertype_data);
-    return tvb_length(tvb);
+    return tvb_reported_length(tvb);
 }
 
 
@@ -186,7 +191,7 @@ proto_register_tte(void)
 void
 proto_reg_handoff_tte(void)
 {
-    heur_dissector_add("eth", dissect_tte, proto_tte);
+    heur_dissector_add("eth", dissect_tte, "TTEthernet", "tte_eth", proto_tte, HEURISTIC_ENABLE);
 
     hf_eth_dst  = proto_registrar_get_id_byname ("eth.dst");
     hf_eth_src  = proto_registrar_get_id_byname ("eth.src");
@@ -194,3 +199,16 @@ proto_reg_handoff_tte(void)
 
     ethertype_handle = find_dissector("ethertype");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

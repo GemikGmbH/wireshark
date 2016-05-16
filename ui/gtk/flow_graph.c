@@ -26,25 +26,16 @@
 #include "config.h"
 #include <string.h>
 
-#include <gtk/gtk.h>
 
-#include <epan/epan.h>
 #include <epan/packet.h>
-#include <wsutil/filesystem.h>
-#include <epan/stat_cmd_args.h>
-#include <epan/to_str.h>
-#include <epan/strutil.h>
-
-#include "../stat_menu.h"
+#include <epan/stat_tap_ui.h>
 
 #include "ui/gtk/graph_analysis.h"
-#include "ui/gtk/gui_stat_menu.h"
 #include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/stock_icons.h"
-#include "ui/gtk/gtkglobals.h"
 #include "ui/gtk/main.h"
-#include "ui/gtk/old-gtk-compat.h"
+#include "ui/gtk/gui_stat_menu.h"
 
 void register_tap_listener_flow_graph(void);
 
@@ -64,7 +55,7 @@ static GtkWidget *net_src_dst_rb;
 /****************************************************************************/
 static void
 flow_graph_data_init(void) {
-	graph_analysis = (seq_analysis_info_t *)g_malloc0(sizeof(seq_analysis_info_t));
+	graph_analysis = sequence_analysis_info_new();
 	graph_analysis->type = SEQ_ANALYSIS_ANY;
 	graph_analysis->all_packets = TRUE;
 }
@@ -76,13 +67,11 @@ flow_graph_data_init(void) {
 static void
 flow_graph_on_destroy(GObject *object _U_, gpointer user_data _U_)
 {
-	/* Clean up memory used by tap */
-	sequence_analysis_list_free(graph_analysis);
-
 	g_assert(graph_analysis != NULL);
 	g_assert(graph_analysis_data != NULL);
 
-	g_free(graph_analysis);
+	/* Clean up memory used by tap */
+	sequence_analysis_info_free(graph_analysis);
 	graph_analysis = NULL;
 
 	g_free(graph_analysis_data);
@@ -139,7 +128,7 @@ toggle_select_srcdst(GtkWidget *widget _U_, gpointer user_data _U_)
 {
 	/* is the button now active? */
 	if (gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(src_dst_rb))) {
-		graph_analysis->any_addr = TRUE;
+		graph_analysis->any_addr = FALSE;
 	}
 }
 
@@ -394,10 +383,19 @@ flow_graph_launch(GtkAction *action _U_, gpointer user_data _U_)
 }
 
 /****************************************************************************/
+static stat_tap_ui flow_graph_ui = {
+	REGISTER_STAT_GROUP_GENERIC,
+	NULL,
+	"flow_graph",
+	flow_graph_init_tap,
+	0,
+	NULL
+};
+
 void
 register_tap_listener_flow_graph(void)
 {
-	register_stat_cmd_arg("flow_graph",flow_graph_init_tap,NULL);
+	register_stat_tap_ui(&flow_graph_ui,NULL);
 }
 
 /*

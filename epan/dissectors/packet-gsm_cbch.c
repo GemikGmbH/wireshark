@@ -26,7 +26,7 @@
 
 #include <epan/packet.h>
 #include <epan/reassemble.h>
-#include "packet-cell_broadcast.h"
+#include <epan/expert.h>
 
 void proto_register_gsm_cbch(void);
 void proto_reg_handoff_gsm_cbch(void);
@@ -70,6 +70,8 @@ static int hf_gsm_cbch_sched_spare = -1;
 static int hf_gsm_cbch_sched_end_slot = -1;
 static int hf_gsm_cbch_slot = -1;
 /* static int hf_gsm_cbch_sched_msg_id = -1; */
+static int hf_gsm_cbch_padding = -1;
+static int hf_gsm_cbch_block = -1;
 
 /* These fields are used when reassembling cbch fragments
  */
@@ -90,6 +92,11 @@ static gint ett_schedule_msg = -1;
 static gint ett_schedule_new_msg = -1;
 static gint ett_cbch_fragment = -1;
 static gint ett_cbch_fragments = -1;
+
+static expert_field ei_gsm_cbch_sched_end_slot = EI_INIT;
+static expert_field ei_gsm_cbch_seq_num_null = EI_INIT;
+static expert_field ei_gsm_cbch_seq_num_reserved = EI_INIT;
+static expert_field ei_gsm_cbch_lpd = EI_INIT;
 
 static dissector_handle_t data_handle;
 static dissector_handle_t cbs_handle;
@@ -125,21 +132,36 @@ cbch_defragment_init(void)
 }
 
 static void
+cbch_defragment_cleanup(void)
+{
+    reassembly_table_destroy(&cbch_block_reassembly_table);
+}
+
+static const range_string gsm_cbch_sched_begin_slot_rvals[] = {
+    { 0,     0,     "Out of range (ignoring message)" },
+    { 1,     1,     "(apparently) Scheduled Scheduling Message" },
+    { 2,     48,    "(apparently) Unscheduled Scheduling Message" },
+    { 49,    0xFF,  "Out of range (ignoring message)" },
+
+    { 0x00, 0x00,  NULL },
+};
+
+static void
 dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree)
 {
-    guint       len, offset     = 0;
-    guint8      octet1, i, j, k = 0;
+    guint       len, offset  = 0;
+    guint8      octet1, i, k = 0;
     guint8      sched_begin, sched_end, new_slots[48];
     gboolean    valid_message   = TRUE;
     guint16     other_slots[48];
     proto_item *item            = NULL, *schedule_item = NULL;
     proto_tree *sched_tree      = NULL, *sched_subtree = NULL;
 
-    len = tvb_length(tvb);
+    len = tvb_reported_length(tvb);
 
     col_append_str(pinfo->cinfo, COL_INFO, " CBCH Schedule Message ");
 
-    schedule_item = proto_tree_add_protocol_format(top_tree, proto_cbch, tvb, 0, len,
+    schedule_item = proto_tree_add_protocol_format(top_tree, proto_cbch, tvb, 0, -1,
                                                    "GSM CBCH Schedule Message");
 
     sched_tree = proto_item_add_subtree(schedule_item, ett_schedule_msg);
@@ -148,27 +170,19 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
     octet1 = tvb_get_guint8(tvb, offset);
     if (0 == (octet1 & 0xC0))
     {
+        proto_item* slot_item;
         sched_begin = octet1 & 0x3F;
         proto_tree_add_item(sched_tree, hf_gsm_cbch_sched_begin_slot, tvb, offset++, 1, ENC_BIG_ENDIAN);
-        if (1 == sched_begin)
+        if ((sched_begin < 1) || (sched_begin > 48))
         {
-            proto_tree_add_text(sched_tree, tvb, offset - 1, 1, "(apparently) Scheduled Scheduling Message");
-        }
-        else if ((2 <= sched_begin) && (48 >= sched_begin))
-        {
-            proto_tree_add_text(sched_tree, tvb, offset - 1, 1, "(apparently) Unscheduled Scheduling Message");
-        }
-        else
-        {
-            proto_tree_add_text(sched_tree, tvb, offset - 1, 1, "Begin Slot Number out of range: ignoring message");
             valid_message = FALSE;
         }
         proto_tree_add_item(sched_tree, hf_gsm_cbch_sched_spare, tvb, offset, 1, ENC_BIG_ENDIAN);
         sched_end = tvb_get_guint8(tvb, offset);
-        proto_tree_add_item(sched_tree, hf_gsm_cbch_sched_end_slot, tvb, offset++, 1, ENC_BIG_ENDIAN);
+        slot_item = proto_tree_add_item(sched_tree, hf_gsm_cbch_sched_end_slot, tvb, offset++, 1, ENC_BIG_ENDIAN);
         if (sched_end < sched_begin)
         {
-            proto_tree_add_text(sched_tree, tvb, offset - 1, 1, "End Slot Number less than Begin Slot Number: ignoring message");
+            expert_add_info(pinfo, slot_item, &ei_gsm_cbch_sched_end_slot);
             valid_message = FALSE;
         }
 
@@ -181,6 +195,7 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
             /* iterate over the octets */
             for (i=0; i<6; i++)
             {
+                guint8 j;
                 octet1 = tvb_get_guint8(tvb, offset++);
 
                 /* iterate over the bits */
@@ -193,8 +208,8 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
                 }
             }
             /* print the array of new messages */
-            item = proto_tree_add_text(sched_tree, tvb, offset-6, 6, "This schedule contains %d slots with new messages", k);
-            sched_subtree = proto_item_add_subtree(item, ett_schedule_new_msg);
+            sched_subtree = proto_tree_add_subtree_format(sched_tree, tvb, offset-6, 6, ett_schedule_new_msg, &item,
+                                                            "This schedule contains %d slots with new messages", k);
             for (i=0; i<k; i++)
             {
                 DISSECTOR_ASSERT(new_slots[i] <= 48);
@@ -239,31 +254,31 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
                 else if (octet1 == 0x40)
                 {
                     /* MDT 010000000 */
-                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset++, 1, new_slots[k],
-                                    "%d Free Message Slot, optional reading", new_slots[k]);
+                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset++, 1, new_slots[i],
+                                    "%d Free Message Slot, optional reading", new_slots[i]);
                     other_slots[new_slots[i] - 1] = 0xFFFE;
                 }
                 else if (octet1 == 0x41)
                 {
                     /* MDT 010000001 */
-                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset++, 1, new_slots[k],
-                                     "%d Free Message Slot, reading advised", new_slots[k]);
+                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset++, 1, new_slots[i],
+                                     "%d Free Message Slot, reading advised", new_slots[i]);
                     other_slots[new_slots[i] - 1] = 0xFFFE;
                 }
                 else
                 {
                     /* reserved MDT */
-                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset, 1, new_slots[k],
-                                     "%d reserved MDT: %x", new_slots[k], octet1);
+                    proto_tree_add_uint_format_value(sched_subtree, hf_gsm_cbch_slot, tvb, offset, 1, new_slots[i],
+                                     "%d reserved MDT: %x", new_slots[i], octet1);
                     other_slots[new_slots[i] - 1] = 0xFFFE;
                 }
             }
             proto_item_set_end(item, tvb, offset);
 
             /* print schedule of other messages */
-            item = proto_tree_add_text(sched_tree, tvb, offset, 0, "Other message slots in this schedule");
-            sched_subtree = proto_item_add_subtree(item, ett_schedule_new_msg);
-            for (k=0; offset < len; j++)
+            sched_subtree = proto_tree_add_subtree(sched_tree, tvb, offset, 0,
+                                ett_schedule_new_msg, &item, "Other message slots in this schedule");
+            for (k=0; offset < len; )
             {
                 /* XXX I don't know if a message can validly contain more than
                  * 48 slots, but that's the size of the array we create so cap
@@ -349,7 +364,7 @@ dissect_schedule_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *top_tree
                 }
             }
             proto_item_set_end(item, tvb, offset);
-            proto_tree_add_text(sched_tree, tvb, offset, -1, "Padding");
+            proto_tree_add_item(sched_tree, hf_gsm_cbch_padding, tvb, offset, -1, ENC_NA);
         }
     }
 }
@@ -360,31 +375,29 @@ dissect_cbch(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     fragment_head *frag_data = NULL;
     guint8         octet, lb, lpd, seq_num;
     guint32        offset;
-    guint32        len;
-    proto_item    *cbch_item = NULL;
-    proto_tree    *cbch_tree = NULL;
+    proto_item    *cbch_item, *lpd_item, *seq_item;
+    proto_tree    *cbch_tree;
     tvbuff_t      *reass_tvb = NULL, *msg_tvb = NULL;
 
-    len    = tvb_length(tvb);
     offset = 0;
     octet  = tvb_get_guint8(tvb, offset);
 
     /*
      * create the protocol tree
      */
-    cbch_item = proto_tree_add_protocol_format(tree, proto_cbch, tvb, 0, len,
+    cbch_item = proto_tree_add_protocol_format(tree, proto_cbch, tvb, 0, -1,
                                                "GSM CBCH - Block (0x%02x)", octet&3);
 
     col_append_str(pinfo->cinfo, COL_PROTOCOL, " CBCH");
 
     cbch_tree = proto_item_add_subtree(cbch_item, ett_cbch_msg);
 
-    proto_tree_add_text(cbch_tree, tvb, offset, 1, "CBCH Block");
+    proto_tree_add_uint(cbch_tree, hf_gsm_cbch_block, tvb, offset, 1, octet);
 
     proto_tree_add_uint(cbch_tree, hf_gsm_cbch_spare_bit, tvb, offset, 1, octet);
-    proto_tree_add_uint(cbch_tree, hf_gsm_cbch_lpd,       tvb, offset, 1, octet);
+    lpd_item = proto_tree_add_uint(cbch_tree, hf_gsm_cbch_lpd,       tvb, offset, 1, octet);
     proto_tree_add_uint(cbch_tree, hf_gsm_cbch_lb,        tvb, offset, 1, octet);
-    proto_tree_add_uint(cbch_tree, hf_gsm_cbch_seq_num,   tvb, offset, 1, octet);
+    seq_item = proto_tree_add_uint(cbch_tree, hf_gsm_cbch_seq_num,   tvb, offset, 1, octet);
     seq_num =  octet & 0x0F;
     lpd     = (octet & 0x60) >> 5;
     lb      = (octet & 0x10) >> 4;
@@ -425,12 +438,12 @@ dissect_cbch(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             break;
 
         case 0x0F:
-            proto_tree_add_text(cbch_tree, tvb, offset, 1, "NULL message");
+            expert_add_info(pinfo, seq_item, &ei_gsm_cbch_seq_num_null);
             call_dissector(data_handle, tvb, pinfo, cbch_tree);
             break;
 
         default:
-            proto_tree_add_text(cbch_tree, tvb, offset, 1, "reserved Sequence Number");
+            expert_add_info(pinfo, seq_item, &ei_gsm_cbch_seq_num_reserved);
             call_dissector(data_handle, tvb, pinfo, cbch_tree);
             break;
         }
@@ -457,7 +470,7 @@ dissect_cbch(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     }
     else
     {
-        proto_tree_add_text(cbch_tree, tvb, offset, 1, "invalid Link Protocol Discriminator");
+        expert_add_info(pinfo, lpd_item, &ei_gsm_cbch_lpd);
         call_dissector(data_handle, tvb, pinfo, cbch_tree);
     }
 }
@@ -496,7 +509,7 @@ proto_register_gsm_cbch(void)
             },
             { &hf_gsm_cbch_sched_begin_slot,
               { "GSM CBCH Schedule Begin slot", "gsm_cbch.schedule_begin",
-                FT_UINT8, BASE_DEC, NULL, 0x3F,
+              FT_UINT8, BASE_DEC|BASE_RANGE_STRING, RVALS(gsm_cbch_sched_begin_slot_rvals), 0x3F,
                 NULL, HFILL}
             },
             { &hf_gsm_cbch_sched_spare,
@@ -514,6 +527,17 @@ proto_register_gsm_cbch(void)
                 FT_UINT8, BASE_DEC, NULL, 0x0,
                 NULL, HFILL}
             },
+            { &hf_gsm_cbch_padding,
+              { "Padding",   "gsm_cbch.padding",
+                FT_BYTES, BASE_NONE, NULL, 0x0,
+                NULL, HFILL}
+            },
+            { &hf_gsm_cbch_block,
+              { "CBCH Block",   "gsm_cbch.block",
+                FT_UINT8, BASE_HEX, NULL, 0x0,
+                NULL, HFILL}
+            },
+
 #if 0
             { &hf_gsm_cbch_sched_msg_id,
               { "GSM CBCH Schedule Message ID", "gsm_cbch.sched_msg_id",
@@ -604,13 +628,25 @@ proto_register_gsm_cbch(void)
         &ett_cbch_fragments,
     };
 
+    expert_module_t* expert_cbch;
+
+    static ei_register_info ei[] = {
+        { &ei_gsm_cbch_sched_end_slot, { "gsm_cbch.sched_end.bad_range", PI_PROTOCOL, PI_WARN, "End Slot Number less than Begin Slot Number: ignoring message", EXPFILL }},
+        { &ei_gsm_cbch_seq_num_null, { "gsm_cbch.block_type.seq_num.null", PI_PROTOCOL, PI_NOTE, "NULL message", EXPFILL }},
+        { &ei_gsm_cbch_seq_num_reserved, { "gsm_cbch.block_type.seq_num.reserved", PI_PROTOCOL, PI_NOTE, "Reserved Sequence Number", EXPFILL }},
+        { &ei_gsm_cbch_lpd, { "gsm_cbch.block_type.lpd.invalid", PI_PROTOCOL, PI_WARN, "Invalid Link Protocol Discriminator", EXPFILL }},
+    };
+
     /* Register the protocol name and description */
     proto_cbch = proto_register_protocol("GSM Cell Broadcast Channel", "GSM CBCH", "gsm_cbch");
     proto_register_field_array(proto_cbch, hf_smscb, array_length(hf_smscb));
+    expert_cbch = expert_register_protocol(proto_cbch);
+    expert_register_field_array(expert_cbch, ei, array_length(ei));
 
     /* subdissector code */
     register_dissector("gsm_cbch", dissect_cbch, proto_cbch);
     register_init_routine(cbch_defragment_init);
+    register_cleanup_routine(cbch_defragment_cleanup);
 
     /* subtree array */
     proto_register_subtree_array(ett, array_length(ett));
@@ -622,3 +658,16 @@ proto_reg_handoff_gsm_cbch(void)
     data_handle = find_dissector("data");
     cbs_handle  = find_dissector("gsm_cbs");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

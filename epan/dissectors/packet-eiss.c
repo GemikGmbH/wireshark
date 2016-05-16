@@ -24,11 +24,9 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/expert.h>
-#include <epan/dissectors/packet-mpeg-sect.h>
+#include "packet-mpeg-sect.h"
 
 void proto_register_eiss(void);
 void proto_reg_handoff_eiss(void);
@@ -130,10 +128,8 @@ static guint
 dissect_etv_bif_platform_ids(tvbuff_t *tvb, proto_tree *tree, guint offset)
 {
 	proto_tree *platform_tree;
-	proto_item *pi;
 
-	pi = proto_tree_add_text(tree, tvb, offset, 15, "Platform Id");
-	platform_tree = proto_item_add_subtree(pi, ett_eiss_platform_id);
+	platform_tree = proto_tree_add_subtree(tree, tvb, offset, 15, ett_eiss_platform_id, NULL, "Platform Id");
 	proto_tree_add_item(platform_tree, hf_pdtHWManufacturer, tvb, offset, 3, ENC_BIG_ENDIAN);
 	offset += 3;
 	proto_tree_add_item(platform_tree, hf_pdtHWModel,	 tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -159,7 +155,6 @@ dissect_etv_bif_platform_ids(tvbuff_t *tvb, proto_tree *tree, guint offset)
 static guint
 dissect_eiss_descriptors(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint offset)
 {
-	proto_item *pi;
 	proto_tree *sub_tree;
 	guint       tag;
 
@@ -169,9 +164,8 @@ dissect_eiss_descriptors(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gu
 		guint total_length;
 
 		total_length = tvb_get_guint8(tvb, offset+1);
-		pi = proto_tree_add_text(tree, tvb, offset, (2+total_length),
-					"ETV Application Information Descriptor");
-		sub_tree = proto_item_add_subtree(pi, ett_eiss_desc);
+		sub_tree = proto_tree_add_subtree(tree, tvb, offset, (2+total_length),
+					ett_eiss_desc, NULL, "ETV Application Information Descriptor");
 		proto_tree_add_item(sub_tree, hf_eiss_descriptor_tag,
 					tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset++;
@@ -208,12 +202,11 @@ dissect_eiss_descriptors(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gu
 					2, ENC_BIG_ENDIAN);
 		offset += 2;
 		proto_tree_add_item(sub_tree, hf_eiss_irl_string, tvb, offset, 2,
-					ENC_ASCII|ENC_NA);
+					ENC_ASCII|ENC_BIG_ENDIAN);
 		return (2+total_length);
 	} else if (0xe1 == tag) {
-		pi = proto_tree_add_text(tree, tvb, offset, 6,
-					"ETV Media Time Descriptor");
-		sub_tree = proto_item_add_subtree(pi, ett_eiss_desc);
+		sub_tree = proto_tree_add_subtree(tree, tvb, offset, 6,
+					ett_eiss_desc, NULL, "ETV Media Time Descriptor");
 		proto_tree_add_item(sub_tree, hf_eiss_descriptor_tag,
 					tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset++;
@@ -228,9 +221,8 @@ dissect_eiss_descriptors(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gu
 		tvbuff_t *payload;
 
 		tmp = tvb_get_ntohs(tvb, offset+1);
-		pi = proto_tree_add_text(tree, tvb, offset, (3+tmp),
-					"ETV Stream Event Descriptor");
-		sub_tree = proto_item_add_subtree(pi, ett_eiss_desc);
+		sub_tree = proto_tree_add_subtree(tree, tvb, offset, (3+tmp),
+					ett_eiss_desc, NULL, "ETV Stream Event Descriptor");
 		proto_tree_add_item(sub_tree, hf_eiss_descriptor_tag,
 					tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset++;
@@ -243,7 +235,7 @@ dissect_eiss_descriptors(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gu
 					offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
 
-		payload = tvb_new_subset(tvb, offset, tmp-4, tmp-4);
+		payload = tvb_new_subset_length(tvb, offset, tmp-4);
 		call_dissector(data_handle, payload, pinfo, sub_tree);
 
 		return (3+tmp);
@@ -359,10 +351,8 @@ dissect_eiss(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	if (0 < packet_length) {
 		proto_tree *eiss_desc_tree;
-		pi = proto_tree_add_text(eiss_tree, tvb, offset,
-					packet_length-offset,
-					"%s", "EISS Descriptor(s)");
-		eiss_desc_tree = proto_item_add_subtree(pi, ett_eiss_desc);
+		eiss_desc_tree = proto_tree_add_subtree(eiss_tree, tvb, offset,
+					packet_length-offset, ett_eiss_desc, NULL, "EISS Descriptor(s)");
 		while (offset < packet_length) {
 			offset += dissect_eiss_descriptors(tvb, pinfo,
 							eiss_desc_tree, offset);
@@ -591,3 +581,15 @@ proto_reg_handoff_eiss(void)
 	data_handle = find_dissector("data");
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

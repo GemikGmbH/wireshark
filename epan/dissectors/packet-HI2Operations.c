@@ -31,7 +31,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/conversation.h>
 #include <epan/oids.h>
@@ -367,7 +366,7 @@ static int hf_HI2Operations_cI = -1;              /* CellIdType */
 static int hf_HI2Operations_ssi = -1;             /* SSIType */
 
 /*--- End of included file: packet-HI2Operations-hf.c ---*/
-#line 44 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
+#line 43 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
 
 /* Initialize the subtree pointers */
 
@@ -477,7 +476,7 @@ static gint ett_HI2Operations_TETRACGIType = -1;
 static gint ett_HI2Operations_TSIType = -1;
 
 /*--- End of included file: packet-HI2Operations-ett.c ---*/
-#line 47 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
+#line 46 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
 
 
 /*--- Included file: packet-HI2Operations-fn.c ---*/
@@ -3758,15 +3757,17 @@ dissect_HI2Operations_IRIsContent(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 
 /*--- PDUs ---*/
 
-static void dissect_IRIsContent_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_IRIsContent_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_HI2Operations_IRIsContent(FALSE, tvb, 0, &asn1_ctx, tree, hf_HI2Operations_IRIsContent_PDU);
+  offset = dissect_HI2Operations_IRIsContent(FALSE, tvb, offset, &asn1_ctx, tree, hf_HI2Operations_IRIsContent_PDU);
+  return offset;
 }
 
 
 /*--- End of included file: packet-HI2Operations-fn.c ---*/
-#line 49 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
+#line 48 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
 
 
 /*--- proto_register_HI2Operations ----------------------------------------------*/
@@ -5035,7 +5036,7 @@ void proto_register_HI2Operations(void) {
         "SSIType", HFILL }},
 
 /*--- End of included file: packet-HI2Operations-hfarr.c ---*/
-#line 57 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
+#line 56 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
   };
 
   /* List of subtrees */
@@ -5147,7 +5148,7 @@ void proto_register_HI2Operations(void) {
     &ett_HI2Operations_TSIType,
 
 /*--- End of included file: packet-HI2Operations-ettarr.c ---*/
-#line 62 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
+#line 61 "../../asn1/HI2Operations/packet-HI2Operations-template.c"
   };
 
   /* Register protocol */
@@ -5157,7 +5158,7 @@ void proto_register_HI2Operations(void) {
   proto_register_field_array(proto_HI2Operations, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
-  register_dissector("HI2Operations", dissect_IRIsContent_PDU, proto_HI2Operations);
+  new_register_dissector("HI2Operations", dissect_IRIsContent_PDU, proto_HI2Operations);
 }
 
 

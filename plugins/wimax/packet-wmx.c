@@ -29,31 +29,30 @@
 #include "config.h"
 
 #include <string.h>
-#include <glib.h>
+
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include <epan/address.h>
-#include <epan/wmem/wmem.h>
 #include "wimax_tlv.h"
+#include "wimax_utils.h"
 
 void proto_register_wimax(void);
 
 /* Global variables */
-gint    proto_wimax = -1;
-gint8   arq_enabled = 0;
-gint    scheduling_service_type = 0;
-gint    mac_sdu_length = 49; /* default SDU size is 49 bytes (11.13.16) */
+gint	proto_wimax = -1;
+gint8	arq_enabled = 0;
+gint	scheduling_service_type = 0;
+gint	mac_sdu_length = 49; /* default SDU size is 49 bytes (11.13.16) */
 extern	guint global_cid_max_basic;
 extern	gboolean include_cor2_changes;
 
-address bs_address = {AT_NONE, -1, 0, NULL};
+address bs_address = {AT_NONE, 0, NULL};
 
 
 static int hf_tlv_type = -1;
 static int hf_tlv_length = -1;
 static int hf_tlv_length_size = -1;
 
-#define MAX_NUM_TLVS        256
+#define MAX_NUM_TLVS	256
 /* Global TLV array to retrieve unique subtree identifiers */
 static gint ett_tlv[MAX_NUM_TLVS];
 
@@ -98,8 +97,7 @@ proto_item *add_tlv_subtree(tlv_info_t *self, proto_tree *tree, int hfindex, tvb
 
 	hf = proto_registrar_get_nth(hfindex);
 
-	tlv_item = proto_tree_add_text(tree, tvb, start, tlv_value_length+tlv_val_offset, "%s", hf->name);
-	tlv_tree = proto_item_add_subtree(tlv_item, ett_tlv[tlv_type]);
+	tlv_tree = proto_tree_add_subtree(tree, tvb, start, tlv_value_length+tlv_val_offset, ett_tlv[tlv_type], NULL, hf->name);
 
 	proto_tree_add_uint(tlv_tree, hf_tlv_type, tvb, start, 1, tlv_type);
 	if (size_of_tlv_length_field > 0) /* It is */
@@ -136,7 +134,6 @@ proto_tree *add_tlv_subtree_no_item(tlv_info_t *self, proto_tree *tree, int hfin
 {
 	header_field_info *hf;
 	proto_tree *tlv_tree;
-	proto_item *tlv_item;
 	gint tlv_value_length, tlv_val_offset;
 	guint8 size_of_tlv_length_field;
 	guint8 tlv_type;
@@ -153,8 +150,7 @@ proto_tree *add_tlv_subtree_no_item(tlv_info_t *self, proto_tree *tree, int hfin
 
 	hf = proto_registrar_get_nth(hfindex);
 
-	tlv_item = proto_tree_add_text(tree, tvb, start, tlv_value_length+tlv_val_offset, "%s", hf->name);
-	tlv_tree = proto_item_add_subtree(tlv_item, ett_tlv[tlv_type]);
+	tlv_tree = proto_tree_add_subtree(tree, tvb, start, tlv_value_length+tlv_val_offset, ett_tlv[tlv_type], NULL, hf->name);
 
 	proto_tree_add_uint(tlv_tree, hf_tlv_type, tvb, start, 1, tlv_type);
 	if (size_of_tlv_length_field > 0) /* It is */
@@ -249,8 +245,7 @@ proto_tree *add_protocol_subtree(tlv_info_t *self, gint idx, proto_tree *tree, i
 			break;
 	}
 	/* Show "TLV value: " */
-	tlv_item = proto_tree_add_text(tlv_tree, tvb, start+tlv_val_offset, tlv_value_length, hex_fmt, label, tlv_value);
-	tlv_tree = proto_item_add_subtree(tlv_item, idx);
+	tlv_tree = proto_tree_add_subtree_format(tlv_tree, tvb, start+tlv_val_offset, tlv_value_length, idx, NULL, hex_fmt, label, tlv_value);
 
 	/* Return a pointer to the value level */
 	return tlv_tree;
@@ -334,3 +329,16 @@ void proto_register_wimax(void)
 	prefs_register_obsolete_preference(wimax_module, "wimax.basic_cid_max");
 	prefs_register_obsolete_preference(wimax_module, "wimax.corrigendum_2_version");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

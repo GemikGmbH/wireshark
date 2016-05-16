@@ -26,7 +26,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/asn1.h>
@@ -34,6 +33,8 @@
 #include "packet-per.h"
 #include "packet-tcp.h"
 #include "packet-gsm_map.h"
+#include "packet-e164.h"
+#include "packet-e212.h"
 
 #define PNAME  "OMA Internal Location Protocol"
 #define PSNAME "ILP"
@@ -58,9 +59,11 @@ static int proto_ilp = -1;
 static gboolean ilp_desegment = TRUE;
 
 #include "packet-ilp-hf.c"
+static int hf_ilp_mobile_directory_number = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_ilp = -1;
+static gint ett_ilp_setid = -1;
 #include "packet-ilp-ett.c"
 
 /* Include constants */
@@ -71,7 +74,7 @@ static gint ett_ilp = -1;
 
 
 static guint
-get_ilp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_ilp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
   /* PDU length = Message length */
   return tvb_get_ntohs(tvb,offset);
@@ -82,7 +85,7 @@ dissect_ilp_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
   tcp_dissect_pdus(tvb, pinfo, tree, ilp_desegment, ILP_HEADER_SIZE,
                    get_ilp_pdu_len, dissect_ILP_PDU_PDU, data);
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 void proto_reg_handoff_ilp(void);
@@ -94,11 +97,16 @@ void proto_register_ilp(void) {
   static hf_register_info hf[] = {
 
 #include "packet-ilp-hfarr.c"
+    { &hf_ilp_mobile_directory_number,
+      { "Mobile Directory Number", "ilp.mobile_directory_number",
+        FT_STRING, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
   };
 
   /* List of subtrees */
   static gint *ett[] = {
     &ett_ilp,
+    &ett_ilp_setid,
 #include "packet-ilp-ettarr.c"
   };
 

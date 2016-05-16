@@ -31,10 +31,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <packet-tcp.h>
+#include "packet-tcp.h"
 
 void proto_register_turnchannel(void);
 void proto_reg_handoff_turnchannel(void);
@@ -61,14 +59,14 @@ static int
 dissect_turnchannel_message(tvbuff_t *tvb, packet_info *pinfo,
 			    proto_tree *tree, void *data _U_)
 {
-  	guint   len;
+	guint   len;
 	guint16 channel_id;
 	guint16 data_len;
 	proto_item *ti;
 	proto_tree *turnchannel_tree;
 	heur_dtbl_entry_t *hdtbl_entry;
 
-	len = tvb_length(tvb);
+	len = tvb_captured_length(tvb);
 	/* First, make sure we have enough data to do the check. */
 	if (len < TURNCHANNEL_HDR_LEN) {
 		  return 0;
@@ -102,7 +100,7 @@ dissect_turnchannel_message(tvbuff_t *tvb, packet_info *pinfo,
 	  tvbuff_t *next_tvb;
 	  guint reported_len, new_len;
 
-	  new_len = tvb_length_remaining(tvb, TURNCHANNEL_HDR_LEN);
+	  new_len = tvb_captured_length_remaining(tvb, TURNCHANNEL_HDR_LEN);
 	  reported_len = tvb_reported_length_remaining(tvb,
 						       TURNCHANNEL_HDR_LEN);
 	  if (data_len < reported_len) {
@@ -118,11 +116,12 @@ dissect_turnchannel_message(tvbuff_t *tvb, packet_info *pinfo,
 	  }
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 static guint
-get_turnchannel_message_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_turnchannel_message_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                            int offset, void *data _U_)
 {
 	return (guint)tvb_get_ntohs(tvb, offset+2) + TURNCHANNEL_HDR_LEN;
 }
@@ -132,18 +131,18 @@ dissect_turnchannel_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
 {
 	tcp_dissect_pdus(tvb, pinfo, tree, TRUE, TURNCHANNEL_HDR_LEN,
 			get_turnchannel_message_len, dissect_turnchannel_message, data);
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 
 static gboolean
 dissect_turnchannel_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-  	guint   len;
+	guint   len;
 	guint16 channel_id;
 	guint16 data_len;
 
-  	len = tvb_length(tvb);
+	len = tvb_captured_length(tvb);
 	/* First, make sure we have enough data to do the check. */
 	if (len < TURNCHANNEL_HDR_LEN) {
 		  return FALSE;
@@ -190,7 +189,7 @@ proto_register_turnchannel(void)
 			   proto_turnchannel);
 
 /* subdissectors */
-	register_heur_dissector_list("turnchannel", &heur_subdissector_list);
+	heur_subdissector_list = register_heur_dissector_list("turnchannel");
 
 /* Required function calls to register the header fields and subtrees used */
 	proto_register_field_array(proto_turnchannel, hf, array_length(hf));
@@ -208,13 +207,26 @@ proto_reg_handoff_turnchannel(void)
 	turnchannel_tcp_handle = new_create_dissector_handle(dissect_turnchannel_tcp, proto_turnchannel);
 	turnchannel_udp_handle = find_dissector("turnchannel");
 
-	/* Used for "Decode As" in case STUN negotiation isn't captured */
-	dissector_add_handle("tcp.port", turnchannel_tcp_handle);
-	dissector_add_handle("udp.port", turnchannel_udp_handle);
+	/* Register for "Decode As" in case STUN negotiation isn't captured */
+	dissector_add_for_decode_as("tcp.port", turnchannel_tcp_handle);
+	dissector_add_for_decode_as("udp.port", turnchannel_udp_handle);
 
-	/* TURN negoiation is handled through STUN2 dissector (packet-stun.c),
+	/* TURN negotiation is handled through STUN2 dissector (packet-stun.c),
 	   so only it should be able to determine if a packet is a TURN packet */
-	heur_dissector_add("stun", dissect_turnchannel_heur, proto_turnchannel);
+	heur_dissector_add("stun", dissect_turnchannel_heur, "TURN Channel over STUN", "turnchannel_stun", proto_turnchannel, HEURISTIC_ENABLE);
 
 	data_handle = find_dissector("data");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -25,10 +25,9 @@
 
 #include <string.h>
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/dissectors/packet-dcerpc.h>
 #include <epan/expert.h>
+#include <epan/dissectors/packet-dcerpc.h>
 
 #include "packet-pn.h"
 
@@ -201,7 +200,7 @@ dissect_pn_ipv4(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 /* dissect a 16 byte UUID address */
 int
 dissect_pn_uuid(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
-                    proto_tree *tree, int hfindex, e_uuid_t *uuid)
+                    proto_tree *tree, int hfindex, e_guid_t *uuid)
 {
     guint8 drep[2] = { 0,0 };
 
@@ -246,7 +245,7 @@ int
 dissect_pn_user_data(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
                     proto_tree *tree, guint32 length, const char *text)
 {
-    if (tree) {
+    if (tree && length != 0) {
         proto_tree_add_string_format(tree, hf_pn_user_data, tvb, offset, length, "data",
             "%s: %d bytes", text, length);
     }
@@ -355,3 +354,15 @@ init_pn (int proto)
     expert_register_field_array(expert_pn, ei, array_length(ei));
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

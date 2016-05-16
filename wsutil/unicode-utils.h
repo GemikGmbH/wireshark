@@ -23,15 +23,20 @@
 #ifndef __UNICODEUTIL_H__
 #define __UNICODEUTIL_H__
 
-#include "config.h"
+#include <config.h>
 
 #include "ws_symbol_export.h"
 
 #include <glib.h>
 
 /**
- * @file Unicode convenience routines.
+ * @file
+ * Unicode convenience routines.
  */
+
+#ifdef	__cplusplus
+extern "C" {
+#endif
 
 WS_DLL_PUBLIC
 int ws_utf8_char_len(guint8 ch);
@@ -97,5 +102,9 @@ void arg_list_utf_16to8(int argc, char *argv[]);
 	((uchar2) >= 0xdc00 && (uchar2) < 0xe000)
 #define SURROGATE_VALUE(lead, trail) \
 	(((((lead) - 0xd800) << 10) | ((trail) - 0xdc00)) + 0x100000)
+
+#ifdef	__cplusplus
+}
+#endif
 
 #endif /* __UNICODEUTIL_H__ */

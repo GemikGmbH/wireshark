@@ -26,9 +26,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
+#include <epan/expert.h>
 #include <epan/prefs.h>
 
 #include "packet-tcp.h"
@@ -40,7 +39,6 @@ void proto_reg_handoff_openflow(void);
 #define OFP_LEGACY2_PORT 6634
 #define OFP_IANA_PORT 6653
 static int g_openflow_port = OFP_IANA_PORT;
-static gboolean openflow_heur_enabled = TRUE;
 
 static dissector_handle_t openflow_handle;
 static dissector_handle_t openflow_v1_handle;
@@ -50,6 +48,8 @@ static dissector_handle_t openflow_v5_handle;
 /* Initialize the protocol and registered fields */
 static int proto_openflow = -1;
 static int hf_openflow_version = -1;
+
+static expert_field ei_openflow_version = EI_INIT;
 
 static gboolean openflow_desegment = TRUE;
 
@@ -64,12 +64,13 @@ static const value_string openflow_version_values[] = {
     { 0x02, "1.1" },
     { 0x03, "1.2" },
     { 0x04, "1.3" },
-    { 0x04, "1.4" },
+    { 0x05, "1.4" },
     { 0, NULL }
 };
 
 static guint
-get_openflow_pdu_length(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_openflow_pdu_length(packet_info *pinfo _U_, tvbuff_t *tvb,
+                        int offset, void *data _U_)
 {
     return tvb_get_ntohs(tvb, offset + 2);
 }
@@ -79,6 +80,7 @@ dissect_openflow_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, vo
 {
     guint offset = 0;
     guint8 version;
+    proto_item* ti;
 
     version = tvb_get_guint8(tvb, 0);
     /* Set the Protocol column to the constant string of openflow */
@@ -96,8 +98,8 @@ dissect_openflow_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, vo
         call_dissector(openflow_v5_handle, tvb, pinfo, tree);
         break;
     default:
-        proto_tree_add_item(tree, hf_openflow_version, tvb, offset, 1, ENC_BIG_ENDIAN);
-        proto_tree_add_text(tree, tvb, offset, -1, "Unsuported version not dissected");
+        ti = proto_tree_add_item(tree, hf_openflow_version, tvb, offset, 1, ENC_BIG_ENDIAN);
+        expert_add_info(pinfo, ti, &ei_openflow_version);
         break;
     }
     return tvb_reported_length(tvb);
@@ -117,10 +119,6 @@ dissect_openflow_heur(tvbuff_t *tvb, packet_info *pinfo,
                      proto_tree *tree, void *data)
 {
     conversation_t *conversation = NULL;
-
-    if (!openflow_heur_enabled) {
-        return FALSE;
-    }
 
     if ((pinfo->destport != OFP_LEGACY_PORT) &&
         (pinfo->destport != OFP_LEGACY2_PORT) &&
@@ -150,31 +148,33 @@ proto_register_openflow(void)
         }
     };
 
+    static ei_register_info ei[] = {
+        { &ei_openflow_version, { "openflow.version.unknown", PI_UNDECODED, PI_WARN, "Unsupported version not dissected", EXPFILL }},
+    };
+
     module_t *openflow_module;
+    expert_module_t* expert_openflow;
 
     /* Register the protocol name and description */
     proto_openflow = proto_register_protocol("OpenFlow",
-            "openflow", "openflow");
+            "OpenFlow", "openflow");
 
     new_register_dissector("openflow", dissect_openflow, proto_openflow);
 
     /* Required function calls to register the header fields and subtrees */
     proto_register_field_array(proto_openflow, hf, array_length(hf));
+    expert_openflow = expert_register_protocol(proto_openflow);
+    expert_register_field_array(expert_openflow, ei, array_length(ei));
 
     openflow_module = prefs_register_protocol(proto_openflow, proto_reg_handoff_openflow);
 
     /* Register port preference */
     prefs_register_uint_preference(openflow_module, "tcp.port", "OpenFlow TCP port",
-                                   " OpenFlow TCP port (6653 is the IANA assigned port)",
+                                   "OpenFlow TCP port (6653 is the IANA assigned port)",
                                    10, &g_openflow_port);
 
     /* Register heuristic preference */
-    prefs_register_bool_preference(openflow_module, "heuristic",
-                                   "Try to decode OpenFlow on other common ports",
-                                   "Try to decode OpenFlow on several common "
-                                   "ports in addition to the one supplied by "
-                                   "user above (6653 is the IANA assigned port).",
-                                   &openflow_heur_enabled);
+    prefs_register_obsolete_preference(openflow_module, "heuristic");
 
     /* Register desegment preference */
     prefs_register_bool_preference(openflow_module, "desegment",
@@ -192,7 +192,7 @@ proto_reg_handoff_openflow(void)
 
     if (!initialized) {
         openflow_handle = new_create_dissector_handle(dissect_openflow, proto_openflow);
-        heur_dissector_add("tcp", dissect_openflow_heur, proto_openflow);
+        heur_dissector_add("tcp", dissect_openflow_heur, "OpenFlow over TCP", "openflow_tcp", proto_openflow, HEURISTIC_ENABLE);
         initialized = TRUE;
     } else {
         dissector_delete_uint("tcp.port", currentPort, openflow_handle);

@@ -27,12 +27,12 @@
 #include <time.h>
 #include <glib.h>
 
-#include "emem.h"
 #include "wmem/wmem.h"
 #include "proto.h"
 #include "to_str.h"
 #include "to_str-int.h"
 #include "strutil.h"
+#include <wsutil/pint.h>
 
 /*
  * If a user _does_ pass in a too-small buffer, this is probably
@@ -59,21 +59,33 @@ low_nibble_of_octet_to_hex(guint8 oct)
 }
 
 static inline char *
-byte_to_hex(char *out, guint32 dword) {
+byte_to_hex(char *out, guint32 dword)
+{
 	*out++ = low_nibble_of_octet_to_hex(dword >> 4);
 	*out++ = low_nibble_of_octet_to_hex(dword);
 	return out;
 }
 
 char *
-word_to_hex(char *out, guint16 word) {
+word_to_hex(char *out, guint16 word)
+{
 	out = byte_to_hex(out, word >> 8);
 	out = byte_to_hex(out, word);
 	return out;
 }
 
 char *
-word_to_hex_npad(char *out, guint16 word) {
+word_to_hex_punct(char *out, guint16 word, char punct)
+{
+	out = byte_to_hex(out, word >> 8);
+	*out++ = punct;
+	out = byte_to_hex(out, word);
+	return out;
+}
+
+char *
+word_to_hex_npad(char *out, guint16 word)
+{
 	if (word >= 0x1000)
 		*out++ = low_nibble_of_octet_to_hex((guint8)(word >> 12));
 	if (word >= 0x0100)
@@ -85,23 +97,36 @@ word_to_hex_npad(char *out, guint16 word) {
 }
 
 char *
-dword_to_hex(char *out, guint32 dword) {
-	out = byte_to_hex(out, dword >> 24);
-	out = byte_to_hex(out, dword >> 16);
-	out = byte_to_hex(out, dword >>  8);
-	out = byte_to_hex(out, dword);
+dword_to_hex(char *out, guint32 dword)
+{
+	out = word_to_hex(out, dword >> 16);
+	out = word_to_hex(out, dword);
 	return out;
 }
 
 char *
-dword_to_hex_punct(char *out, guint32 dword, char punct) {
-	out = byte_to_hex(out, dword >> 24);
+dword_to_hex_punct(char *out, guint32 dword, char punct)
+{
+	out = word_to_hex_punct(out, dword >> 16, punct);
 	*out++ = punct;
-	out = byte_to_hex(out, dword >> 16);
+	out = word_to_hex_punct(out, dword, punct);
+	return out;
+}
+
+char *
+qword_to_hex(char *out, guint64 qword)
+{
+	out = dword_to_hex(out, (guint32)(qword >> 32));
+	out = dword_to_hex(out, (guint32)(qword & 0xffffffff));
+	return out;
+}
+
+char *
+qword_to_hex_punct(char *out, guint64 qword, char punct)
+{
+	out = dword_to_hex_punct(out, (guint32)(qword >> 32), punct);
 	*out++ = punct;
-	out = byte_to_hex(out, dword >>  8);
-	*out++ = punct;
-	out = byte_to_hex(out, dword);
+	out = dword_to_hex_punct(out, (guint32)(qword & 0xffffffff), punct);
 	return out;
 }
 
@@ -114,7 +139,8 @@ dword_to_hex_punct(char *out, guint32 dword, char punct) {
  * There needs to be at least len * 2 bytes left in the buffer.
  */
 char *
-bytes_to_hexstr(char *out, const guint8 *ad, guint32 len) {
+bytes_to_hexstr(char *out, const guint8 *ad, guint32 len)
+{
 	guint32 i;
 
 	if (!ad)
@@ -134,7 +160,8 @@ bytes_to_hexstr(char *out, const guint8 *ad, guint32 len) {
  * There needs to be at least len * 3 - 1 bytes left in the buffer.
  */
 char *
-bytes_to_hexstr_punct(char *out, const guint8 *ad, guint32 len, char punct) {
+bytes_to_hexstr_punct(char *out, const guint8 *ad, guint32 len, char punct)
+{
 	guint32 i;
 
 	if (!ad)
@@ -148,6 +175,9 @@ bytes_to_hexstr_punct(char *out, const guint8 *ad, guint32 len, char punct) {
 	return out;
 }
 
+/* Max string length for displaying byte string.  */
+#define	MAX_BYTE_STR_LEN	48
+
 /* Routine to convert a sequence of bytes to a hex string, one byte/two hex
  * digits at at a time, with a specified punctuation character between
  * the bytes.
@@ -156,40 +186,15 @@ bytes_to_hexstr_punct(char *out, const guint8 *ad, guint32 len, char punct) {
  * the resulting string is (len-1) bytes shorter)
  */
 const gchar *
-bytestring_to_ep_str(const guint8 *ad, const guint32 len, const char punct) {
+bytestring_to_str(wmem_allocator_t *scope, const guint8 *ad, const guint32 len, const char punct)
+{
 	gchar *buf;
-	size_t       buflen;
+	guint32 buflen = len;
+	gchar *buf_ptr;
+	int truncated = 0;
 
-	if (!ad)
-		REPORT_DISSECTOR_BUG("Null pointer passed to bytestring_to_ep_str()");
-
-	/* XXX, Old code was using int as iterator... Why len is guint32 anyway?! (darkjames) */
-	if ( ((int) len) < 0)
-		return "";
-
-	if (!len)
-		return "";
-
-	if (punct)
-		buflen=len*3;
-	else
-		buflen=len*2 + 1;
-
-	buf=(gchar *)ep_alloc(buflen);
-
-	if (punct)
-		bytes_to_hexstr_punct(buf, ad, len, punct);
-	else
-		bytes_to_hexstr(buf, ad, len);
-
-	buf[buflen-1] = '\0';
-	return buf;
-}
-
-const gchar *
-bytestring_to_str(wmem_allocator_t *scope, const guint8 *ad, const guint32 len, const char punct) {
-	gchar *buf;
-	size_t buflen;
+	if (!punct)
+		return bytes_to_str(scope, ad, len);
 
 	if (!ad)
 		REPORT_DISSECTOR_BUG("Null pointer passed to bytestring_to_str()");
@@ -197,35 +202,34 @@ bytestring_to_str(wmem_allocator_t *scope, const guint8 *ad, const guint32 len, 
 	if (len == 0)
 		return wmem_strdup(scope, "");
 
-	if (punct)
-		buflen=len*3;
-	else
-		buflen=len*2 + 1;
+	buf=(gchar *)wmem_alloc(scope, MAX_BYTE_STR_LEN+3+1);
+	if (buflen > MAX_BYTE_STR_LEN/3) {	/* bd_len > 16 */
+		truncated = 1;
+		buflen = MAX_BYTE_STR_LEN/3;
+	}
 
-	buf=(gchar *)wmem_alloc(scope, buflen);
+	buf_ptr = bytes_to_hexstr_punct(buf, ad, buflen, punct); /* max MAX_BYTE_STR_LEN-1 bytes */
 
-	if (punct)
-		bytes_to_hexstr_punct(buf, ad, len, punct);
-	else
-		bytes_to_hexstr(buf, ad, len);
+	if (truncated) {
+		*buf_ptr++ = punct;			/* 1 byte */
+		buf_ptr    = g_stpcpy(buf_ptr, "...");	/* 3 bytes */
+	}
 
-	buf[buflen-1] = '\0';
+	*buf_ptr = '\0';
 	return buf;
 }
 
-/* Max string length for displaying byte string.  */
-#define	MAX_BYTE_STR_LEN	48
-
-gchar *
-bytes_to_ep_str(const guint8 *bd, int bd_len) {
+char *
+bytes_to_str(wmem_allocator_t *scope, const guint8 *bd, int bd_len)
+{
 	gchar *cur;
 	gchar *cur_ptr;
 	int truncated = 0;
 
 	if (!bd)
-		REPORT_DISSECTOR_BUG("Null pointer passed to bytes_to_ep_str()");
+		REPORT_DISSECTOR_BUG("Null pointer passed to bytes_to_str()");
 
-	cur=(gchar *)ep_alloc(MAX_BYTE_STR_LEN+3+1);
+	cur=(gchar *)wmem_alloc(scope, MAX_BYTE_STR_LEN+3+1);
 	if (bd_len <= 0) { cur[0] = '\0'; return cur; }
 
 	if (bd_len > MAX_BYTE_STR_LEN/2) {	/* bd_len > 24 */
@@ -236,54 +240,53 @@ bytes_to_ep_str(const guint8 *bd, int bd_len) {
 	cur_ptr = bytes_to_hexstr(cur, bd, bd_len);	/* max MAX_BYTE_STR_LEN bytes */
 
 	if (truncated)
-		cur_ptr = g_stpcpy(cur_ptr, "...");		/* 3 bytes */
+		cur_ptr = g_stpcpy(cur_ptr, "...");	/* 3 bytes */
 
 	*cur_ptr = '\0';				/* 1 byte */
 	return cur;
 }
 
-/* Turn an array of bytes into a string showing the bytes in hex with
- * punct as a bytes separator.
- */
-gchar *
-bytes_to_ep_str_punct(const guint8 *bd, int bd_len, gchar punct) {
-	gchar *cur;
-	gchar *cur_ptr;
-	int truncated = 0;
+static int
+guint32_to_str_buf_len(const guint32 u)
+{
+	/* ((2^32)-1) == 2147483647 */
+	if (u >= 1000000000)return 10;
+	if (u >= 100000000) return 9;
+	if (u >= 10000000)  return 8;
+	if (u >= 1000000)   return 7;
+	if (u >= 100000)    return 6;
+	if (u >= 10000)     return 5;
+	if (u >= 1000)      return 4;
+	if (u >= 100)       return 3;
+	if (u >= 10)        return 2;
 
-	if (!punct)
-		return bytes_to_ep_str(bd, bd_len);
-
-	cur=(gchar *)ep_alloc(MAX_BYTE_STR_LEN+3+1);
-	if (bd_len <= 0) { cur[0] = '\0'; return cur; }
-
-	if (bd_len > MAX_BYTE_STR_LEN/3) {	/* bd_len > 16 */
-		truncated = 1;
-		bd_len = MAX_BYTE_STR_LEN/3;
-	}
-
-	cur_ptr = bytes_to_hexstr_punct(cur, bd, bd_len, punct); /* max MAX_BYTE_STR_LEN-1 bytes */
-
-	if (truncated) {
-		*cur_ptr++ = punct;				/* 1 byte */
-		cur_ptr    = g_stpcpy(cur_ptr, "...");	/* 3 bytes */
-	}
-
-	*cur_ptr = '\0';
-	return cur;
+	return 1;
 }
 
 static int
-guint32_to_str_buf_len(const guint32 u) {
-	if (u >= 1000000000)return 10;
-	if (u >= 100000000) return 9;
-	if (u >= 10000000)	return 8;
-	if (u >= 1000000)	return 7;
-	if (u >= 100000)	return 6;
-	if (u >= 10000)	return 5;
-	if (u >= 1000)	return 4;
-	if (u >= 100)	return 3;
-	if (u >= 10)	return 2;
+guint64_to_str_buf_len(const guint64 u)
+{
+	/* ((2^64)-1) == 18446744073709551615 */
+
+	if (u >= G_GUINT64_CONSTANT(10000000000000000000)) return 20;
+	if (u >= G_GUINT64_CONSTANT(1000000000000000000))  return 19;
+	if (u >= G_GUINT64_CONSTANT(100000000000000000))   return 18;
+	if (u >= G_GUINT64_CONSTANT(10000000000000000))    return 17;
+	if (u >= G_GUINT64_CONSTANT(1000000000000000))     return 16;
+	if (u >= G_GUINT64_CONSTANT(100000000000000))      return 15;
+	if (u >= G_GUINT64_CONSTANT(10000000000000))       return 14;
+	if (u >= G_GUINT64_CONSTANT(1000000000000))        return 13;
+	if (u >= G_GUINT64_CONSTANT(100000000000))         return 12;
+	if (u >= G_GUINT64_CONSTANT(10000000000))          return 11;
+	if (u >= G_GUINT64_CONSTANT(1000000000))           return 10;
+	if (u >= G_GUINT64_CONSTANT(100000000))            return 9;
+	if (u >= G_GUINT64_CONSTANT(10000000))             return 8;
+	if (u >= G_GUINT64_CONSTANT(1000000))              return 7;
+	if (u >= G_GUINT64_CONSTANT(100000))               return 6;
+	if (u >= G_GUINT64_CONSTANT(10000))                return 5;
+	if (u >= G_GUINT64_CONSTANT(1000))                 return 4;
+	if (u >= G_GUINT64_CONSTANT(100))                  return 3;
+	if (u >= G_GUINT64_CONSTANT(10))                   return 2;
 
 	return 1;
 }
@@ -324,7 +327,8 @@ static const char fast_strings[][4] = {
 };
 
 void
-guint32_to_str_buf(guint32 u, gchar *buf, int buf_len) {
+guint32_to_str_buf(guint32 u, gchar *buf, int buf_len)
+{
 	int str_len = guint32_to_str_buf_len(u)+1;
 
 	gchar *bp = &buf[str_len];
@@ -337,6 +341,23 @@ guint32_to_str_buf(guint32 u, gchar *buf, int buf_len) {
 	*--bp = '\0';
 
 	uint_to_str_back(bp, u);
+}
+
+void
+guint64_to_str_buf(guint64 u, gchar *buf, int buf_len)
+{
+	int str_len = guint64_to_str_buf_len(u)+1;
+
+	gchar *bp = &buf[str_len];
+
+	if (buf_len < str_len) {
+		g_strlcpy(buf, BUF_TOO_SMALL_ERR, buf_len);	/* Let the unexpected value alert user */
+		return;
+	}
+
+	*--bp = '\0';
+
+	uint64_to_str_back(bp, u);
 }
 
 #define	PLURALIZE(n)	(((n) > 1) ? "s" : "")
@@ -359,15 +380,15 @@ guint32_to_str_buf(guint32 u, gchar *buf, int buf_len) {
  * If time is negative, add a '-' to all non-null components.
  */
 static void
-time_secs_to_ep_str_buf(gint32 time_val, const guint32 frac, const gboolean is_nsecs,
-		emem_strbuf_t *buf)
+time_secs_to_str_buf(gint32 time_val, const guint32 frac, const gboolean is_nsecs,
+		wmem_strbuf_t *buf)
 {
 	int hours, mins, secs;
 	const gchar *msign = "";
 	gboolean do_comma = FALSE;
 
 	if(time_val == G_MININT32) {	/* That Which Shall Not Be Negated */
-		ep_strbuf_append_printf(buf, "Unable to cope with time value %d", time_val);
+		wmem_strbuf_append_printf(buf, "Unable to cope with time value %d", time_val);
 		return;
 	}
 
@@ -384,50 +405,50 @@ time_secs_to_ep_str_buf(gint32 time_val, const guint32 frac, const gboolean is_n
 	time_val /= 24;
 
 	if (time_val != 0) {
-		ep_strbuf_append_printf(buf, "%s%u day%s", msign, time_val, PLURALIZE(time_val));
+		wmem_strbuf_append_printf(buf, "%s%u day%s", msign, time_val, PLURALIZE(time_val));
 		do_comma = TRUE;
 		msign="";
 	}
 	if (hours != 0) {
-		ep_strbuf_append_printf(buf, "%s%s%u hour%s", COMMA(do_comma), msign, hours, PLURALIZE(hours));
+		wmem_strbuf_append_printf(buf, "%s%s%u hour%s", COMMA(do_comma), msign, hours, PLURALIZE(hours));
 		do_comma = TRUE;
 		msign="";
 	}
 	if (mins != 0) {
-		ep_strbuf_append_printf(buf, "%s%s%u minute%s", COMMA(do_comma), msign, mins, PLURALIZE(mins));
+		wmem_strbuf_append_printf(buf, "%s%s%u minute%s", COMMA(do_comma), msign, mins, PLURALIZE(mins));
 		do_comma = TRUE;
 		msign="";
 	}
 	if (secs != 0 || frac != 0) {
 		if (frac != 0) {
 			if (is_nsecs)
-				ep_strbuf_append_printf(buf, "%s%s%u.%09u seconds", COMMA(do_comma), msign, secs, frac);
+				wmem_strbuf_append_printf(buf, "%s%s%u.%09u seconds", COMMA(do_comma), msign, secs, frac);
 			else
-				ep_strbuf_append_printf(buf, "%s%s%u.%03u seconds", COMMA(do_comma), msign, secs, frac);
+				wmem_strbuf_append_printf(buf, "%s%s%u.%03u seconds", COMMA(do_comma), msign, secs, frac);
 		} else
-			ep_strbuf_append_printf(buf, "%s%s%u second%s", COMMA(do_comma), msign, secs, PLURALIZE(secs));
+			wmem_strbuf_append_printf(buf, "%s%s%u second%s", COMMA(do_comma), msign, secs, PLURALIZE(secs));
 	}
 }
 
 gchar *
-time_secs_to_ep_str(const gint32 time_val)
+time_secs_to_str(wmem_allocator_t *scope, const gint32 time_val)
 {
-	emem_strbuf_t *buf;
-
-	buf=ep_strbuf_sized_new(TIME_SECS_LEN+1, TIME_SECS_LEN+1);
+	wmem_strbuf_t *buf;
 
 	if (time_val == 0) {
-		ep_strbuf_append(buf, "0 seconds");
-		return buf->str;
+		return wmem_strdup(scope, "0 seconds");
 	}
 
-	time_secs_to_ep_str_buf(time_val, 0, FALSE, buf);
-	return buf->str;
+	buf = wmem_strbuf_sized_new(scope, TIME_SECS_LEN+1, TIME_SECS_LEN+1);
+
+	time_secs_to_str_buf(time_val, 0, FALSE, buf);
+
+	return wmem_strbuf_finalize(buf);
 }
 
 static void
-time_secs_to_ep_str_buf_unsigned(guint32 time_val, const guint32 frac, const gboolean is_nsecs,
-		emem_strbuf_t *buf)
+time_secs_to_str_buf_unsigned(guint32 time_val, const guint32 frac, const gboolean is_nsecs,
+		wmem_strbuf_t *buf)
 {
 	int hours, mins, secs;
 	gboolean do_comma = FALSE;
@@ -440,59 +461,58 @@ time_secs_to_ep_str_buf_unsigned(guint32 time_val, const guint32 frac, const gbo
 	time_val /= 24;
 
 	if (time_val != 0) {
-		ep_strbuf_append_printf(buf, "%u day%s", time_val, PLURALIZE(time_val));
+		wmem_strbuf_append_printf(buf, "%u day%s", time_val, PLURALIZE(time_val));
 		do_comma = TRUE;
 	}
 	if (hours != 0) {
-		ep_strbuf_append_printf(buf, "%s%u hour%s", COMMA(do_comma), hours, PLURALIZE(hours));
+		wmem_strbuf_append_printf(buf, "%s%u hour%s", COMMA(do_comma), hours, PLURALIZE(hours));
 		do_comma = TRUE;
 	}
 	if (mins != 0) {
-		ep_strbuf_append_printf(buf, "%s%u minute%s", COMMA(do_comma), mins, PLURALIZE(mins));
+		wmem_strbuf_append_printf(buf, "%s%u minute%s", COMMA(do_comma), mins, PLURALIZE(mins));
 		do_comma = TRUE;
 	}
 	if (secs != 0 || frac != 0) {
 		if (frac != 0) {
 			if (is_nsecs)
-				ep_strbuf_append_printf(buf, "%s%u.%09u seconds", COMMA(do_comma), secs, frac);
+				wmem_strbuf_append_printf(buf, "%s%u.%09u seconds", COMMA(do_comma), secs, frac);
 			else
-				ep_strbuf_append_printf(buf, "%s%u.%03u seconds", COMMA(do_comma), secs, frac);
+				wmem_strbuf_append_printf(buf, "%s%u.%03u seconds", COMMA(do_comma), secs, frac);
 		} else
-			ep_strbuf_append_printf(buf, "%s%u second%s", COMMA(do_comma), secs, PLURALIZE(secs));
+			wmem_strbuf_append_printf(buf, "%s%u second%s", COMMA(do_comma), secs, PLURALIZE(secs));
 	}
 }
 
 gchar *
-time_secs_to_ep_str_unsigned(const guint32 time_val)
+time_secs_to_str_unsigned(wmem_allocator_t *scope, const guint32 time_val)
 {
-	emem_strbuf_t *buf;
-
-	buf=ep_strbuf_sized_new(TIME_SECS_LEN+1, TIME_SECS_LEN+1);
+	wmem_strbuf_t *buf;
 
 	if (time_val == 0) {
-		ep_strbuf_append(buf, "0 seconds");
-		return buf->str;
+		return wmem_strdup(scope, "0 seconds");
 	}
 
-	time_secs_to_ep_str_buf_unsigned(time_val, 0, FALSE, buf);
-	return buf->str;
+	buf = wmem_strbuf_sized_new(scope, TIME_SECS_LEN+1, TIME_SECS_LEN+1);
+
+	time_secs_to_str_buf_unsigned(time_val, 0, FALSE, buf);
+
+	return wmem_strbuf_finalize(buf);
 }
 
 
 gchar *
-time_msecs_to_ep_str(gint32 time_val)
+time_msecs_to_str(wmem_allocator_t *scope, gint32 time_val)
 {
-	emem_strbuf_t *buf;
+	wmem_strbuf_t *buf;
 	int msecs;
 
-	buf=ep_strbuf_sized_new(TIME_SECS_LEN+1+3+1, TIME_SECS_LEN+1+3+1);
-
 	if (time_val == 0) {
-		ep_strbuf_append(buf, "0 seconds");
-		return buf->str;
+		return wmem_strdup(scope, "0 seconds");
 	}
 
-	if(time_val<0){
+	buf = wmem_strbuf_sized_new(scope, TIME_SECS_LEN+1+3+1, TIME_SECS_LEN+1+3+1);
+
+	if (time_val<0) {
 		/* oops we got passed a negative time */
 		time_val= -time_val;
 		msecs = time_val % 1000;
@@ -503,8 +523,9 @@ time_msecs_to_ep_str(gint32 time_val)
 		time_val /= 1000;
 	}
 
-	time_secs_to_ep_str_buf(time_val, msecs, FALSE, buf);
-	return buf->str;
+	time_secs_to_str_buf(time_val, msecs, FALSE, buf);
+
+	return wmem_strbuf_finalize(buf);
 }
 
 static const char mon_names[12][4] = {
@@ -522,7 +543,9 @@ static const char mon_names[12][4] = {
 	"Dec"
 };
 
-static const gchar *get_zonename(struct tm *tmp) {
+static const gchar *
+get_zonename(struct tm *tmp)
+{
 #if defined(HAVE_TM_ZONE)
 	return tmp->tm_zone;
 #else
@@ -573,7 +596,7 @@ static const gchar *get_zonename(struct tm *tmp) {
 }
 
 gchar *
-abs_time_to_ep_str(const nstime_t *abs_time, const absolute_time_display_e fmt,
+abs_time_to_str(wmem_allocator_t *scope, const nstime_t *abs_time, const absolute_time_display_e fmt,
 		gboolean show_zone)
 {
 	struct tm *tmp = NULL;
@@ -601,7 +624,8 @@ abs_time_to_ep_str(const nstime_t *abs_time, const absolute_time_display_e fmt,
 
 			case ABSOLUTE_TIME_DOY_UTC:
 				if (show_zone) {
-					buf = ep_strdup_printf("%04d/%03d:%02d:%02d:%02d.%09ld %s",
+					buf = wmem_strdup_printf(scope,
+							"%04d/%03d:%02d:%02d:%02d.%09ld %s",
 							tmp->tm_year + 1900,
 							tmp->tm_yday + 1,
 							tmp->tm_hour,
@@ -610,7 +634,8 @@ abs_time_to_ep_str(const nstime_t *abs_time, const absolute_time_display_e fmt,
 							(long)abs_time->nsecs,
 							zonename);
 				} else {
-					buf = ep_strdup_printf("%04d/%03d:%02d:%02d:%02d.%09ld",
+					buf = wmem_strdup_printf(scope,
+							"%04d/%03d:%02d:%02d:%02d.%09ld",
 							tmp->tm_year + 1900,
 							tmp->tm_yday + 1,
 							tmp->tm_hour,
@@ -623,7 +648,8 @@ abs_time_to_ep_str(const nstime_t *abs_time, const absolute_time_display_e fmt,
 			case ABSOLUTE_TIME_UTC:
 			case ABSOLUTE_TIME_LOCAL:
 				if (show_zone) {
-					buf = ep_strdup_printf("%s %2d, %d %02d:%02d:%02d.%09ld %s",
+					buf = wmem_strdup_printf(scope,
+							"%s %2d, %d %02d:%02d:%02d.%09ld %s",
 							mon_names[tmp->tm_mon],
 							tmp->tm_mday,
 							tmp->tm_year + 1900,
@@ -633,7 +659,8 @@ abs_time_to_ep_str(const nstime_t *abs_time, const absolute_time_display_e fmt,
 							(long)abs_time->nsecs,
 							zonename);
 				} else {
-					buf = ep_strdup_printf("%s %2d, %d %02d:%02d:%02d.%09ld",
+					buf = wmem_strdup_printf(scope,
+							"%s %2d, %d %02d:%02d:%02d.%09ld",
 							mon_names[tmp->tm_mon],
 							tmp->tm_mday,
 							tmp->tm_year + 1900,
@@ -645,12 +672,12 @@ abs_time_to_ep_str(const nstime_t *abs_time, const absolute_time_display_e fmt,
 				break;
 		}
 	} else
-		buf = ep_strdup("Not representable");
+		buf = wmem_strdup(scope, "Not representable");
 	return buf;
 }
 
 gchar *
-abs_time_secs_to_ep_str(const time_t abs_time, const absolute_time_display_e fmt,
+abs_time_secs_to_str(wmem_allocator_t *scope, const time_t abs_time, const absolute_time_display_e fmt,
 		gboolean show_zone)
 {
 	struct tm *tmp = NULL;
@@ -677,7 +704,8 @@ abs_time_secs_to_ep_str(const time_t abs_time, const absolute_time_display_e fmt
 
 			case ABSOLUTE_TIME_DOY_UTC:
 				if (show_zone) {
-					buf = ep_strdup_printf("%04d/%03d:%02d:%02d:%02d %s",
+					buf = wmem_strdup_printf(scope,
+							"%04d/%03d:%02d:%02d:%02d %s",
 							tmp->tm_year + 1900,
 							tmp->tm_yday + 1,
 							tmp->tm_hour,
@@ -685,7 +713,8 @@ abs_time_secs_to_ep_str(const time_t abs_time, const absolute_time_display_e fmt
 							tmp->tm_sec,
 							zonename);
 				} else {
-					buf = ep_strdup_printf("%04d/%03d:%02d:%02d:%02d",
+					buf = wmem_strdup_printf(scope,
+							"%04d/%03d:%02d:%02d:%02d",
 							tmp->tm_year + 1900,
 							tmp->tm_yday + 1,
 							tmp->tm_hour,
@@ -697,7 +726,8 @@ abs_time_secs_to_ep_str(const time_t abs_time, const absolute_time_display_e fmt
 			case ABSOLUTE_TIME_UTC:
 			case ABSOLUTE_TIME_LOCAL:
 				if (show_zone) {
-					buf = ep_strdup_printf("%s %2d, %d %02d:%02d:%02d %s",
+					buf = wmem_strdup_printf(scope,
+							"%s %2d, %d %02d:%02d:%02d %s",
 							mon_names[tmp->tm_mon],
 							tmp->tm_mday,
 							tmp->tm_year + 1900,
@@ -706,7 +736,8 @@ abs_time_secs_to_ep_str(const time_t abs_time, const absolute_time_display_e fmt
 							tmp->tm_sec,
 							zonename);
 				} else {
-					buf = ep_strdup_printf("%s %2d, %d %02d:%02d:%02d",
+					buf = wmem_strdup_printf(scope,
+							"%s %2d, %d %02d:%02d:%02d",
 							mon_names[tmp->tm_mon],
 							tmp->tm_mday,
 							tmp->tm_year + 1900,
@@ -717,7 +748,7 @@ abs_time_secs_to_ep_str(const time_t abs_time, const absolute_time_display_e fmt
 				break;
 		}
 	} else
-		buf = ep_strdup("Not representable");
+		buf = wmem_strdup(scope, "Not representable");
 	return buf;
 }
 
@@ -856,13 +887,11 @@ display_epoch_time(gchar *buf, int buflen, const time_t sec, gint32 frac,
  * Display a relative time as days/hours/minutes/seconds.
  */
 gchar *
-rel_time_to_ep_str(const nstime_t *rel_time)
+rel_time_to_str(wmem_allocator_t *scope, const nstime_t *rel_time)
 {
-	emem_strbuf_t *buf;
+	wmem_strbuf_t *buf;
 	gint32 time_val;
 	gint32 nsec;
-
-	buf=ep_strbuf_sized_new(1+TIME_SECS_LEN+1+6+1, 1+TIME_SECS_LEN+1+6+1);
 
 	/* If the nanoseconds part of the time stamp is negative,
 	   print its absolute value and, if the seconds part isn't
@@ -871,12 +900,14 @@ rel_time_to_ep_str(const nstime_t *rel_time)
 	time_val = (gint) rel_time->secs;
 	nsec = rel_time->nsecs;
 	if (time_val == 0 && nsec == 0) {
-		ep_strbuf_append(buf, "0.000000000 seconds");
-		return buf->str;
+		return wmem_strdup(scope, "0.000000000 seconds");
 	}
+
+	buf = wmem_strbuf_sized_new(scope, 1+TIME_SECS_LEN+1+6+1, 1+TIME_SECS_LEN+1+6+1);
+
 	if (nsec < 0) {
 		nsec = -nsec;
-		ep_strbuf_append_c(buf, '-');
+		wmem_strbuf_append_c(buf, '-');
 
 		/*
 		 * We assume here that "rel_time->secs" is negative
@@ -886,8 +917,9 @@ rel_time_to_ep_str(const nstime_t *rel_time)
 		time_val = (gint) -rel_time->secs;
 	}
 
-	time_secs_to_ep_str_buf(time_val, nsec, TRUE, buf);
-	return buf->str;
+	time_secs_to_str_buf(time_val, nsec, TRUE, buf);
+
+	return wmem_strbuf_finalize(buf);
 }
 
 #define REL_TIME_SECS_LEN	(1+10+1+9+1)
@@ -896,11 +928,11 @@ rel_time_to_ep_str(const nstime_t *rel_time)
  * Display a relative time as seconds.
  */
 gchar *
-rel_time_to_secs_ep_str(const nstime_t *rel_time)
+rel_time_to_secs_str(wmem_allocator_t *scope, const nstime_t *rel_time)
 {
 	gchar *buf;
 
-	buf=(gchar *)ep_alloc(REL_TIME_SECS_LEN);
+	buf=(gchar *)wmem_alloc(scope, REL_TIME_SECS_LEN);
 
 	display_signed_time(buf, REL_TIME_SECS_LEN, (gint32) rel_time->secs,
 			rel_time->nsecs, TO_STR_TIME_RES_T_NSECS);
@@ -925,7 +957,7 @@ decode_bits_in_field(const guint bit_offset, const gint no_of_bits, const guint6
 	mask = mask << (no_of_bits-1);
 
 	/* Prepare the string, 256 pos for the bits and zero termination, + 64 for the spaces */
-	str=(char *)ep_alloc0(256+64);
+	str=(char *)wmem_alloc0(wmem_packet_scope(), 256+64);
 	for(bit=0;bit<((int)(bit_offset&0x07));bit++){
 		if(bit&&(!(bit%4))){
 			str[str_p] = ' ';
@@ -968,76 +1000,9 @@ decode_bits_in_field(const guint bit_offset, const gint no_of_bits, const guint6
 	return str;
 }
 
-/* Generate, into "buf", a string showing the bits of a bitfield.
-   Return a pointer to the character after that string. */
-/*XXX this needs a buf_len check */
-char *
-other_decode_bitfield_value(char *buf, const guint32 val, const guint32 mask, const int width)
-{
-	int i;
-	guint32 bit;
-	char *p;
-
-	i = 0;
-	p = buf;
-	bit = 1 << (width - 1);
-	for (;;) {
-		if (mask & bit) {
-			/* This bit is part of the field.  Show its value. */
-			if (val & bit)
-				*p++ = '1';
-			else
-				*p++ = '0';
-		} else {
-			/* This bit is not part of the field. */
-			*p++ = '.';
-		}
-		bit >>= 1;
-		i++;
-		if (i >= width)
-			break;
-		if (i % 4 == 0)
-			*p++ = ' ';
-	}
-	*p = '\0';
-	return p;
-}
-
-char *
-decode_bitfield_value(char *buf, const guint32 val, const guint32 mask, const int width)
-{
-	char *p;
-
-	p = other_decode_bitfield_value(buf, val, mask, width);
-	p = g_stpcpy(p, " = ");
-
-	return p;
-}
-
-/* Generate a string describing a numeric bitfield (an N-bit field whose
-   value is just a number). */
-const char *
-decode_numeric_bitfield(const guint32 val, const guint32 mask, const int width,
-		const char *fmt)
-{
-	char *buf;
-	char *p;
-	int shift = 0;
-
-	buf=(char *)ep_alloc(1025); /* isnt this a bit overkill? */
-	/* Compute the number of bits we have to shift the bitfield right
-	   to extract its value. */
-	while ((mask & (1<<shift)) == 0)
-		shift++;
-
-	p = decode_bitfield_value(buf, val, mask, width);
-	g_snprintf(p, (gulong) (1025-(p-buf)), fmt, (val & mask) >> shift);
-	return buf;
-}
-
 /*
    This function is very fast and this function is called a lot.
-   XXX update the ep_address_to_str stuff to use this function.
+   XXX update the address_to_str stuff to use this function.
    */
 void
 ip_to_str_buf(const guint8 *ad, gchar *buf, const int buf_len)
@@ -1046,7 +1011,7 @@ ip_to_str_buf(const guint8 *ad, gchar *buf, const int buf_len)
 	register gchar *b=buf;
 
 	if (buf_len < MAX_IP_STR_LEN) {
-		g_snprintf ( buf, buf_len, BUF_TOO_SMALL_ERR );                 /* Let the unexpected value alert user */
+		g_strlcpy(buf, BUF_TOO_SMALL_ERR, buf_len);  /* Let the unexpected value alert user */
 		return;
 	}
 
@@ -1079,14 +1044,18 @@ ip_to_str_buf(const guint8 *ad, gchar *buf, const int buf_len)
 	*b=0;
 }
 
-gchar* guid_to_ep_str(const e_guid_t *guid) {
+gchar *
+guid_to_str(wmem_allocator_t *scope, const e_guid_t *guid)
+{
 	gchar *buf;
 
-	buf=(gchar *)ep_alloc(GUID_STR_LEN);
+	buf=(gchar *)wmem_alloc(scope, GUID_STR_LEN);
 	return guid_to_str_buf(guid, buf, GUID_STR_LEN);
 }
 
-gchar* guid_to_str_buf(const e_guid_t *guid, gchar *buf, int buf_len) {
+gchar *
+guid_to_str_buf(const e_guid_t *guid, gchar *buf, int buf_len)
+{
 	char *tempptr = buf;
 
 	if (buf_len < GUID_STR_LEN) {
@@ -1097,9 +1066,9 @@ gchar* guid_to_str_buf(const e_guid_t *guid, gchar *buf, int buf_len) {
 	/* 37 bytes */
 	tempptr    = dword_to_hex(tempptr, guid->data1);		/*  8 bytes */
 	*tempptr++ = '-';						/*  1 byte */
-	tempptr    = word_to_hex(tempptr, guid->data2);		/*  4 bytes */
+	tempptr    = word_to_hex(tempptr, guid->data2);			/*  4 bytes */
 	*tempptr++ = '-';						/*  1 byte */
-	tempptr    = word_to_hex(tempptr, guid->data3);		/*  4 bytes */
+	tempptr    = word_to_hex(tempptr, guid->data3);			/*  4 bytes */
 	*tempptr++ = '-';						/*  1 byte */
 	tempptr    = bytes_to_hexstr(tempptr, &guid->data4[0], 2);	/*  4 bytes */
 	*tempptr++ = '-';						/*  1 byte */
@@ -1109,7 +1078,26 @@ gchar* guid_to_str_buf(const e_guid_t *guid, gchar *buf, int buf_len) {
 	return buf;
 }
 
-const gchar* port_type_to_str (port_type type) {
+gchar *
+eui64_to_str(wmem_allocator_t *scope, const guint64 ad) {
+	gchar *buf, *tmp;
+	guint8 *p_eui64;
+
+	p_eui64=(guint8 *)wmem_alloc(NULL, 8);
+	buf=(gchar *)wmem_alloc(scope, EUI64_STR_LEN);
+
+	/* Copy and convert the address to network byte order. */
+	*(guint64 *)(void *)(p_eui64) = pntoh64(&(ad));
+
+	tmp = bytes_to_hexstr_punct(buf, p_eui64, 8, ':');
+	*tmp = '\0'; /* NULL terminate */
+	wmem_free(NULL, p_eui64);
+	return buf;
+}
+
+const gchar *
+port_type_to_str (port_type type)
+{
 	switch (type) {
 		case PT_NONE:		return "NONE";
 		case PT_SCTP:		return "SCTP";
@@ -1127,7 +1115,8 @@ const gchar* port_type_to_str (port_type type) {
 		case PT_I2C:		return "I2C";
 		case PT_IBQP:		return "IBQP";
 		case PT_BLUETOOTH:	return "BLUETOOTH";
-		default:			return "[Unknown]";
+		case PT_TDMOP:		return "TDMOP";
+		default:		return "[Unknown]";
 	}
 }
 
@@ -1144,10 +1133,43 @@ oct_to_str_back(char *ptr, guint32 value)
 }
 
 char *
+oct64_to_str_back(char *ptr, guint64 value)
+{
+	while (value) {
+		*(--ptr) = '0' + (value & 0x7);
+		value >>= 3;
+	}
+
+	*(--ptr) = '0';
+	return ptr;
+}
+
+char *
 hex_to_str_back(char *ptr, int len, guint32 value)
 {
 	do {
 		*(--ptr) = low_nibble_of_octet_to_hex(value);
+		value >>= 4;
+		len--;
+	} while (value);
+
+	/* pad */
+	while (len > 0) {
+		*(--ptr) = '0';
+		len--;
+	}
+
+	*(--ptr) = 'x';
+	*(--ptr) = '0';
+
+	return ptr;
+}
+
+char *
+hex64_to_str_back(char *ptr, int len, guint64 value)
+{
+	do {
+		*(--ptr) = low_nibble_of_octet_to_hex(value & 0xF);
 		value >>= 4;
 		len--;
 	} while (value);
@@ -1189,11 +1211,56 @@ uint_to_str_back(char *ptr, guint32 value)
 }
 
 char *
+uint64_to_str_back(char *ptr, guint64 value)
+{
+	char const *p;
+
+	/* special case */
+	if (value == 0)
+		*(--ptr) = '0';
+
+	while (value >= 10) {
+		p = fast_strings[100 + (value % 100)];
+
+		value /= 100;
+
+		*(--ptr) = p[2];
+		*(--ptr) = p[1];
+	}
+
+	/* value will be 0..9, so using '& 0xF' is safe, and faster than '% 10' */
+	if (value)
+		*(--ptr) = (value & 0xF) | '0';
+
+	return ptr;
+}
+
+char *
 uint_to_str_back_len(char *ptr, guint32 value, int len)
 {
 	char *new_ptr;
 
 	new_ptr = uint_to_str_back(ptr, value);
+
+	/* substract from len number of generated characters */
+	len -= (int)(ptr - new_ptr);
+
+	/* pad remaining with '0' */
+	while (len > 0)
+	{
+		*(--new_ptr) = '0';
+		len--;
+	}
+
+	return new_ptr;
+}
+
+char *
+uint64_to_str_back_len(char *ptr, guint64 value, int len)
+{
+	char *new_ptr;
+
+	new_ptr = uint64_to_str_back(ptr, value);
 
 	/* substract from len number of generated characters */
 	len -= (int)(ptr - new_ptr);
@@ -1216,6 +1283,18 @@ int_to_str_back(char *ptr, gint32 value)
 		*(--ptr) = '-';
 	} else
 		ptr = uint_to_str_back(ptr, value);
+
+	return ptr;
+}
+
+char *
+int64_to_str_back(char *ptr, gint64 value)
+{
+	if (value < 0) {
+		ptr = uint64_to_str_back(ptr, -value);
+		*(--ptr) = '-';
+	} else
+		ptr = uint64_to_str_back(ptr, value);
 
 	return ptr;
 }

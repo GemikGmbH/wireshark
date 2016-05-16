@@ -25,7 +25,6 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 #include "packet-dcom.h"
@@ -82,7 +81,7 @@ static gint ett_dispatch_flags = -1;
 static gint ett_dispatch_params = -1;
 static gint ett_dispatch_excepinfo = -1;
 
-static e_uuid_t uuid_dispatch = { 0x00020400, 0x0000, 0x0000, { 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 } };
+static e_guid_t uuid_dispatch = { 0x00020400, 0x0000, 0x0000, { 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 } };
 static guint16  ver_dispatch = 0;
 static gint ett_dispatch = -1;
 static int proto_dispatch = -1;
@@ -174,7 +173,7 @@ int
 dissect_IDispatch_GetIDsOfNames_rqst(tvbuff_t *tvb, int offset,
                                      packet_info *pinfo, proto_tree *tree, dcerpc_info *di, guint8 *drep)
 {
-    e_uuid_t riid;
+    e_guid_t riid;
     guint32  u32Lcid;
     gchar    szName[1000] = { 0 };
     guint32  u32Names;
@@ -257,7 +256,7 @@ dissect_IDispatch_Invoke_rqst(tvbuff_t *tvb, int offset,
                               packet_info *pinfo, proto_tree *tree, dcerpc_info *di, guint8 *drep)
 {
     guint32 u32DispIdMember;
-    e_uuid_t riid;
+    e_guid_t riid;
     guint32 u32Lcid;
     guint32 u32Flags;
     guint32 u32Args;
@@ -271,10 +270,15 @@ dissect_IDispatch_Invoke_rqst(tvbuff_t *tvb, int offset,
     guint32 u32TmpOffset;
     guint32 u32SubStart;
 
-    proto_item *feature_item;
-    proto_tree *feature_tree;
     proto_item *dispparams_item;
     proto_tree *dispparams_tree;
+    static const int * flags[] = {
+        &hf_dispatch_flags_propputref,
+        &hf_dispatch_flags_propput,
+        &hf_dispatch_flags_propget,
+        &hf_dispatch_flags_method,
+        NULL
+    };
 
 
     offset = dissect_dcom_this(tvb, offset, pinfo, tree, di, drep);
@@ -289,31 +293,21 @@ dissect_IDispatch_Invoke_rqst(tvbuff_t *tvb, int offset,
                                 hf_dispatch_lcid, &u32Lcid);
 
     /* dispatch flags */
-    u32TmpOffset = dissect_dcom_DWORD(tvb, offset, pinfo, NULL, di, drep,
-                                      hf_dispatch_flags, &u32Flags);
-    feature_item = proto_tree_add_uint (tree, hf_dispatch_flags, tvb, offset, 4, u32Flags);
-    feature_tree = proto_item_add_subtree (feature_item, ett_dispatch_flags);
-    if (feature_tree) {
-        proto_tree_add_boolean (feature_tree, hf_dispatch_flags_propputref, tvb, offset, 4, u32Flags);
-        proto_tree_add_boolean (feature_tree, hf_dispatch_flags_propput, tvb, offset, 4, u32Flags);
-        proto_tree_add_boolean (feature_tree, hf_dispatch_flags_propget, tvb, offset, 4, u32Flags);
-        proto_tree_add_boolean (feature_tree, hf_dispatch_flags_method, tvb, offset, 4, u32Flags);
-    }
+    u32TmpOffset = dissect_dcom_DWORD(tvb, offset, pinfo, NULL, di, drep, -1, &u32Flags);
+
+    proto_tree_add_bitmask_value(tree, tvb, offset, hf_dispatch_flags,
+                                ett_dispatch_flags, flags, u32Flags);
 
     if (u32Flags & DISPATCH_FLAGS_METHOD) {
-        proto_item_append_text(feature_item, ", Method");
         col_append_str(pinfo->cinfo, COL_INFO, " Method");
     }
     if (u32Flags & DISPATCH_FLAGS_PROPGET) {
-        proto_item_append_text(feature_item, ", PropertyGet");
         col_append_str(pinfo->cinfo, COL_INFO, " PropertyGet");
     }
     if (u32Flags & DISPATCH_FLAGS_PROPPUT) {
-        proto_item_append_text(feature_item, ", PropertyPut");
         col_append_str(pinfo->cinfo, COL_INFO, " PropertyPut");
     }
     if (u32Flags & DISPATCH_FLAGS_PROPPUTREF) {
-        proto_item_append_text(feature_item, ", PropertyPutRef");
         col_append_str(pinfo->cinfo, COL_INFO, " PropertyPutRef");
     }
 
@@ -615,3 +609,15 @@ proto_reg_handoff_dcom_dispatch(void)
                      dispatch_dissectors, hf_dispatch_opnum);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

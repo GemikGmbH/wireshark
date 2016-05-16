@@ -33,9 +33,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <string.h>
-
 #include <epan/packet.h>
 #include <epan/asn1.h>
 #include <epan/prefs.h>
@@ -145,7 +142,7 @@ static int hf_ess_issuer = -1;                    /* GeneralNames */
 static int hf_ess_serialNumber = -1;              /* CertificateSerialNumber */
 
 /*--- End of included file: packet-ess-hf.c ---*/
-#line 66 "../../asn1/ess/packet-ess-template.c"
+#line 63 "../../asn1/ess/packet-ess-template.c"
 
 
 /*--- Included file: packet-ess-val.h ---*/
@@ -169,7 +166,7 @@ static int hf_ess_serialNumber = -1;              /* CertificateSerialNumber */
 #define id_sha256                      "2.16.840.1.101.3.4.2.1"
 
 /*--- End of included file: packet-ess-val.h ---*/
-#line 68 "../../asn1/ess/packet-ess-template.c"
+#line 65 "../../asn1/ess/packet-ess-template.c"
 
 /* Initialize the subtree pointers */
 
@@ -208,7 +205,7 @@ static gint ett_ess_ESSCertID = -1;
 static gint ett_ess_IssuerSerial = -1;
 
 /*--- End of included file: packet-ess-ett.c ---*/
-#line 71 "../../asn1/ess/packet-ess-template.c"
+#line 68 "../../asn1/ess/packet-ess-template.c"
 
 static const char *object_identifier_id;
 
@@ -263,14 +260,14 @@ ess_dissect_attribute_flags (tvbuff_t *tvb, asn1_ctx_t *actx)
   guint i;
 
   tree = proto_item_add_subtree (actx->created_item, ett_Category_attributes);
-  value = (guint8 *)tvb_memdup (wmem_packet_scope(), tvb, 0, tvb_length (tvb));
+  value = (guint8 *)tvb_memdup (wmem_packet_scope(), tvb, 0, tvb_captured_length (tvb));
 
   for (i = 0; i < num_ess_category_attributes; i++) {
     ess_category_attributes_t *u = &(ess_category_attributes[i]);
 
     if ((strcmp (u->oid, object_identifier_id) == 0) &&
-        ((u->lacv / 8) < tvb_length (tvb)) &&
-        (value[u->lacv / 8] & (1 << (7 - (u->lacv % 8)))))
+        ((u->lacv / 8) < tvb_captured_length (tvb)) &&
+        (value[u->lacv / 8] & (1U << (7 - (u->lacv % 8)))))
     {
        proto_tree_add_string_format (tree, hf_ess_Category_attribute, tvb,
                                      u->lacv / 8, 1, u->name,
@@ -1048,85 +1045,115 @@ dissect_ess_SigningCertificateV2(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 /*--- PDUs ---*/
 
-static void dissect_ReceiptRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ReceiptRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_ReceiptRequest(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_ReceiptRequest_PDU);
+  offset = dissect_ess_ReceiptRequest(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_ReceiptRequest_PDU);
+  return offset;
 }
-static void dissect_ContentIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ContentIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_ContentIdentifier(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_ContentIdentifier_PDU);
+  offset = dissect_ess_ContentIdentifier(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_ContentIdentifier_PDU);
+  return offset;
 }
-static void dissect_Receipt_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_Receipt_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_Receipt(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_Receipt_PDU);
+  offset = dissect_ess_Receipt(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_Receipt_PDU);
+  return offset;
 }
-static void dissect_ContentHints_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ContentHints_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_ContentHints(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_ContentHints_PDU);
+  offset = dissect_ess_ContentHints(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_ContentHints_PDU);
+  return offset;
 }
-static void dissect_MsgSigDigest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MsgSigDigest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_MsgSigDigest(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_MsgSigDigest_PDU);
+  offset = dissect_ess_MsgSigDigest(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_MsgSigDigest_PDU);
+  return offset;
 }
-static void dissect_ContentReference_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ContentReference_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_ContentReference(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_ContentReference_PDU);
+  offset = dissect_ess_ContentReference(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_ContentReference_PDU);
+  return offset;
 }
-void dissect_ess_ESSSecurityLabel_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+int dissect_ess_ESSSecurityLabel_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_ESSSecurityLabel(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_ess_ESSSecurityLabel_PDU);
+  offset = dissect_ess_ESSSecurityLabel(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_ess_ESSSecurityLabel_PDU);
+  return offset;
 }
-static void dissect_RestrictiveTag_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_RestrictiveTag_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_RestrictiveTag(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_RestrictiveTag_PDU);
+  offset = dissect_ess_RestrictiveTag(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_RestrictiveTag_PDU);
+  return offset;
 }
-static void dissect_EnumeratedTag_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_EnumeratedTag_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_EnumeratedTag(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_EnumeratedTag_PDU);
+  offset = dissect_ess_EnumeratedTag(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_EnumeratedTag_PDU);
+  return offset;
 }
-static void dissect_PermissiveTag_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PermissiveTag_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_PermissiveTag(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_PermissiveTag_PDU);
+  offset = dissect_ess_PermissiveTag(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_PermissiveTag_PDU);
+  return offset;
 }
-static void dissect_InformativeTag_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_InformativeTag_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_InformativeTag(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_InformativeTag_PDU);
+  offset = dissect_ess_InformativeTag(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_InformativeTag_PDU);
+  return offset;
 }
-static void dissect_EquivalentLabels_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_EquivalentLabels_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_EquivalentLabels(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_EquivalentLabels_PDU);
+  offset = dissect_ess_EquivalentLabels(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_EquivalentLabels_PDU);
+  return offset;
 }
-static void dissect_MLExpansionHistory_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MLExpansionHistory_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_MLExpansionHistory(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_MLExpansionHistory_PDU);
+  offset = dissect_ess_MLExpansionHistory(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_MLExpansionHistory_PDU);
+  return offset;
 }
-static void dissect_SigningCertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_SigningCertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_SigningCertificate(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_SigningCertificate_PDU);
+  offset = dissect_ess_SigningCertificate(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_SigningCertificate_PDU);
+  return offset;
 }
-static void dissect_SigningCertificateV2_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_SigningCertificateV2_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_ess_SigningCertificateV2(FALSE, tvb, 0, &asn1_ctx, tree, hf_ess_SigningCertificateV2_PDU);
+  offset = dissect_ess_SigningCertificateV2(FALSE, tvb, offset, &asn1_ctx, tree, hf_ess_SigningCertificateV2_PDU);
+  return offset;
 }
 
 
 /*--- End of included file: packet-ess-fn.c ---*/
-#line 142 "../../asn1/ess/packet-ess-template.c"
+#line 139 "../../asn1/ess/packet-ess-template.c"
 
 /*--- proto_register_ess ----------------------------------------------*/
 void proto_register_ess(void) {
@@ -1420,11 +1447,11 @@ void proto_register_ess(void) {
         "GeneralNames", HFILL }},
     { &hf_ess_serialNumber,
       { "serialNumber", "ess.serialNumber",
-        FT_INT32, BASE_DEC, NULL, 0,
+        FT_INT64, BASE_DEC, NULL, 0,
         "CertificateSerialNumber", HFILL }},
 
 /*--- End of included file: packet-ess-hfarr.c ---*/
-#line 155 "../../asn1/ess/packet-ess-template.c"
+#line 152 "../../asn1/ess/packet-ess-template.c"
   };
 
   /* List of subtrees */
@@ -1466,7 +1493,7 @@ void proto_register_ess(void) {
     &ett_ess_IssuerSerial,
 
 /*--- End of included file: packet-ess-ettarr.c ---*/
-#line 161 "../../asn1/ess/packet-ess-template.c"
+#line 158 "../../asn1/ess/packet-ess-template.c"
   };
 
   static uat_field_t attributes_flds[] = {
@@ -1514,25 +1541,25 @@ void proto_reg_handoff_ess(void) {
 
 /*--- Included file: packet-ess-dis-tab.c ---*/
 #line 1 "../../asn1/ess/packet-ess-dis-tab.c"
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.1", dissect_ReceiptRequest_PDU, proto_ess, "id-aa-receiptRequest");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.7", dissect_ContentIdentifier_PDU, proto_ess, "id-aa-contentIdentifier");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.1.1", dissect_Receipt_PDU, proto_ess, "id-ct-receipt");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.4", dissect_ContentHints_PDU, proto_ess, "id-aa-contentHint");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.5", dissect_MsgSigDigest_PDU, proto_ess, "id-aa-msgSigDigest");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.10", dissect_ContentReference_PDU, proto_ess, "id-aa-contentReference");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.2", dissect_ess_ESSSecurityLabel_PDU, proto_ess, "id-aa-securityLabel");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.9", dissect_EquivalentLabels_PDU, proto_ess, "id-aa-equivalentLabels");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.3", dissect_MLExpansionHistory_PDU, proto_ess, "id-aa-mlExpandHistory");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.12", dissect_SigningCertificate_PDU, proto_ess, "id-aa-signingCertificate");
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.2.47", dissect_SigningCertificateV2_PDU, proto_ess, "id-aa-signingCertificateV2");
-  register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.0", dissect_RestrictiveTag_PDU, proto_ess, "id-restrictiveAttributes");
-  register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.1", dissect_EnumeratedTag_PDU, proto_ess, "id-enumeratedPermissiveAttributes");
-  register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.2", dissect_PermissiveTag_PDU, proto_ess, "id-permissiveAttributes");
-  register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.3", dissect_InformativeTag_PDU, proto_ess, "id-informativeAttributes");
-  register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.4", dissect_EnumeratedTag_PDU, proto_ess, "id-enumeratedRestrictiveAttributes");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.1", dissect_ReceiptRequest_PDU, proto_ess, "id-aa-receiptRequest");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.7", dissect_ContentIdentifier_PDU, proto_ess, "id-aa-contentIdentifier");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.1.1", dissect_Receipt_PDU, proto_ess, "id-ct-receipt");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.4", dissect_ContentHints_PDU, proto_ess, "id-aa-contentHint");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.5", dissect_MsgSigDigest_PDU, proto_ess, "id-aa-msgSigDigest");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.10", dissect_ContentReference_PDU, proto_ess, "id-aa-contentReference");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.2", dissect_ess_ESSSecurityLabel_PDU, proto_ess, "id-aa-securityLabel");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.9", dissect_EquivalentLabels_PDU, proto_ess, "id-aa-equivalentLabels");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.3", dissect_MLExpansionHistory_PDU, proto_ess, "id-aa-mlExpandHistory");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.12", dissect_SigningCertificate_PDU, proto_ess, "id-aa-signingCertificate");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.2.47", dissect_SigningCertificateV2_PDU, proto_ess, "id-aa-signingCertificateV2");
+  new_register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.0", dissect_RestrictiveTag_PDU, proto_ess, "id-restrictiveAttributes");
+  new_register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.1", dissect_EnumeratedTag_PDU, proto_ess, "id-enumeratedPermissiveAttributes");
+  new_register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.2", dissect_PermissiveTag_PDU, proto_ess, "id-permissiveAttributes");
+  new_register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.3", dissect_InformativeTag_PDU, proto_ess, "id-informativeAttributes");
+  new_register_ber_oid_dissector("2.16.840.1.101.2.1.8.3.4", dissect_EnumeratedTag_PDU, proto_ess, "id-enumeratedRestrictiveAttributes");
 
 
 /*--- End of included file: packet-ess-dis-tab.c ---*/
-#line 206 "../../asn1/ess/packet-ess-template.c"
+#line 203 "../../asn1/ess/packet-ess-template.c"
 }
 

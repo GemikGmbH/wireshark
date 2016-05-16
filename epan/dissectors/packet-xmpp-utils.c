@@ -1,4 +1,4 @@
-/* xmpp-utils.c
+/* packet-xmpp-utils.c
  * Wireshark's XMPP dissector.
  *
  * Copyright 2011, Mariusz Okroj <okrojmariusz[]gmail.com>
@@ -24,18 +24,12 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/expert.h>
-#include <epan/tvbparse.h>
 #include <epan/strutil.h>
 
-#include <epan/dissectors/packet-xml.h>
-
-#include <packet-xmpp.h>
-#include <packet-xmpp-core.h>
-#include <packet-xmpp-utils.h>
+#include "packet-xmpp.h"
+#include "packet-xmpp-core.h"
+#include "packet-xmpp-utils.h"
 
 
 void
@@ -200,14 +194,15 @@ xmpp_unknown_items(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_ele
 
     if(element->data)
     {
-        proto_tree_add_text(tree, tvb, element->data->offset, element->data->length, "CDATA: %s",element->data->value);
+        proto_tree_add_string(tree, hf_xmpp_cdata, tvb, element->data->offset, element->data->length, element->data->value);
     }
 
     while(childs)
     {
         xmpp_element_t *child = (xmpp_element_t *)childs->data;
-        proto_item *child_item = proto_tree_add_text(tree, tvb, child->offset, child->length, "%s", xmpp_ep_string_upcase(child->name));
-        proto_tree *child_tree = proto_item_add_subtree(child_item, ett_unknown[level]);
+        proto_item *child_item;
+        proto_tree *child_tree = proto_tree_add_subtree(tree, tvb, child->offset, child->length,
+            ett_unknown[level], &child_item, xmpp_ep_string_upcase(child->name));
 
         if(child->default_ns_abbrev)
             proto_item_append_text(child_item, "(%s)", child->default_ns_abbrev);
@@ -315,14 +310,14 @@ xmpp_cdata(proto_tree *tree, tvbuff_t *tvb, xmpp_element_t *element, gint hf)
     if(element->data)
 {
         if (hf == -1) {
-            proto_tree_add_text(tree, tvb, element->data->offset, element->data->length, "CDATA: %s", element->data->value);
+            proto_tree_add_string(tree, hf_xmpp_cdata, tvb, element->data->offset, element->data->length, element->data->value);
         } else {
             proto_tree_add_string(tree, hf, tvb, element->data->offset, element->data->length, element->data->value);
         }
     } else
     {
         if (hf == -1) {
-            proto_tree_add_text(tree, tvb, 0, 0, "CDATA: (empty)");
+            proto_tree_add_string_format_value(tree, hf_xmpp_cdata, tvb, 0, 0, "", "(empty)");
         } else {
             proto_tree_add_string(tree, hf, tvb, 0, 0, "");
         }
@@ -330,12 +325,13 @@ xmpp_cdata(proto_tree *tree, tvbuff_t *tvb, xmpp_element_t *element, gint hf)
 }
 
 /* displays element that looks like <element_name>element_value</element_name>
- * ELEMENT_NAME: element_value as TEXT(proto_tree_add_text) int PROTO_TREE
+ * ELEMENT_NAME: element_value as TEXT in PROTO_TREE
  */
 void
 xmpp_simple_cdata_elem(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_, xmpp_element_t *element)
 {
-    proto_tree_add_text(tree, tvb, element->offset, element->length, "%s: %s", xmpp_ep_string_upcase(element->name), xmpp_elem_cdata(element));
+    proto_tree_add_string_format(tree, hf_xmpp_cdata, tvb, element->offset, element->length, xmpp_elem_cdata(element),
+                                    "%s: %s", xmpp_ep_string_upcase(element->name), xmpp_elem_cdata(element));
 }
 
 xmpp_array_t*
@@ -551,7 +547,7 @@ xmpp_xml_frame_to_element_t(xml_frame_t *xml_frame, xmpp_element_t *parent, tvbu
 
     if((elem = tvbparse_get(tt,want_stream_end_with_ns))!=NULL)
     {
-        node->default_ns_abbrev = tvb_get_string(wmem_packet_scope(), elem->sub->tvb, elem->sub->offset, elem->sub->len);
+        node->default_ns_abbrev = tvb_get_string_enc(wmem_packet_scope(), elem->sub->tvb, elem->sub->offset, elem->sub->len, ENC_ASCII);
     }
 
     child = xml_frame->first_child;
@@ -727,7 +723,7 @@ xmpp_element_to_string(tvbuff_t *tvb, xmpp_element_t *element)
 
     if(tvb_offset_exists(tvb, element->offset+element->length-1))
     {
-        buff = tvb_get_string(wmem_packet_scope(), tvb, element->offset, element->length);
+        buff = tvb_get_string_enc(wmem_packet_scope(), tvb, element->offset, element->length, ENC_ASCII);
     }
     return buff;
 }
@@ -739,7 +735,7 @@ xmpp_attr_to_string(tvbuff_t *tvb, xmpp_attr_t *attr)
 
     if(tvb_offset_exists(tvb, attr->offset + attr->length-1))
     {
-        buff = tvb_get_string(wmem_packet_scope(), tvb, attr->offset, attr->length);
+        buff = tvb_get_string_enc(wmem_packet_scope(), tvb, attr->offset, attr->length, ENC_ASCII);
     }
     return buff;
 }
@@ -825,7 +821,8 @@ xmpp_display_attrs(proto_tree *tree, xmpp_element_t *element, packet_info *pinfo
             }
             else
             {
-                proto_tree_add_text(tree, tvb, attr->offset, attr->length, "%s: %s", attr->name?attr->name:attrs[i].name, attr->value);
+                proto_tree_add_string_format(tree, hf_xmpp_attribute, tvb, attr->offset, attr->length, attr->value,
+                    "%s: %s", attr->name?attr->name:attrs[i].name, attr->value);
             }
 
             if(attrs[i].in_short_list)
@@ -890,7 +887,8 @@ xmpp_display_attrs_ext(proto_tree *tree, xmpp_element_t *element, packet_info *p
                         else
                             proto_tree_add_string(tree, *attrs[i].info.phf, tvb, attr->offset, attr->length, attr->value);
                     } else {
-                        proto_tree_add_text(tree, tvb, attr->offset, attr->length, "%s: %s", attr->name ? attr->name : attrs[i].info.name, attr->value);
+                        proto_tree_add_string_format(tree, hf_xmpp_attribute, tvb, attr->offset, attr->length, attr->value,
+                            "%s: %s", attr->name ? attr->name : attrs[i].info.name, attr->value);
                     }
 
                     if (attrs[i].info.in_short_list) {

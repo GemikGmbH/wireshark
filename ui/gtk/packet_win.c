@@ -73,7 +73,6 @@
 
 /* Data structure holding information about a packet-detail window. */
 struct PacketWinData {
-	epan_t *epan;
 	frame_data *frame;	   /* The frame being displayed */
 	struct wtap_pkthdr phdr;   /* Packet header */
 	guint8     *pd;		   /* Packet data */
@@ -164,7 +163,6 @@ static char*
 create_packet_window_title(void)
 {
 	GString *title;
-	char *ret;
 	int i;
 
 	title = g_string_new("");
@@ -174,15 +172,11 @@ create_packet_window_title(void)
 	 * frame was dissected.
 	 */
 	for (i = 0; i < cfile.cinfo.num_cols; ++i) {
-		g_string_append(title, cfile.cinfo.col_data[i]);
+		g_string_append(title, cfile.cinfo.columns[i].col_data);
 		g_string_append_c(title, ' ');
 	}
 
-	ret = title->str;
-
-	g_string_free(title, FALSE);
-
-	return ret;
+	return g_string_free(title, FALSE);
 }
 
 static void
@@ -194,7 +188,7 @@ redissect_packet_window(gpointer object, gpointer user_data _U_)
 	/* XXX, can be optimized? */
 	proto_tree_draw(NULL, DataPtr->tree_view);
 	epan_dissect_cleanup(&(DataPtr->edt));
-	epan_dissect_init(&(DataPtr->edt), DataPtr->epan, TRUE, TRUE);
+	epan_dissect_init(&(DataPtr->edt), cfile.epan, TRUE, TRUE);
 	epan_dissect_run(&(DataPtr->edt), cfile.cd_t, &DataPtr->phdr, frame_tvbuff_new(DataPtr->frame, DataPtr->pd), DataPtr->frame, NULL);
 	add_byte_views(&(DataPtr->edt), DataPtr->tree_view, DataPtr->bv_nb_ptr);
 	proto_tree_draw(DataPtr->edt.tree, DataPtr->tree_view);
@@ -265,7 +259,7 @@ finfo_window_refresh(struct FieldinfoWinData *DataPtr)
 	}
 
 	/* redisect */
-	epan_dissect_init(&edt, DataPtr->epan, TRUE, TRUE);
+	epan_dissect_init(&edt, cfile.epan, TRUE, TRUE);
 	/* Makes any sense?
 	if (old_finfo->hfinfo)
 		proto_tree_prime_hfid(edt.tree, old_finfo->hfinfo->id);
@@ -302,7 +296,7 @@ finfo_integer_common(struct FieldinfoWinData *DataPtr, guint64 u_val)
 	int finfo_length = finfo->length;
 
 	if (finfo_offset <= DataPtr->frame->cap_len && finfo_offset + finfo_length <= DataPtr->frame->cap_len) {
-		guint32 u_mask = hfinfo->bitmask;
+		guint64 u_mask = hfinfo->bitmask;
 
 		while (finfo_length--) {
 			guint8 *ptr = (FI_GET_FLAG(finfo, FI_LITTLE_ENDIAN)) ?
@@ -509,12 +503,16 @@ finfo_ipv4_output(GtkSpinButton *spinbutton, gpointer user_data _U_)
 {
 	GtkAdjustment *adj;
 	guint32 value;
+	address addr;
+	char* addr_str;
 
 	adj = gtk_spin_button_get_adjustment(spinbutton);
 	value = (guint32) gtk_adjustment_get_value(adj);
 	value = GUINT32_TO_BE(value);
-	/* ip_to_str_buf((guint8*)&value, buf, MAX_IP_STR_LEN); */	/* not exported */
-	gtk_entry_set_text(GTK_ENTRY(spinbutton), ip_to_str((guint8*)&value));	/* XXX, can we ep_alloc() inside gui? */
+	SET_ADDRESS(&addr, AT_IPv4, 4, &value);
+	addr_str = (char*)address_to_str(NULL, &addr);
+	gtk_entry_set_text(GTK_ENTRY(spinbutton), addr_str);
+	wmem_free(NULL, addr_str);
 	return TRUE;
 }
 
@@ -613,7 +611,7 @@ new_finfo_window(GtkWidget *w, struct FieldinfoWinData *DataPtr)
 
 	} else if (finfo_type == FT_BOOLEAN) {
 		fvalue_edit = gtk_check_button_new();
-		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(fvalue_edit), (fvalue_get_uinteger(&finfo->value) != 0));
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(fvalue_edit), (fvalue_get_uinteger64(&finfo->value) != 0));
 		g_signal_connect(fvalue_edit, "toggled", G_CALLBACK(finfo_boolean_changed), DataPtr);
 
 	} else if (finfo_type == FT_IPv4) {
@@ -640,9 +638,10 @@ not_supported:
 			FT_INT64, FT_UINT64,			; should work with FT_INT[8,16,24,32] code
 			FT_FLOAT, FT_DOUBLE,
 			FT_IPXNET, FT_IPv6, FT_ETHER,
-			FT_GUID, FT_OID, FT_SYSTEM_ID
+			FT_GUID, FT_OID, FT_SYSTEM_ID,
 			FT_UINT_STRING,
-			FT_ABSOLUTE_TIME, FT_RELATIVE_TIME
+			FT_ABSOLUTE_TIME, FT_RELATIVE_TIME,
+			FT_VINES, FT_FCWWN,
 		*/
 		fvalue_edit = gtk_entry_new();
 		gtk_entry_set_text(GTK_ENTRY(fvalue_edit), "<not supported>");
@@ -723,7 +722,7 @@ edit_pkt_tree_row_activated_cb(GtkTreeView *tree_view, GtkTreePath *path, GtkTre
 	{
 		struct FieldinfoWinData data;
 
-		data.epan = DataPtr->epan;
+		data.epan = cfile.epan;
 		data.frame = DataPtr->frame;
 		data.phdr  = DataPtr->phdr;
 		data.pd = (guint8 *) g_memdup(DataPtr->pd, DataPtr->frame->cap_len);
@@ -742,7 +741,7 @@ edit_pkt_tree_row_activated_cb(GtkTreeView *tree_view, GtkTreePath *path, GtkTre
 
 			proto_tree_draw(NULL, DataPtr->tree_view);
 			epan_dissect_cleanup(&(DataPtr->edt));
-			epan_dissect_init(&(DataPtr->edt), DataPtr->epan, TRUE, TRUE);
+			epan_dissect_init(&(DataPtr->edt), cfile.epan, TRUE, TRUE);
 			epan_dissect_run(&(DataPtr->edt), cfile.cd_t, &DataPtr->phdr, frame_tvbuff_new(DataPtr->frame, DataPtr->pd), DataPtr->frame, NULL);
 			add_byte_views(&(DataPtr->edt), DataPtr->tree_view, DataPtr->bv_nb_ptr);
 			proto_tree_draw(DataPtr->edt.tree, DataPtr->tree_view);
@@ -900,22 +899,6 @@ edit_pkt_destroy_new_window(GObject *object _U_, gpointer user_data)
 	/* XXX, notify main packet list that packet should be redisplayed */
 }
 
-static gint g_direct_compare_func(gconstpointer a, gconstpointer b, gpointer user_data _U_) {
-	if (a > b)
-		return 1;
-	else if (a < b)
-		return -1;
-	else
-		return 0;
-}
-
-static void modifed_frame_data_free(gpointer data) {
-	modified_frame_data *mfd = (modified_frame_data *) data;
-
-	g_free(mfd->pd);
-	g_free(mfd);
-}
-
 #endif /* WANT_PACKET_EDITOR */
 
 void new_packet_window(GtkWidget *w _U_, gboolean reference, gboolean editable _U_)
@@ -970,13 +953,12 @@ void new_packet_window(GtkWidget *w _U_, gboolean reference, gboolean editable _
 	DataPtr = (struct PacketWinData *) g_malloc(sizeof(struct PacketWinData));
 
 	/* XXX, protect cfile.epan from closing (ref counting?) */
-	DataPtr->epan  = cfile.epan;
 	DataPtr->frame = fd;
 	DataPtr->phdr  = cfile.phdr;
 	DataPtr->pd = (guint8 *)g_malloc(DataPtr->frame->cap_len);
-	memcpy(DataPtr->pd, buffer_start_ptr(&cfile.buf), DataPtr->frame->cap_len);
+	memcpy(DataPtr->pd, ws_buffer_start_ptr(&cfile.buf), DataPtr->frame->cap_len);
 
-	epan_dissect_init(&(DataPtr->edt), DataPtr->epan, TRUE, TRUE);
+	epan_dissect_init(&(DataPtr->edt), cfile.epan, TRUE, TRUE);
 	epan_dissect_run(&(DataPtr->edt), cfile.cd_t, &DataPtr->phdr,
 	                 frame_tvbuff_new(DataPtr->frame, DataPtr->pd),
 			 DataPtr->frame, &cfile.cinfo);
@@ -1044,15 +1026,11 @@ void new_packet_window(GtkWidget *w _U_, gboolean reference, gboolean editable _
 #ifdef WANT_PACKET_EDITOR
 	if (editable && DataPtr->frame->cap_len != 0) {
 		/* XXX, there's no Save button here, so lets assume packet is always edited */
-		modified_frame_data *mfd = (modified_frame_data *)g_malloc(sizeof(modified_frame_data));
+		cf_set_frame_edited(&cfile, DataPtr->frame, &DataPtr->phdr,
+		    DataPtr->pd);
 
-		mfd->pd = DataPtr->pd;
-		mfd->phdr = DataPtr->phdr;
-
-		if (cfile.edited_frames == NULL)
-			cfile.edited_frames = g_tree_new_full(g_direct_compare_func, NULL, NULL, modifed_frame_data_free);
-		g_tree_insert(cfile.edited_frames, GINT_TO_POINTER(DataPtr->frame->num), mfd);
-		DataPtr->frame->file_off = -1;
+		/* Update the main window, as we now have unsaved changes. */
+		main_update_for_unsaved_changes(&cfile);
 	}
 #endif
 }

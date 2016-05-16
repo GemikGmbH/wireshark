@@ -20,7 +20,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
+#include <config.h>
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -28,10 +28,6 @@
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
-#endif
-
-#ifdef HAVE_DIRENT_H
-#include <dirent.h>
 #endif
 
 #ifdef HAVE_SYS_STAT_H
@@ -291,8 +287,8 @@ fileset_add_dir(const char *fname, void *window)
 
 
     /* get (convert) directory name, but don't touch the given string */
-    fname_dup = get_dirname(g_strdup(fname));
-    dirname = g_string_new(fname_dup);
+    fname_dup = g_strdup(fname);
+    dirname = g_string_new(get_dirname(fname_dup));
     g_free(fname_dup);
 
     set.dirname = g_strdup(dirname->str);
@@ -428,3 +424,16 @@ void fileset_delete(void)
         set.dirname = NULL;
     }
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

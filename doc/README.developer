@@ -29,6 +29,7 @@ You'll find additional information in the following README files:
 - README.capture        - the capture engine internals
 - README.design         - Wireshark software design - incomplete
 - README.developer      - this file
+- README.dissector      - How to dissect a packet
 - README.display_filter - Display Filter Engine
 - README.idl2wrs        - CORBA IDL converter
 - README.packaging      - how to distribute a software package containing WS
@@ -46,7 +47,6 @@ README.dissector as well as the following README files:
 
 - README.heuristic      - what are heuristic dissectors and how to write them
 - README.plugins        - how to "pluginize" a dissector
-- README.python         - writing a dissector in PYTHON.
 - README.request_response_tracking - how to track req./resp. times and such
 - README.wmem           - how to obtain "memory leak free" memory
 
@@ -384,23 +384,6 @@ to implement it.  Use something like
     g_snprintf(add_string, 30, " - (%d) (0x%04x)", value, value);
 
 instead.
-
-Don't use "variadic macros", such as
-
-    #define DBG(format, args...)    fprintf(stderr, format, ## args)
-
-as not all C compilers support them.  Use macros that take a fixed
-number of arguments, such as
-
-    #define DBG0(format)                fprintf(stderr, format)
-    #define DBG1(format, arg1)          fprintf(stderr, format, arg1)
-    #define DBG2(format, arg1, arg2)    fprintf(stderr, format, arg1, arg2)
-
-        ...
-
-or something such as
-
-    #define DBG(args)       printf args
 
 Don't use
 

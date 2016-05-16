@@ -28,12 +28,8 @@
 
 #include "config.h"
 
-#include "moduleinfo.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include "crc.h"
-#include "wimax_tlv.h"
 #include "wimax_mac.h"
 
 void proto_register_mac_mgmt_msg_arq_feedback(void);

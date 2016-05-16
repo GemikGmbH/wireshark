@@ -34,7 +34,7 @@
 
 #include "ui/decode_as_utils.h"
 #include "ui/simple_dialog.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "ui/gtk/main.h"
 #include "ui/gtk/decode_as_dlg.h"
@@ -74,15 +74,16 @@
  * to the row of the table as additional information.
  */
 #define E_LIST_S_PROTO_NAME 0
-#define E_LIST_S_TABLE	    1
+#define E_LIST_S_TABLE      1
 /* The following is for debugging in decode_add_to_list */
-#define E_LIST_S_MAX	    E_LIST_S_TABLE
+#define E_LIST_S_MAX        E_LIST_S_TABLE
 #define E_LIST_S_COLUMNS   (E_LIST_S_MAX + 1)
 
-#define E_PAGE_LIST   "notebook_page_list"
-#define E_PAGE_TABLE  "notebook_page_table_name"
-#define E_PAGE_TITLE  "notebook_page_title"
-#define E_PAGE_VALUE  "notebook_page_value"
+#define E_PAGE_LIST           "notebook_page_list"
+#define E_PAGE_TABLE          "notebook_page_table_name"
+#define E_PAGE_TITLE          "notebook_page_title"
+#define E_PAGE_VALUE          "notebook_page_value"
+#define E_PAGE_CURR_LAYER_NUM "notebook_page_curr_layer_num"
 
 #define E_PAGE_ACTION "notebook_page_action"
 
@@ -135,10 +136,10 @@ enum action_type  requested_action = (enum action_type)-1;
  * Data structure to hold information of the "Decode As" entry.
  */
 struct da_entry {
-  gchar *table;
-  guint selector;
-  gchar *initial;
-  gchar *current;
+    gchar *table;
+    guint selector;
+    gchar *initial;
+    gchar *current;
 };
 
 /*
@@ -152,29 +153,15 @@ typedef struct da_entry da_entry_t;
 GSList *da_entries = NULL;
 
 /*
- * Save entries into preferences.
- */
-static void
-write_da_entry(gpointer item, gpointer user_data)
-{
-  da_entry_t *entry = (da_entry_t *)item;
-  FILE *daf = (FILE *)user_data;
-  gchar *selector_str = g_strdup_printf("%d", entry->selector);
-
-  decode_as_write_entry(daf, entry->table, selector_str, entry->initial, entry->current);
-  g_free(selector_str);
-}
-
-/*
  * Free memory used by the da_entry
  */
 static void
 free_da_entry(gpointer item, gpointer user_data _U_)
 {
-  da_entry_t *entry = (da_entry_t *)item;
-  g_free(entry->table);
-  g_free(entry->initial);
-  g_free(entry->current);
+    da_entry_t *entry = (da_entry_t *)item;
+    g_free(entry->table);
+    g_free(entry->initial);
+    g_free(entry->current);
 }
 
 
@@ -296,7 +283,7 @@ decode_build_show_list (const gchar *table_name, ftenum_t selector_type,
     case FT_UINT16:
     case FT_UINT24:
     case FT_UINT32:
-        switch (get_dissector_table_base(table_name)) {
+        switch (get_dissector_table_param(table_name)) {
 
         case BASE_DEC:
             g_snprintf(string1, sizeof(string1), "%u", GPOINTER_TO_UINT(key));
@@ -454,13 +441,13 @@ decode_show_destroy_cb (GtkWidget *win _U_, gpointer user_data _U_)
 static void
 decode_show_save_cb (GtkWidget *win _U_, gpointer user_data _U_)
 {
-  FILE        *daf = decode_as_open();
+    gchar* err = NULL;
 
-  if (!daf) return;
-
-  g_slist_foreach(da_entries, write_da_entry, daf);
-
-  fclose(daf);
+    if (save_decode_as_entries(&err) < 0)
+    {
+        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err);
+        g_free(err);
+    }
 }
 
 /* add a single binding to the Show list */
@@ -610,11 +597,11 @@ decode_show_cb (GtkWidget *w _U_, gpointer user_data _U_)
 static void
 decode_debug (GtkTreeView *tree_view, gchar *leadin)
 {
-    GtkListStore *store;
-    GtkTreeSelection *selection;
-    GtkTreeIter iter;
-    char *string, *text[E_LIST_S_COLUMNS];
-    dissector_handle_t handle;
+    GtkListStore       *store;
+    GtkTreeSelection   *selection;
+    GtkTreeIter         iter;
+    char               *string, *text[E_LIST_S_COLUMNS];
+    dissector_handle_t  handle;
 
     selection = gtk_tree_view_get_selection(tree_view);
 
@@ -650,17 +637,17 @@ decode_debug (GtkTreeView *tree_view, gchar *leadin)
 static void
 decode_simple (GtkWidget *notebook_pg)
 {
-    GtkWidget *list, *combo_box;
-    GtkTreeSelection  *selection;
-    GtkTreeModel      *model;
-    GtkTreeIter        iter;
-    decode_as_t *entry;
-    gchar *table_name, *abbrev;
-    dissector_handle_t handle;
-    guint value_loop, *selector_type;
-    gpointer ptr, value_ptr;
-    gint requested_index = 0;
-    gboolean add_reset_list = FALSE;
+    GtkWidget          *list, *combo_box;
+    GtkTreeSelection   *selection;
+    GtkTreeModel       *model;
+    GtkTreeIter         iter;
+    decode_as_t        *entry;
+    gchar              *table_name, *abbrev;
+    dissector_handle_t  handle;
+    guint               value_loop, *selector_type;
+    gpointer            ptr, value_ptr;
+    gint                requested_index = 0;
+    gboolean            add_reset_list  = FALSE;
 
     list = (GtkWidget *)g_object_get_data(G_OBJECT(notebook_pg), E_PAGE_LIST);
     if (requested_action == E_DECODE_NO)
@@ -691,17 +678,20 @@ decode_simple (GtkWidget *notebook_pg)
     /* Apply values to dissector table (stored in entry) */
     for (value_loop = 0; value_loop < entry->values[requested_index].num_values; value_loop++)
     {
+        guint8 saved_curr_layer_num = cfile.edt->pi.curr_layer_num;
+        cfile.edt->pi.curr_layer_num = (guint8)GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(notebook_pg), E_PAGE_CURR_LAYER_NUM));
         value_ptr = entry->values[requested_index].build_values[value_loop](&cfile.edt->pi);
         if (abbrev != NULL && strcmp(abbrev, "(default)") == 0) {
             add_reset_list = entry->reset_value(table_name, value_ptr);
         } else {
             add_reset_list = entry->change_value(table_name, value_ptr, &handle, abbrev);
         }
+        cfile.edt->pi.curr_layer_num = saved_curr_layer_num;
 
         if (add_reset_list) {
             selector_type = g_new(guint,1);
             *selector_type = GPOINTER_TO_UINT(value_ptr);
-            decode_build_reset_list(g_strdup(table_name), FT_UINT32, selector_type, NULL, NULL);
+            decode_build_reset_list(table_name, FT_UINT32, selector_type, NULL, NULL);
         }
     }
 
@@ -729,9 +719,9 @@ decode_simple (GtkWidget *notebook_pg)
 static void
 decode_ok_cb (GtkWidget *ok_bt _U_, gpointer parent_w)
 {
-    GtkWidget *notebook, *notebook_pg;
-    void (* func)(GtkWidget *);
-    gint page_num;
+    GtkWidget   *notebook, *notebook_pg;
+    void     (* func)(GtkWidget *);
+    gint         page_num;
     decode_as_t *entry;
 
     /* Call the right routine for the page that was currently in front. */
@@ -893,8 +883,8 @@ decode_clear_cb(GtkWidget *clear_bt _U_, gpointer user_data _U_)
 static void
 decode_update_action (GtkWidget *w _U_, gpointer user_data)
 {
-    GSList *tmp;
-    gboolean enable;
+    GSList   *tmp;
+    gboolean  enable;
 
     requested_action = (enum action_type)GPOINTER_TO_INT(user_data);
     enable = (requested_action == E_DECODE_YES);
@@ -1041,7 +1031,7 @@ lookup_handle(GtkTreeModel *model, GtkTreePath *path _U_, GtkTreeIter *iter,
 static void
 decode_add_to_list (const gchar *table_name, const gchar *proto_name, gpointer value, gpointer user_data)
 {
-    const gchar     *text[E_LIST_S_COLUMNS];
+    const gchar  *text[E_LIST_S_COLUMNS];
     GtkTreeView  *list;
     GtkListStore *store;
     GtkTreeIter   iter;
@@ -1072,25 +1062,25 @@ decode_add_to_list (const gchar *table_name, const gchar *proto_name, gpointer v
 static gboolean
 decode_list_button_press_cb(GtkWidget *list, GdkEventButton *event, gpointer user_data _U_)
 {
-  if (event->type == GDK_2BUTTON_PRESS) {
-    GtkWidget *main_w = gtk_widget_get_toplevel(list);
+    if (event->type == GDK_2BUTTON_PRESS) {
+        GtkWidget *main_w = gtk_widget_get_toplevel(list);
 
-    decode_ok_cb (NULL, main_w);
-  }
+        decode_ok_cb (NULL, main_w);
+    }
 
-  return FALSE;
+    return FALSE;
 }
 
 static gboolean
 decode_list_key_release_cb(GtkWidget *list, GdkEventKey *event, gpointer user_data _U_)
 {
-  if (event->keyval == GDK_Return || event->keyval == GDK_KP_Enter) {
-    GtkWidget    *main_w = gtk_widget_get_toplevel(list);
+    if (event->keyval == GDK_Return || event->keyval == GDK_KP_Enter) {
+        GtkWidget    *main_w = gtk_widget_get_toplevel(list);
 
-    decode_ok_cb (NULL, main_w);
-  }
+        decode_ok_cb (NULL, main_w);
+    }
 
-  return FALSE;
+    return FALSE;
 }
 
 /*
@@ -1234,6 +1224,7 @@ decode_add_simple_page (decode_as_t *entry)
     if (entry->num_items == 1)
     {
         g_object_set_data(G_OBJECT(page), E_PAGE_VALUE, entry->values[0].build_values[0](&cfile.edt->pi));
+        g_object_set_data(G_OBJECT(page), E_PAGE_CURR_LAYER_NUM, GUINT_TO_POINTER(cfile.edt->pi.curr_layer_num));
 
         /* Always enabled */
         entry->values->label_func(&cfile.edt->pi, prompt);
@@ -1274,12 +1265,12 @@ decode_add_simple_page (decode_as_t *entry)
 gboolean
 decode_as_ok(void)
 {
-    wmem_list_frame_t * protos = wmem_list_head(cfile.edt->pi.layers);
-    int proto_id;
-    const char* proto_name;
-    GList *list_entry;
-    decode_as_t *entry;
-    dissector_table_t sub_dissectors;
+    wmem_list_frame_t *protos = wmem_list_head(cfile.edt->pi.layers);
+    int                proto_id;
+    const char*        proto_name;
+    GList             *list_entry;
+    decode_as_t       *entry;
+    dissector_table_t  sub_dissectors;
 
     while (protos != NULL)
     {
@@ -1317,13 +1308,15 @@ decode_as_ok(void)
 static void
 decode_add_notebook (GtkWidget *format_hb)
 {
-    GtkWidget *notebook, *page, *label;
-    wmem_list_frame_t * protos = wmem_list_head(cfile.edt->pi.layers);
-    int proto_id;
-    const char* proto_name;
-    GList *list_entry;
-    decode_as_t *entry;
-    dissector_table_t sub_dissectors;
+    GtkWidget         *notebook, *page, *label;
+    wmem_list_frame_t *protos = wmem_list_head(cfile.edt->pi.layers);
+    int                proto_id;
+    const char*        proto_name;
+    GList             *list_entry;
+    decode_as_t       *entry;
+    guint8             saved_curr_layer_num = cfile.edt->pi.curr_layer_num;
+
+    cfile.edt->pi.curr_layer_num = 1;
 
     /* Start a nootbook for flipping between sets of changes */
     notebook = gtk_notebook_new();
@@ -1340,8 +1333,8 @@ decode_add_notebook (GtkWidget *format_hb)
             entry = (decode_as_t *)list_entry->data;
             if (!strcmp(proto_name, entry->name))
             {
-                sub_dissectors = find_dissector_table(entry->table_name);
-                if (sub_dissectors != NULL)
+                if ((find_dissector_table(entry->table_name) != NULL) ||
+                    (!strcmp(proto_name, "dcerpc")))
                 {
                     page = decode_add_simple_page(entry);
                     label = gtk_label_new(entry->title);
@@ -1353,7 +1346,10 @@ decode_add_notebook (GtkWidget *format_hb)
         }
 
         protos = wmem_list_frame_next(protos);
+        cfile.edt->pi.curr_layer_num++;
     }
+
+    cfile.edt->pi.curr_layer_num = saved_curr_layer_num;
 
     /* Select the last added page (selects first by default) */
     /* Notebook must be visible for set_page to work. */
@@ -1410,14 +1406,14 @@ decode_as_cb (GtkWidget * w _U_, gpointer user_data _U_)
     g_signal_connect(button, "clicked", G_CALLBACK(decode_show_cb), NULL);
     gtk_widget_set_can_default(button, TRUE);
     gtk_box_pack_end(GTK_BOX(button_vb), button, FALSE, FALSE, 0);
-	gtk_widget_set_tooltip_text(button, "Open a dialog showing the current settings.\n"
-		"Note you need to select and press apply first to be able to save the current setting");
+    gtk_widget_set_tooltip_text(button, "Open a dialog showing the current settings.\n"
+        "Note you need to select and press apply first to be able to save the current setting");
 
     button = ws_gtk_button_new_from_stock(GTK_STOCK_CLEAR);
     g_signal_connect(button, "clicked", G_CALLBACK(decode_clear_cb), NULL);
     gtk_widget_set_can_default(button, TRUE);
     gtk_box_pack_end(GTK_BOX(button_vb), button, FALSE, FALSE, 0);
-	gtk_widget_set_tooltip_text(button, "Clear ALL settings.");
+    gtk_widget_set_tooltip_text(button, "Clear ALL settings.");
 
     decode_add_notebook(format_hb);
 
@@ -1428,16 +1424,16 @@ decode_as_cb (GtkWidget * w _U_, gpointer user_data _U_)
 
     ok_bt = (GtkWidget *)g_object_get_data(G_OBJECT(bbox), GTK_STOCK_OK);
     g_signal_connect(ok_bt, "clicked", G_CALLBACK(decode_ok_cb), decode_w);
-	gtk_widget_set_tooltip_text(ok_bt, "Apply current setting, close dialog and redissect packets.");
+    gtk_widget_set_tooltip_text(ok_bt, "Apply current setting, close dialog and redissect packets.");
 
     apply_bt = (GtkWidget *)g_object_get_data(G_OBJECT(bbox), GTK_STOCK_APPLY);
     g_signal_connect(apply_bt, "clicked", G_CALLBACK(decode_apply_cb), decode_w);
-	gtk_widget_set_tooltip_text(apply_bt, "Apply current setting, redissect packets and keep dialog open.");
+    gtk_widget_set_tooltip_text(apply_bt, "Apply current setting, redissect packets and keep dialog open.");
 
     close_bt = (GtkWidget *)g_object_get_data(G_OBJECT(bbox), GTK_STOCK_CLOSE);
     window_set_cancel_button(decode_w, close_bt, NULL);
     g_signal_connect(close_bt, "clicked", G_CALLBACK(decode_close_cb), decode_w);
-	gtk_widget_set_tooltip_text(close_bt, "Close the dialog, don't redissect packets.");
+    gtk_widget_set_tooltip_text(close_bt, "Close the dialog, don't redissect packets.");
 
     help_bt = (GtkWidget *)g_object_get_data(G_OBJECT(bbox), GTK_STOCK_HELP);
     g_signal_connect(help_bt, "clicked", G_CALLBACK(topic_cb), (gpointer)HELP_DECODE_AS_DIALOG);
@@ -1450,3 +1446,16 @@ decode_as_cb (GtkWidget * w _U_, gpointer user_data _U_)
     gtk_widget_show_all(decode_w);
     window_present(decode_w);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

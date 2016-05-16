@@ -54,8 +54,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/addr_resolv.h>
 #include <epan/etypes.h>
@@ -82,10 +80,10 @@ dissect_wol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
     guint8       *mac;
     const guint8 *passwd;
     guint64       qword;
+    address      mac_addr;
 
 /* Set up structures needed to add the protocol subtree and manage it */
     proto_item *ti;
-    proto_item *mti;
     proto_tree *wol_tree;
     proto_tree *mac_tree;
 
@@ -98,7 +96,7 @@ dissect_wol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
  *  in Wireshark handing an HTTP packet to your dissector).  For example:
  */
     /* Check that there's enough data */
-    len = tvb_length(tvb);
+    len = tvb_reported_length(tvb);
     if ( len < 102 )    /* wol's smallest packet size is 102 */
         return (0);
 
@@ -168,9 +166,10 @@ dissect_wol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
     col_clear(pinfo->cinfo, COL_INFO);
 
    */
+    SET_ADDRESS(&mac_addr, AT_ETHER, 6, mac);
 
-    col_add_fstr(pinfo->cinfo, COL_INFO, "MagicPacket for %s (%s)",
-        get_ether_name(mac), ether_to_str(mac));
+    col_add_fstr(pinfo->cinfo, COL_INFO, "MagicPacket for %s",
+        address_with_resolution_to_str(wmem_packet_scope(), &mac_addr));
 
     /* NOTE: ether-wake uses a dotted-decimal format for specifying a
         * 4-byte password or an Ethernet mac address format for specifying
@@ -229,8 +228,8 @@ dissect_wol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
 
 /* create display subtree for the protocol */
         ti = proto_tree_add_item(tree, proto_wol, tvb, 0, len, ENC_NA);
-        proto_item_append_text(ti, ", MAC: %s (%s)", get_ether_name(mac),
-            ether_to_str(mac));
+        proto_item_append_text(ti, ", MAC: %s",
+            address_with_resolution_to_str(wmem_packet_scope(), &mac_addr));
         if ( passwd )
             proto_item_append_text(ti, ", password: %s", passwd);
         wol_tree = proto_item_add_subtree(ti, ett_wol);
@@ -239,9 +238,9 @@ dissect_wol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data 
         proto_tree_add_item(wol_tree, hf_wol_sync, tvb, 0, 6, ENC_NA);
 
 /* Continue adding tree items to process the packet here */
-        mti = proto_tree_add_text(wol_tree, tvb, 6, 96, "MAC: %s (%s)",
-            get_ether_name(mac), ether_to_str(mac));
-        mac_tree = proto_item_add_subtree(mti, ett_wol_macblock);
+        mac_tree = proto_tree_add_subtree_format(wol_tree, tvb, 6, 96,
+            ett_wol_macblock, NULL, "MAC: %s",
+            address_with_resolution_to_str(wmem_packet_scope(), &mac_addr));
         for ( offset = 6; offset < 102; offset += 6 )
             proto_tree_add_ether(mac_tree, hf_wol_mac, tvb, offset, 6, mac);
 
@@ -334,7 +333,7 @@ proto_reg_handoff_wol(void)
      * we'll miss some, but how else to do this ... add a thousand of
      * these dissector_add_uint()'s and heur_dissector_add()'s??? */
     dissector_add_uint("ethertype", ETHERTYPE_WOL, wol_handle);
-    heur_dissector_add("udp", dissect_wolheur, proto_wol);
+    heur_dissector_add("udp", dissect_wolheur, "Wake On LAN over UDP", "wol_udp", proto_wol, HEURISTIC_ENABLE);
 }
 
 /*

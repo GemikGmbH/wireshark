@@ -23,10 +23,7 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include "packet-dcerpc.h"
 
 
@@ -378,8 +375,7 @@ dissect_ndr_uint64(tvbuff_t *tvb, gint offset, packet_info *pinfo,
 
     if (!di->no_align && (offset % 8)) {
         gint padding = 8 - (offset % 8);
-        /*add the item for padding bytes*/
-        proto_tree_add_text(tree, tvb, offset, padding, "NDR-Padding: %d bytes", padding);
+        proto_tree_add_item(tree, hf_dcerpc_ndr_padding, tvb, offset, padding, ENC_NA);
         offset += padding;
     }
     return dissect_dcerpc_uint64(tvb, offset, pinfo,
@@ -522,7 +518,7 @@ dissect_ndr_time_t(tvbuff_t *tvb, gint offset, packet_info *pinfo,
 int
 dissect_ndr_uuid_t(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                    proto_tree *tree, dcerpc_info *di, guint8 *drep,
-                   int hfindex, e_uuid_t *pdata)
+                   int hfindex, e_guid_t *pdata)
 {
     /* Some callers expect us to initialize pdata, even in error conditions, so
      * do it right away in case we forget later */
@@ -563,7 +559,7 @@ dissect_ndr_ctx_hnd(tvbuff_t *tvb, gint offset, packet_info *pinfo _U_,
         return offset;
     }
 
-    if (!di->no_align && (offset % 2)) {
+    if (!di->no_align && (offset % 4)) {
         offset += 4 - (offset % 4);
     }
     ctx_hnd.attributes = dcerpc_tvb_get_ntohl(tvb, offset, drep);
@@ -577,3 +573,16 @@ dissect_ndr_ctx_hnd(tvbuff_t *tvb, gint offset, packet_info *pinfo _U_,
     }
     return offset + 20;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

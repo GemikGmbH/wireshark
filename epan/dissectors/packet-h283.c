@@ -31,7 +31,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
@@ -84,7 +83,7 @@ static int hf_h283_deviceListResp = -1;           /* T_deviceListResp */
 static int hf_h283_deviceChange = -1;             /* NULL */
 
 /*--- End of included file: packet-h283-hf.c ---*/
-#line 43 "../../asn1/h283/packet-h283-template.c"
+#line 42 "../../asn1/h283/packet-h283-template.c"
 
 /* Initialize the subtree pointers */
 static int ett_h283 = -1;
@@ -107,7 +106,7 @@ static gint ett_h283_LCTIndication = -1;
 static gint ett_h283_NonStandardMessage = -1;
 
 /*--- End of included file: packet-h283-ett.c ---*/
-#line 47 "../../asn1/h283/packet-h283-template.c"
+#line 46 "../../asn1/h283/packet-h283-template.c"
 
 /* Subdissectors */
 static dissector_handle_t rdc_pdu_handle;
@@ -297,7 +296,7 @@ dissect_h283_T_deviceListResp(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
                                        NO_BOUND, NO_BOUND, FALSE, &next_tvb);
 
-  if (next_tvb && tvb_length(next_tvb)) {
+  if (next_tvb && tvb_reported_length(next_tvb)) {
     call_dissector((rdc_device_list_handle)?rdc_device_list_handle:data_handle, next_tvb, actx->pinfo, tree);
   }
 
@@ -443,7 +442,7 @@ dissect_h283_T_rdcPDU(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
                                        NO_BOUND, NO_BOUND, FALSE, &next_tvb);
 
-  if (next_tvb && tvb_length(next_tvb)) {
+  if (next_tvb && tvb_reported_length(next_tvb)) {
     call_dissector((rdc_pdu_handle)?rdc_pdu_handle:data_handle, next_tvb, actx->pinfo, proto_tree_get_root(tree));
   }
   info_is_set = TRUE;
@@ -565,7 +564,7 @@ static int dissect_LCTPDU_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_t
 
 
 /*--- End of included file: packet-h283-fn.c ---*/
-#line 56 "../../asn1/h283/packet-h283-template.c"
+#line 55 "../../asn1/h283/packet-h283-template.c"
 
 static int
 dissect_h283_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
@@ -721,7 +720,7 @@ void proto_register_h283(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-h283-hfarr.c ---*/
-#line 79 "../../asn1/h283/packet-h283-template.c"
+#line 78 "../../asn1/h283/packet-h283-template.c"
   };
 
   /* List of subtrees */
@@ -746,7 +745,7 @@ void proto_register_h283(void) {
     &ett_h283_NonStandardMessage,
 
 /*--- End of included file: packet-h283-ettarr.c ---*/
-#line 85 "../../asn1/h283/packet-h283-template.c"
+#line 84 "../../asn1/h283/packet-h283-template.c"
   };
 
   /* Register protocol */
@@ -766,7 +765,7 @@ void proto_reg_handoff_h283(void)
   dissector_handle_t h283_udp_handle;
 
   h283_udp_handle = find_dissector(PFNAME);
-  dissector_add_handle("udp.port", h283_udp_handle);
+  dissector_add_for_decode_as("udp.port", h283_udp_handle);
 
   rdc_pdu_handle = find_dissector("rdc");
   rdc_device_list_handle = find_dissector("rdc.device_list");

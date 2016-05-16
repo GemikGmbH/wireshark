@@ -28,8 +28,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include "packet-tcp.h"
@@ -140,7 +138,7 @@ static gint ett_wow = -1;
 static gint ett_wow_realms = -1;
 
 static guint
-get_wow_pdu_len(packet_info *pinfo, tvbuff_t *tvb, int offset)
+get_wow_pdu_len(packet_info *pinfo, tvbuff_t *tvb, int offset, void *data _U_)
 {
 	gint8 size_field_offset = -1;
 	guint8 cmd;
@@ -202,7 +200,7 @@ dissect_wow_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
 						    tvb, offset, 2, ENC_LITTLE_ENDIAN);
 				offset += 2;
 
-				string = g_strreverse(tvb_get_string(wmem_packet_scope(), tvb, offset, 4));
+				string = g_strreverse(tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 4, ENC_ASCII));
 				proto_tree_add_string(wow_tree, hf_wow_gamename,
 						      tvb, offset, 4, string);
 				offset += 4;
@@ -223,17 +221,17 @@ dissect_wow_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
 						    offset, 2, ENC_LITTLE_ENDIAN);
 				offset += 2;
 
-				string = g_strreverse(tvb_get_string(wmem_packet_scope(), tvb, offset, 4));
+				string = g_strreverse(tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 4, ENC_ASCII));
 				proto_tree_add_string(wow_tree, hf_wow_platform,
 						      tvb, offset, 4, string);
 				offset += 4;
 
-				string = g_strreverse(tvb_get_string(wmem_packet_scope(), tvb, offset, 4));
+				string = g_strreverse(tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 4, ENC_ASCII));
 				proto_tree_add_string(wow_tree, hf_wow_os, tvb,
 						      offset, 4, string);
 				offset += 4;
 
-				string = g_strreverse(tvb_get_string(wmem_packet_scope(), tvb, offset, 4));
+				string = g_strreverse(tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 4, ENC_ASCII));
 				proto_tree_add_string(wow_tree, hf_wow_country,
 						      tvb, offset, 4, string);
 				offset += 4;
@@ -354,16 +352,15 @@ dissect_wow_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
 				offset += 2;
 
 				for(ii = 0; ii < num_realms; ii++) {
-					realm_name = tvb_get_stringz(wmem_packet_scope(), tvb,
+					realm_name = tvb_get_stringz_enc(wmem_packet_scope(), tvb,
 								     offset + 3,
-								     &len);
+								     &len, ENC_ASCII);
 
-					ti = proto_tree_add_text(wow_tree, tvb,
+					wow_realms_tree = proto_tree_add_subtree(wow_tree, tvb,
 								 offset, 0,
-								 "%s",
+								 ett_wow_realms, NULL,
 								 realm_name);
 
-					wow_realms_tree = proto_item_add_subtree(ti, ett_wow_realms);
 					proto_tree_add_item(wow_realms_tree, hf_wow_realm_type, tvb, offset, 1, ENC_LITTLE_ENDIAN);
 					offset += 1;
 
@@ -376,8 +373,8 @@ dissect_wow_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
 					proto_tree_add_string(wow_realms_tree, hf_wow_realm_name, tvb, offset, len, realm_name);
 					offset += len;
 
-					string = tvb_get_stringz(wmem_packet_scope(), tvb, offset,
-								 &len);
+					string = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset,
+								 &len, ENC_ASCII);
 					proto_tree_add_string(wow_realms_tree, hf_wow_realm_socket, tvb, offset, len, string);
 					offset += len;
 
@@ -398,7 +395,7 @@ dissect_wow_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data 
 		}
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 static gboolean
@@ -642,3 +639,16 @@ proto_reg_handoff_wow(void)
 	dissector_add_uint("tcp.port", WOW_PORT, wow_handle);
 
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

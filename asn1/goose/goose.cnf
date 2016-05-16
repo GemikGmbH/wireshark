@@ -5,7 +5,7 @@
 
 #.EXPORTS
 
-#.PDU
+#.PDU_NEW
 
 #.NO_EMIT ONLY_VALS
 GOOSEpdu
@@ -22,7 +22,7 @@ GOOSEpdu
 	nstime_t ts;
 	gchar *	ptime;
 
-	len = tvb_length_remaining(tvb, offset);
+	len = tvb_reported_length_remaining(tvb, offset);
 
 	if(len != 8)
 	{
@@ -41,7 +41,7 @@ GOOSEpdu
 	ts.secs = seconds;
 	ts.nsecs = nanoseconds;
 
-	ptime = abs_time_to_ep_str(&ts, ABSOLUTE_TIME_UTC, TRUE);
+	ptime = abs_time_to_str(wmem_packet_scope(), &ts, ABSOLUTE_TIME_UTC, TRUE);
 
 	if(hf_index >= 0)
 	{

@@ -25,7 +25,6 @@
 #include <ftypes-int.h>
 #include <epan/ipv6-utils.h>
 #include <epan/addr_resolv.h>
-#include <epan/emem.h>
 
 static void
 ipv6_fvalue_set(fvalue_t *fv, const guint8 *value)
@@ -35,27 +34,37 @@ ipv6_fvalue_set(fvalue_t *fv, const guint8 *value)
 }
 
 static gboolean
-ipv6_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, LogFunc logfunc)
+ipv6_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, gchar **err_msg)
 {
-	const char *has_slash, *addr_str;
+	const char *has_slash;
+	char *addr_str;
 	unsigned int nmask_bits;
 	fvalue_t *nmask_fvalue;
+	gboolean free_addr_str = FALSE;
 
 	/* Look for prefix: Is there a single slash in the string? */
-	if ((has_slash = strchr(s, '/')))
-		addr_str = ep_strndup(s, has_slash-s);
+	if ((has_slash = strchr(s, '/'))) {
+		addr_str = wmem_strndup(NULL, s, has_slash-s);
+		free_addr_str = TRUE;
+	}
 	else
-		addr_str = s;
+		addr_str = (char*)s;
 
 	if (!get_host_ipaddr6(addr_str, &(fv->value.ipv6.addr))) {
-		logfunc("\"%s\" is not a valid hostname or IPv6 address.", s);
+		if (err_msg != NULL)
+			*err_msg = g_strdup_printf("\"%s\" is not a valid hostname or IPv6 address.", s);
+		if (free_addr_str)
+			wmem_free(NULL, addr_str);
 		return FALSE;
 	}
+
+	if (free_addr_str)
+		wmem_free(NULL, addr_str);
 
 	/* If prefix */
 	if (has_slash) {
 		/* XXX - this is inefficient */
-		nmask_fvalue = fvalue_from_unparsed(FT_UINT32, has_slash+1, FALSE, logfunc);
+		nmask_fvalue = fvalue_from_unparsed(FT_UINT32, has_slash+1, FALSE, err_msg);
 		if (!nmask_fvalue) {
 			return FALSE;
 		}
@@ -63,8 +72,10 @@ ipv6_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_
 		FVALUE_FREE(nmask_fvalue);
 
 		if (nmask_bits > 128) {
-			logfunc("Prefix in a IPv6 address should be <= 128, not %u",
-					nmask_bits);
+			if (err_msg != NULL) {
+				*err_msg = g_strdup_printf("Prefix in a IPv6 address should be <= 128, not %u",
+						nmask_bits);
+			}
 			return FALSE;
 		}
 		fv->value.ipv6.prefix = nmask_bits;
@@ -77,7 +88,7 @@ ipv6_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_
 }
 
 static int
-ipv6_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_)
+ipv6_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_, int field_display _U_)
 {
 	/*
 	 * 39 characters for "XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX:XXXX".
@@ -86,7 +97,7 @@ ipv6_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_)
 }
 
 static void
-ipv6_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, char *buf)
+ipv6_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, int field_display _U_, char *buf)
 {
 	ip6_to_str_buf(&(fv->value.ipv6.addr), buf);
 }
@@ -231,13 +242,15 @@ ftype_register_ipv6(void)
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		NULL,				/* set_value_floating */
 
 		value_get,			/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		NULL,				/* get_value_floating */
 
 		cmp_eq,
@@ -256,3 +269,16 @@ ftype_register_ipv6(void)
 
 	ftype_register(FT_IPv6, &ipv6_type);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

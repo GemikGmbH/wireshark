@@ -20,16 +20,17 @@
  */
 
 #include "tcp_stream_dialog.h"
-#include "ui_tcp_stream_dialog.h"
+#include <ui_tcp_stream_dialog.h>
 
 #include "epan/to_str.h"
 
 #include "wsutil/str_util.h"
 
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "tango_colors.h"
 #include "qt_ui_utils.h"
+#include "progress_frame.h"
 #include "wireshark_application.h"
 
 #include <QCursor>
@@ -46,7 +47,6 @@
 // - Make the crosshairs tracer a vertical band?
 // - Implement File->Copy
 // - Add UDP graphs
-// - Add horizontal- and vertical-only zoom via modifier keys?
 // - Make the first throughput MA period a dotted/dashed line?
 // - Add range scroll bars?
 // - ACK & RWIN segment ticks in tcptrace graph
@@ -73,7 +73,7 @@ const double pkt_point_size_ = 3.0;
 // in zoom mode.
 const int min_zoom_pixels_ = 20;
 
-const QString average_throughput_label_ = QObject::tr("Avgerage Througput (bits/s)");
+const QString average_throughput_label_ = QObject::tr("Average Througput (bits/s)");
 const QString round_trip_time_ms_label_ = QObject::tr("Round Trip Time (ms)");
 const QString segment_length_label_ = QObject::tr("Segment Length (B)");
 const QString sequence_number_label_ = QObject::tr("Sequence Number (B)");
@@ -81,7 +81,7 @@ const QString time_s_label_ = QObject::tr("Time (s)");
 const QString window_size_label_ = QObject::tr("Window Size (B)");
 
 TCPStreamDialog::TCPStreamDialog(QWidget *parent, capture_file *cf, tcp_graph_type graph_type) :
-    QDialog(parent),
+    QDialog(NULL, Qt::Window),
     ui(new Ui::TCPStreamDialog),
     cap_file_(cf),
     ts_origin_conn_(true),
@@ -96,6 +96,7 @@ TCPStreamDialog::TCPStreamDialog(QWidget *parent, capture_file *cf, tcp_graph_ty
     int graph_idx = -1;
 
     ui->setupUi(this);
+    setAttribute(Qt::WA_DeleteOnClose, true);
 
     struct tcpheader *header = select_tcpip_session(cap_file_, &current);
     if (!header) {
@@ -124,7 +125,11 @@ TCPStreamDialog::TCPStreamDialog(QWidget *parent, capture_file *cf, tcp_graph_ty
     ui->dragRadioButton->setChecked(mouse_drags_);
 
     ctx_menu_.addAction(ui->actionZoomIn);
+    ctx_menu_.addAction(ui->actionZoomInX);
+    ctx_menu_.addAction(ui->actionZoomInY);
     ctx_menu_.addAction(ui->actionZoomOut);
+    ctx_menu_.addAction(ui->actionZoomOutX);
+    ctx_menu_.addAction(ui->actionZoomOutY);
     ctx_menu_.addAction(ui->actionReset);
     ctx_menu_.addSeparator();
     ctx_menu_.addAction(ui->actionMoveRight10);
@@ -162,8 +167,8 @@ TCPStreamDialog::TCPStreamDialog(QWidget *parent, capture_file *cf, tcp_graph_ty
     findStream();
 
     ui->streamNumberSpinBox->blockSignals(true);
-    ui->streamNumberSpinBox->setValue(graph_.stream);
     ui->streamNumberSpinBox->setMaximum(get_tcp_stream_count() - 1);
+    ui->streamNumberSpinBox->setValue(graph_.stream);
     ui->streamNumberSpinBox->blockSignals(false);
 
     QCustomPlot *sp = ui->streamPlot;
@@ -208,7 +213,9 @@ TCPStreamDialog::TCPStreamDialog(QWidget *parent, capture_file *cf, tcp_graph_ty
     toggleTracerStyle(true);
 
     QPushButton *save_bt = ui->buttonBox->button(QDialogButtonBox::Save);
-    save_bt->setText(tr("Save As..."));
+    save_bt->setText(tr("Save As" UTF8_HORIZONTAL_ELLIPSIS));
+
+    ProgressFrame::addToButtonBox(ui->buttonBox, parent);
 
     connect(sp, SIGNAL(mousePress(QMouseEvent*)), this, SLOT(graphClicked(QMouseEvent*)));
     connect(sp, SIGNAL(mouseMove(QMouseEvent*)), this, SLOT(mouseMoved(QMouseEvent*)));
@@ -217,6 +224,7 @@ TCPStreamDialog::TCPStreamDialog(QWidget *parent, capture_file *cf, tcp_graph_ty
             this, SLOT(axisClicked(QCPAxis*,QCPAxis::SelectablePart,QMouseEvent*)));
     connect(sp->yAxis, SIGNAL(rangeChanged(QCPRange)), this, SLOT(transformYRange(QCPRange)));
     disconnect(ui->buttonBox, SIGNAL(accepted()), this, SLOT(accept()));
+    this->setResult(QDialog::Accepted);
 }
 
 TCPStreamDialog::~TCPStreamDialog()
@@ -224,9 +232,8 @@ TCPStreamDialog::~TCPStreamDialog()
     delete ui;
 }
 
-void TCPStreamDialog::showEvent(QShowEvent *event)
+void TCPStreamDialog::showEvent(QShowEvent *)
 {
-    Q_UNUSED(event);
     resetAxes();
 }
 
@@ -246,7 +253,20 @@ void TCPStreamDialog::keyPressEvent(QKeyEvent *event)
     case Qt::Key_I:             // GTK+
         zoomAxes(true);
         break;
-
+    case Qt::Key_X:             // Zoom X axis only
+        if(event->modifiers() & Qt::ShiftModifier){
+            zoomXAxis(false);   // upper case X -> Zoom out
+        } else {
+            zoomXAxis(true);    // lower case x -> Zoom in
+        }
+        break;
+    case Qt::Key_Y:             // Zoom Y axis only
+        if(event->modifiers() & Qt::ShiftModifier){
+            zoomYAxis(false);   // upper case Y -> Zoom out
+        } else {
+            zoomYAxis(true);    // lower case y -> Zoom in
+        }
+        break;
     case Qt::Key_Right:
     case Qt::Key_L:
         panAxes(pan_pixels, 0);
@@ -326,8 +346,14 @@ void TCPStreamDialog::mouseReleaseEvent(QMouseEvent *event)
 
 void TCPStreamDialog::findStream()
 {
+    QCustomPlot *sp = ui->streamPlot;
+
+    disconnect(sp, SIGNAL(mouseMove(QMouseEvent*)), this, SLOT(mouseMoved(QMouseEvent*)));
+    ui->streamNumberSpinBox->setEnabled(false);
     graph_segment_list_free(&graph_);
     graph_segment_list_get(cap_file_, &graph_, TRUE);
+    ui->streamNumberSpinBox->setEnabled(true);
+    connect(sp, SIGNAL(mouseMove(QMouseEvent*)), this, SLOT(mouseMoved(QMouseEvent*)));
 }
 
 void TCPStreamDialog::fillGraph()
@@ -439,6 +465,32 @@ void TCPStreamDialog::zoomAxes(bool in)
     }
 
     sp->xAxis->scaleRange(h_factor, sp->xAxis->range().center());
+    sp->yAxis->scaleRange(v_factor, sp->yAxis->range().center());
+    sp->replot();
+}
+
+void TCPStreamDialog::zoomXAxis(bool in)
+{
+    QCustomPlot *sp = ui->streamPlot;
+    double h_factor = sp->axisRect()->rangeZoomFactor(Qt::Horizontal);
+
+    if (!in) {
+        h_factor = pow(h_factor, -1);
+    }
+
+    sp->xAxis->scaleRange(h_factor, sp->xAxis->range().center());
+    sp->replot();
+}
+
+void TCPStreamDialog::zoomYAxis(bool in)
+{
+    QCustomPlot *sp = ui->streamPlot;
+    double v_factor = sp->axisRect()->rangeZoomFactor(Qt::Vertical);
+
+    if (!in) {
+        v_factor = pow(v_factor, -1);
+    }
+
     sp->yAxis->scaleRange(v_factor, sp->yAxis->range().center());
     sp->replot();
 }
@@ -592,7 +644,7 @@ void TCPStreamDialog::fillThroughput()
 
     QVector<double> rel_time, seg_len, tput_time, tput;
     int oldest = 0;
-    int sum = 0;
+    guint64 sum = 0;
     // Financial charts don't show MA data until a full period has elapsed.
     // The Rosetta Code MA examples start spitting out values immediately.
     // For now use not-really-correct initial values just to keep our vector
@@ -725,12 +777,13 @@ void TCPStreamDialog::fillWindowScale()
 
 QString TCPStreamDialog::streamDescription()
 {
-    return QString(tr(" for %1:%2 %3 %4:%5"))
-            .arg(ep_address_to_str(&graph_.src_address))
+    QString description(tr(" for %1:%2 %3 %4:%5")
+            .arg(address_to_qstring(&graph_.src_address))
             .arg(graph_.src_port)
             .arg(UTF8_RIGHTWARDS_ARROW)
-            .arg(ep_address_to_str(&graph_.dst_address))
-            .arg(graph_.dst_port);
+            .arg(address_to_qstring(&graph_.dst_address))
+            .arg(graph_.dst_port));
+    return description;
 }
 
 bool TCPStreamDialog::compareHeaders(segment *seg)
@@ -814,10 +867,8 @@ void TCPStreamDialog::graphClicked(QMouseEvent *event)
     }
 }
 
-void TCPStreamDialog::axisClicked(QCPAxis *axis, QCPAxis::SelectablePart part, QMouseEvent *event)
+void TCPStreamDialog::axisClicked(QCPAxis *axis, QCPAxis::SelectablePart, QMouseEvent *)
 {
-    Q_UNUSED(part)
-    Q_UNUSED(event)
     QCustomPlot *sp = ui->streamPlot;
 
     if (axis == sp->xAxis) {
@@ -987,7 +1038,7 @@ void TCPStreamDialog::on_buttonBox_accepted()
             .arg(bmp_filter)
             .arg(jpeg_filter);
 
-    file_name = QFileDialog::getSaveFileName(this, tr("Wireshark: Save Graph As..."),
+    file_name = QFileDialog::getSaveFileName(this, wsApp->windowTitleString(tr("Save Graph As" UTF8_HORIZONTAL_ELLIPSIS)),
                                              path.canonicalPath(), filter, &extension);
 
     if (file_name.length() > 0) {
@@ -1064,9 +1115,29 @@ void TCPStreamDialog::on_actionZoomIn_triggered()
     zoomAxes(true);
 }
 
+void TCPStreamDialog::on_actionZoomInX_triggered()
+{
+    zoomXAxis(true);
+}
+
+void TCPStreamDialog::on_actionZoomInY_triggered()
+{
+    zoomYAxis(true);
+}
+
 void TCPStreamDialog::on_actionZoomOut_triggered()
 {
     zoomAxes(false);
+}
+
+void TCPStreamDialog::on_actionZoomOutX_triggered()
+{
+    zoomXAxis(false);
+}
+
+void TCPStreamDialog::on_actionZoomOutY_triggered()
+{
+    zoomYAxis(false);
 }
 
 void TCPStreamDialog::on_actionReset_triggered()

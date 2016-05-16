@@ -35,14 +35,12 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/to_str.h>
 #include "packet-igmp.h"
-#include "packet-msnip.h"
 
 void proto_register_msnip(void);
+void proto_reg_handoff_msnip(void);
 
 static int proto_msnip = -1;
 static int hf_checksum = -1;
@@ -60,6 +58,7 @@ static int hf_rec_type = -1;
 static int ett_msnip = -1;
 static int ett_groups = -1;
 
+#define MC_ALL_IGMPV3_ROUTERS	0xe0000016
 
 #define MSNIP_GM	0x23
 #define MSNIP_IS	0x24
@@ -97,7 +96,6 @@ dissect_msnip_rmr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, in
 		proto_tree *tree;
 		proto_item *item;
 		guint8 rec_type;
-		guint32 maddr;
 		int old_offset = offset;
 
 		item = proto_tree_add_item(parent_tree, hf_groups,
@@ -113,14 +111,12 @@ dissect_msnip_rmr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, in
 		offset += 3;
 
 		/* multicast group */
-		maddr = tvb_get_ipv4(tvb, offset);
-		proto_tree_add_ipv4(tree, hf_maddr, tvb, offset, 4,
-			maddr);
+		proto_tree_add_item(tree, hf_maddr, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
 
 		if (item) {
 			proto_item_set_text(item,"Group: %s %s",
-				ip_to_str((guint8 *)&maddr),
+				tvb_ip_to_str(tvb, offset-4),
 				val_to_str(rec_type, msnip_rec_types,
 					"Unknown Type:0x%02x"));
 
@@ -175,7 +171,6 @@ dissect_msnip_gm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int
 	while (count--) {
 		proto_tree *tree;
 		proto_item *item;
-		guint32 maddr;
 		guint8 masklen;
 		int old_offset = offset;
 
@@ -184,9 +179,7 @@ dissect_msnip_gm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int
 		tree = proto_item_add_subtree(item, ett_groups);
 
 		/* multicast group */
-		maddr = tvb_get_ipv4(tvb, offset);
-		proto_tree_add_ipv4(tree, hf_maddr, tvb, offset, 4,
-			maddr);
+		proto_tree_add_item(tree, hf_maddr, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
 
 		/* mask length */
@@ -200,7 +193,7 @@ dissect_msnip_gm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int
 
 		if (item) {
 			proto_item_set_text(item,"Group: %s/%d",
-				ip_to_str((guint8 *)&maddr), masklen);
+				tvb_ip_to_str(tvb, offset - 8), masklen);
 
 			proto_item_set_len(item, offset-old_offset);
 		}
@@ -211,27 +204,24 @@ dissect_msnip_gm(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int
 
 
 /* This function is only called from the IGMP dissector */
-int
-dissect_msnip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, int offset)
+static int
+dissect_msnip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* data _U_)
 {
 	proto_tree *tree;
 	proto_item *item;
 	guint8 type;
+	int offset = 0;
+	guint32 dst = g_htonl(MC_ALL_IGMPV3_ROUTERS);
 
-	if (!proto_is_protocol_enabled(find_protocol_by_id(proto_msnip))) {
-		/* we are not enabled, skip entire packet to be nice
-		   to the igmp layer. (so clicking on IGMP will display the data)
-		 */
-		return offset+tvb_length_remaining(tvb, offset);
-	}
-
-	item = proto_tree_add_item(parent_tree, proto_msnip, tvb, offset, -1, ENC_NA);
-	tree = proto_item_add_subtree(item, ett_msnip);
-
+	/* Shouldn't be destined for us */
+	if (memcmp(pinfo->dst.data, &dst, 4))
+	return 0;
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "MSNIP");
 	col_clear(pinfo->cinfo, COL_INFO);
 
+	item = proto_tree_add_item(parent_tree, proto_msnip, tvb, offset, -1, ENC_NA);
+	tree = proto_item_add_subtree(item, ett_msnip);
 
 	type = tvb_get_guint8(tvb, offset);
 	col_add_str(pinfo->cinfo, COL_INFO,
@@ -322,3 +312,26 @@ proto_register_msnip(void)
 	proto_register_subtree_array(ett, array_length(ett));
 }
 
+void
+proto_reg_handoff_msnip(void)
+{
+	dissector_handle_t msnip_handle;
+
+	msnip_handle = new_create_dissector_handle(dissect_msnip, proto_msnip);
+	dissector_add_uint("igmp.type", IGMP_TYPE_0x23, msnip_handle);
+	dissector_add_uint("igmp.type", IGMP_TYPE_0x24, msnip_handle);
+	dissector_add_uint("igmp.type", IGMP_TYPE_0x25, msnip_handle);
+}
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

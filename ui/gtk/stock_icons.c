@@ -23,7 +23,6 @@
 
 #include "config.h"
 
-#include <gtk/gtk.h>
 
 #include <stdlib.h>
 #include <string.h>
@@ -32,7 +31,7 @@
 #include "ui/gtk/toolbar_icons.h"
 #include "ui/gtk/wsicon.h"
 
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 /* these icons are derived from the original stock icons */
 #include "../../image/toolbar/capture_filter_24.xpm"

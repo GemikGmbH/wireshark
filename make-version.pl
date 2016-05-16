@@ -25,14 +25,17 @@
 # If "version.conf" is present, it is parsed for configuration values.
 # Possible values are:
 #
-#   enable     - Enable or disable versioning.  Zero (0) disables, nonzero
-#		 enables.
-#   svn_client - Use svn client i.s.o. ugly internal SVN file hack
-#   format     - A strftime() formatted string to use as a template for
-#		 the version string. The sequence "%#" will substitute
-#		 the SVN revision number.
-#   pkg_enable - Enable or disable local package versioning.
-#   pkg_format - Like "format", but used for the local package version.
+#   enable       - Enable or disable versioning.  Zero (0) disables, nonzero
+#		   enables.
+#   svn_client   - Use svn client i.s.o. ugly internal SVN file hack
+#   tortoise_svn - Use TortoiseSVN client instead of ugly internal SVN
+#		   file hack
+#   format       - A strftime() formatted string to use as a template for
+#		   the version string. The sequence "%#" will substitute
+#		   the number of commits for Git or the revision number
+#		   for SVN.
+#   pkg_enable   - Enable or disable local package versioning.
+#   pkg_format   - Like "format", but used for the local package version.
 #
 # If run with the "-r" or "--set-release" argument the AC_INIT macro in
 # configure.ac and the VERSION macro in config.nmake will have the
@@ -42,8 +45,10 @@
 # Default configuration:
 #
 # enable: 1
-# svn_client: 1
-# format: SVN %Y%m%d%H%M%S
+# git_client: 0
+# svn_client: 0
+# tortoise_svn: 0
+# format: git %Y%m%d%H%M%S
 # pkg_enable: 1
 # pkg_format: -%#
 
@@ -54,6 +59,7 @@ use strict;
 
 use Time::Local;
 use File::Basename;
+use File::Spec;
 use POSIX qw(strftime);
 use Getopt::Long;
 use Pod::Usage;
@@ -63,28 +69,30 @@ use English;
 my $version_file = 'version.h';
 my $package_string = "";
 my $vconf_file = 'version.conf';
+my $vcs_name = "Git";
 my $tortoise_file = "tortoise_template";
 my $last_change = 0;
 my $num_commits = 0;
 my $commit_id = '';
 my $repo_branch = "unknown";
+my $git_executable = "git";
 my $git_description = undef;
-my $get_svn = 0;
-my $set_svn = 0;
+my $get_vcs = 0;
+my $set_vcs = 0;
+my $print_vcs = 0;
 my $set_version = 0;
 my $set_release = 0;
 my %version_pref = (
-	"version_major" => 1,
-	"version_minor" => 12,
+	"version_major" => 2,
+	"version_minor" => 0,
 	"version_micro" => 3,
 	"version_build" => 0,
 
 	"enable"        => 1,
-	"git_client"    => 0,
-	"svn_client"    => 1,
+	"git_client"    => 0,	# set if .git found and .git/svn not found
+	"svn_client"    => 0,	# set if .svn found
 	"tortoise_svn"  => 0,
 	"format"        => "git %Y%m%d%H%M%S",
-	"is_release"    => 0,
 
 	# Normal development builds
 	"pkg_enable" => 1,
@@ -96,14 +104,18 @@ my %version_pref = (
 	);
 my $srcdir = ".";
 my $info_cmd = "";
+my $verbose = 0;
 
 # Ensure we run with correct locale
 $ENV{LANG} = "C";
 $ENV{LC_ALL} = "C";
 $ENV{GIT_PAGER} = "";
 
-# Run "svn info".  Parse out the most recent modification time and the
-# revision number.
+sub print_diag {
+	print STDERR @_ if $verbose;
+}
+
+# Attempt to get revision information from the repository.
 sub read_repo_info {
 	my $line;
 	my $version_format = $version_pref{"format"};
@@ -111,10 +123,15 @@ sub read_repo_info {
 	my $in_entries = 0;
 	my $svn_name;
 	my $repo_version;
-	my $repo_root = undef;
-	my $repo_url = undef;
 	my $do_hack = 1;
 	my $info_source = "Unknown";
+	my $devnull = File::Spec->devnull();
+
+	# Make sure git is available.
+	if (!`$git_executable --version`) {
+		print STDERR "Git unavailable. Git revision will be missing from version string.\n";
+		return;
+	}
 
 	if ($version_pref{"pkg_enable"} > 0) {
 		$package_format = $version_pref{"pkg_format"};
@@ -126,9 +143,10 @@ sub read_repo_info {
 	} elsif (-d "$srcdir/.svn" or -d "$srcdir/../.svn") {
 		$info_source = "Command line (svn info)";
 		$info_cmd = "svn info $srcdir";
+		$version_pref{"svn_client"} = 1;
 	} elsif (-d "$srcdir/.git/svn") {
 		$info_source = "Command line (git-svn)";
-		$info_cmd = "(cd $srcdir; git svn info)";
+		$info_cmd = "(cd $srcdir; $git_executable svn info)";
 	}
 
 	#Git can give us:
@@ -159,13 +177,13 @@ sub read_repo_info {
 			use warnings "all";
 			no warnings "all";
 
-			chomp($line = qx{git --git-dir=$srcdir/.git log -1 --pretty=format:%at});
+			chomp($line = qx{$git_executable --git-dir="$srcdir"/.git log -1 --pretty=format:%at});
 			if ($? == 0 && length($line) > 1) {
 				$last_change = $line;
 			}
 
 			# Commits since last annotated tag.
-			chomp($line = qx{git --git-dir=$srcdir/.git describe --long --always --match "v*"});
+			chomp($line = qx{$git_executable --git-dir="$srcdir"/.git describe --long --always --match "v*"});
 			if ($? == 0 && length($line) > 1) {
 				my @parts = split(/-/, $line);
 				$git_description = $line;
@@ -173,14 +191,9 @@ sub read_repo_info {
 				$commit_id = $parts[-1];
 			}
 
-			chomp($line = qx{git ls-remote --get-url origin});
-			if (defined($line)) {
-				$repo_url = $line;
-			}
-
 			# This will break in some cases. Hopefully not during
 			# official package builds.
-			chomp($line = qx{git --git-dir=$srcdir/.git rev-parse --abbrev-ref --symbolic-full-name \@\{upstream\}});
+			chomp($line = qx{$git_executable --git-dir="$srcdir"/.git rev-parse --abbrev-ref --symbolic-full-name \@\{upstream\} 2> $devnull});
 			if ($? == 0 && length($line) > 1) {
 				$repo_branch = basename($line);
 			}
@@ -188,10 +201,12 @@ sub read_repo_info {
 			1;
 		};
 
-		if ($last_change && $num_commits && $repo_url && $repo_branch) {
+		if ($last_change && $num_commits && $repo_branch) {
 			$do_hack = 0;
 		}
 	} elsif ($version_pref{"svn_client"}) {
+		my $repo_root = undef;
+		my $repo_url = undef;
 		eval {
 			use warnings "all";
 			no warnings "all";
@@ -209,9 +224,14 @@ sub read_repo_info {
 				if ($line =~ /Repository Root: (\S+)/) {
 					$repo_root = $1;
 				}
+				$vcs_name = "SVN";
 			}
 			1;
 		};
+
+		if ($repo_url && $repo_root && index($repo_url, $repo_root) == 0) {
+			$repo_branch = substr($repo_url, length($repo_root));
+		}
 
 		if ($last_change && $num_commits && $repo_url && $repo_root) {
 			$do_hack = 0;
@@ -219,8 +239,8 @@ sub read_repo_info {
 	} elsif ($version_pref{"tortoise_svn"}) {
 		# Dynamically generic template file needed by TortoiseSVN
 		open(TORTOISE, ">$tortoise_file");
-		print TORTOISE "#define GITVERSION \"\$WCREV\$\"\r\n";
-		print TORTOISE "#define GITBRANCH \"\$WCURL\$\"\r\n";
+		print TORTOISE "#define VCSVERSION \"\$WCREV\$\"\r\n";
+		print TORTOISE "#define VCSBRANCH \"\$WCURL\$\"\r\n";
 		close(TORTOISE);
 
 		$info_source = "Command line (SubWCRev)";
@@ -229,6 +249,7 @@ sub read_repo_info {
 		if ($tortoise == 0) {
 			$do_hack = 0;
 		}
+		$vcs_name = "SVN";
 
 		#clean up the template file
 		unlink($tortoise_file);
@@ -240,7 +261,7 @@ sub read_repo_info {
 		my $filepath = "$srcdir/config.nmake";
 		open(CFGNMAKE, "< $filepath") || die "Can't read $filepath!";
 		while ($line = <CFGNMAKE>) {
-			if ($line =~ /^GIT_REVISION=(\d+)/) {
+			if ($line =~ /^VCS_REVISION=(\d+)/) {
 				$num_commits = $1;
 				$do_hack = 0;
 				last;
@@ -256,22 +277,22 @@ sub read_repo_info {
 			no warnings "all";
 			# If someone had properly tagged 1.9.0 we could also use
 			# "git describe --abbrev=1 --tags HEAD"
-			
-			$info_cmd = "(cd $srcdir; git log --format='%b' -n 1)";
+
+			$info_cmd = "(cd $srcdir; $git_executable log --format='%b' -n 1)";
 			$line = qx{$info_cmd};
 			if (defined($line)) {
 				if ($line =~ /svn path=.*; revision=(\d+)/) {
 					$num_commits = $1;
 				}
 			}
-			$info_cmd = "(cd $srcdir; git log --format='%ad' -n 1 --date=iso)";
+			$info_cmd = "(cd $srcdir; $git_executable log --format='%ad' -n 1 --date=iso)";
 			$line = qx{$info_cmd};
 			if (defined($line)) {
 				if ($line =~ /(\d{4})-(\d\d)-(\d\d) (\d\d):(\d\d):(\d\d)/) {
 					$last_change = timegm($6, $5, $4, $3, $2 - 1, $1);
 				}
 			}
-			$info_cmd = "(cd $srcdir; git branch)";
+			$info_cmd = "(cd $srcdir; $git_executable branch)";
 			$line = qx{$info_cmd};
 			if (defined($line)) {
 				if ($line =~ /\* (\S+)/) {
@@ -297,6 +318,7 @@ sub read_repo_info {
 					$num_commits = $1;
 					$repo_branch = $2;
 				}
+				$vcs_name = "Bzr";
 			}
 			1;
 			};
@@ -307,7 +329,7 @@ sub read_repo_info {
 	if ($do_hack) {
 		# Start of ugly internal SVN file hack
 		if (! open (ENTRIES, "< $srcdir/.svn/entries")) {
-			print ("Unable to open $srcdir/.svn/entries\n");
+			print STDERR "Unable to open $srcdir/.svn/entries\n";
 		} else {
 			$info_source = "Prodding .svn";
 			# We need to find out whether our parser can handle the entries file
@@ -357,20 +379,59 @@ sub read_repo_info {
 		$package_string = strftime($package_format, gmtime($last_change));
 	}
 
-	if ($repo_url && $repo_root && index($repo_url, $repo_root) == 0) {
-		$repo_branch = substr($repo_url, length($repo_root));
-	}
-
-	if ($get_svn) {
+	if ($get_vcs) {
 		print <<"Fin";
 Commit distance : $num_commits
 Commit ID       : $commit_id
 Revision source : $info_source
 Release stamp   : $package_string
 Fin
+	} elsif ($print_vcs) {
+		print new_version_h();
 	}
 }
 
+
+# Read CMakeLists.txt, then write it back out with updated "set(PROJECT_..._VERSION ...)
+# lines
+# set(GIT_REVISION 999)
+# set(PROJECT_MAJOR_VERSION 1)
+# set(PROJECT_MINOR_VERSION 99)
+# set(PROJECT_PATCH_VERSION 0)
+# set(PROJECT_VERSION_EXTENSION "-rc5")
+sub update_cmakelists_txt
+{
+	my $line;
+	my $contents = "";
+	my $version = "";
+	my $filepath = "$srcdir/CMakeLists.txt";
+	my $cmake_package_string = "\$ENV{WIRESHARK_VERSION_EXTRA}";
+
+	if ($package_string ne "") { $cmake_package_string = $package_string; }
+
+	return if (!$set_version && $package_string eq "");
+
+	open(CFGIN, "< $filepath") || die "Can't read $filepath!";
+	while ($line = <CFGIN>) {
+		if ($line =~ /^set *\( *GIT_REVISION .*([\r\n]+)$/) {
+			$line = sprintf("set(GIT_REVISION %d)$1", $num_commits);
+		} elsif ($line =~ /^set *\( *PROJECT_MAJOR_VERSION .*([\r\n]+)$/) {
+			$line = sprintf("set(PROJECT_MAJOR_VERSION %d)$1", $version_pref{"version_major"});
+		} elsif ($line =~ /^set *\( *PROJECT_MINOR_VERSION .*([\r\n]+)$/) {
+			$line = sprintf("set(PROJECT_MINOR_VERSION %d)$1", $version_pref{"version_minor"});
+		} elsif ($line =~ /^set *\( *PROJECT_PATCH_VERSION .*([\r\n]+)$/) {
+			$line = sprintf("set(PROJECT_PATCH_VERSION %d)$1", $version_pref{"version_micro"});
+		} elsif ($line =~ /^set *\( *PROJECT_VERSION_EXTENSION.*([\r\n]+)$/) {
+			$line = sprintf("set(PROJECT_VERSION_EXTENSION \"%s\")$1", $cmake_package_string);
+		}
+		$contents .= $line
+	}
+
+	open(CFGIN, "> $filepath") || die "Can't write $filepath!";
+	print(CFGIN $contents);
+	close(CFGIN);
+	print "$filepath has been updated.\n";
+}
 
 # Read configure.ac, then write it back out with an updated
 # "AC_INIT" line.
@@ -411,11 +472,15 @@ sub update_config_nmake
 	my $contents = "";
 	my $version = "";
 	my $filepath = "$srcdir/config.nmake";
+	my $win_package_string = "\$(WIRESHARK_VERSION_EXTRA)";
+
+	if ($package_string ne "") { $win_package_string = $package_string; }
+
 
 	open(CFGNMAKE, "< $filepath") || die "Can't read $filepath!";
 	while ($line = <CFGNMAKE>) {
-		if ($line =~ /^GIT_REVISION=.*([\r\n]+)$/) {
-			$line = sprintf("GIT_REVISION=%d$1", $num_commits);
+		if ($line =~ /^VCS_REVISION=.*([\r\n]+)$/) {
+			$line = sprintf("VCS_REVISION=%d$1", $num_commits);
 		} elsif ($set_version && $line =~ /^VERSION_MAJOR=.*([\r\n]+)$/) {
 			$line = sprintf("VERSION_MAJOR=%d$1", $version_pref{"version_major"});
 		} elsif ($set_version && $line =~ /^VERSION_MINOR=.*([\r\n]+)$/) {
@@ -423,7 +488,7 @@ sub update_config_nmake
 		} elsif ($set_version && $line =~ /^VERSION_MICRO=.*([\r\n]+)$/) {
 			$line = sprintf("VERSION_MICRO=%d$1", $version_pref{"version_micro"});
 		} elsif ($line =~ /^VERSION_EXTRA=.*([\r\n]+)$/) {
-			$line = "VERSION_EXTRA=$package_string$1";
+			$line = "VERSION_EXTRA=$win_package_string$1";
 		}
 		$contents .= $line
 	}
@@ -442,8 +507,6 @@ sub update_release_notes
 	my $contents = "";
 	my $version = "";
 	my $filepath = "$srcdir/docbook/asciidoc.conf";
-
-	return if (!$set_version);
 
 	open(ADOC_CONF, "< $filepath") || die "Can't read $filepath!";
 	while ($line = <ADOC_CONF>) {
@@ -473,8 +536,6 @@ sub update_debian_changelog
 	my $version = "";
 	my $filepath = "$srcdir/debian/changelog";
 
-	return if ($set_version == 0);
-
 	open(CHANGELOG, "< $filepath") || die "Can't read $filepath!";
 	while ($line = <CHANGELOG>) {
 		if ($set_version && CHANGELOG->input_line_number() == 1) {
@@ -493,36 +554,8 @@ sub update_debian_changelog
 	print "$filepath has been updated.\n";
 }
 
-# Read debian/wireshark-common.files, then write back out an updated version.
-# The libraries updated here MUST match the updates made by update_lib_releases
-# below. We should do this automatically.
-sub update_debian_wcf
-{
-	my $line;
-	my $contents = "";
-	my $version = "";
-	my $filepath = "$srcdir/debian/wireshark-common.files";
-
-	return if (!$set_version);
-
-	open(DWCF, "< $filepath") || die "Can't read $filepath!";
-	while ($line = <DWCF>) {
-		# /usr/lib/wireshark/libwireshark.so.1.1.0
-
-		if ($line =~ qr{^(/usr/lib/wireshark/lib(wireshark|wiretap|filetap).so\.\d+\.\d+\.)\d+$}) {
-			$line = sprintf("$1%d\n", $version_pref{"version_micro"});
-		}
-		$contents .= $line
-	}
-
-	open(DWCF, "> $filepath") || die "Can't write $filepath!";
-	print(DWCF $contents);
-	close(DWCF);
-	print "$filepath has been updated.\n";
-}
-
 # Read Makefile.am for each library, then write back out an updated version.
-sub update_lib_releases
+sub update_automake_lib_releases
 {
 	my $line;
 	my $contents = "";
@@ -530,16 +563,14 @@ sub update_lib_releases
 	my $filedir;
 	my $filepath;
 
-	return if (!$set_version);
-
 	# The Libtool manual says
 	#   "If the library source code has changed at all since the last
 	#    update, then increment revision (‘c:r:a’ becomes ‘c:r+1:a’)."
 	# epan changes with each minor release, almost by definition. wiretap
-	# and filetap changes with *most* releases.
+	# changes with *most* releases.
 	#
 	# http://www.gnu.org/software/libtool/manual/libtool.html#Updating-version-info
-	for $filedir ("epan", "wiretap", "filetap") {	# "wsutil"
+	for $filedir ("epan", "wiretap") {	# "wsutil"
 		$contents = "";
 		$filepath = $filedir . "/Makefile.am";
 		open(MAKEFILE_AM, "< $filepath") || die "Can't read $filepath!";
@@ -559,50 +590,90 @@ sub update_lib_releases
 	}
 }
 
+# Read CMakeLists.txt for each library, then write back out an updated version.
+sub update_cmake_lib_releases
+{
+	my $line;
+	my $contents = "";
+	my $version = "";
+	my $filedir;
+	my $filepath;
+
+	for $filedir ("epan", "wiretap") {	# "wsutil"
+		$contents = "";
+		$filepath = $filedir . "/CMakeLists.txt";
+		open(CMAKELISTS_TXT, "< $filepath") || die "Can't read $filepath!";
+		while ($line = <CMAKELISTS_TXT>) {
+			# set(FULL_SO_VERSION "0.0.0")
+
+			if ($line =~ /^(set\s*\(\s*FULL_SO_VERSION\s+"\d+\.\d+\.)\d+(".*)/) {
+				$line = sprintf("$1%d$2\n", $version_pref{"version_micro"});
+			}
+			$contents .= $line
+		}
+
+		open(CMAKELISTS_TXT, "> $filepath") || die "Can't write $filepath!";
+		print(CMAKELISTS_TXT $contents);
+		close(CMAKELISTS_TXT);
+		print "$filepath has been updated.\n";
+	}
+}
+
 # Update distributed files that contain any version information
 sub update_versioned_files
 {
+	&update_cmakelists_txt;
 	&update_configure_ac;
 	&update_config_nmake;
-	&update_release_notes;
-	&update_debian_changelog;
-	#&update_debian_wcf;
-	&update_lib_releases;
+	if ($set_version) {
+		&update_release_notes;
+		&update_debian_changelog;
+		&update_automake_lib_releases;
+		&update_cmake_lib_releases;
+	}
 }
 
-# Print the SVN version to $version_file.
-# Don't change the file if it is not needed.
-sub print_GIT_REVISION
+sub new_version_h
 {
-	my $GIT_REVISION;
-	my $needs_update = 1;
+	my $VCS_REVISION;
 
 	if ($git_description) {
-		$GIT_REVISION = "#define GITVERSION \"" .
+		$VCS_REVISION = "#define VCSVERSION \"" .
 			$git_description . "\"\n" .
-			"#define GITBRANCH \"" . $repo_branch . "\"\n";
+			"#define VCSBRANCH \"" . $repo_branch . "\"\n";
 	} elsif ($last_change && $num_commits) {
-		$GIT_REVISION = "#define GITVERSION \"Git Rev " .
+		$VCS_REVISION = "#define VCSVERSION \"" . $vcs_name . " Rev " .
 			$num_commits . "\"\n" .
-			"#define GITBRANCH \"" . $repo_branch . "\"\n";
+			"#define VCSBRANCH \"" . $repo_branch . "\"\n";
 	} else {
-		$GIT_REVISION = "#define GITVERSION \"Git Rev Unknown\"\n" .
-			"#define GITBRANCH \"unknown\"\n";
+		$VCS_REVISION = "#define VCSVERSION \"" . $vcs_name .
+			" Rev Unknown\"\n" .
+			"#define VCSBRANCH \"unknown\"\n";
 	}
+
+	return $VCS_REVISION;
+}
+
+# Print the version control system's version to $version_file.
+# Don't change the file if it is not needed.
+sub print_VCS_REVISION
+{
+	my $VCS_REVISION = new_version_h();
+	my $needs_update = 1;
 	if (open(OLDREV, "<$version_file")) {
-		my $old_GIT_REVISION = <OLDREV> . <OLDREV>;
-		if ($old_GIT_REVISION eq $GIT_REVISION) {
+		my $old_VCS_REVISION = <OLDREV> . <OLDREV>;
+		if ($old_VCS_REVISION eq $VCS_REVISION) {
 			$needs_update = 0;
 		}
 		close OLDREV;
 	}
 
-	if (! $set_svn) { return; }
+	if (! $set_vcs) { return; }
 
 	if ($needs_update) {
-		# print "Updating $version_file so it contains:\n$GIT_REVISION";
+		# print "Updating $version_file so it contains:\n$VCS_REVISION";
 		open(VER, ">$version_file") || die ("Cannot write to $version_file ($!)\n");
-		print VER "$GIT_REVISION";
+		print VER "$VCS_REVISION";
 		close VER;
 		print "$version_file has been updated.\n";
 	} else {
@@ -619,16 +690,19 @@ sub get_config {
 	# XXX - Do we need an option to undo --set-release?
 	GetOptions(
 		   "help|h", \$show_help,
-		   "get-svn|g", \$get_svn,
-		   "set-svn|s", \$set_svn,
+		   "get-vcs|get-svn|g", \$get_vcs,
+		   "set-vcs|set-svn|s", \$set_vcs,
+		   "git-bin", \$git_executable,
+		   "print-vcs", \$print_vcs,
 		   "set-version|v", \$set_version,
-		   "set-release|r|package-version|p", \$set_release
+		   "set-release|r|package-version|p", \$set_release,
+		   "verbose", \$verbose
 		   ) || pod2usage(2);
 
 	if ($show_help) { pod2usage(1); }
 
-	if ( !( $show_help || $get_svn || $set_svn || $set_version || $set_release ) ) {
-		$set_svn = 1;
+	if ( !( $show_help || $get_vcs || $set_vcs || $print_vcs || $set_version || $set_release ) ) {
+		$set_vcs = 1;
 	}
 
 	if ($#ARGV >= 0) {
@@ -636,8 +710,8 @@ sub get_config {
 	}
 
 	if (! open(FILE, "<$vconf_file")) {
-		print STDERR "Version configuration file $vconf_file not "
-		. "found.  Using defaults.\n";
+		print_diag "Version configuration file $vconf_file not "
+		. "found. Using defaults.\n";
 		return 1;
 	}
 
@@ -659,7 +733,7 @@ sub get_config {
 
 &read_repo_info();
 
-&print_GIT_REVISION;
+&print_VCS_REVISION;
 
 if ($set_version || $set_release) {
 	if ($set_version) {
@@ -695,19 +769,27 @@ make-version.pl [options] [source directory]
   Options:
 
     --help, -h                 This help message
-    --get-svn, -g              Print the SVN revision and source.
-    --set-svn, -s              Set the information in version.h
+    --get-vcs, -g              Print the VCS revision and source.
+    --set-vcs, -s              Set the information in version.h
+    --print-vcs                Print the vcs version to standard output
     --set-version, -v          Set the major, minor, and micro versions in
-                               configure.ac, config.nmake, debian/changelog,
-			       and docbook/asciidoc.conf.
+                               the top-level CMakeLists.txt, configure.ac,
+                               config.nmake, docbook/asciidoc.conf,
+                               debian/changelog, the Makefile.am for all
+                               libraries, and the CMakeLists.txt for all
+                               libraries.
                                Resets the release information when used by
-			       itself.
-    --set-release, -r          Set the release information in configure.ac
-                               and config.nmake
+                               itself.
+    --set-release, -r          Set the release information in the top-level
+                               CMakeLists.txt, configure.ac, and
+                               config.nmake.
     --package-version, -p      Deprecated. Same as --set-release.
+    --verbose                  Print diagnostic messages to STDERR.
 
-Options can be used in any combination. If none are specified B<--set-svn>
+Options can be used in any combination. If none are specified B<--set-vcs>
 is assumed.
+
+=cut
 
 #
 # Editor modelines  -  http://www.wireshark.org/tools/modelines.html

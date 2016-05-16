@@ -22,8 +22,6 @@
 
 #include "config.h"
 
-
-
 #include "packet-rpc.h"
 #include "packet-spray.h"
 
@@ -43,10 +41,11 @@ static gint ett_spray_clock = -1;
 
 
 static int
-dissect_get_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
+dissect_get_reply(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
 	proto_item* lock_item = NULL;
 	proto_tree* lock_tree = NULL;
+	int offset = 0;
 
 	offset = dissect_rpc_uint32(tvb, tree,
 			hf_spray_counter, offset);
@@ -66,25 +65,21 @@ dissect_get_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree 
 }
 
 static int
-dissect_spray_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
+dissect_spray_call(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_data(tvb, tree,
-			hf_spray_sprayarr, offset);
-
-	return offset;
+	return dissect_rpc_data(tvb, tree, hf_spray_sprayarr, 0);
 }
 
 /* proc number, "proc name", dissect_request, dissect_reply */
-/* NULL as function pointer means: type of arguments is "void". */
 static const vsff spray1_proc[] = {
 	{ SPRAYPROC_NULL,	"NULL",
-		NULL,	NULL },
+		dissect_rpc_void,	dissect_rpc_void },
 	{ SPRAYPROC_SPRAY,	"SPRAY",
-		dissect_spray_call,	NULL },
+		dissect_spray_call,	dissect_rpc_void },
 	{ SPRAYPROC_GET,	"GET",
-		NULL,	dissect_get_reply },
+		dissect_rpc_void,	dissect_get_reply },
 	{ SPRAYPROC_CLEAR,	"CLEAR",
-		NULL,	NULL },
+		dissect_rpc_void,	dissect_rpc_void },
 	{ 0,	NULL,		NULL,				NULL }
 };
 static const value_string spray1_proc_vals[] = {
@@ -93,6 +88,10 @@ static const value_string spray1_proc_vals[] = {
 	{ SPRAYPROC_GET,	"GET" },
 	{ SPRAYPROC_CLEAR,	"CLEAR" },
 	{ 0,	NULL }
+};
+
+static const rpc_prog_vers_info spray_vers_info[] = {
+	{ 1, spray1_proc, &hf_spray_procedure_v1 },
 };
 
 void
@@ -138,8 +137,19 @@ void
 proto_reg_handoff_spray(void)
 {
 	/* Register the protocol as RPC */
-	rpc_init_prog(proto_spray, SPRAY_PROGRAM, ett_spray);
-	/* Register the procedure tables */
-	rpc_init_proc_table(SPRAY_PROGRAM, 1, spray1_proc, hf_spray_procedure_v1);
+	rpc_init_prog(proto_spray, SPRAY_PROGRAM, ett_spray,
+	    G_N_ELEMENTS(spray_vers_info), spray_vers_info);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

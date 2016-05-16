@@ -24,7 +24,6 @@
 #include <string.h>
 #include "wtap-int.h"
 #include "file_wrappers.h"
-#include <wsutil/buffer.h>
 #include "atm.h"
 #include "iptrace.h"
 
@@ -41,46 +40,42 @@ static gboolean iptrace_read_2_0(wtap *wth, int *err, gchar **err_info,
 static gboolean iptrace_seek_read_2_0(wtap *wth, gint64 seek_off,
     struct wtap_pkthdr *phdr, Buffer *buf, int *err, gchar **err_info);
 
-static int iptrace_read_rec_header(FILE_T fh, guint8 *header, int header_len,
-    int *err, gchar **err_info);
 static gboolean iptrace_read_rec_data(FILE_T fh, Buffer *buf,
     struct wtap_pkthdr *phdr, int *err, gchar **err_info);
 static void fill_in_pseudo_header(int encap,
     union wtap_pseudo_header *pseudo_header, guint8 *header);
 static int wtap_encap_ift(unsigned int  ift);
 
-int iptrace_open(wtap *wth, int *err, gchar **err_info)
-{
-	int bytes_read;
-	char name[12];
+#define NAME_SIZE 11
 
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(name, 11, wth->fh);
-	if (bytes_read != 11) {
-		*err = file_error(wth->fh, err_info);
-		if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-			return -1;
-		return 0;
+wtap_open_return_val iptrace_open(wtap *wth, int *err, gchar **err_info)
+{
+	char name[NAME_SIZE+1];
+
+	if (!wtap_read_bytes(wth->fh, name, NAME_SIZE, err, err_info)) {
+		if (*err != WTAP_ERR_SHORT_READ)
+			return WTAP_OPEN_ERROR;
+		return WTAP_OPEN_NOT_MINE;
 	}
-	name[11] = '\0';
+	name[NAME_SIZE] = '\0';
 
 	if (strcmp(name, "iptrace 1.0") == 0) {
 		wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_IPTRACE_1_0;
 		wth->subtype_read = iptrace_read_1_0;
 		wth->subtype_seek_read = iptrace_seek_read_1_0;
-		wth->tsprecision = WTAP_FILE_TSPREC_SEC;
+		wth->file_tsprec = WTAP_TSPREC_SEC;
 	}
 	else if (strcmp(name, "iptrace 2.0") == 0) {
 		wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_IPTRACE_2_0;
 		wth->subtype_read = iptrace_read_2_0;
 		wth->subtype_seek_read = iptrace_seek_read_2_0;
-		wth->tsprecision = WTAP_FILE_TSPREC_NSEC;
+		wth->file_tsprec = WTAP_TSPREC_NSEC;
 	}
 	else {
-		return 0;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
-	return 1;
+	return WTAP_OPEN_MINE;
 }
 
 /***********************************************************
@@ -123,13 +118,10 @@ iptrace_read_rec_1_0(FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
     int *err, gchar **err_info)
 {
 	guint8			header[IPTRACE_1_0_PHDR_SIZE];
-	int			ret;
 	iptrace_1_0_phdr	pkt_hdr;
 	guint32			packet_size;
 
-	ret = iptrace_read_rec_header(fh, header, IPTRACE_1_0_PHDR_SIZE,
-	    err, err_info);
-	if (ret <= 0) {
+	if (!wtap_read_bytes_or_eof(fh, header, sizeof header, err, err_info)) {
 		/* Read error or EOF */
 		return FALSE;
 	}
@@ -301,13 +293,10 @@ iptrace_read_rec_2_0(FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
     int *err, gchar **err_info)
 {
 	guint8			header[IPTRACE_2_0_PHDR_SIZE];
-	int			ret;
 	iptrace_2_0_phdr	pkt_hdr;
 	guint32			packet_size;
 
-	ret = iptrace_read_rec_header(fh, header, IPTRACE_2_0_PHDR_SIZE,
-	    err, err_info);
-	if (ret <= 0) {
+	if (!wtap_read_bytes_or_eof(fh, header, sizeof header, err, err_info)) {
 		/* Read error or EOF */
 		return FALSE;
 	}
@@ -454,27 +443,6 @@ static gboolean iptrace_seek_read_2_0(wtap *wth, gint64 seek_off,
 	return TRUE;
 }
 
-static int
-iptrace_read_rec_header(FILE_T fh, guint8 *header, int header_len, int *err,
-    gchar **err_info)
-{
-	int	bytes_read;
-
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(header, header_len, fh);
-	if (bytes_read != header_len) {
-		*err = file_error(fh, err_info);
-		if (*err != 0)
-			return -1;
-		if (bytes_read != 0) {
-			*err = WTAP_ERR_SHORT_READ;
-			return -1;
-		}
-		return 0;
-	}
-	return 1;
-}
-
 static gboolean
 iptrace_read_rec_data(FILE_T fh, Buffer *buf, struct wtap_pkthdr *phdr,
     int *err, gchar **err_info)
@@ -487,7 +455,7 @@ iptrace_read_rec_data(FILE_T fh, Buffer *buf, struct wtap_pkthdr *phdr,
 		 * Attempt to guess from the packet data, the VPI,
 		 * and the VCI information about the type of traffic.
 		 */
-		atm_guess_traffic_type(phdr, buffer_start_ptr(buf));
+		atm_guess_traffic_type(phdr, ws_buffer_start_ptr(buf));
 	}
 
 	return TRUE;
@@ -635,3 +603,16 @@ wtap_encap_ift(unsigned int  ift)
 		}
 	}
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

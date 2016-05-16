@@ -23,11 +23,9 @@
 
 #include "config.h"
 
-
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/dissectors/packet-dcerpc.h>
 #include <epan/oui.h>
+#include <epan/dissectors/packet-dcerpc.h>
 
 #include "packet-pn.h"
 
@@ -218,7 +216,7 @@ dissect_PNPTCP_Subdomain(tvbuff_t *tvb, int offset,
         packet_info *pinfo, proto_tree *tree, proto_item *item, guint16 u16FrameID)
 {
     guint8   mac[6];
-    e_uuid_t uuid;
+    e_guid_t uuid;
 
 
     /* MasterSourceAddress */
@@ -236,11 +234,11 @@ dissect_PNPTCP_Subdomain(tvbuff_t *tvb, int offset,
         mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
 
     proto_item_append_text(item, ", Subdomain=%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-        uuid.Data1, uuid.Data2, uuid.Data3,
-        uuid.Data4[0], uuid.Data4[1],
-        uuid.Data4[2], uuid.Data4[3],
-        uuid.Data4[4], uuid.Data4[5],
-        uuid.Data4[6], uuid.Data4[7]);
+        uuid.data1, uuid.data2, uuid.data3,
+        uuid.data4[0], uuid.data4[1],
+        uuid.data4[2], uuid.data4[3],
+        uuid.data4[4], uuid.data4[5],
+        uuid.data4[6], uuid.data4[7]);
 
     return offset;
 }
@@ -436,7 +434,7 @@ dissect_PNPTCP_Option_PROFINET(tvbuff_t *tvb, int offset,
         packet_info *pinfo, proto_tree *tree, proto_item *item, guint16 length)
 {
     guint8   subType;
-    e_uuid_t uuid;
+    e_guid_t uuid;
 
     /* OUI already dissected! */
 
@@ -452,11 +450,11 @@ dissect_PNPTCP_Option_PROFINET(tvbuff_t *tvb, int offset,
         /* IRDataUUID */
         offset = dissect_pn_uuid(tvb, offset, pinfo, tree, hf_pn_ptcp_irdata_uuid, &uuid);
         proto_item_append_text(item, ": IRDataUUID=%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                                      uuid.Data1, uuid.Data2, uuid.Data3,
-                                      uuid.Data4[0], uuid.Data4[1],
-                                      uuid.Data4[2], uuid.Data4[3],
-                                      uuid.Data4[4], uuid.Data4[5],
-                                      uuid.Data4[6], uuid.Data4[7]);
+                                      uuid.data1, uuid.data2, uuid.data3,
+                                      uuid.data4[0], uuid.data4[1],
+                                      uuid.data4[2], uuid.data4[3],
+                                      uuid.data4[4], uuid.data4[5],
+                                      uuid.data4[6], uuid.data4[7]);
 
         break;
     default:
@@ -774,17 +772,15 @@ dissect_PNPTCP_DelayPDU(tvbuff_t *tvb, int offset,
 
 /* possibly dissect a PN-RT packet (frame ID must be in the appropriate range) */
 static gboolean
-dissect_PNPTCP_Data_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+dissect_PNPTCP_Data_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-    guint16     u16FrameID;
+    /* the tvb will NOT contain the frame_id here, so get it from dissector data! */
+    guint16     u16FrameID = GPOINTER_TO_UINT(data);
     proto_item *item;
     proto_tree *ptcp_tree;
     int         offset = 0;
     guint32     u32SubStart;
 
-
-    /* the tvb will NOT contain the frame_id here, so get it from our private data! */
-    u16FrameID = GPOINTER_TO_UINT(pinfo->private_data);
 
     /* frame id must be in valid range (acyclic Real-Time, PTCP) */
     /* 0x0000 - 0x007F: RTSyncPDU (with follow up) */
@@ -866,13 +862,13 @@ dissect_PNPTCP_Data_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, vo
         break;
     /* 0xFF44 - 0xFF5F reserved */
     default:
-        offset = dissect_pn_undecoded(tvb, offset, pinfo, tree, tvb_length_remaining(tvb, offset));
+        offset = dissect_pn_undecoded(tvb, offset, pinfo, tree, tvb_captured_length_remaining(tvb, offset));
 
         col_append_fstr(pinfo->cinfo, COL_INFO, "Reserved FrameID 0x%04x", u16FrameID);
 
         proto_item_append_text(item, "Reserved FrameID 0x%04x", u16FrameID);
 
-        offset += tvb_length_remaining(tvb, offset);
+        offset += tvb_captured_length_remaining(tvb, offset);
         break;
     }
 
@@ -1083,5 +1079,18 @@ void
 proto_reg_handoff_pn_ptcp (void)
 {
     /* register ourself as an heuristic pn-rt payload dissector */
-    heur_dissector_add("pn_rt", dissect_PNPTCP_Data_heur, proto_pn_ptcp);
+    heur_dissector_add("pn_rt", dissect_PNPTCP_Data_heur, "PROFINET PTCP IO", "pn_ptcp_pn_rt", proto_pn_ptcp, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

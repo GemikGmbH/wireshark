@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/reassemble.h>
 
@@ -52,6 +50,7 @@ static int hf_sndcp_pcomp    = -1;
 static int hf_sndcp_segment  = -1;
 static int hf_sndcp_npdu1    = -1;
 static int hf_sndcp_npdu2    = -1;
+static int hf_sndcp_payload  = -1;
 
 /* These fields are used when reassembling N-PDU fragments
 */
@@ -108,6 +107,12 @@ static void
 sndcp_defragment_init(void)
 {
   reassembly_table_init(&npdu_reassembly_table, &addresses_reassembly_table_functions);
+}
+
+static void
+sndcp_defragment_cleanup(void)
+{
+  reassembly_table_destroy(&npdu_reassembly_table);
 }
 
 /* value strings
@@ -194,16 +199,24 @@ static const true_false_string m_bit = {
 static void
 dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-  guint8         addr_field, comp_field, npdu_field1, nsapi, dcomp=0, pcomp=0;
+  guint8         addr_field, comp_field, npdu_field1, dcomp=0, pcomp=0;
   guint16        offset=0, npdu=0, segment=0, npdu_field2;
   tvbuff_t      *next_tvb, *npdu_tvb;
   gint           len;
   gboolean       first, more_frags, unack;
+  static const int * addr_fields[] = {
+    &hf_sndcp_x,
+    &hf_sndcp_f,
+    &hf_sndcp_t,
+    &hf_sndcp_m,
+    &hf_sndcp_nsapib,
+    NULL
+  };
 
   /* Set up structures needed to add the protocol subtree and manage it
    */
-  proto_item *ti, *address_field_item, *compression_field_item, *npdu_field_item;
-  proto_tree *sndcp_tree = NULL, *address_field_tree, *compression_field_tree, *npdu_field_tree;
+  proto_item *ti;
+  proto_tree *sndcp_tree, *compression_field_tree, *npdu_field_tree;
 
   /* Make entries in Protocol column and clear Info column on summary display
    */
@@ -212,32 +225,20 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
   /* create display subtree for the protocol
    */
-  if (tree) {
-    ti         = proto_tree_add_item(tree, proto_sndcp, tvb, 0, -1, ENC_NA);
-    sndcp_tree = proto_item_add_subtree(ti, ett_sndcp);
-  }
+  ti         = proto_tree_add_item(tree, proto_sndcp, tvb, 0, -1, ENC_NA);
+  sndcp_tree = proto_item_add_subtree(ti, ett_sndcp);
 
   /* get address field from next byte
    */
   addr_field = tvb_get_guint8(tvb,offset);
-  nsapi      = addr_field & 0xF;
   first      = addr_field & MASK_F;
   more_frags = addr_field & MASK_M;
   unack      = addr_field & MASK_T;
 
   /* add subtree for the address field
    */
-  if (tree) {
-    address_field_item = proto_tree_add_uint_format(sndcp_tree,hf_sndcp_nsapi,
-                                                    tvb, offset,1, nsapi,
-                                                    "Address field  NSAPI: %d", nsapi );
-    address_field_tree = proto_item_add_subtree(address_field_item, ett_sndcp_address_field);
-    proto_tree_add_boolean(address_field_tree, hf_sndcp_x, tvb,offset,1, addr_field );
-    proto_tree_add_boolean(address_field_tree, hf_sndcp_f, tvb,offset,1, addr_field );
-    proto_tree_add_boolean(address_field_tree, hf_sndcp_t, tvb,offset,1, addr_field );
-    proto_tree_add_boolean(address_field_tree, hf_sndcp_m, tvb,offset,1, addr_field );
-    proto_tree_add_uint(address_field_tree, hf_sndcp_nsapib, tvb, offset, 1, addr_field );
-  }
+  proto_tree_add_bitmask_with_flags(sndcp_tree, tvb, offset, hf_sndcp_nsapi,
+                         ett_sndcp_address_field, addr_fields, ENC_NA, BMT_NO_APPEND);
   offset++;
 
   /* get compression pointers from next byte if this is the first segment
@@ -252,21 +253,20 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     if (tree) {
       if (!pcomp) {
         if (!dcomp) {
-          compression_field_item = proto_tree_add_text(sndcp_tree, tvb, offset,1, "No compression");
+          compression_field_tree = proto_tree_add_subtree(sndcp_tree, tvb, offset, 1, ett_sndcp_compression_field, NULL, "No compression");
         }
         else {
-          compression_field_item = proto_tree_add_text(sndcp_tree, tvb, offset,1, "Data compression");
+          compression_field_tree = proto_tree_add_subtree(sndcp_tree, tvb, offset, 1, ett_sndcp_compression_field, NULL, "Data compression");
         }
       }
       else {
         if (!dcomp) {
-          compression_field_item = proto_tree_add_text(sndcp_tree, tvb, offset,1, "Protocol compression");
+          compression_field_tree = proto_tree_add_subtree(sndcp_tree, tvb, offset, 1, ett_sndcp_compression_field, NULL, "Protocol compression");
         }
         else {
-          compression_field_item = proto_tree_add_text(sndcp_tree, tvb, offset,1, "Data and Protocol compression");
+          compression_field_tree = proto_tree_add_subtree(sndcp_tree, tvb, offset, 1, ett_sndcp_compression_field, NULL, "Data and Protocol compression");
         }
       }
-      compression_field_tree = proto_item_add_subtree(compression_field_item, ett_sndcp_compression_field);
       proto_tree_add_uint(compression_field_tree, hf_sndcp_dcomp, tvb, offset, 1, comp_field );
       proto_tree_add_uint(compression_field_tree, hf_sndcp_pcomp, tvb, offset, 1, comp_field );
     }
@@ -278,8 +278,7 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       npdu = npdu_field1 = tvb_get_guint8(tvb,offset);
       col_add_fstr(pinfo->cinfo, COL_INFO, "SN-DATA N-PDU %d", npdu_field1);
       if (tree) {
-        npdu_field_item = proto_tree_add_text(sndcp_tree, tvb, offset,1, "Acknowledged mode, N-PDU %d", npdu_field1 );
-        npdu_field_tree = proto_item_add_subtree(npdu_field_item, ett_sndcp_npdu_field);
+        npdu_field_tree = proto_tree_add_subtree_format(sndcp_tree, tvb, offset, 1, ett_sndcp_npdu_field, NULL, "Acknowledged mode, N-PDU %d", npdu_field1 );
         proto_tree_add_uint(npdu_field_tree, hf_sndcp_npdu1, tvb, offset, 1, npdu_field1 );
       }
       offset++;
@@ -294,8 +293,8 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     npdu            = (npdu_field2 & 0x0FFF);
     col_add_fstr(pinfo->cinfo, COL_INFO, "SN-UNITDATA N-PDU %d (segment %d)", npdu, segment);
     if (tree) {
-      npdu_field_item = proto_tree_add_text(sndcp_tree, tvb, offset,2, "Unacknowledged mode, N-PDU %d (segment %d)", npdu, segment );
-      npdu_field_tree = proto_item_add_subtree(npdu_field_item, ett_sndcp_npdu_field);
+      npdu_field_tree = proto_tree_add_subtree_format(sndcp_tree, tvb, offset, 2, ett_sndcp_npdu_field, NULL,
+            "Unacknowledged mode, N-PDU %d (segment %d)", npdu, segment );
       proto_tree_add_uint(npdu_field_tree, hf_sndcp_segment, tvb, offset, 2, npdu_field2 );
       proto_tree_add_uint(npdu_field_tree, hf_sndcp_npdu2, tvb, offset, 2, npdu_field2 );
     }
@@ -321,7 +320,7 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     guint32         reassembled_in  = 0;
     gboolean        save_fragmented = pinfo->fragmented;
 
-    len = tvb_length_remaining(tvb, offset);
+    len = tvb_captured_length_remaining(tvb, offset);
     if(len<=0){
         return;
     }
@@ -354,9 +353,7 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         col_append_fstr(pinfo->cinfo, COL_INFO,
                           " (N-PDU payload reassembled in packet %u)",
                           fd_npdu->reassembled_in);
-        if (tree) {
-          proto_tree_add_text(sndcp_tree, tvb, offset, -1, "Payload");
-        }
+        proto_tree_add_item(sndcp_tree, hf_sndcp_payload, tvb, offset, -1, ENC_NA);
       }
     } else {
       /* Not reassembled yet, or not reassembled at all
@@ -366,9 +363,7 @@ dissect_sndcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       else
         col_append_str(pinfo->cinfo, COL_INFO, " (Unreassembled fragment)");
 
-      if (tree) {
-        proto_tree_add_text(sndcp_tree, tvb, offset, -1, "Payload");
-      }
+      proto_tree_add_item(sndcp_tree, hf_sndcp_payload, tvb, offset, -1, ENC_NA);
     }
     /* Now reset fragmentation information in pinfo
      */
@@ -389,7 +384,7 @@ proto_register_sndcp(void)
    */
   static hf_register_info hf[] = {
     { &hf_sndcp_nsapi,
-      { "NSAPI",
+      { "Address field NSAPI",
         "sndcp.nsapi",
         FT_UINT8, BASE_DEC, VALS(nsapi_abrv), 0x0,
         "Network Layer Service Access Point Identifier", HFILL
@@ -465,79 +460,86 @@ proto_register_sndcp(void)
         NULL, HFILL
       }
     },
+    { &hf_sndcp_payload,
+      { "Payload",
+        "sndcp.payload",
+        FT_BYTES, BASE_NONE, NULL, 0x0,
+        NULL, HFILL
+      }
+    },
 
     /* Fragment fields
      */
     { &hf_npdu_fragment_overlap,
       { "Fragment overlap",
-        "npdu.fragment.overlap",
+        "sndcp.npdu.fragment.overlap",
         FT_BOOLEAN, BASE_NONE, NULL, 0x0,
         "Fragment overlaps with other fragments", HFILL
       }
     },
     { &hf_npdu_fragment_overlap_conflict,
       { "Conflicting data in fragment overlap",
-        "npdu.fragment.overlap.conflict",
+        "sndcp.npdu.fragment.overlap.conflict",
         FT_BOOLEAN, BASE_NONE, NULL, 0x0,
         "Overlapping fragments contained conflicting data", HFILL
       }
     },
     { &hf_npdu_fragment_multiple_tails,
       { "Multiple tail fragments found",
-        "npdu.fragment.multipletails",
+        "sndcp.npdu.fragment.multipletails",
         FT_BOOLEAN, BASE_NONE, NULL, 0x0,
         "Several tails were found when defragmenting the packet", HFILL
       }
     },
     { &hf_npdu_fragment_too_long_fragment,
       { "Fragment too long",
-        "npdu.fragment.toolongfragment",
+        "sndcp.npdu.fragment.toolongfragment",
         FT_BOOLEAN, BASE_NONE, NULL, 0x0,
         "Fragment contained data past end of packet", HFILL
       }
     },
     { &hf_npdu_fragment_error,
       { "Defragmentation error",
-        "npdu.fragment.error",
+        "sndcp.npdu.fragment.error",
         FT_FRAMENUM, BASE_NONE, NULL, 0x0,
         "Defragmentation error due to illegal fragments", HFILL
       }
     },
     { &hf_npdu_fragment_count,
       { "Fragment count",
-        "npdu.fragment.count",
+        "sndcp.npdu.fragment.count",
         FT_UINT32, BASE_DEC, NULL, 0x0,
         NULL, HFILL
       }
     },
     { &hf_npdu_reassembled_in,
       { "Reassembled in",
-        "npdu.reassembled.in",
+        "sndcp.npdu.reassembled.in",
         FT_FRAMENUM, BASE_NONE, NULL, 0x0,
         "N-PDU fragments are reassembled in the given packet", HFILL
       }
     },
     { &hf_npdu_reassembled_length,
       { "Reassembled N-PDU length",
-        "npdu.reassembled.length",
+        "sndcp.npdu.reassembled.length",
         FT_UINT32, BASE_DEC, NULL, 0x0,
         "The total length of the reassembled payload", HFILL
       }
     },
     { &hf_npdu_fragment,
       { "N-PDU Fragment",
-        "npdu.fragment",
+        "sndcp.npdu.fragment",
         FT_FRAMENUM, BASE_NONE, NULL, 0x0,
         NULL, HFILL
       }
     },
     { &hf_npdu_fragments,
       { "N-PDU Fragments",
-        "npdu.fragments",
+        "sndcp.npdu.fragments",
         FT_NONE, BASE_NONE, NULL, 0x0,
         NULL, HFILL
       }
-    }
+    },
   };
 
     /* Setup protocol subtree array */
@@ -559,6 +561,7 @@ proto_register_sndcp(void)
   proto_register_subtree_array(ett, array_length(ett));
   register_dissector("sndcp", dissect_sndcp, proto_sndcp);
   register_init_routine(sndcp_defragment_init);
+  register_cleanup_routine(sndcp_defragment_cleanup);
 }
 
 /* If this dissector uses sub-dissector registration add a registration routine.
@@ -584,3 +587,16 @@ proto_reg_handoff_sndcp(void)
   ip_handle   = find_dissector("ip");
   data_handle = find_dissector("data");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

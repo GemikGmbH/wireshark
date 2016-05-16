@@ -28,14 +28,13 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <wsutil/bitswap.h>
 #include <epan/prefs.h>
+#include <epan/conversation_table.h>
 #include "packet-fddi.h"
 #include "packet-llc.h"
-#include <epan/tap.h>
+#include "packet-sflow.h"
 
 #include <epan/addr_resolv.h>
 
@@ -142,6 +141,57 @@ swap_mac_addr(guint8 *swapped_addr, tvbuff_t *tvb, gint offset)
   bitswap_buf_inplace(swapped_addr, 6);
 }
 
+static const char* fddi_conv_get_filter_type(conv_item_t* conv, conv_filter_type_e filter)
+{
+  if ((filter == CONV_FT_SRC_ADDRESS) && (conv->src_address.type == AT_ETHER))
+    return "fddi.src";
+
+  if ((filter == CONV_FT_DST_ADDRESS) && (conv->dst_address.type == AT_ETHER))
+    return "fddi.dst";
+
+  if ((filter == CONV_FT_ANY_ADDRESS) && (conv->src_address.type == AT_ETHER))
+    return "fddi.addr";
+
+  return CONV_FILTER_INVALID;
+}
+
+static ct_dissector_info_t fddi_ct_dissector_info = {&fddi_conv_get_filter_type};
+
+static int
+fddi_conversation_packet(void *pct, packet_info *pinfo, epan_dissect_t *edt _U_, const void *vip)
+{
+  conv_hash_t *hash = (conv_hash_t*) pct;
+  const fddi_hdr *ehdr=(const fddi_hdr *)vip;
+
+  add_conversation_table_data(hash, &ehdr->src, &ehdr->dst, 0, 0, 1, pinfo->fd->pkt_len, &pinfo->rel_ts, &pinfo->fd->abs_ts, &fddi_ct_dissector_info, PT_NONE);
+
+  return 1;
+}
+
+static const char* fddi_host_get_filter_type(hostlist_talker_t* host, conv_filter_type_e filter)
+{
+  if ((filter == CONV_FT_ANY_ADDRESS) && (host->myaddress.type == AT_ETHER))
+    return "fddi.addr";
+
+  return CONV_FILTER_INVALID;
+}
+
+static hostlist_dissector_info_t fddi_host_dissector_info = {&fddi_host_get_filter_type};
+
+static int
+fddi_hostlist_packet(void *pit, packet_info *pinfo, epan_dissect_t *edt _U_, const void *vip)
+{
+  conv_hash_t *hash = (conv_hash_t*) pit;
+  const fddi_hdr *ehdr=(const fddi_hdr *)vip;
+
+  /* Take two "add" passes per packet, adding for each direction, ensures that all
+  packets are counted properly (even if address is sending to itself)
+  XXX - this could probably be done more efficiently inside hostlist_table */
+  add_hostlist_table_data(hash, &ehdr->src, 0, TRUE, 1, pinfo->fd->pkt_len, &fddi_host_dissector_info, PT_NONE);
+  add_hostlist_table_data(hash, &ehdr->dst, 0, FALSE, 1, pinfo->fd->pkt_len, &fddi_host_dissector_info, PT_NONE);
+
+  return 1;
+}
 
 void
 capture_fddi(const guchar *pd, int len, packet_counts *ld)
@@ -265,7 +315,7 @@ dissect_fddi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   proto_item      *ti, *hidden_item;
   const gchar     *fc_str;
   proto_tree      *fc_tree;
-  static guchar    src[6], dst[6]; /* has to be static due to SET_ADDRESS */
+  guchar          *src = (guchar*)wmem_alloc(pinfo->pool, 6), *dst = (guchar*)wmem_alloc(pinfo->pool, 6);
   guchar           src_swapped[6], dst_swapped[6];
   tvbuff_t        *next_tvb;
   static fddi_hdr  fddihdrs[4];
@@ -315,14 +365,12 @@ dissect_fddi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   if (bitswapped)
     swap_mac_addr(dst, tvb, FDDI_P_DHOST + FDDI_PADDING);
   else
-    tvb_memcpy(tvb, dst, FDDI_P_DHOST + FDDI_PADDING, sizeof(dst));
+    tvb_memcpy(tvb, dst, FDDI_P_DHOST + FDDI_PADDING, 6);
   swap_mac_addr(dst_swapped, tvb, FDDI_P_DHOST + FDDI_PADDING);
 
-  /* XXX - copy them to some buffer associated with "pi", rather than
-     just making "dst" static? */
-  SET_ADDRESS(&pinfo->dl_dst, AT_ETHER, 6, &dst[0]);
-  SET_ADDRESS(&pinfo->dst, AT_ETHER, 6, &dst[0]);
-  SET_ADDRESS(&fddihdr->dst, AT_ETHER, 6, &dst[0]);
+  SET_ADDRESS(&pinfo->dl_dst, AT_ETHER, 6, dst);
+  COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->dl_dst);
+  COPY_ADDRESS_SHALLOW(&fddihdr->dst, &pinfo->dl_dst);
 
   if (fh_tree) {
     proto_tree_add_ether(fh_tree, hf_fddi_dst, tvb, FDDI_P_DHOST + FDDI_PADDING, 6, dst);
@@ -340,14 +388,12 @@ dissect_fddi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
   if (bitswapped)
     swap_mac_addr(src, tvb, FDDI_P_SHOST + FDDI_PADDING);
   else
-    tvb_memcpy(tvb, src, FDDI_P_SHOST + FDDI_PADDING, sizeof(src));
+    tvb_memcpy(tvb, src, FDDI_P_SHOST + FDDI_PADDING, 6);
   swap_mac_addr(src_swapped, tvb, FDDI_P_SHOST + FDDI_PADDING);
 
-  /* XXX - copy them to some buffer associated with "pi", rather than
-     just making "src" static? */
-  SET_ADDRESS(&pinfo->dl_src, AT_ETHER, 6, &src[0]);
-  SET_ADDRESS(&pinfo->src, AT_ETHER, 6, &src[0]);
-  SET_ADDRESS(&fddihdr->src, AT_ETHER, 6, &src[0]);
+  SET_ADDRESS(&pinfo->dl_src, AT_ETHER, 6, src);
+  COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->dl_src);
+  COPY_ADDRESS_SHALLOW(&fddihdr->src, &pinfo->dl_src);
 
   if (fh_tree) {
     proto_tree_add_ether(fh_tree, hf_fddi_src, tvb, FDDI_P_SHOST + FDDI_PADDING, 6, src);
@@ -414,11 +460,6 @@ proto_register_fddi(void)
 {
   static hf_register_info hf[] = {
 
-    /*
-     * XXX - we want this guy to have his own private formatting
-     * routine, using "fc_to_str()"; if "fc_to_str()" returns
-     * NULL, just show the hex value, else show the string.
-     */
     { &hf_fddi_fc,
       { "Frame Control", "fddi.fc", FT_UINT8, BASE_HEX, NULL, 0x0,
         NULL, HFILL }},
@@ -478,6 +519,7 @@ proto_register_fddi(void)
                                  &fddi_padding);
 
   fddi_tap = register_tap("fddi");
+  register_conversation_table(proto_fddi, TRUE, fddi_conversation_packet, fddi_hostlist_packet);
 }
 
 void
@@ -493,8 +535,23 @@ proto_reg_handoff_fddi(void)
 
   fddi_handle = find_dissector("fddi");
   dissector_add_uint("wtap_encap", WTAP_ENCAP_FDDI, fddi_handle);
+  dissector_add_uint("sflow_245.header_protocol", SFLOW_245_HEADER_FDDI, fddi_handle);
+
   fddi_bitswapped_handle =
     create_dissector_handle(dissect_fddi_bitswapped, proto_fddi);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_FDDI_BITSWAPPED,
                      fddi_bitswapped_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

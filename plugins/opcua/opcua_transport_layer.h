@@ -15,16 +15,14 @@
 ** Description: OpcUa Transport Layer Decoder.
 **
 ** Author: Gerhard Gappmeier <gerhard.gappmeier@ascolab.com>
-** Last change by: $Author: gergap $
-**
 ******************************************************************************/
 
 /* Transport Layer: message parsers */
-int parseHello(proto_tree *tree, tvbuff_t *tvb, gint *pOffset);
-int parseAcknowledge(proto_tree *tree, tvbuff_t *tvb, gint *pOffset);
-int parseError(proto_tree *tree, tvbuff_t *tvb, gint *pOffset);
-int parseMessage(proto_tree *tree, tvbuff_t *tvb, gint *pOffset);
-int parseService(proto_tree *tree, tvbuff_t *tvb, gint *pOffset);
-int parseOpenSecureChannel(proto_tree *tree, tvbuff_t *tvb, gint *pOffset);
-int parseCloseSecureChannel(proto_tree *tree, tvbuff_t *tvb, gint *pOffset);
+int parseHello(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gint *pOffset);
+int parseAcknowledge(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gint *pOffset);
+int parseError(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gint *pOffset);
+int parseMessage(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gint *pOffset);
+int parseService(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gint *pOffset);
+int parseOpenSecureChannel(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gint *pOffset);
+int parseCloseSecureChannel(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, gint *pOffset);
 void registerTransportLayerTypes(int proto);

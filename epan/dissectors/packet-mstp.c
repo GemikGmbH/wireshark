@@ -31,14 +31,11 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <wiretap/wtap.h>
-#include <epan/oui.h>
-#include <epan/llcsaps.h>
 #include <epan/expert.h>
-#include "packet-llc.h"
+#include <epan/address_types.h>
+#include <epan/to_str-int.h>
 #include "packet-mstp.h"
 
 void proto_register_mstp(void);
@@ -50,25 +47,25 @@ void proto_reg_handoff_mstp(void);
 
 /* MS/TP Frame Type */
 /* Frame Types 8 through 127 are reserved by ASHRAE. */
-#define MSTP_TOKEN 0
-#define MSTP_POLL_FOR_MASTER 1
-#define MSTP_REPLY_TO_POLL_FOR_MASTER 2
-#define MSTP_TEST_REQUEST 3
-#define MSTP_TEST_RESPONSE 4
-#define MSTP_BACNET_DATA_EXPECTING_REPLY 5
+#define MSTP_TOKEN                           0
+#define MSTP_POLL_FOR_MASTER                 1
+#define MSTP_REPLY_TO_POLL_FOR_MASTER        2
+#define MSTP_TEST_REQUEST                    3
+#define MSTP_TEST_RESPONSE                   4
+#define MSTP_BACNET_DATA_EXPECTING_REPLY     5
 #define MSTP_BACNET_DATA_NOT_EXPECTING_REPLY 6
-#define MSTP_REPLY_POSTPONED 7
+#define MSTP_REPLY_POSTPONED                 7
 
 static const value_string
 bacnet_mstp_frame_type_name[] = {
-	{MSTP_TOKEN, "Token"},
-	{MSTP_POLL_FOR_MASTER, "Poll For Master"},
-	{MSTP_REPLY_TO_POLL_FOR_MASTER, "Reply To Poll For Master"},
-	{MSTP_TEST_REQUEST, "Test_Request"},
-	{MSTP_TEST_RESPONSE, "Test_Response"},
-	{MSTP_BACNET_DATA_EXPECTING_REPLY, "BACnet Data Expecting Reply"},
+	{MSTP_TOKEN,                           "Token"},
+	{MSTP_POLL_FOR_MASTER,                 "Poll For Master"},
+	{MSTP_REPLY_TO_POLL_FOR_MASTER,        "Reply To Poll For Master"},
+	{MSTP_TEST_REQUEST,                    "Test_Request"},
+	{MSTP_TEST_RESPONSE,                   "Test_Response"},
+	{MSTP_BACNET_DATA_EXPECTING_REPLY,     "BACnet Data Expecting Reply"},
 	{MSTP_BACNET_DATA_NOT_EXPECTING_REPLY, "BACnet Data Not Expecting Reply"},
-	{MSTP_REPLY_POSTPONED, "Reply Postponed"},
+	{MSTP_REPLY_POSTPONED,                 "Reply Postponed"},
 	/* Frame Types 128 through 255: Proprietary Frames */
 	{0, NULL }
 };
@@ -96,6 +93,7 @@ static int hf_mstp_frame_checksum_good = -1;
 static expert_field ei_mstp_frame_pdu_len = EI_INIT;
 static expert_field ei_mstp_frame_checksum_bad = EI_INIT;
 
+static int mstp_address_type = -1;
 
 #if defined(BACNET_MSTP_CHECKSUM_VALIDATE)
 /* Accumulate "dataValue" into the CRC in crcValue. */
@@ -151,6 +149,34 @@ mstp_frame_type_text(guint32 val)
 		"Unknown Frame Type (%u)");
 }
 
+static int mstp_str_len(const address* addr _U_)
+{
+	return 5;
+}
+
+static int mstp_to_str(const address* addr, gchar *buf, int buf_len _U_)
+{
+	*buf++ = '0';
+	*buf++ = 'x';
+	buf = bytes_to_hexstr(buf, (const guint8 *)addr->data, 1);
+	*buf = '\0'; /* NULL terminate */
+
+	return mstp_str_len(addr);
+}
+
+static const char* mstp_col_filter_str(const address* addr _U_, gboolean is_src)
+{
+	if (is_src)
+		return "mstp.src";
+
+	return "mstp.dst";
+}
+
+static int mstp_len(void)
+{
+	return 1;
+}
+
 /* dissects a BACnet MS/TP frame */
 /* preamble 0x55 0xFF is not included in Cimetrics U+4 output */
 void
@@ -189,7 +215,7 @@ dissect_mstp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 			offset+2, 1, ENC_LITTLE_ENDIAN);
 	item = proto_tree_add_item(subtree, hf_mstp_frame_pdu_len, tvb,
 			offset+3, 2, ENC_BIG_ENDIAN);
-	mstp_tvb_pdu_len = tvb_length_remaining(tvb, offset+6);
+	mstp_tvb_pdu_len = tvb_reported_length_remaining(tvb, offset+6);
 	/* check the length - which does not include the crc16 checksum */
 	if (mstp_tvb_pdu_len > 2) {
 		if (mstp_frame_pdu_len > (mstp_tvb_pdu_len-2)) {
@@ -245,8 +271,8 @@ dissect_mstp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 		mstp_tvb_pdu_len -= 2;
 		if (mstp_frame_type < 128) {
 			vendorid = 0;
-			next_tvb = tvb_new_subset(tvb, offset,
-				mstp_tvb_pdu_len, mstp_frame_pdu_len);
+			next_tvb = tvb_new_subset_length(tvb, offset,
+				mstp_tvb_pdu_len);
 		} else {
 			/* With Vendor ID */
 			vendorid = tvb_get_ntohs(tvb, offset);
@@ -328,11 +354,10 @@ dissect_mstp_wtap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 #endif
 
 	/* set the MS/TP MAC address in the source/destination */
-	/* Use AT_ARCNET since it is similar to BACnet MS/TP */
-	TVB_SET_ADDRESS(&pinfo->dl_dst,	AT_ARCNET, tvb, offset+3, 1);
-	TVB_SET_ADDRESS(&pinfo->dst,	AT_ARCNET, tvb, offset+3, 1);
-	TVB_SET_ADDRESS(&pinfo->dl_src,	AT_ARCNET, tvb, offset+4, 1);
-	TVB_SET_ADDRESS(&pinfo->src,	AT_ARCNET, tvb, offset+4, 1);
+	TVB_SET_ADDRESS(&pinfo->dl_dst,	mstp_address_type, tvb, offset+3, 1);
+	COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->dl_dst);
+	TVB_SET_ADDRESS(&pinfo->dl_src,	mstp_address_type, tvb, offset+4, 1);
+	COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->dl_src);
 
 #ifdef BACNET_MSTP_SUMMARY_IN_TREE
 	mstp_frame_type = tvb_get_guint8(tvb, offset+2);
@@ -439,6 +464,8 @@ proto_register_mstp(void)
 	subdissector_table = register_dissector_table("mstp.vendor_frame_type",
 	    "MSTP Vendor specific Frametypes", FT_UINT24, BASE_DEC);
 	/* Table_type: (Vendor ID << 16) + Frametype */
+
+	mstp_address_type = address_type_dissector_register("AT_MSTP", "BACnet MS/TP Address", mstp_to_str, mstp_str_len, mstp_col_filter_str, mstp_len, NULL, NULL);
 }
 
 void
@@ -457,3 +484,16 @@ proto_reg_handoff_mstp(void)
 	dissector_add_uint("mstp.vendor_frame_type", (0/*VendorID ASHRAE*/ << 16) + MSTP_BACNET_DATA_EXPECTING_REPLY, bacnet_handle);
 	dissector_add_uint("mstp.vendor_frame_type", (0/*VendorID ASHRAE*/ << 16) + MSTP_BACNET_DATA_NOT_EXPECTING_REPLY, bacnet_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

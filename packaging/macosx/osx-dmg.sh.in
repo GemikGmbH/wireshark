@@ -40,22 +40,47 @@ ds_store_root="root.ds_store"
 app_bundle="Wireshark.app"
 rw_name="RWwireshark.dmg"
 volume_name="Wireshark"
+src_dir="."
 tmp_dir="/tmp/dmg-$$"
 auto_open_opt=
-utilities="Utilities"
-ws_bin="$app_bundle/Contents/Resources/bin/wireshark-bin"
-readme_name="Read_me_first_gtk.rtf"
 
-if [ -d /Applications/Xcode.app/Developer ]
+# Qt defaults
+readme_name="Read_me_first_qt.rtf"
+bundle_bin_name="Wireshark"
+
+if [ -f /Applications/Xcode.app/Contents/Applications/PackageMaker.app/Contents/MacOS/PackageMaker ]
 then
-	developer_path=/Applications/Xcode.app/Developer
-elif [ -d /Developer ]
+	#
+	# Xcode 4 and later, with the "Auxiliary Tools for Xcode"
+	# download from developer.apple.com.  (There are no such
+	# downloads for Mavericks or later, but PackageMaker from
+	# the Late July 2012 download for Mountain Lion appears to
+	# work on Yosemite.)
+	#
+	packagemaker=/Applications/Xcode.app//Contents/Applications/PackageMaker.app/Contents/MacOS/PackageMaker
+elif [ -f /Applications/Xcode.app/Developer/Tools/packagemaker ]
 then
-	developer_path=/Developer
+	packagemaker=/Applications/Xcode.app/Developer/Tools/packagemaker
+elif [ -f /Applications/Xcode.app/Developer/usr/bin/packagemaker ]
+then
+	packagemaker=/Applications/Xcode.app/Developer/usr/bin/packagemaker
+elif [ -f /Developer/Tools/packagemaker ]
+then
+	packagemaker=/Developer/Tools/packagemaker
+elif [ -f /Developer/usr/bin/packagemaker ]
+then
+	packagemaker=/Developer/usr/bin/packagemaker
+elif [ -f /usr/bin/packagemaker ]
+then
+	packagemaker=/usr/bin/packagemaker
+elif [ -f /usr/local/bin/packagemaker ]
+then
+	packagemaker=/usr/local/bin/packagemaker
 fi
-if [ ! -z $developer_path ]
+if [ -z "$packagemaker" ]
 then
-	PATH=$PATH:$developer_path/Tools:$developer_path/usr/bin
+	echo "$0: couldn't find PackageMaker" 1>&2
+	exit 1
 fi
 
 # Help message
@@ -70,14 +95,19 @@ USAGE
 
 OPTIONS
 	-h,--help
-		display this help message
+		Display this help message.
 	-s
-		set a new apperance (do not actually create a bundle)
+		Set a new apperance (do not actually create a bundle).
 	-b,--app-bundle
-		set the path to the Wireshark.app that should be copied
-		in the dmg
+		Set the path to the Wireshark.app that should be copied
+		in the dmg.
 	-qt,--qt-flavor
-		use the Qt flavor
+		Use the Qt flavor. This is the default.
+	-gtk,--gtk-flavor
+		Use the GTK+ flavor.
+	-S,--source-directory
+		If this is an out-of-tree build, set this to the path
+		to the packaging/macosx source directory.
 "
 }
 
@@ -94,9 +124,14 @@ do
 			app_bundle="$2"
 			shift 1 ;;
 		-qt|--qt-flavor)
-			readme_name="Read_me_first_qt.rtf"
-			ws_bin="$app_bundle/Contents/MacOS/Wireshark"
 			;;
+		-gtk|--gtk-flavor)
+			readme_name="Read_me_first_gtk.rtf"
+			bundle_bin_name="wireshark-bin"
+			;;
+		-S|--source-directory)
+			src_dir="$2"
+			shift 1 ;;
 		*)
 			echo "Invalid command line option"
 			exit 2 ;;
@@ -104,19 +139,15 @@ do
 	shift 1
 done
 
+
 # Safety checks
 if [ ! -e "$app_bundle" ]; then
 	echo "Cannot find application bundle: $app_bundle"
 	exit 1
 fi
 
-# Safety checks
-if [ ! -e "$utilities" ]; then
-	echo "Cannot find utilities: $utilities"
-	exit 1
-fi
-
 # Get the architecture
+ws_bin="$app_bundle/Contents/MacOS/$bundle_bin_name"
 case `file $ws_bin` in
 	*Mach-O*64-bit*x86_64*)
 		architecture="Intel 64"
@@ -148,7 +179,7 @@ echo -e "\nCREATE WIRESHARK PACKAGE\n"
 pkg_title="$volume_name $version $architecture"
 pkg_file="$pkg_title.pkg"
 rm -rf "$pkg_file"
-packagemaker --doc "Wireshark_package.pmdoc" \
+$packagemaker --doc "Wireshark_package.pmdoc" \
     --title "$pkg_title" \
     --id "org.wireshark.pkg.Wireshark" \
     --version "$version" \
@@ -177,16 +208,10 @@ rm -rf "$tmp_dir"
 mkdir "$tmp_dir" || exit 1
 
 echo -e "Copying files to temp directory"
-# Wireshark itself
-# Copy Wireshark.app
+# Copy the installer package
 cp "$pkg_file" "$tmp_dir"/ || exit 1
-# Link to Applications in order to drag and drop wireshark onto it
-#ln -sf /Applications "$tmp_dir"/
-# Copy the utilites
-#cp -rf "$utilities" "$tmp_dir"/
-#ln -sf /Library/StartupItems "$tmp_dir/$utilities"/
 # Copy the readme
-cp "$readme_name" "$tmp_dir"/"Read me first.rtf" || exit 1
+cp "$src_dir/$readme_name" "$tmp_dir"/"Read me first.rtf" || exit 1
 
 # If the appearance settings are not to be modified we just copy them
 if [ ${set_ds_store} = "false" ]; then
@@ -194,7 +219,7 @@ if [ ${set_ds_store} = "false" ]; then
 	# window size, appearance, etc.  Most of this can be set
 	# with Apple script but involves user intervention so we
 	# just keep a copy of the correct settings and use that instead.
-	cp $ds_store_root "$tmp_dir/.DS_Store" || exit 1
+	cp $src_dir/$ds_store_root "$tmp_dir/.DS_Store" || exit 1
 	auto_open_opt=-noautoopen
 fi
 

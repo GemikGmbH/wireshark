@@ -37,6 +37,7 @@ static int hf_usb_com_control_value = -1;
 static int hf_usb_com_control_index = -1;
 static int hf_usb_com_control_length = -1;
 static int hf_usb_com_control_response_code = -1;
+static int hf_usb_com_control_payload = -1;
 static int hf_usb_com_get_ntb_params_length = -1;
 static int hf_usb_com_get_ntb_params_ntb_formats_supported = -1;
 static int hf_usb_com_get_ntb_params_ntb_formats_supported_16bit = -1;
@@ -71,17 +72,64 @@ static int hf_usb_com_descriptor_acm_capabilities_network_connection = -1;
 static int hf_usb_com_descriptor_acm_capabilities_send_break = -1;
 static int hf_usb_com_descriptor_acm_capabilities_line_and_state = -1;
 static int hf_usb_com_descriptor_acm_capabilities_comm_features = -1;
-static int hf_usb_com_control_interface = -1;
-static int hf_usb_com_subordinate_interface = -1;
+static int hf_usb_com_descriptor_control_interface = -1;
+static int hf_usb_com_descriptor_subordinate_interface = -1;
 static int hf_usb_com_descriptor_cm_capabilities_reserved = -1;
-static int hf_usb_com_descriptor_cm_capabilities_call_managment_over_data_class_interface = -1;
-static int hf_usb_com_descriptor_cm_capabilities_call_managment = -1;
+static int hf_usb_com_descriptor_cm_capabilities_call_management_over_data_class_interface = -1;
+static int hf_usb_com_descriptor_cm_capabilities_call_management = -1;
 static int hf_usb_com_descriptor_cm_data_interface = -1;
-static int hf_usb_com_control_payload = -1;
+static int hf_usb_com_descriptor_ecm_mac_address = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_reserved = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_late_collisions = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_times_crs_lost = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_heartbeat_failure = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_underrun = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_rcv_overrun = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_max_collisions = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_deferred = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_more_collisions = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_one_collision = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_rcv_error_alignment = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_transmit_queue_length = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_rcv_crc_error = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_broadcast_frames_rcv = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_broadcast_bytes_rcv = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_multicast_frames_rcv = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_multicast_bytes_rcv = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_directed_frames_rcv = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_directed_bytes_rcv = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_broadcast_frames_xmit = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_broadcast_bytes_xmit = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_multicast_frames_xmit = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_multicast_bytes_xmit = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_directed_frames_xmit = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_directed_bytes_xmit = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_rcv_no_buffer = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_rcv_error = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_error = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_rvc_ok = -1;
+static int hf_usb_com_descriptor_ecm_eth_stats_xmit_ok = -1;
+static int hf_usb_com_descriptor_ecm_max_segment_size = -1;
+static int hf_usb_com_descriptor_ecm_nb_mc_filters = -1;
+static int hf_usb_com_descriptor_ecm_nb_mc_filters_mc_address_filtering = -1;
+static int hf_usb_com_descriptor_ecm_nb_mc_filters_nb_filters_supported = -1;
+static int hf_usb_com_descriptor_ecm_nb_power_filters = -1;
+static int hf_usb_com_interrupt_request_type = -1;
+static int hf_usb_com_interrupt_notif_code = -1;
+static int hf_usb_com_interrupt_value = -1;
+static int hf_usb_com_interrupt_value_nw_conn = -1;
+static int hf_usb_com_interrupt_index = -1;
+static int hf_usb_com_interrupt_length = -1;
+static int hf_usb_com_interrupt_dl_bitrate = -1;
+static int hf_usb_com_interrupt_ul_bitrate = -1;
+static int hf_usb_com_interrupt_payload = -1;
 
 static gint ett_usb_com = -1;
 static gint ett_usb_com_capabilities = -1;
 static gint ett_usb_com_bitmap = -1;
+static gint ett_usb_com_descriptor_ecm_eth_stats = -1;
+static gint ett_usb_com_descriptor_ecm_nb_mc_filters = -1;
 
 static dissector_handle_t mbim_control_handle;
 static dissector_handle_t mbim_descriptor_handle;
@@ -286,6 +334,78 @@ static const value_string usb_com_crc_mode_vals[] = {
     {0, NULL}
 };
 
+static const int *ecm_eth_stats[] = {
+    &hf_usb_com_descriptor_ecm_eth_stats_reserved,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_late_collisions,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_times_crs_lost,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_heartbeat_failure,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_underrun,
+    &hf_usb_com_descriptor_ecm_eth_stats_rcv_overrun,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_max_collisions,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_deferred,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_more_collisions,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_one_collision,
+    &hf_usb_com_descriptor_ecm_eth_stats_rcv_error_alignment,
+    &hf_usb_com_descriptor_ecm_eth_stats_transmit_queue_length,
+    &hf_usb_com_descriptor_ecm_eth_stats_rcv_crc_error,
+    &hf_usb_com_descriptor_ecm_eth_stats_broadcast_frames_rcv,
+    &hf_usb_com_descriptor_ecm_eth_stats_broadcast_bytes_rcv,
+    &hf_usb_com_descriptor_ecm_eth_stats_multicast_frames_rcv,
+    &hf_usb_com_descriptor_ecm_eth_stats_multicast_bytes_rcv,
+    &hf_usb_com_descriptor_ecm_eth_stats_directed_frames_rcv,
+    &hf_usb_com_descriptor_ecm_eth_stats_directed_bytes_rcv,
+    &hf_usb_com_descriptor_ecm_eth_stats_broadcast_frames_xmit,
+    &hf_usb_com_descriptor_ecm_eth_stats_broadcast_bytes_xmit,
+    &hf_usb_com_descriptor_ecm_eth_stats_multicast_frames_xmit,
+    &hf_usb_com_descriptor_ecm_eth_stats_multicast_bytes_xmit,
+    &hf_usb_com_descriptor_ecm_eth_stats_directed_frames_xmit,
+    &hf_usb_com_descriptor_ecm_eth_stats_directed_bytes_xmit,
+    &hf_usb_com_descriptor_ecm_eth_stats_rcv_no_buffer,
+    &hf_usb_com_descriptor_ecm_eth_stats_rcv_error,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_error,
+    &hf_usb_com_descriptor_ecm_eth_stats_rvc_ok,
+    &hf_usb_com_descriptor_ecm_eth_stats_xmit_ok,
+    NULL
+};
+
+static const true_false_string usb_com_ecm_mc_address_filtering = {
+    "Imperfect",
+    "Perfect"
+};
+
+static const int *ecm_nb_mc_filters[] = {
+    &hf_usb_com_descriptor_ecm_nb_mc_filters_mc_address_filtering,
+    &hf_usb_com_descriptor_ecm_nb_mc_filters_nb_filters_supported,
+    NULL
+};
+
+#define NETWORK_CONNECTION      0x00
+#define RESPONSE_AVAILABLE      0x01
+#define AUX_JACK_HOOK_STATE     0x08
+#define RING_DETECT             0x09
+#define SERIAL_STATE            0x20
+#define CALL_STATE_CHANGE       0x28
+#define LINE_STATE_CHANGE       0x29
+#define CONNECTION_SPEED_CHANGE 0x2a
+
+static const value_string usb_com_interrupt_notif_code_vals[] = {
+    {NETWORK_CONNECTION, "NETWORK CONNECTION"},
+    {RESPONSE_AVAILABLE, "RESPONSE AVAILABLE"},
+    {AUX_JACK_HOOK_STATE, "AUX JACK HOOK STATE"},
+    {RING_DETECT, "RING DETECT"},
+    {SERIAL_STATE, "SERIAL STATE"},
+    {CALL_STATE_CHANGE, "CALL STATE CHANGE"},
+    {LINE_STATE_CHANGE, "LINE STATE CHANGE"},
+    {CONNECTION_SPEED_CHANGE, "CONNECTION SPEED CHANGE"},
+    {0, NULL}
+};
+
+static const value_string usb_com_interrupt_value_nw_conn_vals[] = {
+    {0, "Disconnect"},
+    {1, "Connected"},
+    {0, NULL}
+};
+
 void proto_register_usb_com(void);
 void proto_reg_handoff_usb_com(void);
 
@@ -296,10 +416,8 @@ dissect_usb_com_descriptor(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
     proto_tree *subtree;
     proto_tree *subtree_capabilities;
     proto_item *subitem_capabilities;
-    proto_item *ti;
 
-    ti = proto_tree_add_text(tree, tvb, offset, -1, "COMMUNICATIONS DESCRIPTOR");
-    subtree = proto_item_add_subtree(ti, ett_usb_com);
+    subtree = proto_tree_add_subtree(tree, tvb, offset, -1, ett_usb_com, NULL, "COMMUNICATIONS DESCRIPTOR");
 
     dissect_usb_descriptor_header(subtree, tvb, offset, &usb_com_descriptor_type_vals_ext);
     offset += 2;
@@ -320,8 +438,8 @@ dissect_usb_com_descriptor(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
                     subtree_capabilities = proto_item_add_subtree(subitem_capabilities, ett_usb_com_capabilities);
 
                     proto_tree_add_item(subtree_capabilities, hf_usb_com_descriptor_cm_capabilities_reserved, tvb, 3, 1, ENC_LITTLE_ENDIAN);
-                    proto_tree_add_item(subtree_capabilities, hf_usb_com_descriptor_cm_capabilities_call_managment_over_data_class_interface, tvb, 3, 1, ENC_LITTLE_ENDIAN);
-                    proto_tree_add_item(subtree_capabilities, hf_usb_com_descriptor_cm_capabilities_call_managment, tvb, 3, 1, ENC_LITTLE_ENDIAN);
+                    proto_tree_add_item(subtree_capabilities, hf_usb_com_descriptor_cm_capabilities_call_management_over_data_class_interface, tvb, 3, 1, ENC_LITTLE_ENDIAN);
+                    proto_tree_add_item(subtree_capabilities, hf_usb_com_descriptor_cm_capabilities_call_management, tvb, 3, 1, ENC_LITTLE_ENDIAN);
 
                     proto_tree_add_item(subtree, hf_usb_com_descriptor_cm_data_interface, tvb, 4, 1, ENC_LITTLE_ENDIAN);
                     offset = 5;
@@ -339,12 +457,28 @@ dissect_usb_com_descriptor(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, 
                     break;
                 case 0x06:
                     offset = 3;
-                    proto_tree_add_item(subtree, hf_usb_com_control_interface, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+                    proto_tree_add_item(subtree, hf_usb_com_descriptor_control_interface, tvb, offset, 1, ENC_LITTLE_ENDIAN);
                     offset += 1;
                     while (tvb_reported_length_remaining(tvb,offset) > 0) {
-                        proto_tree_add_item(subtree, hf_usb_com_subordinate_interface, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+                        proto_tree_add_item(subtree, hf_usb_com_descriptor_subordinate_interface, tvb, offset, 1, ENC_LITTLE_ENDIAN);
                         offset += 1;
                     }
+                    break;
+                case 0x0f:
+                    proto_tree_add_item(subtree, hf_usb_com_descriptor_ecm_mac_address, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+                    offset += 1;
+                    proto_tree_add_bitmask_with_flags(subtree, tvb, offset, hf_usb_com_descriptor_ecm_eth_stats,
+                                                      ett_usb_com_descriptor_ecm_eth_stats, ecm_eth_stats,
+                                                      ENC_LITTLE_ENDIAN, BMT_NO_APPEND);
+                    offset += 4;
+                    proto_tree_add_item(subtree, hf_usb_com_descriptor_ecm_max_segment_size, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+                    offset += 2;
+                    proto_tree_add_bitmask_with_flags(subtree, tvb, offset, hf_usb_com_descriptor_ecm_nb_mc_filters,
+                                                      ett_usb_com_descriptor_ecm_nb_mc_filters, ecm_nb_mc_filters,
+                                                      ENC_LITTLE_ENDIAN, BMT_NO_APPEND);
+                    offset += 2;
+                    proto_tree_add_item(subtree, hf_usb_com_descriptor_ecm_nb_power_filters, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+                    offset += 1;
                     break;
                 case 0x1b:
                 case 0x1c:
@@ -429,6 +563,10 @@ dissect_usb_com_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
     gint offset = 0;
     gboolean is_request;
 
+    if (tvb_reported_length(tvb) == 0) {
+        return 0;
+    }
+
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "USBCOM");
 
     ti = proto_tree_add_item(tree, proto_usb_com, tvb, 0, -1, ENC_NA);
@@ -465,7 +603,7 @@ dissect_usb_com_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
         {
             case SEND_ENCAPSULATED_COMMAND:
                 if ((usb_conv_info->interfaceSubclass == COM_SUBCLASS_MBIM) &&
-                    (usb_trans_info->header_info & USB_HEADER_IS_LINUX)) {
+                    (USB_HEADER_IS_LINUX(usb_trans_info->header_type))) {
                     offset = call_dissector_only(mbim_control_handle, tvb, pinfo, tree, usb_conv_info);
                     break;
                 }
@@ -558,7 +696,6 @@ dissect_usb_com_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
             case 0x01: /* Network Transfer Block */
             case 0x02: /* Network Transfer Block (IP + DSS) */
                 return call_dissector_only(mbim_bulk_handle, tvb, pinfo, tree, NULL);
-                break;
             default:
                 break;
         }
@@ -568,15 +705,74 @@ dissect_usb_com_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
     return call_dissector_only(eth_withoutfcs_handle, tvb, pinfo, tree, NULL);
 }
 
+static int
+dissect_usb_com_interrupt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+{
+    proto_tree *subtree;
+    proto_item *it;
+    guint32 notif_code;
+    gint offset = 0;
+
+    col_set_str(pinfo->cinfo, COL_PROTOCOL, "USBCOM");
+
+    it = proto_tree_add_item(tree, proto_usb_com, tvb, 0, -1, ENC_NA);
+    subtree = proto_item_add_subtree(it, ett_usb_com);
+
+    proto_tree_add_item(subtree, hf_usb_com_interrupt_request_type, tvb, offset, 1, ENC_LITTLE_ENDIAN);
+    offset++;
+    proto_tree_add_item_ret_uint(subtree, hf_usb_com_interrupt_notif_code, tvb, offset, 1, ENC_LITTLE_ENDIAN, &notif_code);
+    offset++;
+    col_add_fstr(pinfo->cinfo, COL_INFO, "%s", val_to_str(notif_code, usb_com_interrupt_notif_code_vals, "Unknown type %x"));
+    switch (notif_code) {
+        case NETWORK_CONNECTION:
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_value_nw_conn, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            break;
+        case RESPONSE_AVAILABLE:
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            break;
+        case CONNECTION_SPEED_CHANGE:
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_value, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_index, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            proto_tree_add_item(subtree, hf_usb_com_interrupt_length, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            offset += 2;
+            it = proto_tree_add_item(subtree, hf_usb_com_interrupt_dl_bitrate, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            proto_item_append_text(it, " b/s");
+            offset += 4;
+            it = proto_tree_add_item(subtree, hf_usb_com_interrupt_ul_bitrate, tvb, offset, 4, ENC_LITTLE_ENDIAN);
+            proto_item_append_text(it, " b/s");
+            offset += 4;
+            break;
+        default:
+            break;
+    }
+
+    if (tvb_reported_length_remaining(tvb, offset) > 0) {
+        proto_tree_add_item(subtree, hf_usb_com_interrupt_payload, tvb, offset, -1, ENC_NA);
+    }
+    return tvb_captured_length(tvb);
+}
+
 void
 proto_register_usb_com(void)
 {
     static hf_register_info hf[] = {
         { &hf_usb_com_descriptor_subtype,
-            { "bDescriptorSubtype", "usbcom.descriptor.subtype", FT_UINT8, BASE_HEX|BASE_EXT_STRING,
+            { "Descriptor Subtype", "usbcom.descriptor.subtype", FT_UINT8, BASE_HEX|BASE_EXT_STRING,
               &usb_com_descriptor_subtype_vals_ext, 0, NULL, HFILL }},
         { &hf_usb_com_descriptor_cdc,
-            { "bcdCDC", "usbcom.descriptor.cdc", FT_UINT16, BASE_HEX,
+            { "CDC", "usbcom.descriptor.cdc", FT_UINT16, BASE_HEX,
               NULL, 0, NULL, HFILL }},
         { &hf_usb_com_descriptor_payload,
             { "Payload", "usbcom.descriptor.payload", FT_BYTES, BASE_NONE,
@@ -683,6 +879,9 @@ proto_register_usb_com(void)
         { &hf_usb_com_set_crc_mode_crc_mode,
             { "CRC Mode", "usbcom.control.set_crc_mode.crc_mode", FT_UINT16, BASE_HEX,
               VALS(usb_com_crc_mode_vals), 0, NULL, HFILL }},
+        { &hf_usb_com_control_payload,
+            { "Payload", "usbcom.control.payload", FT_BYTES, BASE_NONE,
+              NULL, 0, NULL, HFILL }},
         { &hf_usb_com_capabilities,
             { "bmCapabilities", "usbcom.descriptor.capabilities", FT_UINT8, BASE_HEX,
               NULL, 0, NULL, HFILL }},
@@ -701,33 +900,170 @@ proto_register_usb_com(void)
         { &hf_usb_com_descriptor_acm_capabilities_comm_features,
             { "Comm Features Combinations", "usbcom.descriptor.acm.capabilities.comm_features", FT_BOOLEAN, 8,
               TFS(&tfs_supported_not_supported), 0x01, NULL, HFILL }},
-        { &hf_usb_com_control_interface,
-            { "bControlInterface", "usbcom.descriptor.control_interface", FT_UINT8, BASE_HEX,
+        { &hf_usb_com_descriptor_control_interface,
+            { "Control Interface", "usbcom.descriptor.control_interface", FT_UINT8, BASE_HEX,
               NULL, 0, NULL, HFILL }},
-        { &hf_usb_com_subordinate_interface,
-            { "bSubordinateInterface", "usbcom.descriptor.subordinate_interface", FT_UINT8, BASE_HEX,
+        { &hf_usb_com_descriptor_subordinate_interface,
+            { "Subordinate Interface", "usbcom.descriptor.subordinate_interface", FT_UINT8, BASE_HEX,
               NULL, 0, NULL, HFILL }},
         { &hf_usb_com_descriptor_cm_capabilities_reserved,
             { "Reserved", "usbcom.descriptor.cm.capabilities.reserved", FT_UINT8, BASE_HEX,
               NULL, 0xFC, NULL, HFILL }},
-        { &hf_usb_com_descriptor_cm_capabilities_call_managment_over_data_class_interface,
-            { "Call Managment over Data Class Interface", "usbcom.descriptor.cm.capabilities.call_managment_over_data_class_interface", FT_BOOLEAN, 8,
+        { &hf_usb_com_descriptor_cm_capabilities_call_management_over_data_class_interface,
+            { "Call Management over Data Class Interface", "usbcom.descriptor.cm.capabilities.call_management_over_data_class_interface", FT_BOOLEAN, 8,
               TFS(&tfs_supported_not_supported), 0x02, NULL, HFILL }},
-        { &hf_usb_com_descriptor_cm_capabilities_call_managment,
-            { "Call Managment", "usbcom.descriptor.cm.capabilities.call_managment", FT_BOOLEAN, 8,
+        { &hf_usb_com_descriptor_cm_capabilities_call_management,
+            { "Call Management", "usbcom.descriptor.cm.capabilities.call_management", FT_BOOLEAN, 8,
               TFS(&tfs_supported_not_supported), 0x01, NULL, HFILL }},
         { &hf_usb_com_descriptor_cm_data_interface,
-            { "bDataInterface", "usbcom.descriptor.cm.data_interface", FT_UINT8, BASE_HEX,
+            { "Data Interface", "usbcom.descriptor.cm.data_interface", FT_UINT8, BASE_HEX,
               NULL, 0, NULL, HFILL }},
-        { &hf_usb_com_control_payload,
-            { "Payload", "usbcom.control.payload", FT_BYTES, BASE_NONE,
+        { &hf_usb_com_descriptor_ecm_mac_address,
+            { "MAC Address", "usbcom.descriptor.ecm.mac_address", FT_UINT8, BASE_HEX,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats,
+            { "Ethernet Statistics", "usbcom.descriptor.ecm.eth_stats", FT_UINT32, BASE_HEX,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_reserved,
+            { "Reserved", "usbcom.descriptor.ecm.eth_stats.reserved", FT_UINT32, BASE_HEX,
+              NULL, 0xe0000000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_late_collisions,
+            { "XMIT Late Collisions", "usbcom.descriptor.ecm.eth_stats.xmit_late_collisions", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x10000000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_times_crs_lost,
+            { "XMIT TImes CRS Lost", "usbcom.descriptor.ecm.eth_stats.xmit_times_crs_lost", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x08000000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_heartbeat_failure,
+            { "XMIT Heartbeat Failure", "usbcom.descriptor.ecm.eth_stats.xmit_heartbeat_failure", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x04000000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_underrun,
+            { "XMIT Underrun", "usbcom.descriptor.ecm.eth_stats.xmit_underrun", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x02000000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_rcv_overrun,
+            { "RCV Overrun", "usbcom.descriptor.ecm.eth_stats.rcv_overrun", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x01000000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_max_collisions,
+            { "XMIT Max Collisions", "usbcom.descriptor.ecm.eth_stats.xmit_max_collisions", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00800000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_deferred,
+            { "XMIT Deferred", "usbcom.descriptor.ecm.eth_stats.xmit_deferred", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00400000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_more_collisions,
+            { "XMIT More Collisions", "usbcom.descriptor.ecm.eth_stats.xmit_more_collisions", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00200000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_one_collision,
+            { "XMIT One Collision", "usbcom.descriptor.ecm.eth_stats.xmit_one_collision", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00100000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_rcv_error_alignment,
+            { "RCV Error Alignment", "usbcom.descriptor.ecm.eth_stats.rcv_error_alignment", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00080000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_transmit_queue_length,
+            { "Transmit Queue Length", "usbcom.descriptor.ecm.eth_stats.transmit_queue_length", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00040000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_rcv_crc_error,
+            { "RCV CRC Error", "usbcom.descriptor.ecm.eth_stats.rcv_crc_error", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00020000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_broadcast_frames_rcv,
+            { "Broadcast Frames RCV", "usbcom.descriptor.ecm.eth_stats.broadcast_frames_rcv", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00010000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_broadcast_bytes_rcv,
+            { "Broadcast Bytes RCV", "usbcom.descriptor.ecm.eth_stats.broadcast_bytes_rcv", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00008000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_multicast_frames_rcv,
+            { "Multicast Frames RCV", "usbcom.descriptor.ecm.eth_stats.multicast_frames_rcv", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00004000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_multicast_bytes_rcv,
+            { "Multicast Bytes RCV", "usbcom.descriptor.ecm.eth_stats.multicast_bytes_rcv", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00002000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_directed_frames_rcv,
+            { "Directed Frames RCV", "usbcom.descriptor.ecm.eth_stats.directed_frames_rcv", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00001000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_directed_bytes_rcv,
+            { "Directed Bytes RCV", "usbcom.descriptor.ecm.eth_stats.directed_bytes_rcv", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000800, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_broadcast_frames_xmit,
+            { "Broadcast Frames XMIT", "usbcom.descriptor.ecm.eth_stats.broadcast_frames_xmit", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000400, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_broadcast_bytes_xmit,
+            { "Broadcast Bytes XMIT", "usbcom.descriptor.ecm.eth_stats.broadcast_bytes_xmit", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000200, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_multicast_frames_xmit,
+            { "Multicast Frames XMIT", "usbcom.descriptor.ecm.eth_stats.multicast_frames_xmit", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000100, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_multicast_bytes_xmit,
+            { "Multicast Bytes XMIT", "usbcom.descriptor.ecm.eth_stats.multicast_bytes_xmit", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000080, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_directed_frames_xmit,
+            { "Directed Frames XMIT", "usbcom.descriptor.ecm.eth_stats.directed_frames_xmit", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000040, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_directed_bytes_xmit,
+            { "Directed Bytes XMIT", "usbcom.descriptor.ecm.eth_stats.directed_bytes_xmit", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000020, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_rcv_no_buffer,
+            { "RCV No Buffer", "usbcom.descriptor.ecm.eth_stats.rcv_no_buffer", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000010, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_rcv_error,
+            { "RCV Error", "usbcom.descriptor.ecm.eth_stats.rcv_error", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000008, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_error,
+            { "XMIT Error", "usbcom.descriptor.ecm.eth_stats.xmit_error", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000004, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_rvc_ok,
+            { "RCV OK", "usbcom.descriptor.ecm.eth_stats.rvc_ok", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000002, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_eth_stats_xmit_ok,
+            { "XMIT OK", "usbcom.descriptor.ecm.eth_stats.xmit_ok", FT_BOOLEAN, 32,
+              TFS(&tfs_supported_not_supported), 0x00000001, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_max_segment_size,
+            { "Max Segment Size", "usbcom.descriptor.ecm.max_segment_size", FT_UINT16, BASE_DEC,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_nb_mc_filters,
+            { "Number MC Filters", "usbcom.descriptor.ecm.nb_mc_filters", FT_UINT16, BASE_HEX,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_nb_mc_filters_mc_address_filtering,
+            { "Multicast Address Filtering", "usbcom.descriptor.ecm.nb_mc_filters.mc_address_filtering", FT_BOOLEAN, 16,
+              TFS(&usb_com_ecm_mc_address_filtering), 0x8000, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_nb_mc_filters_nb_filters_supported,
+            { "Number of Multicast Address Filters Supported", "usbcom.descriptor.ecm.nb_mc_filters.nb_filters_supported", FT_UINT16, BASE_DEC,
+              NULL, 0x7fff, NULL, HFILL }},
+        { &hf_usb_com_descriptor_ecm_nb_power_filters,
+            { "Number Power Filters", "usbcom.descriptor.ecm.nb_power_filters", FT_UINT8, BASE_DEC,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_request_type,
+            { "Request Type", "usbcom.interrupt.request_type", FT_UINT8, BASE_HEX,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_notif_code,
+            { "Notification Code", "usbcom.interrupt.notification_code", FT_UINT8, BASE_HEX,
+              VALS(usb_com_interrupt_notif_code_vals), 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_value,
+            { "Value", "usbcom.interrupt.value", FT_UINT16, BASE_HEX,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_value_nw_conn,
+            { "Value", "usbcom.interrupt.value", FT_UINT16, BASE_HEX,
+              VALS(usb_com_interrupt_value_nw_conn_vals), 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_index,
+            { "Index", "usbcom.interrupt.index", FT_UINT16, BASE_DEC,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_length,
+            { "Length", "usbcom.interrupt.length", FT_UINT16, BASE_DEC,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_dl_bitrate,
+            { "DL Bitrate", "usbcom.interrupt.conn_speed_change.dl_bitrate", FT_UINT32, BASE_DEC,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_ul_bitrate,
+            { "UL Bitrate", "usbcom.interrupt.conn_speed_change.ul_bitrate", FT_UINT32, BASE_DEC,
+              NULL, 0, NULL, HFILL }},
+        { &hf_usb_com_interrupt_payload,
+            { "Payload", "usbcom.interrupt.payload", FT_BYTES, BASE_NONE,
               NULL, 0, NULL, HFILL }}
     };
 
     static gint *usb_com_subtrees[] = {
         &ett_usb_com,
         &ett_usb_com_capabilities,
-        &ett_usb_com_bitmap
+        &ett_usb_com_bitmap,
+        &ett_usb_com_descriptor_ecm_eth_stats,
+        &ett_usb_com_descriptor_ecm_nb_mc_filters
     };
 
     proto_usb_com = proto_register_protocol("USB Communications and CDC Control", "USBCOM", "usbcom");
@@ -738,7 +1074,8 @@ proto_register_usb_com(void)
 void
 proto_reg_handoff_usb_com(void)
 {
-    dissector_handle_t usb_com_descriptor_handle, usb_com_control_handle, usb_com_bulk_handle;
+    dissector_handle_t usb_com_descriptor_handle, usb_com_control_handle,
+                       usb_com_bulk_handle, usb_com_interrupt_handle;
 
     usb_com_descriptor_handle = new_create_dissector_handle(dissect_usb_com_descriptor, proto_usb_com);
     dissector_add_uint("usb.descriptor", IF_CLASS_COMMUNICATIONS, usb_com_descriptor_handle);
@@ -746,6 +1083,8 @@ proto_reg_handoff_usb_com(void)
     dissector_add_uint("usb.control", IF_CLASS_COMMUNICATIONS, usb_com_control_handle);
     usb_com_bulk_handle = new_create_dissector_handle(dissect_usb_com_bulk, proto_usb_com);
     dissector_add_uint("usb.bulk", IF_CLASS_CDC_DATA, usb_com_bulk_handle);
+    usb_com_interrupt_handle = new_create_dissector_handle(dissect_usb_com_interrupt, proto_usb_com);
+    dissector_add_uint("usb.interrupt", IF_CLASS_COMMUNICATIONS, usb_com_interrupt_handle);
     mbim_control_handle = find_dissector("mbim.control");
     mbim_descriptor_handle = find_dissector("mbim.descriptor");
     mbim_bulk_handle = find_dissector("mbim.bulk");

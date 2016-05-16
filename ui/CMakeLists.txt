@@ -22,31 +22,53 @@
 
 set(COMMON_UI_SRC
 	alert_box.c
+	capture.c
+	capture_ui_utils.c
+	console.c
 	decode_as_utils.c
 	export_object.c
 	export_object_dicom.c
 	export_object_http.c
 	export_object_smb.c
+	export_object_tftp.c
+	filters.c
 	follow.c
 	help_url.c
-	packet_list_utils.c
 	iface_lists.c
 	io_graph_item.c
+	language.c
+	mcast_stream.c
+	packet_list_utils.c
 	persfilepath_opt.c
 	preference_utils.c
 	profile.c
+	proto_hier_stats.c
 	recent.c
+	rtp_media.c
+	rtp_stream.c
+	service_response_time.c
 	software_update.c
 	ssl_key_export.c
 	tap_export_pdu.c
-	tap-megaco-common.c
+	tap-iax2-analysis.c
 	tap-rtp-common.c
 	tap-sctp-analysis.c
 	tap-sequence-analysis.c
+	tap-rlc-graph.c
 	tap-tcp-stream.c
 	text_import.c
 	time_shift.c
+	traffic_table_ui.c
 	util.c
+	voip_calls.c
+)
+
+# Enables visibility in IDEs
+file(GLOB EXTRA_UI_HEADERS
+	rtp_media.h
+	rtp_stream.h
+	tap-iax2-analysis.h
+	tap-rtp-analysis.h
 )
 
 set(DIRTY_UI_SRC)

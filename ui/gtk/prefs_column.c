@@ -28,21 +28,18 @@
 #include <gtk/gtk.h>
 
 #include <epan/prefs.h>
-#include <epan/column-info.h>
 #include <epan/column.h>
-#include <epan/strutil.h>
 
 #include "globals.h"
 
 #include "ui/preference_utils.h"
 
+#include "ui/gtk/old-gtk-compat.h"
 #include "ui/gtk/prefs_column.h"
-#include "ui/gtk/gtkglobals.h"
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/packet_list.h"
 #include "ui/gtk/filter_dlg.h"
 #include "ui/gtk/filter_autocomplete.h"
-#include "ui/gtk/old-gtk-compat.h"
 #include "ui/gtk/stock_icons.h"
 
 static GtkWidget *remove_bt, *field_te, *field_lb, *occurrence_te, *occurrence_lb, *fmt_cmb;
@@ -271,7 +268,7 @@ column_prefs_show(GtkWidget *prefs_window) {
     gtk_widget_show(field_lb);
 
     field_te = gtk_entry_new();
-    g_object_set_data (G_OBJECT(field_te), E_FILT_FIELD_NAME_ONLY_KEY, (gpointer)"");
+    g_object_set_data (G_OBJECT(field_te), E_FILT_MULTI_FIELD_NAME_ONLY_KEY, (gpointer)"");
     g_signal_connect(field_te, "changed", G_CALLBACK(filter_te_syntax_check_cb), NULL);
 
     /* XXX: column_field_changed_cb will be called for every character entered in the entry box.      */
@@ -387,7 +384,7 @@ column_list_delete_cb(GtkWidget *w _U_, gpointer data) {
     if (gtk_tree_selection_get_selected(sel, &model, &iter))
     {
         gtk_tree_model_get(model, &iter, DATA_COLUMN, &clp, -1);
-	column_prefs_remove_link(clp);
+        column_prefs_remove_link(clp);
 
         /* Change the row selection to the next row (if available) or    */
         /*  the previous row (if available). If there's only one row     */
@@ -760,3 +757,16 @@ column_prefs_apply(GtkWidget *w _U_)
 void
 column_prefs_destroy(GtkWidget *w _U_) {
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

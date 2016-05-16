@@ -30,17 +30,15 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
 
-#include "wtap.h"
 #include "wtap-int.h"
-#include <wsutil/buffer.h>
 #include "file_wrappers.h"
 #include "commview.h"
+
+#include <wsutil/frequency-utils.h>
 
 typedef struct commview_header {
 	guint16		data_len;
@@ -48,7 +46,7 @@ typedef struct commview_header {
 	guint8		version;
 	guint16		year;
 	guint8		month;
-	guint8  	day;
+	guint8		day;
 	guint8		hours;
 	guint8		minutes;
 	guint8		seconds;
@@ -60,8 +58,8 @@ typedef struct commview_header {
 	guint8		channel;
 	guint8		direction;	/* Or for WiFi, high order byte of
 					 * packet rate. */
-	guint8		signal_level_dbm;
-	guint8		noise_level;	/* In dBm (WiFi only) */
+	gint8		signal_level_dbm;
+	gint8		noise_level;	/* In dBm (WiFi only) */
 } commview_header_t;
 
 #define COMMVIEW_HEADER_SIZE 24
@@ -72,6 +70,16 @@ typedef struct commview_header {
 #define FLAGS_BROKEN		0x20
 #define FLAGS_COMPRESSED	0x40
 #define FLAGS_RESERVED		0x80
+
+/* Values for the band variable of the header */
+#define BAND_11A		0x01
+#define BAND_11B		0x02
+#define BAND_11G		0x04
+#define BAND_11A_TURBO		0x08
+#define BAND_SUPERG		0x10
+#define BAND_PUBLIC_SAFETY	0x20	/* 4.99 GHz public safety */
+#define BAND_11N_5GHZ		0x40
+#define BAND_11N_2_4GHZ		0x80
 
 /* Capture mediums as defined by the commview file format */
 #define MEDIUM_ETHERNET		0
@@ -86,16 +94,16 @@ static gboolean commview_seek_read(wtap *wth, gint64 seek_off,
 static gboolean commview_read_header(commview_header_t *cv_hdr, FILE_T fh,
 				     int *err, gchar **err_info);
 static gboolean commview_dump(wtap_dumper *wdh,	const struct wtap_pkthdr *phdr,
-			      const guint8 *pd, int *err);
+			      const guint8 *pd, int *err, gchar **err_info);
 
-int commview_open(wtap *wth, int *err, gchar **err_info)
+wtap_open_return_val commview_open(wtap *wth, int *err, gchar **err_info)
 {
 	commview_header_t cv_hdr;
 
 	if(!commview_read_header(&cv_hdr, wth->fh, err, err_info)) {
 		if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-			return -1;
-		return 0;
+			return WTAP_OPEN_ERROR;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
 	/* If any of these fields do not match what we expect, bail out. */
@@ -111,11 +119,11 @@ int commview_open(wtap *wth, int *err, gchar **err_info)
 	   ((cv_hdr.flags & FLAGS_MEDIUM) != MEDIUM_ETHERNET &&
 	    (cv_hdr.flags & FLAGS_MEDIUM) != MEDIUM_WIFI &&
 	    (cv_hdr.flags & FLAGS_MEDIUM) != MEDIUM_TOKEN_RING))
-		return 0; /* Not our kind of file */
+		return WTAP_OPEN_NOT_MINE; /* Not our kind of file */
 
 	/* No file header. Reset the fh to 0 so we can read the first packet */
 	if (file_seek(wth->fh, 0, SEEK_SET, err) == -1)
-		return -1;
+		return WTAP_OPEN_ERROR;
 
 	/* Set up the pointers to the handlers for this file type */
 	wth->subtype_read = commview_read;
@@ -123,9 +131,9 @@ int commview_open(wtap *wth, int *err, gchar **err_info)
 
 	wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_COMMVIEW;
 	wth->file_encap = WTAP_ENCAP_PER_PACKET;
-	wth->tsprecision = WTAP_FILE_TSPREC_USEC;
+	wth->file_tsprec = WTAP_TSPREC_USEC;
 
-	return 1; /* Our kind of file */
+	return WTAP_OPEN_MINE; /* Our kind of file */
 }
 
 static int
@@ -134,6 +142,7 @@ commview_read_packet(FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
 {
 	commview_header_t cv_hdr;
 	struct tm tm;
+	guint frequency;
 
 	if(!commview_read_header(&cv_hdr, fh, err, err_info))
 		return FALSE;
@@ -148,10 +157,114 @@ commview_read_packet(FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
 	case MEDIUM_WIFI :
 		phdr->pkt_encap = WTAP_ENCAP_IEEE_802_11_WITH_RADIO;
 		phdr->pseudo_header.ieee_802_11.fcs_len = -1; /* Unknown */
+		phdr->pseudo_header.ieee_802_11.decrypted = FALSE;
+		phdr->pseudo_header.ieee_802_11.datapad = FALSE;
+		phdr->pseudo_header.ieee_802_11.phy = PHDR_802_11_PHY_UNKNOWN;
+		phdr->pseudo_header.ieee_802_11.presence_flags =
+		    PHDR_802_11_HAS_CHANNEL |
+		    PHDR_802_11_HAS_DATA_RATE |
+		    PHDR_802_11_HAS_SIGNAL_PERCENT;
+		switch (cv_hdr.band) {
+
+		case BAND_11A:
+			phdr->pseudo_header.ieee_802_11.phy = PHDR_802_11_PHY_11A;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11a.presence_flags =
+			    PHDR_802_11A_HAS_TURBO_TYPE;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11a.turbo_type =
+			    PHDR_802_11A_TURBO_TYPE_NORMAL;
+			frequency = ieee80211_chan_to_mhz(cv_hdr.channel, FALSE);
+			break;
+
+		case BAND_11B:
+			phdr->pseudo_header.ieee_802_11.phy = PHDR_802_11_PHY_11B;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11b.presence_flags = 0;
+			frequency = ieee80211_chan_to_mhz(cv_hdr.channel, TRUE);
+			break;
+
+		case BAND_11G:
+			phdr->pseudo_header.ieee_802_11.phy = PHDR_802_11_PHY_11G;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11g.presence_flags =
+			    PHDR_802_11G_HAS_MODE;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11g.mode =
+			    PHDR_802_11G_MODE_NORMAL;
+			frequency = ieee80211_chan_to_mhz(cv_hdr.channel, TRUE);
+			break;
+
+		case BAND_11A_TURBO:
+			phdr->pseudo_header.ieee_802_11.phy = PHDR_802_11_PHY_11A;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11a.presence_flags =
+			    PHDR_802_11A_HAS_TURBO_TYPE;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11a.turbo_type =
+			    PHDR_802_11A_TURBO_TYPE_TURBO;
+			frequency = ieee80211_chan_to_mhz(cv_hdr.channel, FALSE);
+			break;
+
+		case BAND_SUPERG:
+			phdr->pseudo_header.ieee_802_11.phy = PHDR_802_11_PHY_11G;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11g.presence_flags =
+			    PHDR_802_11G_HAS_MODE;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11g.mode =
+			    PHDR_802_11G_MODE_SUPER_G;
+			frequency = ieee80211_chan_to_mhz(cv_hdr.channel, TRUE);
+			break;
+
+		case BAND_11N_5GHZ:
+			phdr->pseudo_header.ieee_802_11.phy = PHDR_802_11_PHY_11N;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11n.presence_flags =
+			    0;
+			frequency = ieee80211_chan_to_mhz(cv_hdr.channel, FALSE);
+			break;
+
+		case BAND_11N_2_4GHZ:
+			phdr->pseudo_header.ieee_802_11.phy = PHDR_802_11_PHY_11N;
+			phdr->pseudo_header.ieee_802_11.phy_info.info_11n.presence_flags =
+			    0;
+			frequency = ieee80211_chan_to_mhz(cv_hdr.channel, TRUE);
+			break;
+
+		case BAND_PUBLIC_SAFETY:
+			/*
+			 * XXX - what do we do here?  What are the channel
+			 * numbers?  How do we distinguish the several
+			 * different flavors of 4.9 GHz frequencies?
+			 */
+			frequency = 0;
+			break;
+
+		default:
+			frequency = 0;
+			break;
+		}
+		if (frequency != 0) {
+			phdr->pseudo_header.ieee_802_11.presence_flags |=
+			    PHDR_802_11_HAS_FREQUENCY;
+			phdr->pseudo_header.ieee_802_11.frequency = frequency;
+		}
 		phdr->pseudo_header.ieee_802_11.channel = cv_hdr.channel;
 		phdr->pseudo_header.ieee_802_11.data_rate =
 		    cv_hdr.rate | (cv_hdr.direction << 8);
-		phdr->pseudo_header.ieee_802_11.signal_level = cv_hdr.signal_level_percent;
+		phdr->pseudo_header.ieee_802_11.signal_percent = cv_hdr.signal_level_percent;
+
+		/*
+		 * XXX - these are positive in captures I've seen; does
+		 * that mean that they are the negative of the actual
+		 * dBm value?  (80 dBm is a bit more power than most
+		 * countries' regulatory agencies are likely to allow
+		 * any individual to have in their home. :-))
+		 *
+		 * XXX - sometimes these are 0; assume that means that no
+		 * value is provided.
+		 */
+		if (cv_hdr.signal_level_dbm != 0) {
+			phdr->pseudo_header.ieee_802_11.signal_dbm = -cv_hdr.signal_level_dbm;
+			phdr->pseudo_header.ieee_802_11.presence_flags |=
+			    PHDR_802_11_HAS_SIGNAL_DBM;
+		}
+		if (cv_hdr.noise_level != 0) {
+			phdr->pseudo_header.ieee_802_11.noise_dbm = -cv_hdr.noise_level;
+			phdr->pseudo_header.ieee_802_11.presence_flags |=
+			    PHDR_802_11_HAS_NOISE_DBM;
+		}
 		break;
 
 	case MEDIUM_TOKEN_RING :
@@ -208,24 +321,42 @@ static gboolean
 commview_read_header(commview_header_t *cv_hdr, FILE_T fh, int *err,
     gchar **err_info)
 {
-	wtap_file_read_expected_bytes(&cv_hdr->data_len, 2, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->source_data_len, 2, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->version, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->year, 2, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->month, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->day, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->hours, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->minutes, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->seconds, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->usecs, 4, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->flags, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->signal_level_percent, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->rate, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->band, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->channel, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->direction, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->signal_level_dbm, 1, fh, err, err_info);
-	wtap_file_read_expected_bytes(&cv_hdr->noise_level, 1, fh, err, err_info);
+	if (!wtap_read_bytes_or_eof(fh, &cv_hdr->data_len, 2, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->source_data_len, 2, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->version, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->year, 2, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->month, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->day, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->hours, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->minutes, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->seconds, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->usecs, 4, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->flags, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->signal_level_percent, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->rate, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->band, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->channel, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->direction, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->signal_level_dbm, 1, err, err_info))
+		return FALSE;
+	if (!wtap_read_bytes(fh, &cv_hdr->noise_level, 1, err, err_info))
+		return FALSE;
 
 	/* Convert multi-byte values from little endian to host endian format */
 	cv_hdr->data_len = GUINT16_FROM_LE(cv_hdr->data_len);
@@ -250,7 +381,7 @@ int commview_dump_can_write_encap(int encap)
 		return 0;
 
 	default:
-		return WTAP_ERR_UNSUPPORTED_ENCAP;
+		return WTAP_ERR_UNWRITABLE_ENCAP;
 	}
 }
 
@@ -259,7 +390,6 @@ int commview_dump_can_write_encap(int encap)
 gboolean commview_dump_open(wtap_dumper *wdh, int *err _U_)
 {
 	wdh->subtype_write = commview_dump;
-	wdh->subtype_close = NULL;
 
 	/* There is no file header to write out */
 	wdh->bytes_dumped = 0;
@@ -271,14 +401,14 @@ gboolean commview_dump_open(wtap_dumper *wdh, int *err _U_)
  * Returns TRUE on success, FALSE on failure. */
 static gboolean commview_dump(wtap_dumper *wdh,
 			      const struct wtap_pkthdr *phdr,
-			      const guint8 *pd, int *err)
+			      const guint8 *pd, int *err, gchar **err_info _U_)
 {
 	commview_header_t cv_hdr;
 	struct tm *tm;
 
 	/* We can only write packet records. */
 	if (phdr->rec_type != REC_TYPE_PACKET) {
-		*err = WTAP_ERR_REC_TYPE_UNSUPPORTED;
+		*err = WTAP_ERR_UNWRITABLE_REC_TYPE;
 		return FALSE;
 	}
 
@@ -318,10 +448,99 @@ static gboolean commview_dump(wtap_dumper *wdh,
 	case WTAP_ENCAP_IEEE_802_11_WITH_RADIO :
 		cv_hdr.flags |=  MEDIUM_WIFI;
 
-		cv_hdr.channel = phdr->pseudo_header.ieee_802_11.channel;
-		cv_hdr.rate = (guint8)(phdr->pseudo_header.ieee_802_11.data_rate & 0xFF);
-		cv_hdr.direction = (guint8)((phdr->pseudo_header.ieee_802_11.data_rate >> 8) & 0xFF);
-		cv_hdr.signal_level_percent = phdr->pseudo_header.ieee_802_11.signal_level;
+		switch (phdr->pseudo_header.ieee_802_11.phy) {
+
+		case PHDR_802_11_PHY_11A:
+			/*
+			 * If we don't know whether it's turbo, say it's
+			 * not.
+			 */
+			if (!(phdr->pseudo_header.ieee_802_11.phy_info.info_11a.presence_flags & PHDR_802_11A_HAS_TURBO_TYPE) ||
+			    phdr->pseudo_header.ieee_802_11.phy_info.info_11a.turbo_type == PHDR_802_11A_TURBO_TYPE_NORMAL)
+				cv_hdr.band = BAND_11A;
+			else
+				cv_hdr.band = BAND_11A_TURBO;
+			break;
+
+		case PHDR_802_11_PHY_11B:
+			cv_hdr.band = BAND_11B;
+			break;
+
+		case PHDR_802_11_PHY_11G:
+			/*
+			 * If we don't know whether it's Super G, say it's
+			 * not.
+			 */
+			if (!(phdr->pseudo_header.ieee_802_11.phy_info.info_11g.presence_flags & PHDR_802_11G_HAS_MODE))
+				cv_hdr.band = BAND_11G;
+			else {
+				switch (phdr->pseudo_header.ieee_802_11.phy_info.info_11g.mode) {
+
+				case PHDR_802_11G_MODE_NORMAL:
+					cv_hdr.band = BAND_11G;
+					break;
+
+				case PHDR_802_11G_MODE_SUPER_G:
+					cv_hdr.band = BAND_SUPERG;
+					break;
+
+				default:
+					cv_hdr.band = BAND_11G;
+					break;
+				}
+			}
+			break;
+
+		case PHDR_802_11_PHY_11N:
+			/*
+			 * Pick the band based on the frequency.
+			 */
+			if (phdr->pseudo_header.ieee_802_11.presence_flags & PHDR_802_11_HAS_FREQUENCY) {
+				if (phdr->pseudo_header.ieee_802_11.frequency > 2484) {
+					/* 5 GHz band */
+					cv_hdr.band = BAND_11N_5GHZ;
+				} else {
+					/* 2.4 GHz band */
+					cv_hdr.band = BAND_11N_2_4GHZ;
+				}
+			} else {
+				/* Band is unknown. */
+				cv_hdr.band = 0;
+			}
+			break;
+
+		default:
+			/*
+			 * It's not documented how they handle 11ac,
+			 * and they don't support the older PHYs.
+			 */
+			cv_hdr.band = 0;
+			break;
+		}
+		cv_hdr.channel =
+		    (phdr->pseudo_header.ieee_802_11.presence_flags & PHDR_802_11_HAS_CHANNEL) ?
+		     phdr->pseudo_header.ieee_802_11.channel :
+		     0;
+		cv_hdr.rate =
+		    (phdr->pseudo_header.ieee_802_11.presence_flags & PHDR_802_11_HAS_DATA_RATE) ?
+		     (guint8)(phdr->pseudo_header.ieee_802_11.data_rate & 0xFF) :
+		     0;
+		cv_hdr.direction =
+		    (phdr->pseudo_header.ieee_802_11.presence_flags & PHDR_802_11_HAS_DATA_RATE) ?
+		     (guint8)((phdr->pseudo_header.ieee_802_11.data_rate >> 8) & 0xFF) :
+		     0;
+		cv_hdr.signal_level_percent =
+		    (phdr->pseudo_header.ieee_802_11.presence_flags & PHDR_802_11_HAS_SIGNAL_PERCENT) ?
+		     phdr->pseudo_header.ieee_802_11.signal_percent :
+		     0;
+		cv_hdr.signal_level_dbm =
+		    (phdr->pseudo_header.ieee_802_11.presence_flags & PHDR_802_11_HAS_SIGNAL_DBM) ?
+		     -phdr->pseudo_header.ieee_802_11.signal_dbm :
+		     0;
+		cv_hdr.noise_level =
+		    (phdr->pseudo_header.ieee_802_11.presence_flags & PHDR_802_11_HAS_NOISE_DBM) ?
+		     -phdr->pseudo_header.ieee_802_11.noise_dbm :
+		     0;
 		break;
 
 	case WTAP_ENCAP_TOKEN_RING :
@@ -329,7 +548,7 @@ static gboolean commview_dump(wtap_dumper *wdh,
 		break;
 
 	default :
-		*err = WTAP_ERR_UNSUPPORTED_ENCAP;
+		*err = WTAP_ERR_UNWRITABLE_ENCAP;
 		return FALSE;
 	}
 
@@ -377,3 +596,16 @@ static gboolean commview_dump(wtap_dumper *wdh,
 
 	return TRUE;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

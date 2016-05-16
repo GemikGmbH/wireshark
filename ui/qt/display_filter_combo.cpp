@@ -27,11 +27,12 @@
 
 #include <epan/prefs.h>
 
+#include <QHelpEvent>
+#include <QStyleOptionComboBox>
+
 #include "display_filter_edit.h"
 #include "display_filter_combo.h"
 #include "wireshark_application.h"
-
-#include <QCompleter>
 
 // If we ever add support for multiple windows this will need to be replaced.
 static DisplayFilterCombo *cur_display_filter_combo = NULL;
@@ -40,7 +41,11 @@ DisplayFilterCombo::DisplayFilterCombo(QWidget *parent) :
     QComboBox(parent)
 {
     setEditable(true);
-    setLineEdit(new DisplayFilterEdit(this, false));
+    // Enabling autocompletion here gives us two simultaneous completions:
+    // Inline (highlighted text) for entire filters, handled here and popup
+    // completion for fields handled by DisplayFilterEdit.
+    setAutoCompletion(false);
+    setLineEdit(new DisplayFilterEdit(this, DisplayFilterToApply));
     setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
     setAccessibleName(tr("Display filter selector"));
     cur_display_filter_combo = this;
@@ -60,12 +65,12 @@ DisplayFilterCombo::DisplayFilterCombo(QWidget *parent) :
             "QComboBox::drop-down {"
             "  subcontrol-origin: padding;"
             "  subcontrol-position: top right;"
-            "  width: 16px;"
+            "  width: 14px;"
             "  border-left-width: 0px;"
             " }"
 
             "QComboBox::down-arrow {"
-            "  image: url(:/dfilter/dfilter_dropdown.png);"
+            "  image: url(:/icons/toolbar/14x14/x-filter-dropdown.png);"
             " }"
 
             "QComboBox::down-arrow:on { /* shift the arrow when popup is open */"
@@ -73,10 +78,7 @@ DisplayFilterCombo::DisplayFilterCombo(QWidget *parent) :
             "  left: 1px;"
             "}"
             );
-    completer()->setCompletionMode(QCompleter::PopupCompletion);
-#ifndef QT_NO_TOOLTIP
-    setToolTip(tr("Select from previously used filters"));
-#endif // QT_NO_TOOLTIP
+    setToolTip(tr("Select from previously used filters."));
 
     connect(wsApp, SIGNAL(preferencesChanged()), this, SLOT(updateMaxCount()));
 }
@@ -99,6 +101,36 @@ void DisplayFilterCombo::writeRecent(FILE *rf) {
     }
 }
 
+bool DisplayFilterCombo::event(QEvent *event)
+{
+    switch (event->type()) {
+    case QEvent::ToolTip:
+    {
+        // Only show a tooltip for the arrow.
+        QHelpEvent *he = (QHelpEvent *) event;
+        QStyleOptionComboBox opt;
+        initStyleOption(&opt);
+        QRect scr = style()->subControlRect(QStyle::CC_ComboBox, &opt, QStyle::SC_ComboBoxArrow, this);
+        if (!scr.contains(he->pos())) {
+            return false;
+        }
+        break;
+    }
+    default:
+        break;
+    }
+    return QComboBox::event(event);
+}
+
+bool DisplayFilterCombo::checkDisplayFilter()
+{
+    DisplayFilterEdit *df_edit = qobject_cast<DisplayFilterEdit *>(lineEdit());
+    bool state = false;
+
+    if (df_edit) state = df_edit->checkFilter();
+    return state;
+}
+
 void DisplayFilterCombo::applyDisplayFilter()
 {
     DisplayFilterEdit *df_edit = qobject_cast<DisplayFilterEdit *>(lineEdit());
@@ -115,8 +147,14 @@ extern "C" gboolean dfilter_combo_add_recent(const gchar *filter) {
     if (!cur_display_filter_combo)
         return FALSE;
 
+    // Adding an item to a QComboBox also sets its lineEdit. In our case
+    // that means we might trigger a temporary status message so we block
+    // the lineEdit's signals.
+    // Another approach would be to update QComboBox->model directly.
+    bool block_state = cur_display_filter_combo->lineEdit()->blockSignals(true);
     cur_display_filter_combo->addItem(filter);
     cur_display_filter_combo->clearEditText();
+    cur_display_filter_combo->lineEdit()->blockSignals(block_state);
     return TRUE;
 }
 

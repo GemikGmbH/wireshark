@@ -140,9 +140,8 @@ These are the structures you will see most often in EDP frames.
 
 #include "config.h"
 
-#include <string.h>
-#include <glib.h>
 #include <epan/packet.h>
+#include <epan/expert.h>
 #include <epan/to_str.h>
 #include <epan/strutil.h>
 #include <epan/in_cksum.h>
@@ -254,6 +253,8 @@ static int hf_edp_unknown_data = -1;
 /* Null element */
 static int hf_edp_null = -1;
 
+static expert_field ei_edp_short_tlv = EI_INIT;
+
 static gint ett_edp = -1;
 static gint ett_edp_checksum = -1;
 static gint ett_edp_tlv_header = -1;
@@ -274,9 +275,9 @@ static gint ett_edp_null = -1;
 #define PROTO_LONG_NAME "Extreme Discovery Protocol"
 
 static const value_string extreme_pid_vals[] = {
-	{ 0x00bb,	"EDP" },
+	{ 0x00bb, "EDP" },
 
-	{ 0,		NULL }
+	{ 0, NULL }
 };
 
 static const value_string esrp_proto_vals[] = {
@@ -383,7 +384,6 @@ static const value_string elsm_subtype_vals[] = {
 static int
 dissect_tlv_header(tvbuff_t *tvb, packet_info *pinfo _U_, int offset, int length _U_, proto_tree *tree)
 {
-	proto_item	*tlv_item;
 	proto_tree	*tlv_tree;
 	guint8		tlv_marker;
 	guint8		tlv_type;
@@ -393,12 +393,11 @@ dissect_tlv_header(tvbuff_t *tvb, packet_info *pinfo _U_, int offset, int length
 	tlv_type = tvb_get_guint8(tvb, offset + 1);
 	tlv_length = tvb_get_ntohs(tvb, offset + 2);
 
-	tlv_item = proto_tree_add_text(tree, tvb, offset, 4,
-		"Marker 0x%02x, length %d, type %d = %s",
+	tlv_tree = proto_tree_add_subtree_format(tree, tvb, offset, 4,
+		ett_edp_tlv_header, NULL, "Marker 0x%02x, length %d, type %d = %s",
 		tlv_marker, tlv_length, tlv_type,
 		val_to_str(tlv_type, edp_type_vals, "Unknown (0x%02x)"));
 
-	tlv_tree = proto_item_add_subtree(tlv_item, ett_edp_tlv_header);
 	proto_tree_add_item(tlv_tree, hf_edp_tlv_marker, tvb, offset, 1,
 		ENC_BIG_ENDIAN);
 	offset += 1;
@@ -430,7 +429,7 @@ dissect_display_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, p
 	offset += 4;
 	length -= 4;
 
-	display_name = tvb_get_string(wmem_packet_scope(), tvb, offset, length);
+	display_name = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, length, ENC_ASCII);
 	proto_item_append_text(display_item, ": \"%s\"",
 	        format_text(display_name, strlen(display_name)));
 	proto_tree_add_string(display_tree, hf_edp_display_string, tvb, offset, length,
@@ -457,7 +456,6 @@ dissect_null_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length _U_, 
 static int
 dissect_info_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, proto_tree *tree)
 {
-	proto_item *ver_item;
 	proto_tree *ver_tree;
 	guint8 major1, major2, sustaining, internal;
 	guint16 port, slot;
@@ -502,11 +500,9 @@ dissect_info_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, prot
 	offset += 6;
 
 	/* Begin version subtree */
-	ver_item = proto_tree_add_text(info_tree, tvb, offset, 4,
-		"Version: %u.%u.%u Internal: %u", major1, major2,
+	ver_tree = proto_tree_add_subtree_format(info_tree, tvb, offset, 4,
+		ett_edp_info_version, NULL, "Version: %u.%u.%u Internal: %u", major1, major2,
 		sustaining, internal);
-
-	ver_tree = proto_item_add_subtree(ver_item, ett_edp_info_version);
 
 	proto_tree_add_item(ver_tree, hf_edp_info_version, tvb, offset, 4,
 		ENC_BIG_ENDIAN);
@@ -542,7 +538,6 @@ dissect_vlan_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, prot
 	proto_tree	*flags_tree;
 	proto_item	*vlan_item;
 	proto_tree	*vlan_tree;
-	proto_item	*too_short_item;
 	guint16		vlan_id;
 	guint8		*vlan_name;
 
@@ -557,9 +552,7 @@ dissect_vlan_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, prot
 
 	/* Begin flags subtree */
 	if (length < 1) {
-		too_short_item = proto_tree_add_text(vlan_tree, tvb, 0, 0,
-		    "TLV is too short");
-		PROTO_ITEM_SET_GENERATED(too_short_item);
+		expert_add_info(pinfo, vlan_item, &ei_edp_short_tlv);
 		return offset;
 	}
 	flags_item = proto_tree_add_item(vlan_tree, hf_edp_vlan_flags, tvb, offset, 1,
@@ -578,9 +571,7 @@ dissect_vlan_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, prot
 	/* End of flags subtree */
 
 	if (length < 1) {
-		too_short_item = proto_tree_add_text(vlan_tree, tvb, 0, 0,
-		    "TLV is too short");
-		PROTO_ITEM_SET_GENERATED(too_short_item);
+		expert_add_info(pinfo, vlan_item, &ei_edp_short_tlv);
 		return offset;
 	}
 	proto_tree_add_item(vlan_tree, hf_edp_vlan_reserved1, tvb, offset, 1,
@@ -589,9 +580,7 @@ dissect_vlan_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, prot
 	length -= 1;
 
 	if (length < 2) {
-		too_short_item = proto_tree_add_text(vlan_tree, tvb, 0, 0,
-		    "TLV is too short");
-		PROTO_ITEM_SET_GENERATED(too_short_item);
+		expert_add_info(pinfo, vlan_item, &ei_edp_short_tlv);
 		return offset;
 	}
 	vlan_id = tvb_get_ntohs(tvb, offset);
@@ -603,9 +592,7 @@ dissect_vlan_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, prot
 	length -= 2;
 
 	if (length < 4) {
-		too_short_item = proto_tree_add_text(vlan_tree, tvb, 0, 0,
-		    "TLV is too short");
-		PROTO_ITEM_SET_GENERATED(too_short_item);
+		expert_add_info(pinfo, vlan_item, &ei_edp_short_tlv);
 		return offset;
 	}
 	proto_tree_add_item(vlan_tree, hf_edp_vlan_reserved2, tvb, offset, 4,
@@ -614,9 +601,7 @@ dissect_vlan_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, prot
 	length -= 4;
 
 	if (length < 4) {
-		too_short_item = proto_tree_add_text(vlan_tree, tvb, 0, 0,
-		    "TLV is too short");
-		PROTO_ITEM_SET_GENERATED(too_short_item);
+		expert_add_info(pinfo, vlan_item, &ei_edp_short_tlv);
 		return offset;
 	}
 	proto_tree_add_item(vlan_tree, hf_edp_vlan_ip, tvb, offset, 4,
@@ -624,7 +609,7 @@ dissect_vlan_tlv(tvbuff_t *tvb, packet_info *pinfo, int offset, int length, prot
 	offset += 4;
 	length -= 4;
 
-	vlan_name = tvb_get_string(wmem_packet_scope(), tvb, offset, length);
+	vlan_name = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, length, ENC_ASCII);
 	proto_item_append_text(vlan_item, ", Name \"%s\"",
 	        format_text(vlan_name, strlen(vlan_name)));
 	proto_tree_add_string(vlan_tree, hf_edp_vlan_name, tvb, offset, length,
@@ -967,7 +952,7 @@ static void
 dissect_edp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
 	proto_item *ti;
-	proto_tree *edp_tree = NULL;
+	proto_tree *edp_tree;
 	proto_item *checksum_item;
 	proto_tree *checksum_tree;
 	guint32 offset = 0;
@@ -978,138 +963,135 @@ dissect_edp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	guint16 tlv_length;
 	guint16 data_length;
 	guint16 seqno;
-        vec_t cksum_vec[1];
+	vec_t cksum_vec[1];
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, PROTO_SHORT_NAME);
 	col_set_str(pinfo->cinfo, COL_INFO, PROTO_SHORT_NAME ":");
 
-	if (tree) {
-		ti = proto_tree_add_item(tree, proto_edp, tvb, offset, -1,
-		    ENC_NA);
-		edp_tree = proto_item_add_subtree(ti, ett_edp);
+	ti = proto_tree_add_item(tree, proto_edp, tvb, offset, -1,
+				 ENC_NA);
+	edp_tree = proto_item_add_subtree(ti, ett_edp);
 
-		proto_tree_add_item(edp_tree, hf_edp_version, tvb, offset, 1,
-			ENC_BIG_ENDIAN);
-		offset += 1;
+	proto_tree_add_item(edp_tree, hf_edp_version, tvb, offset, 1,
+			    ENC_BIG_ENDIAN);
+	offset += 1;
 
-		proto_tree_add_item(edp_tree, hf_edp_reserved, tvb, offset, 1,
-			ENC_BIG_ENDIAN);
-		offset += 1;
+	proto_tree_add_item(edp_tree, hf_edp_reserved, tvb, offset, 1,
+			    ENC_BIG_ENDIAN);
+	offset += 1;
 
-		data_length = tvb_get_ntohs(tvb, offset);
-		proto_tree_add_uint(edp_tree, hf_edp_length, tvb, offset, 2,
-			data_length);
-		offset += 2;
+	data_length = tvb_get_ntohs(tvb, offset);
+	proto_tree_add_uint(edp_tree, hf_edp_length, tvb, offset, 2,
+			    data_length);
+	offset += 2;
 
-		packet_checksum = tvb_get_ntohs(tvb, offset);
-		/*
-		 * If we have the entire ESP packet available, check the checksum.
-		 */
-		if (tvb_length(tvb) >= data_length) {
-			/* Checksum from version to null tlv */
-			cksum_vec[0].ptr = tvb_get_ptr(tvb, 0, data_length);
-			cksum_vec[0].len = data_length;
-			computed_checksum = in_cksum(&cksum_vec[0], 1);
-			checksum_good = (computed_checksum == 0);
-			checksum_bad = !checksum_good;
-			if (checksum_good) {
-				checksum_item = proto_tree_add_uint_format(edp_tree,
-					hf_edp_checksum, tvb, offset, 2, packet_checksum,
-					"Checksum: 0x%04x [correct]",
-					packet_checksum);
-			} else {
-				checksum_item = proto_tree_add_uint_format(edp_tree,
-					hf_edp_checksum, tvb, offset, 2, packet_checksum,
-					"Checksum: 0x%04x [incorrect, should be 0x%04x]",
-					packet_checksum,
-					in_cksum_shouldbe(packet_checksum, computed_checksum));
-			}
+	packet_checksum = tvb_get_ntohs(tvb, offset);
+	/*
+	 * If we have the entire ESP packet available, check the checksum.
+	 */
+	if (tvb_captured_length(tvb) >= data_length) {
+		/* Checksum from version to null tlv */
+		SET_CKSUM_VEC_TVB(cksum_vec[0], tvb, 0, data_length);
+		computed_checksum = in_cksum(&cksum_vec[0], 1);
+		checksum_good = (computed_checksum == 0);
+		checksum_bad = !checksum_good;
+		if (checksum_good) {
+			checksum_item = proto_tree_add_uint_format(edp_tree,
+								   hf_edp_checksum, tvb, offset, 2, packet_checksum,
+								   "Checksum: 0x%04x [correct]",
+								   packet_checksum);
 		} else {
-			checksum_good = checksum_bad = FALSE;
-			checksum_item = proto_tree_add_uint(edp_tree, hf_edp_checksum,
-				tvb, offset, 2, packet_checksum);
+			checksum_item = proto_tree_add_uint_format(edp_tree,
+								   hf_edp_checksum, tvb, offset, 2, packet_checksum,
+								   "Checksum: 0x%04x [incorrect, should be 0x%04x]",
+								   packet_checksum,
+								   in_cksum_shouldbe(packet_checksum, computed_checksum));
 		}
-		checksum_tree = proto_item_add_subtree(checksum_item, ett_edp_checksum);
-		checksum_item = proto_tree_add_boolean(checksum_tree, hf_edp_checksum_good,
-			tvb, offset, 2, checksum_good);
-		PROTO_ITEM_SET_GENERATED(checksum_item);
-		checksum_item = proto_tree_add_boolean(checksum_tree, hf_edp_checksum_bad,
-			tvb, offset, 2, checksum_bad);
-		PROTO_ITEM_SET_GENERATED(checksum_item);
-		offset += 2;
+	} else {
+		checksum_good = checksum_bad = FALSE;
+		checksum_item = proto_tree_add_uint(edp_tree, hf_edp_checksum,
+						    tvb, offset, 2, packet_checksum);
+	}
+	checksum_tree = proto_item_add_subtree(checksum_item, ett_edp_checksum);
+	checksum_item = proto_tree_add_boolean(checksum_tree, hf_edp_checksum_good,
+					       tvb, offset, 2, checksum_good);
+	PROTO_ITEM_SET_GENERATED(checksum_item);
+	checksum_item = proto_tree_add_boolean(checksum_tree, hf_edp_checksum_bad,
+					       tvb, offset, 2, checksum_bad);
+	PROTO_ITEM_SET_GENERATED(checksum_item);
+	offset += 2;
 
-		seqno = tvb_get_ntohs(tvb, offset);
-		proto_tree_add_item(edp_tree, hf_edp_seqno, tvb, offset, 2,
-			ENC_BIG_ENDIAN);
-		offset += 2;
+	seqno = tvb_get_ntohs(tvb, offset);
+	proto_tree_add_item(edp_tree, hf_edp_seqno, tvb, offset, 2,
+			    ENC_BIG_ENDIAN);
+	offset += 2;
 
-		/* Machine ID is 8 bytes, if it starts with 0000, the remaining
-		   6 bytes are a MAC */
-		proto_tree_add_item(edp_tree, hf_edp_midtype, tvb, offset, 2,
-			ENC_BIG_ENDIAN);
-		offset += 2;
+	/* Machine ID is 8 bytes, if it starts with 0000, the remaining
+	   6 bytes are a MAC */
+	proto_tree_add_item(edp_tree, hf_edp_midtype, tvb, offset, 2,
+			    ENC_BIG_ENDIAN);
+	offset += 2;
 
-		proto_tree_add_item(edp_tree, hf_edp_midmac, tvb, offset, 6,
-			ENC_NA);
-		offset += 6;
+	proto_tree_add_item(edp_tree, hf_edp_midmac, tvb, offset, 6,
+			    ENC_NA);
+	offset += 6;
 
-		/* Decode the individual TLVs */
-		while (offset < data_length && !last) {
-			if (data_length - offset < 4) {
-	                	proto_tree_add_text(edp_tree, tvb, offset, 4,
-                    			"Too few bytes left for TLV: %u (< 4)",
-					data_length - offset);
-				break;
-			}
-			tlv_type = tvb_get_guint8(tvb, offset + 1);
-			tlv_length = tvb_get_ntohs(tvb, offset + 2);
+	/* Decode the individual TLVs */
+	while (offset < data_length && !last) {
+		if (data_length - offset < 4) {
+			proto_tree_add_expert_format(edp_tree, pinfo, &ei_edp_short_tlv, tvb, offset, 4,
+						     "Too few bytes left for TLV: %u (< 4)",
+						     data_length - offset);
+			break;
+		}
+		tlv_type = tvb_get_guint8(tvb, offset + 1);
+		tlv_length = tvb_get_ntohs(tvb, offset + 2);
 
-			if ((tlv_length < 4) || (tlv_length > (data_length - offset))) {
-	                	proto_tree_add_text(edp_tree, tvb, offset, 0,
-                    			"TLV with invalid length: %u", tlv_length);
-				break;
-			}
-			if (tlv_type != EDP_TYPE_NULL)
-				col_append_fstr(pinfo->cinfo, COL_INFO, " %s",
+		if ((tlv_length < 4) || (tlv_length > (data_length - offset))) {
+			proto_tree_add_expert_format(edp_tree, pinfo, &ei_edp_short_tlv, tvb, offset, 0,
+						     "TLV with invalid length: %u", tlv_length);
+			break;
+		}
+		if (tlv_type != EDP_TYPE_NULL)
+			col_append_fstr(pinfo->cinfo, COL_INFO, " %s",
 					val_to_str(tlv_type, edp_type_vals, "[0x%02x]"));
 
-			switch (tlv_type) {
-			case EDP_TYPE_NULL: /* Last TLV */
-				dissect_null_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				last = 1;
-				break;
-			case EDP_TYPE_DISPLAY: /* MIB II display string */
-				dissect_display_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				break;
-			case EDP_TYPE_INFO: /* Basic system information */
-				dissect_info_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				break;
-			case EDP_TYPE_VLAN: /* VLAN info */
-				dissect_vlan_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				break;
-			case EDP_TYPE_ESRP: /* Extreme Standby Router Protocol */
-				dissect_esrp_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				break;
-			case EDP_TYPE_EAPS: /* Ethernet Automatic Protection Swtiching */
-				dissect_eaps_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				break;
-			case EDP_TYPE_ESL: /* EAPS shared link */
-				dissect_esl_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				break;
-			case EDP_TYPE_ELSM: /* Extreme Link Status Monitoring */
-				dissect_elsm_tlv(tvb, pinfo, offset, tlv_length, edp_tree, seqno);
-				break;
-			case EDP_TYPE_ELRP: /* Extreme Loop Recognition Protocol */
-				dissect_elrp_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				break;
-			default:
-				dissect_unknown_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
-				break;
-			}
-			offset += tlv_length;
+		switch (tlv_type) {
+		case EDP_TYPE_NULL: /* Last TLV */
+			dissect_null_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			last = TRUE;
+			break;
+		case EDP_TYPE_DISPLAY: /* MIB II display string */
+			dissect_display_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			break;
+		case EDP_TYPE_INFO: /* Basic system information */
+			dissect_info_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			break;
+		case EDP_TYPE_VLAN: /* VLAN info */
+			dissect_vlan_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			break;
+		case EDP_TYPE_ESRP: /* Extreme Standby Router Protocol */
+			dissect_esrp_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			break;
+		case EDP_TYPE_EAPS: /* Ethernet Automatic Protection Swtiching */
+			dissect_eaps_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			break;
+		case EDP_TYPE_ESL: /* EAPS shared link */
+			dissect_esl_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			break;
+		case EDP_TYPE_ELSM: /* Extreme Link Status Monitoring */
+			dissect_elsm_tlv(tvb, pinfo, offset, tlv_length, edp_tree, seqno);
+			break;
+		case EDP_TYPE_ELRP: /* Extreme Loop Recognition Protocol */
+			dissect_elrp_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			break;
+		default:
+			dissect_unknown_tlv(tvb, pinfo, offset, tlv_length, edp_tree);
+			break;
 		}
-
+		offset += tlv_length;
 	}
+
 }
 
 void
@@ -1464,7 +1446,7 @@ proto_register_edp(void)
 		{ &hf_edp_null,
 		{ "End",	"edp.null", FT_PROTOCOL, BASE_NONE, NULL,
 			0x0, "Last element", HFILL }},
-        };
+	};
 	static gint *ett[] = {
 		&ett_edp,
 		&ett_edp_checksum,
@@ -1483,10 +1465,17 @@ proto_register_edp(void)
 		&ett_edp_null,
 	};
 
-        proto_edp = proto_register_protocol(PROTO_LONG_NAME,
-	    PROTO_SHORT_NAME, "edp");
-        proto_register_field_array(proto_edp, hf, array_length(hf));
+	static ei_register_info ei[] = {
+		{ &ei_edp_short_tlv, { "edp.short_tlv", PI_MALFORMED, PI_ERROR, "TLV is too short", EXPFILL }},
+	};
+
+	expert_module_t* expert_edp;
+
+	proto_edp = proto_register_protocol(PROTO_LONG_NAME, PROTO_SHORT_NAME, "edp");
+	proto_register_field_array(proto_edp, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
+	expert_edp = expert_register_protocol(proto_edp);
+	expert_register_field_array(expert_edp, ei, array_length(ei));
 }
 
 void
@@ -1502,11 +1491,24 @@ void
 proto_register_extreme_oui(void)
 {
 	static hf_register_info hf[] = {
-	  { &hf_llc_extreme_pid,
-		{ "PID",	"llc.extreme_pid",  FT_UINT16, BASE_HEX,
-		  VALS(extreme_pid_vals), 0x0, NULL, HFILL }
-	  }
+		{ &hf_llc_extreme_pid,
+		  { "PID",	"llc.extreme_pid",  FT_UINT16, BASE_HEX,
+		    VALS(extreme_pid_vals), 0x0, NULL, HFILL }
+		}
 	};
 
 	llc_add_oui(OUI_EXTREME, "llc.extreme_pid", "LLC Extreme OUI PID", hf);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

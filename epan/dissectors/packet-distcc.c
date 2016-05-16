@@ -26,13 +26,9 @@
 #include "config.h"
 
 #include <stdio.h>
-#include <string.h>
-#include <time.h>
-
-#include <glib.h>
 
 #include <epan/packet.h>
-
+#include <epan/expert.h>
 #include <epan/prefs.h>
 
 
@@ -49,6 +45,8 @@ static int hf_distcc_doto_object = -1;
 
 static gint ett_distcc = -1;
 
+static expert_field ei_distcc_short_pdu = EI_INIT;
+
 static dissector_handle_t data_handle;
 
 
@@ -63,8 +61,8 @@ void proto_register_distcc(void);
 extern void proto_reg_handoff_distcc(void);
 
 #define CHECK_PDU_LEN(x) \
-    if(parameter>tvb_length_remaining(tvb, offset) || parameter < 1){\
-        len=tvb_length_remaining(tvb, offset);\
+    if(parameter>tvb_captured_length_remaining(tvb, offset) || parameter < 1){\
+        len=tvb_captured_length_remaining(tvb, offset);\
         col_append_str(pinfo->cinfo, COL_INFO, "[Short" x " PDU]");\
     } \
     tvb_ensure_bytes_exist(tvb, offset, len);
@@ -73,11 +71,11 @@ extern void proto_reg_handoff_distcc(void);
 #define DESEGMENT_TCP(x) \
     if(distcc_desegment && pinfo->can_desegment){\
         /* only attempt reassembly if whe have the full segment */\
-        if(tvb_length_remaining(tvb, offset)==tvb_reported_length_remaining(tvb, offset)){\
-            if(parameter>tvb_length_remaining(tvb, offset)){\
-                proto_tree_add_text(tree, tvb, offset-12, -1, "[Short " x " PDU]");\
+        if(tvb_captured_length_remaining(tvb, offset)==tvb_reported_length_remaining(tvb, offset)){\
+            if(parameter>tvb_captured_length_remaining(tvb, offset)){\
+                proto_tree_add_expert_format(tree, pinfo, &ei_distcc_short_pdu, tvb, offset-12, -1, "[Short " x " PDU]");\
                 pinfo->desegment_offset=offset-12;\
-                pinfo->desegment_len=parameter-tvb_length_remaining(tvb, offset);\
+                pinfo->desegment_len=parameter-tvb_captured_length_remaining(tvb, offset);\
                 return offset+len;\
             }\
         }\
@@ -133,25 +131,23 @@ dissect_distcc_argv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int
     char argv[256];
     int argv_len;
     gint len=parameter;
-
+    proto_item* ti;
 
     CHECK_PDU_LEN("ARGV");
 
     /* see if we need to desegment the PDU */
     DESEGMENT_TCP("ARGV");
 
-
-
     argv_len=len>255?255:len;
     tvb_memcpy(tvb, argv, offset, argv_len);
     argv[argv_len]=0;
 
-    proto_tree_add_item(tree, hf_distcc_argv, tvb, offset, len, ENC_ASCII|ENC_NA);
+    ti = proto_tree_add_item(tree, hf_distcc_argv, tvb, offset, len, ENC_ASCII|ENC_NA);
 
     col_append_fstr(pinfo->cinfo, COL_INFO, "%s ", argv);
 
     if(len!=parameter){
-        proto_tree_add_text(tree, tvb, 0, 0, "[Short ARGV PDU]");
+        expert_add_info_format(pinfo, ti, &ei_distcc_short_pdu, "[Short ARGV PDU]");
     }
     return offset+len;
 }
@@ -162,7 +158,7 @@ dissect_distcc_serr(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int
     char argv[256];
     int argv_len;
     gint len=parameter;
-
+    proto_item* ti;
 
     CHECK_PDU_LEN("SERR");
 
@@ -175,12 +171,12 @@ dissect_distcc_serr(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int
     tvb_memcpy(tvb, argv, offset, argv_len);
     argv[argv_len]=0;
 
-    proto_tree_add_item(tree, hf_distcc_serr, tvb, offset, len, ENC_ASCII|ENC_NA);
+    ti = proto_tree_add_item(tree, hf_distcc_serr, tvb, offset, len, ENC_ASCII|ENC_NA);
 
     col_append_fstr(pinfo->cinfo, COL_INFO, "SERR:%s ", argv);
 
     if(len!=parameter){
-        proto_tree_add_text(tree, tvb, 0, 0, "[Short SERR PDU]");
+        expert_add_info_format(pinfo, ti, &ei_distcc_short_pdu, "[Short SERR PDU]");
     }
     return offset+len;
 }
@@ -191,25 +187,23 @@ dissect_distcc_sout(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int
     char argv[256];
     int argv_len;
     gint len=parameter;
-
+    proto_item* ti;
 
     CHECK_PDU_LEN("SOUT");
 
     /* see if we need to desegment the PDU */
     DESEGMENT_TCP("SOUT");
 
-
-
     argv_len=len>255?255:len;
     tvb_memcpy(tvb, argv, offset, argv_len);
     argv[argv_len]=0;
 
-    proto_tree_add_item(tree, hf_distcc_sout, tvb, offset, len, ENC_ASCII|ENC_NA);
+    ti = proto_tree_add_item(tree, hf_distcc_sout, tvb, offset, len, ENC_ASCII|ENC_NA);
 
     col_append_fstr(pinfo->cinfo, COL_INFO, "SOUT:%s ", argv);
 
     if(len!=parameter){
-        proto_tree_add_text(tree, tvb, 0, 0, "[Short SOUT PDU]");
+        expert_add_info_format(pinfo, ti, &ei_distcc_short_pdu, "[Short SOUT PDU]");
     }
     return offset+len;
 }
@@ -219,7 +213,7 @@ static int
 dissect_distcc_doti(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, gint parameter)
 {
     gint len=parameter;
-
+    proto_item* ti;
 
     CHECK_PDU_LEN("DOTI");
 
@@ -228,9 +222,9 @@ dissect_distcc_doti(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int off
 
     col_append_str(pinfo->cinfo, COL_INFO, "DOTI source ");
 
-    proto_tree_add_item(tree, hf_distcc_doti_source, tvb, offset, len, ENC_ASCII|ENC_NA);
+    ti = proto_tree_add_item(tree, hf_distcc_doti_source, tvb, offset, len, ENC_ASCII|ENC_NA);
     if(len!=parameter){
-        proto_tree_add_text(tree, tvb, 0, 0, "[Short DOTI PDU]");
+        expert_add_info_format(pinfo, ti, &ei_distcc_short_pdu, "[Short DOTI PDU]");
     }
     return offset+len;
 }
@@ -239,6 +233,7 @@ static int
 dissect_distcc_doto(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset, gint parameter)
 {
     gint len=parameter;
+    proto_item* ti;
 
 
     CHECK_PDU_LEN("DOTO");
@@ -248,9 +243,9 @@ dissect_distcc_doto(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int off
 
     col_append_str(pinfo->cinfo, COL_INFO, "DOTO object ");
 
-    proto_tree_add_item(tree, hf_distcc_doto_object, tvb, offset, len, ENC_NA);
+    ti = proto_tree_add_item(tree, hf_distcc_doto_object, tvb, offset, len, ENC_NA);
     if(len!=parameter){
-        proto_tree_add_text(tree, tvb, 0, 0, "[Short DOTO PDU]");
+        expert_add_info_format(pinfo, ti, &ei_distcc_short_pdu, "[Short DOTO PDU]");
     }
     return offset+len;
 }
@@ -359,12 +354,19 @@ proto_register_distcc(void)
         &ett_distcc,
     };
 
-    module_t *distcc_module;
+    static ei_register_info ei[] = {
+        { &ei_distcc_short_pdu, { "distcc.short_pdu", PI_MALFORMED, PI_ERROR, "Short PDU", EXPFILL }},
+    };
 
-    proto_distcc = proto_register_protocol("Distcc Distributed Compiler",
-                       "DISTCC", "distcc");
+    module_t *distcc_module;
+    expert_module_t* expert_distcc;
+
+    proto_distcc = proto_register_protocol("Distcc Distributed Compiler", "DISTCC", "distcc");
+
     proto_register_field_array(proto_distcc, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+    expert_distcc = expert_register_protocol(proto_distcc);
+    expert_register_field_array(expert_distcc, ei, array_length(ei));
 
     distcc_module = prefs_register_protocol(proto_distcc,
         proto_reg_handoff_distcc);
@@ -407,3 +409,16 @@ proto_reg_handoff_distcc(void)
     distcc_tcp_port = glb_distcc_tcp_port;
     dissector_add_uint("tcp.port", distcc_tcp_port, distcc_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

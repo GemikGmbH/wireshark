@@ -31,7 +31,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/asn1.h>
 #include <epan/etypes.h>
@@ -55,6 +54,7 @@ static int hf_goose_reserve1 = -1;
 static int hf_goose_reserve2 = -1;
 
 static expert_field ei_goose_mal_utctime = EI_INIT;
+static expert_field ei_goose_zero_pdu = EI_INIT;
 
 
 /*--- Included file: packet-goose-hf.c ---*/
@@ -483,7 +483,7 @@ dissect_goose_UtcTime(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _
 	nstime_t ts;
 	gchar *	ptime;
 
-	len = tvb_length_remaining(tvb, offset);
+	len = tvb_reported_length_remaining(tvb, offset);
 
 	if(len != 8)
 	{
@@ -502,7 +502,7 @@ dissect_goose_UtcTime(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _
 	ts.secs = seconds;
 	ts.nsecs = nanoseconds;
 
-	ptime = abs_time_to_ep_str(&ts, ABSOLUTE_TIME_UTC, TRUE);
+	ptime = abs_time_to_str(wmem_packet_scope(), &ts, ABSOLUTE_TIME_UTC, TRUE);
 
 	if(hf_index >= 0)
 	{
@@ -746,7 +746,7 @@ dissect_goose(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 			old_offset = offset;
 			offset = dissect_goose_GOOSEpdu(FALSE, tvb, offset, &asn1_ctx , tree, -1);
 			if (offset == old_offset) {
-				proto_tree_add_text(tree, tvb, offset, -1, "Internal error, zero-byte GOOSE PDU");
+				proto_tree_add_expert(tree, pinfo, &ei_goose_zero_pdu, tvb, offset, -1);
 				return;
 			}
 		}
@@ -1046,6 +1046,7 @@ void proto_register_goose(void) {
 
   static ei_register_info ei[] = {
      { &ei_goose_mal_utctime, { "goose.malformed.utctime", PI_MALFORMED, PI_WARN, "BER Error: malformed UTCTime encoding", EXPFILL }},
+    { &ei_goose_zero_pdu, { "goose.zero_pdu", PI_PROTOCOL, PI_ERROR, "Internal error, zero-byte GOOSE PDU", EXPFILL }},
   };
 
   expert_module_t* expert_goose;

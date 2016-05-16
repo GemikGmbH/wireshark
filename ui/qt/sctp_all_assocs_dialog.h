@@ -22,7 +22,7 @@
 #ifndef SCTP_ALL_ASSOCS_DIALOG_H
 #define SCTP_ALL_ASSOCS_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
@@ -48,7 +48,7 @@ public:
     ~SCTPAllAssocsDialog();
 
     void fillTable();
-    sctp_assoc_info_t* getSelectedAssoc() { return selected_assoc; };
+    sctp_assoc_info_t* getSelectedAssoc() { return selected_assoc; }
     sctp_assoc_info_t* findSelectedAssoc();
 
 public slots:
@@ -67,7 +67,7 @@ private:
 
 
 signals:
-    void filterPackets(QString& new_filter, bool force);
+    void filterPackets(QString new_filter, bool force);
 };
 
 #endif // SCTP_ALL_ASSOCS_DIALOG_H

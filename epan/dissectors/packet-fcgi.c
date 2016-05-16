@@ -46,9 +46,11 @@ static int hf_fcgi_begin_request_flags = -1;
 static int hf_fcgi_begin_request_keep_conn = -1;
 static int hf_fcgi_end_request_app_status = -1;
 static int hf_fcgi_end_request_protocol_status = -1;
+static int hf_fcgi_nv_name = -1;
 
 static int ett_fcgi = -1;
 static int ett_fcgi_begin_request = -1;
+static int ett_fcgi_abort_request = -1;
 static int ett_fcgi_end_request = -1;
 static int ett_fcgi_params = -1;
 
@@ -126,16 +128,18 @@ dissect_nv_pairs(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
          offset += 4;
       }
 
-      name = tvb_get_string(wmem_packet_scope(), tvb, offset, namelen);
+      name = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, namelen, ENC_ASCII);
       offset += namelen;
 
       if (valuelen > 0) {
-         value = tvb_get_string(wmem_packet_scope(), tvb, offset, valuelen);
+         value = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, valuelen, ENC_ASCII);
          offset += valuelen;
 
-         proto_tree_add_text(fcgi_tree, tvb, start_offset, offset - start_offset, "%s = %s", name, value);
+         proto_tree_add_string_format(fcgi_tree, hf_fcgi_nv_name, tvb, start_offset, offset - start_offset,
+                            name, "%s = %s", name, value);
       } else {
-         proto_tree_add_text(fcgi_tree, tvb, start_offset, offset - start_offset, "%s", name);
+         proto_tree_add_string_format(fcgi_tree, hf_fcgi_nv_name, tvb, start_offset, offset - start_offset,
+                            name, "%s", name);
       }
    }
 }
@@ -143,11 +147,9 @@ dissect_nv_pairs(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
 static int
 dissect_begin_request(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
 {
-   proto_item *br;
    proto_tree *br_tree;
 
-   br = proto_tree_add_text(fcgi_tree, tvb, offset, len, "Begin Request:");
-   br_tree = proto_item_add_subtree(br, ett_fcgi_begin_request);
+   br_tree = proto_tree_add_subtree(fcgi_tree, tvb, offset, len, ett_fcgi_begin_request, NULL, "Begin Request:");
 
    proto_tree_add_item(br_tree, hf_fcgi_begin_request_role, tvb, offset, 2, ENC_BIG_ENDIAN);
    offset += 2;
@@ -164,7 +166,7 @@ dissect_begin_request(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16
 static void
 dissect_abort_request(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
 {
-   proto_tree_add_text(fcgi_tree, tvb, offset, len, "Abort Request:");
+   proto_tree_add_subtree(fcgi_tree, tvb, offset, len, ett_fcgi_abort_request, NULL, "Abort Request:");
 
    return;
 }
@@ -172,11 +174,9 @@ dissect_abort_request(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16
 static int
 dissect_end_request(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
 {
-   proto_item *er;
    proto_tree *er_tree;
 
-   er = proto_tree_add_text(fcgi_tree, tvb, offset, len, "End Request:");
-   er_tree = proto_item_add_subtree(er, ett_fcgi_end_request);
+   er_tree = proto_tree_add_subtree(fcgi_tree, tvb, offset, len, ett_fcgi_end_request, NULL, "End Request:");
 
    proto_tree_add_item(er_tree, hf_fcgi_end_request_app_status, tvb, offset, 4, ENC_BIG_ENDIAN);
    offset += 4;
@@ -192,11 +192,9 @@ dissect_end_request(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 l
 static void
 dissect_params(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
 {
-   proto_item *p;
    proto_tree *p_tree;
 
-   p = proto_tree_add_text(fcgi_tree, tvb, offset, len, "Params:");
-   p_tree = proto_item_add_subtree(p, ett_fcgi_params);
+   p_tree = proto_tree_add_subtree(fcgi_tree, tvb, offset, len, ett_fcgi_params, NULL, "Params:");
 
    dissect_nv_pairs(tvb, p_tree, offset, len);
 
@@ -206,11 +204,9 @@ dissect_params(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
 static void
 dissect_get_values(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
 {
-   proto_item *gv;
    proto_tree *gv_tree;
 
-   gv = proto_tree_add_text(fcgi_tree, tvb, offset, len, "Get Values:");
-   gv_tree = proto_item_add_subtree(gv, ett_fcgi_params);
+   gv_tree = proto_tree_add_subtree(fcgi_tree, tvb, offset, len, ett_fcgi_params, NULL, "Get Values:");
 
    dissect_nv_pairs(tvb, gv_tree, offset, len);
 
@@ -220,11 +216,9 @@ dissect_get_values(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 le
 static void
 dissect_get_values_result(tvbuff_t *tvb, proto_tree *fcgi_tree, gint offset, guint16 len)
 {
-   proto_item *gvr;
    proto_tree *gvr_tree;
 
-   gvr = proto_tree_add_text(fcgi_tree, tvb, offset, len, "Get Values:");
-   gvr_tree = proto_item_add_subtree(gvr, ett_fcgi_params);
+   gvr_tree = proto_tree_add_subtree(fcgi_tree, tvb, offset, len, ett_fcgi_params, NULL, "Get Values:");
 
    dissect_nv_pairs(tvb, gvr_tree, offset, len);
 
@@ -321,11 +315,11 @@ dissect_fcgi_record(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
       }
    }
 
-   return tvb_length(tvb);
+   return tvb_captured_length(tvb);
 }
 
 static guint
-get_fcgi_record_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_fcgi_record_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
    return 8 + tvb_get_ntohs(tvb, offset + 4) + tvb_get_guint8(tvb, offset + 6);
 }
@@ -334,7 +328,7 @@ static int
 dissect_fcgi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
    tcp_dissect_pdus(tvb, pinfo, tree, TRUE, 8, get_fcgi_record_len, dissect_fcgi_record, data);
-   return tvb_length(tvb);
+   return tvb_captured_length(tvb);
 }
 
 void
@@ -376,11 +370,15 @@ proto_register_fcgi(void)
           FT_UINT32, BASE_DEC, NULL, 0x0, NULL, HFILL } },
       { &hf_fcgi_end_request_protocol_status,
         { "Protocol Status", "fcgi.end_request.protocol_status",
-          FT_UINT32, BASE_DEC, VALS(protocol_statuses), 0x0, NULL, HFILL } }
+          FT_UINT32, BASE_DEC, VALS(protocol_statuses), 0x0, NULL, HFILL } },
+      { &hf_fcgi_nv_name,
+        { "NV Pair name", "fcgi.nv_name",
+          FT_STRING, BASE_NONE, NULL, 0x0, NULL, HFILL } },
    };
    static gint *ett[] = {
       &ett_fcgi,
       &ett_fcgi_begin_request,
+      &ett_fcgi_abort_request,
       &ett_fcgi_end_request,
       &ett_fcgi_params
    };
@@ -410,7 +408,7 @@ proto_reg_handoff_fcgi(void)
    static guint saved_tcp_port;
 
    if (!initialized) {
-      dissector_add_handle("tcp.port", fcgi_handle);  /* for "decode as" */
+      dissector_add_for_decode_as("tcp.port", fcgi_handle);
       initialized = TRUE;
    } else if (saved_tcp_port != 0) {
       dissector_delete_uint("tcp.port", saved_tcp_port, fcgi_handle);
@@ -422,3 +420,16 @@ proto_reg_handoff_fcgi(void)
 
    saved_tcp_port = tcp_port;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 3
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=3 tabstop=8 expandtab:
+ * :indentSize=3:tabSize=8:noTabs=true:
+ */

@@ -23,15 +23,12 @@
  */
 
 #include "config.h"
-#include <glib.h>
+
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include <epan/dissectors/packet-tcp.h>
 #include <epan/uat.h>
-#include <epan/wmem/wmem.h>
-#include <epan/address.h>
 #include <epan/to_str.h>
-#include <epan/conversation.h>
+#include "packet-tcp.h"
 #include "packet-lbm.h"
 #include "packet-lbttcp.h"
 
@@ -54,7 +51,7 @@ typedef struct
     wmem_tree_t * session_tree;
 } lbttcp_transport_conv_data_t;
 
-static const address lbttcp_null_address = { AT_NONE, -1, 0, NULL };
+static const address lbttcp_null_address = { AT_NONE, 0, NULL };
 
 lbttcp_transport_t * lbttcp_transport_find(const address * source_address, guint16 source_port, guint32 session_id, guint32 frame)
 {
@@ -79,7 +76,7 @@ static lbttcp_transport_t * lbttcp_transport_create(const address * source_addre
     lbttcp_transport_t * transport = NULL;
 
     transport = wmem_new(wmem_file_scope(), lbttcp_transport_t);
-    SE_COPY_ADDRESS(&(transport->source_address), source_address);
+    WMEM_COPY_ADDRESS(wmem_file_scope(), &(transport->source_address), source_address);
     transport->source_port = source_port;
     transport->session_id = session_id;
     transport->channel = lbm_channel_assign(LBM_CHANNEL_TRANSPORT_LBTTCP);
@@ -157,7 +154,7 @@ static lbttcp_client_transport_t * lbttcp_client_transport_add(lbttcp_transport_
         return (entry);
     }
     entry = wmem_new(wmem_file_scope(), lbttcp_client_transport_t);
-    SE_COPY_ADDRESS(&(entry->receiver_address), receiver_address);
+    WMEM_COPY_ADDRESS(wmem_file_scope(), &(entry->receiver_address), receiver_address);
     entry->receiver_port = receiver_port;
     entry->id = transport->next_client_id++;
 
@@ -329,13 +326,14 @@ static uat_field_t lbttcp_tag_array[] =
 /*----------------------------------------------------------------------------*/
 /* UAT callback functions.                                                    */
 /*----------------------------------------------------------------------------*/
-static void lbttcp_tag_update_cb(void * record, const char * * error_string)
+static gboolean lbttcp_tag_update_cb(void * record, char * * error_string)
 {
     lbttcp_tag_entry_t * tag = (lbttcp_tag_entry_t *)record;
 
     if (tag->name == NULL)
     {
         *error_string = g_strdup_printf("Tag name can't be empty");
+        return FALSE;
     }
     else
     {
@@ -343,8 +341,10 @@ static void lbttcp_tag_update_cb(void * record, const char * * error_string)
         if (tag->name[0] == 0)
         {
             *error_string = g_strdup_printf("Tag name can't be empty");
+            return FALSE;
         }
     }
+    return TRUE;
 }
 
 static void * lbttcp_tag_copy_cb(void * destination, const void * source, size_t length _U_)
@@ -472,7 +472,8 @@ static gboolean lbttcp_packet_is_transport_client(packet_info * pinfo, const lbt
     return (is_transport_client_packet);
 }
 
-static guint get_lbttcp_pdu_length(packet_info * pinfo _U_, tvbuff_t * tvb, int offset)
+static guint get_lbttcp_pdu_length(packet_info * pinfo _U_, tvbuff_t * tvb,
+                                   int offset, void *data _U_)
 {
     return lbmc_get_message_length(tvb, offset);
 }
@@ -801,8 +802,8 @@ void proto_reg_handoff_lbttcp(void)
     if (!already_registered)
     {
         lbttcp_dissector_handle = new_create_dissector_handle(dissect_lbttcp, proto_lbttcp);
-        dissector_add_handle("tcp.port", lbttcp_dissector_handle); /* for decode as */
-        heur_dissector_add("tcp", test_lbttcp_packet, proto_lbttcp);
+        dissector_add_for_decode_as("tcp.port", lbttcp_dissector_handle);
+        heur_dissector_add("tcp", test_lbttcp_packet, "LBT over TCP", "lbttcp_tcp", proto_lbttcp, HEURISTIC_ENABLE);
     }
 
     /* Make sure the source port low is <= the source port high. If not, don't change them. */
@@ -836,10 +837,10 @@ void proto_reg_handoff_lbttcp(void)
  *
  * Local variables:
  * c-basic-offset: 4
- * tab-width: 4
+ * tab-width: 8
  * indent-tabs-mode: nil
  * End:
  *
- * vi: set shiftwidth=4 tabstop=4 expandtab:
- * :indentSize=4:tabSize=4:noTabs=true:
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
  */

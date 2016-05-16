@@ -24,7 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/conversation.h>
@@ -62,8 +61,6 @@ static int hf_t124_DomainMCSPDU_PDU = -1;
 
 static guint32 channelId = -1;
 
-static const char *t124Identifier = NULL; /* extensions identifier */
-static tvbuff_t *t124NSIdentifier = NULL; /* extensions non-standard identifier */
 static dissector_table_t t124_ns_dissector_table=NULL;
 static dissector_table_t t124_sd_dissector_table=NULL;
 
@@ -131,13 +128,13 @@ dissect_t124_new(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, voi
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "T.124");
   col_clear(pinfo->cinfo, COL_INFO);
 
-  item = proto_tree_add_item(parent_tree, proto_t124, tvb, 0, tvb_length(tvb), ENC_NA);
+  item = proto_tree_add_item(parent_tree, proto_t124, tvb, 0, tvb_captured_length(tvb), ENC_NA);
   tree = proto_item_add_subtree(item, ett_t124);
 
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_PER, TRUE, pinfo);
   dissect_t124_ConnectData(tvb, 0, &asn1_ctx, tree, hf_t124_ConnectData);
 
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 static void
@@ -154,8 +151,6 @@ dissect_t124_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, vo
 
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_PER, TRUE, pinfo);
 
-  t124Identifier = NULL;
-
   /*
    * We must catch all the "ran past the end of the packet" exceptions
    * here and, if we catch one, just return FALSE.  It's too painful
@@ -171,8 +166,8 @@ dissect_t124_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, vo
     failed = TRUE;
   } ENDTRY;
 
-  if (!failed && ((t124Identifier != NULL) &&
-                  (strcmp(t124Identifier, "0.0.20.124.0.1") == 0))) {
+  if (!failed && ((asn1_ctx.external.direct_reference != NULL) &&
+                  (strcmp(asn1_ctx.external.direct_reference, "0.0.20.124.0.1") == 0))) {
     dissect_t124(tvb, pinfo, parent_tree);
 
     return TRUE;
@@ -226,6 +221,6 @@ proto_reg_handoff_t124(void) {
 
   register_ber_oid_dissector("0.0.20.124.0.1", dissect_t124, proto_t124, "Generic Conference Control");
 
-  heur_dissector_add("t125", dissect_t124_heur, proto_t124);
+  heur_dissector_add("t125", dissect_t124_heur, "T.124 over T.125", "t124_t125", proto_t124, HEURISTIC_ENABLE);
 
 }

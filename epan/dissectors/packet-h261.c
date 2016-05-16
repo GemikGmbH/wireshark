@@ -32,7 +32,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 
 #include <epan/rtp_pt.h>
@@ -63,6 +62,17 @@ dissect_h261( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree )
 	proto_item *ti            = NULL;
 	proto_tree *h261_tree     = NULL;
 	unsigned int offset       = 0;
+	static const int * bits[] = {
+		/* SBIT 1st octet, 3 bits */
+		&hf_h261_sbit,
+		/* EBIT 1st octet, 3 bits */
+		&hf_h261_ebit,
+		/* I flag, 1 bit */
+		&hf_h261_ibit,
+		/* V flag, 1 bit */
+		&hf_h261_vbit,
+		NULL
+	};
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "H.261");
 
@@ -71,14 +81,8 @@ dissect_h261( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree )
 	if ( tree ) {
 		ti = proto_tree_add_item( tree, proto_h261, tvb, offset, -1, ENC_NA );
 		h261_tree = proto_item_add_subtree( ti, ett_h261 );
-		/* SBIT 1st octet, 3 bits */
-		proto_tree_add_uint( h261_tree, hf_h261_sbit, tvb, offset, 1, tvb_get_guint8( tvb, offset ) >> 5 );
-		/* EBIT 1st octet, 3 bits */
-		proto_tree_add_uint( h261_tree, hf_h261_ebit, tvb, offset, 1, ( tvb_get_guint8( tvb, offset )  >> 2 ) & 7 );
-		/* I flag, 1 bit */
-		proto_tree_add_boolean( h261_tree, hf_h261_ibit, tvb, offset, 1, tvb_get_guint8( tvb, offset ) & 2 );
-		/* V flag, 1 bit */
-		proto_tree_add_boolean( h261_tree, hf_h261_vbit, tvb, offset, 1, tvb_get_guint8( tvb, offset ) & 1 );
+
+		proto_tree_add_bitmask_list(h261_tree, tvb, offset, 1, bits, ENC_NA);
 		offset++;
 
 		/* GOBN 2nd octet, 4 bits */
@@ -120,7 +124,7 @@ proto_register_h261(void)
 				FT_UINT8,
 				BASE_DEC,
 				NULL,
-				0x0,
+				0xe0,
 				NULL, HFILL
 			}
 		},
@@ -132,7 +136,7 @@ proto_register_h261(void)
 				FT_UINT8,
 				BASE_DEC,
 				NULL,
-				0x0,
+				0x1c,
 				NULL, HFILL
 			}
 		},
@@ -142,9 +146,9 @@ proto_register_h261(void)
 				"Intra frame encoded data flag",
 				"h261.i",
 				FT_BOOLEAN,
-				BASE_NONE,
+				8,
 				NULL,
-				0x0,
+				0x02,
 				NULL, HFILL
 			}
 		},
@@ -154,9 +158,9 @@ proto_register_h261(void)
 				"Motion vector flag",
 				"h261.v",
 				FT_BOOLEAN,
-				BASE_NONE,
+				8,
 				NULL,
-				0x0,
+				0x01,
 				NULL, HFILL
 			}
 		},
@@ -255,3 +259,16 @@ proto_reg_handoff_h261(void)
 	dissector_add_uint("rtp.pt", PT_H261, h261_handle);
 	dissector_add_uint("iax2.codec", AST_FORMAT_H261, h261_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -28,11 +28,10 @@
 #include "config.h"
 
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
-#include <epan/conversation.h>
-#include <epan/dissectors/packet-tcp.h>
 #include <epan/expert.h>
+#include <epan/crc32-tvb.h>
 #include <wsutil/crc32.h>
+#include "packet-tcp.h"
 
 void proto_register_mpa(void);
 void proto_reg_handoff_mpa(void);
@@ -308,7 +307,7 @@ remove_markers(tvbuff_t *tvb, packet_info *pinfo, guint32 marker_offset,
 
 	DISSECTOR_ASSERT(num_markers > 0);
 	DISSECTOR_ASSERT(orig_length > MPA_MARKER_LEN * num_markers);
-	DISSECTOR_ASSERT(tvb_length(tvb) == orig_length);
+	DISSECTOR_ASSERT(tvb_captured_length(tvb) == orig_length);
 
 	/* allocate memory for the marker-free buffer */
 	mfree_buff_length = orig_length - (MPA_MARKER_LEN * num_markers);
@@ -581,8 +580,7 @@ dissect_fpdu_crc(tvbuff_t *tvb, proto_tree *tree, mpa_state_t *state,
 
 	if (state->crc) {
 
-		crc = ~crc32c_calculate(tvb_get_ptr(tvb, 0, length), length,
-				CRC32C_PRELOAD);
+		crc = ~crc32c_tvb_offset_calculate(tvb, 0, length, CRC32C_PRELOAD);
 
 		sent_crc = tvb_get_ntohl(tvb, offset); /* crc start offset */
 
@@ -716,12 +714,13 @@ dissect_mpa_fpdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 		 * that	exactly one MPA FPDU is contained in one TCP segement and starts
 		 * always either with a Marker or the ULPDU_LENGTH header field.
 		 */
+		pad_length = fpdu_pad_length(ulpdu_length);
 		exp_ulpdu_length = expected_ulpdu_length(state, tcpinfo, endpoint);
-		if (!exp_ulpdu_length || exp_ulpdu_length != ulpdu_length) {
+		if (!exp_ulpdu_length || exp_ulpdu_length != (ulpdu_length + pad_length)) {
 			proto_tree_add_expert_format(tree, pinfo, &ei_mpa_bad_length, tvb, offset,
 				MPA_ULPDU_LENGTH_LEN,
 				"[ULPDU length [%u] field does not contain the expected length[%u]]",
-				exp_ulpdu_length, ulpdu_length);
+				exp_ulpdu_length, ulpdu_length + pad_length);
 		}
 
 		mpa_item = proto_tree_add_item(tree, proto_iwarp_mpa, tvb, 0,
@@ -738,8 +737,6 @@ dissect_mpa_fpdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 				hf_mpa_ulpdu_length, tvb, offset,
 				MPA_ULPDU_LENGTH_LEN, ulpdu_length, "%u bytes",
 				ulpdu_length);
-
-		pad_length = fpdu_pad_length(ulpdu_length);
 
 		/* Markers are present in this FPDU */
 		if (state->minfo[endpoint].valid && num_of_m > 0) {
@@ -795,7 +792,7 @@ dissect_iwarp_mpa(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 	tcpinfo = (struct tcpinfo *)data;
 
 	/* FPDU */
-	if (tvb_length(tvb) >= MPA_SMALLEST_FPDU_LEN && is_mpa_fpdu(pinfo)) {
+	if (tvb_captured_length(tvb) >= MPA_SMALLEST_FPDU_LEN && is_mpa_fpdu(pinfo)) {
 
 		conversation = find_conversation(pinfo->fd->num, &pinfo->src,
 				&pinfo->dst, pinfo->ptype, pinfo->srcport, pinfo->destport, 0);
@@ -831,14 +828,13 @@ dissect_iwarp_mpa(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 		/* removes Markers if any and prepares new tvbuff for next dissector */
 		if (endpoint <= MPA_RESPONDER && state->minfo[endpoint].valid
 				&& number_of_markers(state, tcpinfo, endpoint) > 0) {
-			next_tvb = tvb_new_subset(remove_markers(tvb, pinfo,
+			next_tvb = tvb_new_subset_length(remove_markers(tvb, pinfo,
 					get_first_marker_offset(state, tcpinfo, endpoint),
 					number_of_markers(state, tcpinfo, endpoint),
 					fpdu_total_length(tcpinfo)), MPA_ULPDU_LENGTH_LEN,
-					ulpdu_length, ulpdu_length);
-		} else {
-			next_tvb = tvb_new_subset(tvb, MPA_ULPDU_LENGTH_LEN, ulpdu_length,
 					ulpdu_length);
+		} else {
+			next_tvb = tvb_new_subset_length(tvb, MPA_ULPDU_LENGTH_LEN, ulpdu_length);
 		}
 
 
@@ -853,7 +849,7 @@ dissect_iwarp_mpa(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 	}
 
 	/* MPA REQUEST or MPA REPLY */
-	if (tvb_length(tvb) >= MPA_REQ_REP_FRAME_HEADER_LEN) {
+	if (tvb_captured_length(tvb) >= MPA_REQ_REP_FRAME_HEADER_LEN) {
 		if (is_mpa_req(tvb, pinfo))
 			return dissect_mpa_req_rep(tvb, pinfo, tree, MPA_REQUEST_FRAME);
 		else if (is_mpa_rep(tvb, pinfo))
@@ -982,6 +978,19 @@ proto_reg_handoff_mpa(void)
 	 * MPA does not use any specific TCP port so, when not on a specific
 	 * port, try this dissector whenever there is TCP traffic.
 	 */
-	heur_dissector_add("tcp", dissect_iwarp_mpa, proto_iwarp_mpa);
+	heur_dissector_add("tcp", dissect_iwarp_mpa, "IWARP_MPA over TCP", "iwarp_mpa_tcp", proto_iwarp_mpa, HEURISTIC_ENABLE);
 	ddp_rdmap_handle = find_dissector("iwarp_ddp_rdmap");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

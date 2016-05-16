@@ -26,14 +26,18 @@
 
 #include "ws_symbol_export.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 /** @file
  * true_false strings
  */
 
 /** Struct for boolean enumerations */
 typedef struct true_false_string {
-        const char      *true_string;	/**< The string presented when true  */
-        const char      *false_string;	/**< The string presented when false */
+        const char      *true_string;   /**< The string presented when true  */
+        const char      *false_string;  /**< The string presented when false */
 } true_false_string;
 
 /*
@@ -86,4 +90,22 @@ WS_DLL_PUBLIC const true_false_string tfs_valid_not_valid;
 WS_DLL_PUBLIC const true_false_string tfs_do_not_clear_clear;
 WS_DLL_PUBLIC const true_false_string tfs_confirmed_unconfirmed;
 WS_DLL_PUBLIC const true_false_string tfs_enforced_not_enforced;
-#endif
+WS_DLL_PUBLIC const true_false_string tfs_possible_not_possible;
+WS_DLL_PUBLIC const true_false_string tfs_required_not_required;
+WS_DLL_PUBLIC const true_false_string tfs_registered_not_registered;
+WS_DLL_PUBLIC const true_false_string tfs_provisioned_not_provisioned;
+WS_DLL_PUBLIC const true_false_string tfs_included_not_included;
+WS_DLL_PUBLIC const true_false_string tfs_allocated_by_receiver_sender;
+WS_DLL_PUBLIC const true_false_string tfs_asynchronous_synchronous;
+WS_DLL_PUBLIC const true_false_string tfs_protocol_sensative_bit_transparent;
+WS_DLL_PUBLIC const true_false_string tfs_full_half;
+WS_DLL_PUBLIC const true_false_string tfs_acknowledged_not_acknowledged;
+WS_DLL_PUBLIC const true_false_string tfs_response_request;
+WS_DLL_PUBLIC const true_false_string tfs_defined_not_defined;
+WS_DLL_PUBLIC const true_false_string tfs_constructed_primitive;
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
+
+#endif /* __TFS_H__ */

@@ -23,7 +23,6 @@
 
 #include <stdlib.h>
 
-#include <stdio.h>
 #include <errno.h>
 
 #include "epan/decode_as.h"
@@ -38,8 +37,9 @@
 
 #include "wsutil/file_util.h"
 #include "wsutil/filesystem.h"
+#include "wsutil/ws_version_info.h"
 
-#include "version_info.h"
+/* XXX - We might want to switch this to a UAT */
 
 /*
  * A list of dissectors that need to be reset.
@@ -90,8 +90,8 @@ change_dissector_if_matched(gpointer item, gpointer user_data)
  */
 static prefs_set_pref_e
 read_set_decode_as_entries(gchar *key, const gchar *value,
-			   void *user_data _U_,
-			   gboolean return_range_errors _U_)
+                           void *user_data _U_,
+                           gboolean return_range_errors _U_)
 {
     gchar *values[4] = {NULL, NULL, NULL, NULL};
     gchar delimiter[4] = {',', ',', ',','\0'};
@@ -146,8 +146,7 @@ read_set_decode_as_entries(gchar *key, const gchar *value,
                 }
             }
             if (is_valid) {
-                decode_build_reset_list(g_strdup(values[0]), selector_type,
-                        g_strdup(values[1]), NULL, NULL);
+                decode_build_reset_list(values[0], selector_type, values[1], NULL, NULL);
             }
         } else {
             retval = PREFS_SET_SYNTAX_ERR;
@@ -183,13 +182,13 @@ load_decode_as_entries(void)
 
 void
 decode_build_reset_list (const gchar *table_name, ftenum_t selector_type,
-                         gpointer key, gpointer value _U_,
+                         const gpointer key, gpointer value _U_,
                          gpointer user_data _U_)
 {
     dissector_delete_item_t *item;
 
     item = g_new(dissector_delete_item_t,1);
-    item->ddi_table_name = table_name;
+    item->ddi_table_name = g_strdup(table_name);
     item->ddi_selector_type = selector_type;
     switch (selector_type) {
 
@@ -204,7 +203,7 @@ decode_build_reset_list (const gchar *table_name, ftenum_t selector_type,
     case FT_STRINGZ:
     case FT_UINT_STRING:
     case FT_STRINGZPAD:
-        item->ddi_selector.sel_string = (char *)key;
+        item->ddi_selector.sel_string = g_strdup((char *)key);
         break;
 
     default:
@@ -240,11 +239,13 @@ decode_clear_all(void)
         case FT_STRINGZPAD:
             dissector_reset_string(item->ddi_table_name,
                                    item->ddi_selector.sel_string);
+            g_free(item->ddi_selector.sel_string);
             break;
 
         default:
             g_assert_not_reached();
         }
+        g_free((gchar *)item->ddi_table_name);
         g_free(item);
     }
     g_slist_free(dissector_reset_list);
@@ -253,47 +254,95 @@ decode_clear_all(void)
     decode_dcerpc_reset_all();
 }
 
-/* XXX - We might want to switch this to a UAT */
-FILE *
-decode_as_open(void) {
+static void
+decode_as_write_entry (const gchar *table_name, ftenum_t selector_type,
+                       gpointer key, gpointer value, gpointer user_data)
+{
+    FILE *da_file = (FILE *)user_data;
+    dissector_handle_t current, initial;
+    const gchar *current_proto_name, *initial_proto_name;
+
+    current = dtbl_entry_get_handle((dtbl_entry_t *)value);
+    if (current == NULL)
+        current_proto_name = DECODE_AS_NONE;
+    else
+        current_proto_name = dissector_handle_get_short_name(current);
+    initial = dtbl_entry_get_initial_handle((dtbl_entry_t *)value);
+    if (initial == NULL)
+        initial_proto_name = DECODE_AS_NONE;
+    else
+        initial_proto_name = dissector_handle_get_short_name(initial);
+
+    switch (selector_type) {
+
+    case FT_UINT8:
+    case FT_UINT16:
+    case FT_UINT24:
+    case FT_UINT32:
+        /*
+         * XXX - write these in decimal, regardless of the base of
+         * the dissector table's selector, as older versions of
+         * Wireshark used atoi() when reading this file, and
+         * failed to handle hex or octal numbers.
+         *
+         * That will be fixed in future 1.10 and 1.12 releases,
+         * but pre-1.10 releases are at end-of-life and won't
+         * be fixed.
+         */
+        fprintf (da_file,
+                 DECODE_AS_ENTRY ": %s,%u,%s,%s\n",
+                 table_name, GPOINTER_TO_UINT(key), initial_proto_name,
+                 current_proto_name);
+        break;
+
+    case FT_STRING:
+    case FT_STRINGZ:
+    case FT_UINT_STRING:
+    case FT_STRINGZPAD:
+        fprintf (da_file,
+                 DECODE_AS_ENTRY ": %s,%s,%s,%s\n",
+                 table_name, (gchar *)key, initial_proto_name,
+                 current_proto_name);
+        break;
+
+    default:
+        g_assert_not_reached();
+        break;
+    }
+}
+
+int
+save_decode_as_entries(gchar** err)
+{
     char *pf_dir_path;
     char *daf_path;
     FILE *da_file;
 
     if (create_persconffile_dir(&pf_dir_path) == -1) {
-        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-                "Can't create directory\n\"%s\"\nfor recent file: %s.", pf_dir_path,
-                g_strerror(errno));
+        *err = g_strdup_printf("Can't create directory\n\"%s\"\nfor recent file: %s.",
+                                pf_dir_path, g_strerror(errno));
         g_free(pf_dir_path);
-        return NULL;
+        return -1;
     }
 
     daf_path = get_persconffile_path(DECODE_AS_ENTRIES_FILE_NAME, TRUE);
     if ((da_file = ws_fopen(daf_path, "w")) == NULL) {
-        simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-            "Can't open decode_as_entries file\n\"%s\": %s.", daf_path,
-            g_strerror(errno));
+        *err = g_strdup_printf("Can't open decode_as_entries file\n\"%s\": %s.",
+                                daf_path, g_strerror(errno));
         g_free(daf_path);
-        return NULL;
+        return -1;
     }
 
     fputs("# \"Decode As\" entries file for Wireshark " VERSION ".\n"
         "#\n"
         "# This file is regenerated each time \"Decode As\" preferences\n"
-        "# are saved within Wireshark. Making manual changes should be safe,"
+        "# are saved within Wireshark. Making manual changes should be safe,\n"
         "# however.\n", da_file);
 
-    return da_file;
+    dissector_all_tables_foreach_changed(decode_as_write_entry, da_file);
+    fclose(da_file);
+    return 0;
 }
-
-/* XXX We might want to have separate int and string routines. */
-void
-decode_as_write_entry(FILE *da_file, const char *table_name, const char *selector, const char *default_proto, const char *current_proto) {
-    fprintf (da_file,
-             DECODE_AS_ENTRY ": %s,%s,%s,%s\n",
-             table_name, selector, default_proto, current_proto);
-}
-
 
 /*
  * Editor modelines
@@ -307,4 +356,3 @@ decode_as_write_entry(FILE *da_file, const char *table_name, const char *selecto
  * ex: set shiftwidth=4 tabstop=8 expandtab:
  * :indentSize=4:tabSize=8:noTabs=true:
  */
-

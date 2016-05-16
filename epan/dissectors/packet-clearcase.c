@@ -24,7 +24,7 @@
 
 #include "config.h"
 
-
+#include <epan/packet.h>
 
 #include "packet-rpc.h"
 #include "packet-clearcase.h"
@@ -38,16 +38,19 @@ static int hf_clearcase_procedure_v3 = -1;
 static gint ett_clearcase = -1;
 
 /* proc number, "proc name", dissect_request, dissect_reply */
-/* NULL as function pointer means: type of arguments is "void". */
 static const vsff clearcase3_proc[] = {
-	{ CLEARCASEPROC_NULL,	"NULL",		NULL,		NULL },
-	{ 0,			NULL,		NULL,		NULL }
+	{ CLEARCASEPROC_NULL,	"NULL",	dissect_rpc_void,	dissect_rpc_void },
+	{ 0,			NULL,	NULL,			NULL }
 };
 static const value_string clearcase3_proc_vals[] = {
 	{ CLEARCASEPROC_NULL,	"NULL" },
 	{ 0,			NULL }
 };
 /* end of Clearcase version 3 */
+
+static const rpc_prog_vers_info clearcase_vers_info[] = {
+	{ 3, clearcase3_proc, &hf_clearcase_procedure_v3 }
+};
 
 void
 proto_register_clearcase(void)
@@ -72,7 +75,19 @@ void
 proto_reg_handoff_clearcase(void)
 {
 	/* Register the protocol as RPC */
-	rpc_init_prog(proto_clearcase, CLEARCASE_PROGRAM, ett_clearcase);
-	/* Register the procedure tables */
-	rpc_init_proc_table(CLEARCASE_PROGRAM, 3, clearcase3_proc, hf_clearcase_procedure_v3);
+	rpc_init_prog(proto_clearcase, CLEARCASE_PROGRAM, ett_clearcase,
+	    G_N_ELEMENTS(clearcase_vers_info), clearcase_vers_info);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

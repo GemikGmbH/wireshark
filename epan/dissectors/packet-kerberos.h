@@ -34,6 +34,10 @@
 
 #include "ws_symbol_export.h"
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 /* This is a list of callback functions a caller can use to specify that
    octet strings in kerberos to be passed back to application specific
    dissectors, outside of kerberos.
@@ -64,7 +68,7 @@ int dissect_krb5_cname(proto_tree *tree, tvbuff_t *tvb, int offset, asn1_ctx_t *
 int dissect_krb5_realm(proto_tree *tree, tvbuff_t *tvb, int offset, asn1_ctx_t *actx _U_);
 guint32 kerberos_output_keytype(void);
 
-guint get_krb_pdu_len(packet_info *, tvbuff_t *tvb, int offset);
+guint get_krb_pdu_len(packet_info *, tvbuff_t *tvb, int offset, void *data _U_);
 
 gint kerberos_rm_to_reclen(guint krb_rm);
 
@@ -97,6 +101,9 @@ decrypt_krb5_data(proto_tree *tree, packet_info *pinfo,
 extern gboolean krb_decrypt;
 
 WS_DLL_PUBLIC
+void read_keytab_file(const char *);
+
+WS_DLL_PUBLIC
 void read_keytab_file_from_preferences(void);
 
 #endif /* HAVE_KERBEROS */
@@ -105,11 +112,33 @@ void read_keytab_file_from_preferences(void);
 
 /*--- Included file: packet-kerberos-exp.h ---*/
 #line 1 "../../asn1/kerberos/packet-kerberos-exp.h"
+
+/* enumerated values for Applications */
+#define KERBEROS_APPLICATIONS_TICKET   1
+#define KERBEROS_APPLICATIONS_AUTHENTICATOR   2
+#define KERBEROS_APPLICATIONS_ENCTICKETPART   3
+#define KERBEROS_APPLICATIONS_AS_REQ  10
+#define KERBEROS_APPLICATIONS_AS_REP  11
+#define KERBEROS_APPLICATIONS_TGS_REQ  12
+#define KERBEROS_APPLICATIONS_TGS_REP  13
+#define KERBEROS_APPLICATIONS_AP_REQ  14
+#define KERBEROS_APPLICATIONS_AP_REP  15
+#define KERBEROS_APPLICATIONS_KRB_SAFE  20
+#define KERBEROS_APPLICATIONS_KRB_PRIV  21
+#define KERBEROS_APPLICATIONS_KRB_CRED  22
+#define KERBEROS_APPLICATIONS_ENCASREPPART  25
+#define KERBEROS_APPLICATIONS_ENCTGSREPPART  26
+#define KERBEROS_APPLICATIONS_ENCAPREPPART  27
+#define KERBEROS_APPLICATIONS_ENCKRBPRIVPART  28
+#define KERBEROS_APPLICATIONS_ENCKRBCREDPART  29
+#define KERBEROS_APPLICATIONS_KRB_ERROR  30
 int dissect_kerberos_ChangePasswdData(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_);
 
 /*--- End of included file: packet-kerberos-exp.h ---*/
-#line 98 "../../asn1/kerberos/packet-kerberos-template.h"
+#line 105 "../../asn1/kerberos/packet-kerberos-template.h"
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
 #endif  /* __PACKET_KERBEROS_H */
-
-

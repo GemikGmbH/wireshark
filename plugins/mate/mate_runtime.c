@@ -131,7 +131,7 @@ static void destroy_gogs_in_cfg(gpointer k _U_, gpointer v, gpointer p _U_) {
 	c->last_id = 0;
 }
 
-extern void initialize_mate_runtime(void) {
+void initialize_mate_runtime(void) {
 
 	dbg_print (dbg,5,dbg_facility,"initialize_mate: entering");
 
@@ -826,6 +826,7 @@ static mate_pdu* new_pdu(mate_cfg_pdu* cfg, guint32 framenum, field_info* proto,
 
 	apply_transforms(pdu->cfg->transforms,pdu->avpl);
 
+	g_ptr_array_foreach(data.ranges, (GFunc)g_free, NULL);
 	g_ptr_array_free(data.ranges,TRUE);
 
 	return pdu;
@@ -922,5 +923,15 @@ extern mate_pdu* mate_get_pdus(guint32 framenum) {
 	}
 }
 
-
-
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

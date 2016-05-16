@@ -1,4 +1,4 @@
-/* packet-dcerpc-sysact.c
+/* packet-dcom-sysact.c
  * Routines for the ISystemActivator interface
  * Copyright 2004, Jelmer Vernooij <jelmer@samba.org>
  * Copyright 2012, Litao Gao <ltgao@juniper.net>
@@ -24,9 +24,7 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include "packet-dcerpc.h"
 #include "packet-dcom.h"
 
@@ -127,6 +125,7 @@ static int hf_sysact_scmri_rmtunknid = -1;
 static int hf_sysact_scmri_authhint = -1;
 static int hf_sysact_scmri_binding = -1;
 static int hf_sysact_scmri_oxid = -1;
+static int hf_sysact_unused_buffer = -1;
 
 static gint ett_typeszcommhdr = -1;
 static gint ett_typeszprivhdr = -1;
@@ -138,24 +137,24 @@ static int hf_typesz_commhdrlen = -1;
 static int hf_typesz_filler = -1;
 static int hf_typesz_buflen = -1;
 
-static e_uuid_t uuid_ISystemActivator = { 0x000001a0, 0x0000, 0x0000, { 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 } };
+static e_guid_t uuid_ISystemActivator = { 0x000001a0, 0x0000, 0x0000, { 0xc0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46 } };
 static guint16  ver_ISystemActivator = 0;
 
-/*static e_uuid_t clsid_ActivationPropertiesIn = { 0x00000338, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };*/
-/*static e_uuid_t clsid_ActivationPropertiesOut = { 0x00000339, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };*/
-static e_uuid_t iid_ActivationPropertiesIn = { 0x000001a2, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t iid_ActivationPropertiesOut = { 0x000001a3, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+/*static e_guid_t clsid_ActivationPropertiesIn = { 0x00000338, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };*/
+/*static e_guid_t clsid_ActivationPropertiesOut = { 0x00000339, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };*/
+static e_guid_t iid_ActivationPropertiesIn = { 0x000001a2, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t iid_ActivationPropertiesOut = { 0x000001a3, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
 
-static e_uuid_t clsid_SpecialSystemProperties = { 0x000001b9, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t clsid_InstantiationInfo = { 0x000001ab, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t clsid_ActivationContextInfo = { 0x000001a5, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t clsid_ContextMarshaler = { 0x0000033b, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t clsid_SecurityInfo = { 0x000001a6, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t clsid_ServerLocationInfo = { 0x000001a4, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t clsid_ScmRequestInfo = { 0x000001aa, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t clsid_PropsOutInfo = { 0x00000339, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-static e_uuid_t clsid_ScmReplyInfo = { 0x000001b6, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
-/*static e_uuid_t clsid_InstanceInfo = { 0x000001ad, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };*/
+static e_guid_t clsid_SpecialSystemProperties = { 0x000001b9, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t clsid_InstantiationInfo = { 0x000001ab, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t clsid_ActivationContextInfo = { 0x000001a5, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t clsid_ContextMarshaler = { 0x0000033b, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t clsid_SecurityInfo = { 0x000001a6, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t clsid_ServerLocationInfo = { 0x000001a4, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t clsid_ScmRequestInfo = { 0x000001aa, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t clsid_PropsOutInfo = { 0x00000339, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+static e_guid_t clsid_ScmReplyInfo = { 0x000001b6, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };
+/*static e_guid_t clsid_InstanceInfo = { 0x000001ad, 0x0000, 0x0000, { 0xC0, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x46} };*/
 
 
 static const value_string instninfo_actflags[] = {
@@ -188,7 +187,7 @@ static const value_string ts_endian_vals[] = {
 #define MAX_ACTPROP_LIMIT 10
 
 typedef struct property_guids {
-    e_uuid_t guid[MAX_ACTPROP_LIMIT];
+    e_guid_t guid[MAX_ACTPROP_LIMIT];
     guint32  size[MAX_ACTPROP_LIMIT];
     guint32  id_idx;
     guint32  size_idx;
@@ -312,9 +311,7 @@ dissect_dcom_ActivationPropertiesCustomerHdr(tvbuff_t *tvb, gint offset, packet_
     proto_item *sub_item;
     proto_tree *sub_tree;
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, 0, "CustomHeader");
-
-    sub_tree = proto_item_add_subtree(sub_item, ett_commonheader);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_commonheader, &sub_item, "CustomHeader");
 
     old_offset = offset;
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di, drep);
@@ -351,7 +348,7 @@ dissect_dcom_ActivationPropertiesCustomerHdr(tvbuff_t *tvb, gint offset, packet_
 
 static int
 dissect_dcom_ActivationProperty(tvbuff_t *tvb, gint offset, packet_info *pinfo,
-                       proto_tree *tree, dcerpc_info *di, guint8 *drep, e_uuid_t *clsid, gint size)
+                       proto_tree *tree, dcerpc_info *di, guint8 *drep, e_guid_t *clsid, gint size)
 {
     dcom_dissect_fn_t routine = NULL;
 
@@ -388,8 +385,7 @@ dissect_dcom_ActivationPropertiesBody(tvbuff_t *tvb, gint offset, packet_info *p
         min_idx = MIN(pg->id_idx, pg->size_idx);
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, 0, "Properties");
-    sub_tree = proto_item_add_subtree(sub_item, ett_properties);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_properties, &sub_item, "Properties");
 
     old_offset = offset;
     for (i = 0; i < min_idx; i++) {
@@ -442,8 +438,7 @@ dissect_dcom_ContextMarshaler(tvbuff_t *tvb, gint offset, packet_info *pinfo,
     guint32    u32Count;
 
     old_offset = offset;
-    sub_item = proto_tree_add_text(tree, tvb, offset, 0, "Context");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_context);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_dcom_context, &sub_item, "Context");
 
     offset = dissect_dcom_COMVERSION(tvb, offset, pinfo, sub_tree, di, drep,
                 NULL, NULL);
@@ -478,7 +473,6 @@ static int
 dissect_dcom_SpecialSystemProperties(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                        proto_tree *tree, dcerpc_info *di, guint8 *drep, gint size)
 {
-    proto_item *sub_item, *it;
     proto_tree *sub_tree, *tr;
     gint old_offset, len, i;
 
@@ -489,8 +483,7 @@ dissect_dcom_SpecialSystemProperties(tvbuff_t *tvb, gint offset, packet_info *pi
         size = -1;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, size, "SpecialSystemProperties");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_spclsysprop);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_dcom_spclsysprop, NULL, "SpecialSystemProperties");
 
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di, drep);
 
@@ -520,9 +513,8 @@ dissect_dcom_SpecialSystemProperties(tvbuff_t *tvb, gint offset, packet_info *pi
  *            hf_sysact_spsysprop_hwnd, NULL);
  *
  */
-    it = proto_tree_add_text(sub_tree, tvb, offset, sizeof(guint32)*8,
-                             "Reserved: 8 DWORDs");
-    tr = proto_item_add_subtree(it, ett_dcom_reserved);
+    tr = proto_tree_add_subtree(sub_tree, tvb, offset, sizeof(guint32)*8,
+                             ett_dcom_reserved, NULL, "Reserved: 8 DWORDs");
     for (i = 0; i < 8; i++) {
         offset = dissect_dcom_DWORD(tvb, offset, pinfo, tr, di, drep,
                 hf_sysact_res, NULL);
@@ -534,8 +526,7 @@ dissect_dcom_SpecialSystemProperties(tvbuff_t *tvb, gint offset, packet_info *pi
         size = len;
     }
     else if (size > len) {
-        proto_tree_add_text(sub_tree, tvb, offset, size - len,
-                "UnusedBuffer: %d bytes", size - len);
+        proto_tree_add_item(sub_tree, hf_sysact_unused_buffer, tvb, offset, size - len, ENC_NA);
     }
 
     offset = old_offset + size;
@@ -565,7 +556,6 @@ static int
 dissect_dcom_InstantiationInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                        proto_tree *tree, dcerpc_info *di, guint8 *drep, gint size)
 {
-    proto_item *sub_item;
     proto_tree *sub_tree;
     gint old_offset, len;
 
@@ -576,8 +566,7 @@ dissect_dcom_InstantiationInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = -1;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, size, "InstantiationInfo");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_instantianinfo);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_dcom_instantianinfo, NULL, "InstantiationInfo");
 
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di, drep);
 
@@ -611,8 +600,7 @@ dissect_dcom_InstantiationInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = len;
     }
     else if (size > len) {
-        proto_tree_add_text(sub_tree, tvb, offset, size - len,
-                "UnusedBuffer: %d bytes", size - len);
+        proto_tree_add_item(sub_tree, hf_sysact_unused_buffer, tvb, offset, size - len, ENC_NA);
     }
 
     offset = old_offset + size;
@@ -645,7 +633,6 @@ static int
 dissect_dcom_ActivationContextInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                        proto_tree *tree, dcerpc_info *di, guint8 *drep, gint size)
 {
-    proto_item *sub_item;
     proto_tree *sub_tree;
     gint old_offset, len;
 
@@ -656,8 +643,7 @@ dissect_dcom_ActivationContextInfo(tvbuff_t *tvb, gint offset, packet_info *pinf
         size = -1;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, size, "ActivationContextInfo");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_actctxinfo);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_dcom_actctxinfo, NULL, "ActivationContextInfo");
 
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di, drep);
 
@@ -684,8 +670,7 @@ dissect_dcom_ActivationContextInfo(tvbuff_t *tvb, gint offset, packet_info *pinf
         size = len;
     }
     else if (size > len) {
-        proto_tree_add_text(sub_tree, tvb, offset, size - len,
-                "UnusedBuffer: %d bytes", size - len);
+        proto_tree_add_item(sub_tree, hf_sysact_unused_buffer, tvb, offset, size - len, ENC_NA);
     }
 
     offset = old_offset + size;
@@ -739,7 +724,6 @@ static int
 dissect_dcom_SecurtiyInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                        proto_tree *tree, dcerpc_info *di, guint8 *drep, gint size)
 {
-    proto_item *sub_item;
     proto_tree *sub_tree;
     gint old_offset, len;
 
@@ -750,8 +734,7 @@ dissect_dcom_SecurtiyInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = -1;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, size, "SecurityInfo");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_securityinfo);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_dcom_securityinfo, NULL, "SecurityInfo");
 
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di ,drep);
 
@@ -770,8 +753,7 @@ dissect_dcom_SecurtiyInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = len;
     }
     else if (size > len) {
-        proto_tree_add_text(sub_tree, tvb, offset, size - len,
-                "UnusedBuffer: %d bytes", size - len);
+        proto_tree_add_item(sub_tree, hf_sysact_unused_buffer, tvb, offset, size - len, ENC_NA);
     }
 
     offset = old_offset + size;
@@ -782,7 +764,6 @@ static int
 dissect_dcom_LocationInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                        proto_tree *tree, dcerpc_info *di, guint8 *drep, gint size)
 {
-    proto_item *sub_item;
     proto_tree *sub_tree;
     gint old_offset, len;
 
@@ -793,8 +774,7 @@ dissect_dcom_LocationInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = -1;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, size, "LocationInfo");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_locationinfo);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_dcom_locationinfo, NULL, "LocationInfo");
 
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di, drep);
 
@@ -817,8 +797,7 @@ dissect_dcom_LocationInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = len;
     }
     else if (size > len) {
-        proto_tree_add_text(sub_tree, tvb, offset, size - len,
-                "UnusedBuffer: %d bytes", size - len);
+        proto_tree_add_item(sub_tree, hf_sysact_unused_buffer, tvb, offset, size - len, ENC_NA);
     }
 
     offset = old_offset + size;
@@ -857,8 +836,7 @@ dissect_dcom_customREMOTE_REQUEST_SCM_INFO(tvbuff_t *tvb, gint offset,
         return offset;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, 0, "RemoteRequest");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_rmtrqst);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_dcom_rmtrqst, &sub_item, "RemoteRequest");
 
     old_offset = offset;
     offset = dissect_dcom_DWORD(tvb, offset, pinfo, sub_tree, di, drep,
@@ -878,7 +856,6 @@ static int
 dissect_dcom_ScmRqstInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                        proto_tree *tree, dcerpc_info *di, guint8 *drep, gint size)
 {
-    proto_item *sub_item;
     proto_tree *sub_tree;
     gint old_offset, len;
 
@@ -889,8 +866,7 @@ dissect_dcom_ScmRqstInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = -1;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, size, "ScmRequestInfo");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_scmrqstinfo);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_dcom_scmrqstinfo, NULL, "ScmRequestInfo");
 
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di, drep);
 
@@ -908,8 +884,7 @@ dissect_dcom_ScmRqstInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = len;
     }
     else if (size > len) {
-        proto_tree_add_text(sub_tree, tvb, offset, size - len,
-                "UnusedBuffer: %d bytes", size - len);
+        proto_tree_add_item(sub_tree, hf_sysact_unused_buffer, tvb, offset, size - len, ENC_NA);
     }
 
     offset = old_offset + size;
@@ -989,7 +964,6 @@ static int
 dissect_dcom_PropsOutInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                        proto_tree *tree, dcerpc_info *di, guint8 *drep, gint size)
 {
-    proto_item *sub_item;
     proto_tree *sub_tree;
     gint old_offset, len;
 
@@ -1000,8 +974,7 @@ dissect_dcom_PropsOutInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = -1;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, size, "PropertiesOutput");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_propsoutput);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_dcom_propsoutput, NULL, "PropertiesOutput");
 
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di, drep);
 
@@ -1022,8 +995,7 @@ dissect_dcom_PropsOutInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = len;
     }
     else if (size > len) {
-        proto_tree_add_text(sub_tree, tvb, offset, size - len,
-                "UnusedBuffer: %d bytes", size - len);
+        proto_tree_add_item(sub_tree, hf_sysact_unused_buffer, tvb, offset, size - len, ENC_NA);
     }
 
     offset = old_offset + size;
@@ -1052,8 +1024,7 @@ dissect_dcom_OxidBindings(tvbuff_t *tvb, gint offset,
     }
 
     old_offset = offset;
-    sub_item = proto_tree_add_text(tree, tvb, offset, 0, "OxidBindings");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_oxidbinding);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_dcom_oxidbinding, &sub_item, "OxidBindings");
 
     offset = dissect_dcom_dcerpc_array_size(tvb, offset, pinfo, sub_tree, di, drep, NULL);
     offset = dissect_dcom_DUALSTRINGARRAY(tvb, offset, pinfo, sub_tree, di, drep,
@@ -1076,8 +1047,7 @@ dissect_dcom_customREMOTE_REPLY_SCM_INFO(tvbuff_t *tvb, gint offset,
         return offset;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, 0, "RemoteReply");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_rmtresp);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_dcom_rmtresp, &sub_item, "RemoteReply");
 
     old_offset = offset;
     offset = dissect_dcom_ID(tvb, offset, pinfo, sub_tree, di, drep,
@@ -1102,7 +1072,6 @@ static int
 dissect_dcom_ScmReplyInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                        proto_tree *tree, dcerpc_info *di, guint8 *drep, gint size)
 {
-    proto_item *sub_item;
     proto_tree *sub_tree;
     gint old_offset, len;
 
@@ -1113,8 +1082,7 @@ dissect_dcom_ScmReplyInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = -1;
     }
 
-    sub_item = proto_tree_add_text(tree, tvb, offset, size, "ScmReplyInfo");
-    sub_tree = proto_item_add_subtree(sub_item, ett_dcom_scmrespinfo);
+    sub_tree = proto_tree_add_subtree(tree, tvb, offset, size, ett_dcom_scmrespinfo, NULL, "ScmReplyInfo");
 
     offset = dissect_TypeSzCommPrivHdr(tvb, offset, pinfo, sub_tree, di, drep);
 
@@ -1132,8 +1100,7 @@ dissect_dcom_ScmReplyInfo(tvbuff_t *tvb, gint offset, packet_info *pinfo,
         size = len;
     }
     else if (size > len) {
-        proto_tree_add_text(sub_tree, tvb, offset, size - len,
-                "UnusedBuffer: %d bytes", size - len);
+        proto_tree_add_item(sub_tree, hf_sysact_unused_buffer, tvb, offset, size - len, ENC_NA);
     }
 
     offset = old_offset + size;
@@ -1361,6 +1328,8 @@ proto_register_ISystemActivator (void)
         { "Bindings", "isystemactivator.properties.scmresp.binding", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
         { &hf_sysact_scmri_oxid,
         { "OXID", "isystemactivator.properties.scmresp.oxid", FT_UINT64, BASE_HEX, NULL, 0x0, NULL, HFILL }},
+        { &hf_sysact_unused_buffer,
+        { "Unused buffer", "isystemactivator.unused_buffer", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
     };
 
     static hf_register_info hf_tshdr[] = {
@@ -1421,3 +1390,16 @@ proto_reg_handoff_ISystemActivator (void)
     dcerpc_init_uuid (proto_ISystemActivator, ett_isystemactivator, &uuid_ISystemActivator,
             ver_ISystemActivator, ISystemActivator_dissectors, hf_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

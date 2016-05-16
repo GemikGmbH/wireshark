@@ -25,14 +25,10 @@
 
 #include "config.h"
 
-#include <glib.h>
-
-#include <wsutil/md5.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/to_str.h>
-#include "packet-data.h"
+#include <wsutil/md5.h>
 
 /* proto_data cannot be static because it's referenced in the
  * print routines
@@ -67,7 +63,7 @@ dissect_data(tvbuff_t *tvb, packet_info *pinfo _U_ , proto_tree *tree)
 	gint bytes;
 
 	if (tree) {
-		bytes = tvb_length_remaining(tvb, 0);
+		bytes = tvb_captured_length(tvb);
 		if (bytes > 0) {
 			tvbuff_t   *data_tvb;
 			proto_item *ti;
@@ -167,3 +163,16 @@ proto_register_data(void)
 	 */
 	proto_set_cant_toggle(proto_data);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

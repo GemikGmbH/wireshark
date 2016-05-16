@@ -39,7 +39,7 @@
 #define NUM_DISPLAY_ITEMS 1000
 
 typedef struct _display_items {
-	frame_data *fd;				/**< Holds the frame number and time information */
+	guint32 frame_number;		/**< frame number */
 	guint16 port_src;
 	guint16 port_dst;
 	gchar *frame_label;			/**< the label on top of the arrow */
@@ -99,7 +99,7 @@ typedef struct _graph_analysis_data_t {
 	graph_analysis_dialog_data_t dlg;
 	guint32 num_items;
 	destroy_user_data_cb on_destroy_user_data;  /**< callback info for destroy */
-	void *data;									/**< data to be passes when on destroy */
+	void *data;									/**< data to be passed when on destroy */
 } graph_analysis_data_t;
 
 graph_analysis_data_t* graph_analysis_init(seq_analysis_info_t *sainfo);

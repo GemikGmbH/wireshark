@@ -24,7 +24,10 @@
 // Adapted from sequence_dialog.cpp
 
 #include "lbm_uimflow_dialog.h"
-#include "ui_lbm_uimflow_dialog.h"
+#include <ui_lbm_uimflow_dialog.h>
+
+#include "file.h"
+
 #include <epan/dissectors/packet-lbm.h>
 #include <epan/packet_info.h>
 #include <epan/tap.h>
@@ -32,6 +35,10 @@
 #include <epan/addr_resolv.h>
 #include <wsutil/nstime.h>
 
+#include <wsutil/utf8_entities.h>
+
+#include "qt_ui_utils.h"
+#include "sequence_diagram.h"
 #include "wireshark_application.h"
 
 #include <QDir>
@@ -115,12 +122,13 @@ static gboolean lbm_uimflow_add_to_graph(seq_analysis_info_t * seq_info, packet_
         epb = stream_info->endpoint_a;
         epa = stream_info->endpoint_b;
     }
-    item = (seq_analysis_item_t *)g_malloc(sizeof(seq_analysis_item_t));
+    item = (seq_analysis_item_t *)g_malloc0(sizeof(seq_analysis_item_t));
     COPY_ADDRESS(&(item->src_addr), &(pinfo->src));
     COPY_ADDRESS(&(item->dst_addr), &(pinfo->dst));
-    item->fd = pinfo->fd;
+    item->frame_number = pinfo->fd->num;
     item->port_src = pinfo->srcport;
     item->port_dst = pinfo->destport;
+    item->protocol = g_strdup(port_type_to_str(pinfo->ptype));
     if (stream_info->description == NULL)
     {
         item->frame_label = g_strdup_printf("(%" G_GUINT32_FORMAT ")", stream_info->sqn);
@@ -131,8 +139,8 @@ static gboolean lbm_uimflow_add_to_graph(seq_analysis_info_t * seq_info, packet_
     }
     if (epa.type == lbm_uim_instance_stream)
     {
-        ctxinst1 = bytes_to_ep_str(epa.stream_info.ctxinst.ctxinst, sizeof(epa.stream_info.ctxinst.ctxinst));
-        ctxinst2 = bytes_to_ep_str(epb.stream_info.ctxinst.ctxinst, sizeof(epb.stream_info.ctxinst.ctxinst));
+        ctxinst1 = bytes_to_str(pinfo->pool, epa.stream_info.ctxinst.ctxinst, sizeof(epa.stream_info.ctxinst.ctxinst));
+        ctxinst2 = bytes_to_str(pinfo->pool, epb.stream_info.ctxinst.ctxinst, sizeof(epb.stream_info.ctxinst.ctxinst));
         item->comment = g_strdup_printf("%s <-> %s [%" G_GUINT64_FORMAT "]",
             ctxinst1,
             ctxinst2,
@@ -142,24 +150,22 @@ static gboolean lbm_uimflow_add_to_graph(seq_analysis_info_t * seq_info, packet_
     {
         item->comment = g_strdup_printf("%" G_GUINT32_FORMAT ":%s:%" G_GUINT16_FORMAT " <-> %" G_GUINT32_FORMAT ":%s:%" G_GUINT16_FORMAT " [%" G_GUINT64_FORMAT "]",
             epa.stream_info.dest.domain,
-            address_to_str(wmem_packet_scope(), &(epa.stream_info.dest.addr)),
+            address_to_str(pinfo->pool, &(epa.stream_info.dest.addr)),
             epa.stream_info.dest.port,
             epb.stream_info.dest.domain,
-            address_to_str(wmem_packet_scope(), &(epb.stream_info.dest.addr)),
+            address_to_str(pinfo->pool, &(epb.stream_info.dest.addr)),
             epb.stream_info.dest.port,
             stream_info->channel);
     }
     item->conv_num = (guint16)LBM_CHANNEL_ID(stream_info->channel);
     item->display = TRUE;
     item->line_style = 1;
-    seq_info->list = g_list_prepend(seq_info->list, (gpointer)item);
+    g_queue_push_tail(seq_info->items, item);
     return (TRUE);
 }
 
-static gboolean lbm_uimflow_tap_packet(void * tap_data, packet_info * pinfo, epan_dissect_t * edt _U_, const void * stream_info)
+static gboolean lbm_uimflow_tap_packet(void * tap_data, packet_info * pinfo, epan_dissect_t *, const void * stream_info)
 {
-    Q_UNUSED(edt)
-
     seq_analysis_info_t * sainfo = (seq_analysis_info_t *)tap_data;
     const lbm_uim_stream_info_t * info = (const lbm_uim_stream_info_t *)stream_info;
 
@@ -178,15 +184,14 @@ static void lbm_uimflow_get_analysis(capture_file * cfile, seq_analysis_info_t *
 
     register_tap_listener("lbm_uim", (void *)seq_info, NULL, TL_REQUIRES_COLUMNS, NULL, lbm_uimflow_tap_packet, NULL);
     cf_retap_packets(cfile);
-    seq_info->list = g_list_reverse(seq_info->list);
     remove_tap_listener((void *)seq_info);
 
     /* Fill in the timestamps. */
-    list = g_list_first(seq_info->list);
+    list = g_queue_peek_nth_link(seq_info->items, 0);
     while (list != NULL)
     {
         seq_analysis_item_t * seq_item = (seq_analysis_item_t *)list->data;
-        set_fd_time(cfile->epan, seq_item->fd, time_str);
+        set_fd_time(cfile->epan, frame_data_sequence_find(cfile->frames, seq_item->frame_number), time_str);
         seq_item->time_str = g_strdup(time_str);
         list = g_list_next(list);
     }
@@ -256,7 +261,7 @@ LBMUIMFlowDialog::LBMUIMFlowDialog(QWidget * parent, capture_file * cfile) :
     m_sequence_analysis.any_addr = TRUE;
 
     QPushButton * save_bt = m_ui->buttonBox->button(QDialogButtonBox::Save);
-    save_bt->setText(tr("Save As..."));
+    save_bt->setText(tr("Save As" UTF8_HORIZONTAL_ELLIPSIS));
 
     // XXX Use recent settings instead
     if (parent)
@@ -291,15 +296,13 @@ void LBMUIMFlowDialog::setCaptureFile(capture_file * cfile)
     }
 }
 
-void LBMUIMFlowDialog::showEvent(QShowEvent * event)
+void LBMUIMFlowDialog::showEvent(QShowEvent *)
 {
-    Q_UNUSED(event);
     resetAxes();
 }
 
-void LBMUIMFlowDialog::resizeEvent(QResizeEvent * event)
+void LBMUIMFlowDialog::resizeEvent(QResizeEvent *)
 {
-    Q_UNUSED(event);
     resetAxes(true);
 }
 
@@ -419,7 +422,7 @@ void LBMUIMFlowDialog::mouseMoved(QMouseEvent * event)
         seq_analysis_item_t * sai = m_sequence_diagram->itemForPosY(event->pos().y());
         if (sai)
         {
-            m_packet_num = sai->fd->num;
+            m_packet_num = sai->frame_number;
             hint = QString("Packet %1: %2").arg(m_packet_num).arg(sai->comment);
         }
     }
@@ -435,9 +438,8 @@ void LBMUIMFlowDialog::mouseMoved(QMouseEvent * event)
     m_ui->hintLabel->setText(hint);
 }
 
-void LBMUIMFlowDialog::mouseReleased(QMouseEvent * event)
+void LBMUIMFlowDialog::mouseReleased(QMouseEvent *)
 {
-    Q_UNUSED(event);
     if (m_ui->sequencePlot->cursor().shape() == Qt::ClosedHandCursor)
     {
         m_ui->sequencePlot->setCursor(QCursor(Qt::OpenHandCursor));
@@ -465,7 +467,7 @@ void LBMUIMFlowDialog::on_buttonBox_accepted(void)
         filter.append(QString(";;%5").arg(ascii_filter));
     }
 
-    file_name = QFileDialog::getSaveFileName(this, tr("Wireshark: Save Graph As..."),
+    file_name = QFileDialog::getSaveFileName(this, wsApp->windowTitleString(tr("Save Graph As" UTF8_HORIZONTAL_ELLIPSIS)),
         path.canonicalPath(), filter, &extension);
 
     if (file_name.length() > 0)
@@ -506,7 +508,7 @@ void LBMUIMFlowDialog::fillDiagram(void)
     seq_analysis_info_t new_sa;
 
     new_sa = m_sequence_analysis;
-    new_sa.list = NULL;
+    new_sa.items = g_queue_new();
     new_sa.ht = NULL;
     new_sa.num_nodes = 0;
     lbm_uimflow_get_analysis(m_capture_file, &new_sa);
@@ -519,7 +521,8 @@ void LBMUIMFlowDialog::fillDiagram(void)
     m_node_label_width = 0;
     for (guint i = 0; i < m_sequence_analysis.num_nodes; i++)
     {
-        int label_w = vfm.width(ep_address_to_display(&(m_sequence_analysis.nodes[i])));
+        QString addr_str = address_to_display_qstring(&(m_sequence_analysis.nodes[i]));
+        int label_w = vfm.width(addr_str);
         if (m_node_label_width < label_w)
         {
             m_node_label_width = label_w;

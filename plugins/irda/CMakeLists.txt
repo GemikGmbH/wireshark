@@ -19,6 +19,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+include(WiresharkPlugin)
+
+# This info is from moduleinfo.nmake
+set_module_info(irda 0 0 6 0)
+
 set(DISSECTOR_SRC
 	packet-ircomm.c
 	packet-irda.c
@@ -49,18 +54,10 @@ register_dissector_files(plugin.c
 	${DISSECTOR_SRC}
 )
 
-add_library(irda ${LINK_MODE_MODULE}
-	${PLUGIN_FILES}
-)
-set_target_properties(irda PROPERTIES PREFIX "")
-set_target_properties(irda PROPERTIES LINK_FLAGS "${WS_LINK_FLAGS}")
-set_target_properties(irda PROPERTIES FOLDER "Plugins")
-
-target_link_libraries(irda epan)
+add_plugin_library(irda)
 
 install(TARGETS irda
-	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/@CPACK_PACKAGE_NAME@/plugins/${CPACK_PACKAGE_VERSION} NAMELINK_SKIP
-	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/@CPACK_PACKAGE_NAME@/plugins/${CPACK_PACKAGE_VERSION}
-	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/@CPACK_PACKAGE_NAME@/plugins/${CPACK_PACKAGE_VERSION}
+	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/plugins/${CPACK_PACKAGE_VERSION} NAMELINK_SKIP
+	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/plugins/${CPACK_PACKAGE_VERSION}
+	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/plugins/${CPACK_PACKAGE_VERSION}
 )
-

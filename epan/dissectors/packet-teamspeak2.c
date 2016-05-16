@@ -24,12 +24,9 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <wsutil/crc32.h>
 #include <epan/crc32-tvb.h>
-#include <epan/wmem/wmem.h>
 #include <epan/reassemble.h>
 #include <epan/conversation.h>
 
@@ -433,7 +430,7 @@ static void ts2_standard_dissect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
         frag_msg = NULL;
         pinfo->fragmented = TRUE;
         fragment_number = tvb_get_letohs(tvb, 18);
-        frag_msg = fragment_add_seq_check(&msg_reassembly_table, tvb, 24, pinfo, type, NULL, frag->frag_num, tvb_length_remaining(tvb, 24), fragment_number);
+        frag_msg = fragment_add_seq_check(&msg_reassembly_table, tvb, 24, pinfo, type, NULL, frag->frag_num, tvb_captured_length_remaining(tvb, 24), fragment_number);
         new_tvb = process_reassembled_data(tvb, 24, pinfo,"Reassembled TeamSpeak2", frag_msg, &msg_frag_items, NULL, ts2_tree);
         if (frag_msg) /* XXX: should be if (new_tvb) ?? */
         { /* Reassembled */
@@ -509,7 +506,7 @@ static void ts2_parse_newplayerjoined(tvbuff_t *tvb, proto_tree *ts2_tree)
     offset+=4;
     proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, offset, 6, ENC_NA);
     offset+=6;
-    proto_tree_add_item(ts2_tree, hf_ts2_nick, tvb, offset, 1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(ts2_tree, hf_ts2_nick, tvb, offset, 1, ENC_ASCII|ENC_BIG_ENDIAN);
 }
 
 /* Parses TS2_LOGINEND packet and adds it to the tree */
@@ -517,7 +514,7 @@ static void ts2_parse_loginend(tvbuff_t *tvb, proto_tree *ts2_tree)
 {
     gint32 offset;
     offset=0;
-    proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, offset, tvb_length_remaining(tvb, offset), ENC_NA);
+    proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA);
 }
 
 /* Parses a ts2 known player joined (TS2_KNOWNPLAYERUPDATE) packet and adds it to the tree */
@@ -538,7 +535,7 @@ static void ts2_parse_switchchannel(tvbuff_t *tvb, proto_tree *ts2_tree)
     offset=0;
     proto_tree_add_item(ts2_tree, hf_ts2_channel_id, tvb, offset, 4, ENC_LITTLE_ENDIAN);
     offset+=4;
-    proto_tree_add_item(ts2_tree, hf_ts2_password, tvb, offset, 1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(ts2_tree, hf_ts2_password, tvb, offset, 1, ENC_ASCII|ENC_BIG_ENDIAN);
 }
 
 /* Parses a ts2 channel change (TS2T_CHANNELCHANGE) packet and adds it to the tree */
@@ -577,7 +574,7 @@ static void ts2_parse_playerleft(tvbuff_t *tvb, proto_tree *ts2_tree)
     offset+=4;
     proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, offset, 4, ENC_NA);
     offset+=4;
-    proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, offset, tvb_length_remaining(tvb, offset), ENC_NA);
+    proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_NA);
 }
 
 /* Parses a ts2 login part 2 (TS2T_LOGINPART2) packet and adds it to the tree */
@@ -587,11 +584,11 @@ static void ts2_parse_loginpart2(tvbuff_t *tvb, proto_tree *ts2_tree)
     offset=0;
     proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, 0, 2, ENC_NA);
     offset+=2;
-    proto_tree_add_item(ts2_tree, hf_ts2_channel, tvb, offset, 1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(ts2_tree, hf_ts2_channel, tvb, offset, 1, ENC_ASCII|ENC_BIG_ENDIAN);
     offset+=30;
-    proto_tree_add_item(ts2_tree, hf_ts2_subchannel, tvb, offset, 1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(ts2_tree, hf_ts2_subchannel, tvb, offset, 1, ENC_ASCII|ENC_BIG_ENDIAN);
     offset+=30;
-    proto_tree_add_item(ts2_tree, hf_ts2_channelpassword, tvb, offset, 1, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(ts2_tree, hf_ts2_channelpassword, tvb, offset, 1, ENC_ASCII|ENC_BIG_ENDIAN);
     offset+=30;
     proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, offset, 4, ENC_NA);
 
@@ -607,7 +604,7 @@ static void ts2_parse_channellist(tvbuff_t *tvb, proto_tree *ts2_tree)
     offset=0;
     proto_tree_add_item(ts2_tree, hf_ts2_number_of_channels, tvb, offset, 4, ENC_LITTLE_ENDIAN);
     offset+=4;
-    while(offset<tvb_length_remaining(tvb, 0))
+    while(offset<tvb_reported_length_remaining(tvb, 0))
     {
         proto_tree_add_item(ts2_tree, hf_ts2_channel_id, tvb, offset, 4, ENC_LITTLE_ENDIAN);
         offset+=4;
@@ -632,13 +629,13 @@ static void ts2_parse_channellist(tvbuff_t *tvb, proto_tree *ts2_tree)
         offset+=2;
         proto_tree_add_item(ts2_tree, hf_ts2_max_users, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         offset+=2;
-        tvb_get_stringz(wmem_packet_scope(), tvb, offset, &string_len);
+        tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &string_len, ENC_ASCII);
         proto_tree_add_item(ts2_tree, hf_ts2_channel_name, tvb, offset,string_len , ENC_ASCII|ENC_NA);
         offset+=string_len;
-        tvb_get_stringz(wmem_packet_scope(), tvb, offset, &string_len);
+        tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &string_len, ENC_ASCII);
         proto_tree_add_item(ts2_tree, hf_ts2_channel_topic, tvb, offset,string_len ,ENC_ASCII|ENC_NA);
         offset+=string_len;
-        tvb_get_stringz(wmem_packet_scope(), tvb, offset, &string_len);
+        tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &string_len, ENC_ASCII);
         proto_tree_add_item(ts2_tree, hf_ts2_channel_description, tvb, offset,string_len , ENC_ASCII|ENC_NA);
         offset+=string_len;
     }
@@ -665,7 +662,7 @@ static void ts2_parse_playerlist(tvbuff_t *tvb, proto_tree *ts2_tree)
     proto_tree_add_item(ts2_tree, hf_ts2_number_of_players, tvb, offset, 4, ENC_LITTLE_ENDIAN);
     number_of_players = tvb_get_letohl(tvb, 0);
     offset+=4;
-    while(offset<tvb_length_remaining(tvb, 0) && x<number_of_players)
+    while(offset<tvb_reported_length_remaining(tvb, 0) && x<number_of_players)
     {
         proto_tree_add_item(ts2_tree, hf_ts2_player_id, tvb, offset, 4, ENC_LITTLE_ENDIAN);
         offset+=4;
@@ -676,11 +673,11 @@ static void ts2_parse_playerlist(tvbuff_t *tvb, proto_tree *ts2_tree)
         proto_tree_add_item(ts2_tree, hf_ts2_player_status_flags, tvb, offset, 2, ENC_LITTLE_ENDIAN);
         ts2_add_statusflags(tvb, ts2_tree, offset);
         offset+=2;
-        proto_tree_add_item(ts2_tree, hf_ts2_nick, tvb, offset, 1, ENC_ASCII|ENC_NA);
+        proto_tree_add_item(ts2_tree, hf_ts2_nick, tvb, offset, 1, ENC_ASCII|ENC_BIG_ENDIAN);
         offset+=30;
         x++;
     }
-    proto_tree_add_item(ts2_tree, hf_ts2_emptyspace, tvb, offset, tvb_length_remaining(tvb, 0), ENC_NA);
+    proto_tree_add_item(ts2_tree, hf_ts2_emptyspace, tvb, offset, tvb_captured_length_remaining(tvb, 0), ENC_NA);
 }
 
 
@@ -776,27 +773,27 @@ static void dissect_ts2(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                         proto_tree_add_item(ts2_tree, hf_ts2_ackto, tvb, 20, 4, ENC_LITTLE_ENDIAN);
                         break;
                     case TS2T_LOGINREQUEST:
-                        proto_tree_add_item(ts2_tree, hf_ts2_protocol_string, tvb, 20, 1, ENC_ASCII|ENC_NA);
-                        proto_tree_add_item(ts2_tree, hf_ts2_platform_string, tvb, 50, 1, ENC_ASCII|ENC_NA);
+                        proto_tree_add_item(ts2_tree, hf_ts2_protocol_string, tvb, 20, 1, ENC_ASCII|ENC_BIG_ENDIAN);
+                        proto_tree_add_item(ts2_tree, hf_ts2_platform_string, tvb, 50, 1, ENC_ASCII|ENC_BIG_ENDIAN);
                         proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, 80, 9, ENC_NA);
                         proto_tree_add_item(ts2_tree, hf_ts2_registeredlogin, tvb, 90, 1, ENC_LITTLE_ENDIAN);
-                        proto_tree_add_item(ts2_tree, hf_ts2_name, tvb, 90, 1, ENC_ASCII|ENC_NA);
-                        proto_tree_add_item(ts2_tree, hf_ts2_password, tvb, 120, 1, ENC_ASCII|ENC_NA);
-                        proto_tree_add_item(ts2_tree, hf_ts2_nick, tvb, 150, 1, ENC_ASCII|ENC_NA);
+                        proto_tree_add_item(ts2_tree, hf_ts2_name, tvb, 90, 1, ENC_ASCII|ENC_BIG_ENDIAN);
+                        proto_tree_add_item(ts2_tree, hf_ts2_password, tvb, 120, 1, ENC_ASCII|ENC_BIG_ENDIAN);
+                        proto_tree_add_item(ts2_tree, hf_ts2_nick, tvb, 150, 1, ENC_ASCII|ENC_BIG_ENDIAN);
 
                         conversation_data->server_port=pinfo->destport;
                         conversation_data->server_addr=pinfo->dst;
 
                         break;
                     case TS2T_LOGINREPLY:
-                        proto_tree_add_item(ts2_tree, hf_ts2_server_name, tvb, 20, 1, ENC_ASCII|ENC_NA);
-                        proto_tree_add_item(ts2_tree, hf_ts2_platform_string, tvb, 50, 1, ENC_ASCII|ENC_NA);
+                        proto_tree_add_item(ts2_tree, hf_ts2_server_name, tvb, 20, 1, ENC_ASCII|ENC_BIG_ENDIAN);
+                        proto_tree_add_item(ts2_tree, hf_ts2_platform_string, tvb, 50, 1, ENC_ASCII|ENC_BIG_ENDIAN);
                         proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, 80, 9, ENC_NA);
                         proto_tree_add_item(ts2_tree, hf_ts2_badlogin, tvb, 89, 3, ENC_LITTLE_ENDIAN);
                         proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, 92, 80, ENC_NA);
                         proto_tree_add_item(ts2_tree, hf_ts2_sessionkey, tvb, 172, 4, ENC_LITTLE_ENDIAN);
                         proto_tree_add_item(ts2_tree, hf_ts2_unknown, tvb, 178, 3, ENC_NA);
-                        proto_tree_add_item(ts2_tree, hf_ts2_server_welcome_message, tvb, 180, 1, ENC_ASCII|ENC_NA);
+                        proto_tree_add_item(ts2_tree, hf_ts2_server_welcome_message, tvb, 180, 1, ENC_ASCII|ENC_BIG_ENDIAN);
                         break;
                 }
                 break;
@@ -846,6 +843,11 @@ static void ts2_init(void)
 {
     reassembly_table_init(&msg_reassembly_table,
             &addresses_reassembly_table_functions);
+}
+
+static void ts2_cleanup(void)
+{
+    reassembly_table_destroy(&msg_reassembly_table);
 }
 
 /*
@@ -1219,6 +1221,7 @@ void proto_register_ts2(void)
     proto_register_subtree_array(ett, array_length(ett));
 
     register_init_routine(ts2_init);
+    register_cleanup_routine(ts2_cleanup);
 }
 
 /*

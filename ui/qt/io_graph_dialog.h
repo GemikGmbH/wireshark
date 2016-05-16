@@ -22,28 +22,32 @@
 #ifndef IO_GRAPH_DIALOG_H
 #define IO_GRAPH_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
-#include <file.h>
-
 #include "epan/epan_dissect.h"
-#include "epan/uat.h"
 
 #include "ui/io_graph_item.h"
 
-#include "syntax_line_edit.h"
+#include "wireshark_dialog.h"
 
-#include <QComboBox>
-#include <QDialog>
 #include <QIcon>
-#include <QLineEdit>
 #include <QMenu>
-#include <QRubberBand>
-#include <QTimer>
-#include <QTreeWidgetItem>
-#include "qcustomplot.h"
+#include <QTextStream>
+
+class QComboBox;
+class QLineEdit;
+class QRubberBand;
+class QTimer;
+class QTreeWidgetItem;
+
+class SyntaxLineEdit;
+
+class QCPBars;
+class QCPGraph;
+class QCPItemTracer;
+class QCustomPlot;
 
 // GTK+ sets this to 100000 (NUM_IO_ITEMS)
 const int max_io_items_ = 250000;
@@ -75,10 +79,13 @@ public:
     unsigned int movingAveragePeriod() { return moving_avg_period_; }
     void setInterval(int interval);
     bool addToLegend();
+    bool removeFromLegend();
     QCPGraph *graph() { return graph_; }
     QCPBars *bars() { return bars_; }
     double startOffset();
     int packetFromTime(double ts);
+    double getItemValue(int idx, const capture_file *cap_file) const;
+    int maxInterval () const { return cur_idx_; }
 
     void clearAllData();
 
@@ -90,6 +97,8 @@ public:
 
 public slots:
     void recalcGraphData(capture_file *cap_file);
+    void captureFileClosing();
+    void reloadValueUnitField();
 
 signals:
     void requestReplot();
@@ -97,7 +106,6 @@ signals:
     void requestRetap();
 
 private:
-    double getItemValue(int idx, capture_file *cap_file);
     // Callbacks for register_tap_listener
     static void tapReset(void *iog_ptr);
     static gboolean tapPacket(void *iog_ptr, packet_info *pinfo, epan_dissect_t *edt, const void *data);
@@ -127,12 +135,12 @@ namespace Ui {
 class IOGraphDialog;
 }
 
-class IOGraphDialog : public QDialog
+class IOGraphDialog : public WiresharkDialog
 {
     Q_OBJECT
 
 public:
-    explicit IOGraphDialog(QWidget *parent = 0, capture_file *cf = NULL);
+    explicit IOGraphDialog(QWidget &parent, CaptureFile &cf);
     ~IOGraphDialog();
 
     void addGraph(bool checked, QString name, QString dfilter, int color_idx, IOGraph::PlotStyles style,
@@ -142,10 +150,10 @@ public:
     void syncGraphSettings(QTreeWidgetItem *item);
 
 public slots:
-    void setCaptureFile(capture_file *cf);
     void scheduleReplot(bool now = false);
     void scheduleRecalc(bool now = false);
     void scheduleRetap(bool now = false);
+    void reloadFields();
 
 protected:
     void keyPressEvent(QKeyEvent *event);
@@ -155,11 +163,11 @@ signals:
     void goToPacket(int packet_num);
     void recalcGraphData(capture_file *);
     void intervalChanged(int interval);
+    void reloadValueUnitFields();
 
 private:
     Ui::IOGraphDialog *ui;
 
-    capture_file *cap_file_;
     QLineEdit *name_line_edit_;
     SyntaxLineEdit *dfilter_line_edit_;
     SyntaxLineEdit *yfield_line_edit_;
@@ -181,9 +189,15 @@ private:
     bool need_recalc_; // Medium weight: recalculate values, then replot
     bool need_retap_; // Heavy weight: re-read packet data
     bool auto_axes_;
+    // Available colors
+    // XXX - Add custom
+    QList<QRgb> colors_;
+
 
 //    void fillGraph();
     void zoomAxes(bool in);
+    void zoomXAxis(bool in);
+    void zoomYAxis(bool in);
     void panAxes(int x_pixels, int y_pixels);
     QIcon graphColorIcon(int color_idx);
     void toggleTracerStyle(bool force_default = false);
@@ -192,17 +206,19 @@ private:
     QRectF getZoomRanges(QRect zoom_rect);
     void itemEditingFinished(QTreeWidgetItem *item);
     void loadProfileGraphs();
+    void makeCsv(QTextStream &stream) const;
+    bool saveCsv(const QString &file_name) const;
 
 private slots:
+    void updateWidgets();
     void graphClicked(QMouseEvent *event);
     void mouseMoved(QMouseEvent *event);
     void mouseReleased(QMouseEvent *event);
     void focusChanged(QWidget *previous, QWidget *current);
     void activateLastItem();
-    void lineEditDestroyed();
-    void comboDestroyed();
     void resetAxes();
     void updateStatistics(void);
+    void copyAsCsvClicked();
 
     void on_intervalComboBox_currentIndexChanged(int index);
     void on_todCheckBox_toggled(bool checked);
@@ -220,7 +236,11 @@ private slots:
     void on_zoomRadioButton_toggled(bool checked);
     void on_actionReset_triggered();
     void on_actionZoomIn_triggered();
+    void on_actionZoomInX_triggered();
+    void on_actionZoomInY_triggered();
     void on_actionZoomOut_triggered();
+    void on_actionZoomOutX_triggered();
+    void on_actionZoomOutY_triggered();
     void on_actionMoveUp10_triggered();
     void on_actionMoveLeft10_triggered();
     void on_actionMoveRight10_triggered();

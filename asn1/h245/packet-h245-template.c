@@ -32,21 +32,16 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/strutil.h>
-#include <wsutil/pint.h>
 #include <epan/addr_resolv.h>
-
-#include <string.h>
-
 #include <epan/prefs.h>
 #include <epan/t35.h>
-#include <epan/wmem/wmem.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
 #include <epan/tap.h>
+#include <wsutil/pint.h>
 #include "packet-tpkt.h"
 #include "packet-per.h"
 #include "packet-h323.h"
@@ -79,10 +74,13 @@ static int hf_h245Manufacturer = -1;
 static int hf_h245_subMessageIdentifier_standard = -1;
 static int h245_tap = -1;
 static int h245dg_tap = -1;
+static int hf_h245_debug_dissector_try_string = -1;
+
 h245_packet_info *h245_pi=NULL;
 
 static gboolean h245_reassembly = TRUE;
 static gboolean h245_shorttypes = FALSE;
+static gboolean info_col_fmt_prepend = FALSE;
 
 #include "packet-h245-val.h"
 
@@ -310,11 +308,14 @@ static void h223_lc_init( void )
 
 static void h245_init(void)
 {
-	if ( h245_pending_olc_reqs)
-		g_hash_table_destroy(h245_pending_olc_reqs);
 	h245_pending_olc_reqs = g_hash_table_new(g_str_hash, g_str_equal);
 
 	h223_lc_init();
+}
+
+static void h245_cleanup(void)
+{
+	g_hash_table_destroy(h245_pending_olc_reqs);
 }
 
 void h245_set_h223_add_lc_handle( h223_add_lc_handle_t handle )
@@ -380,6 +381,26 @@ static void h245_setup_channels(packet_info *pinfo, channel_info_t *upcoming_cha
 	}
 }
 
+/* Prints formated information column of h245 messages. Note that global variables
+ * "h245_shorttypes" and "info_col_fmt_prepend" are used to decide formating preferences */
+static void print_info_column(column_info *cinfo, const gint32 *value,
+    const value_string *msg_vals, const value_string *short_msg_vals)
+{
+  const value_string *vals;
+
+  if (h245_shorttypes == FALSE || short_msg_vals == NULL) {
+    vals = msg_vals;
+  } else {
+    vals = short_msg_vals;
+  }
+
+  if (info_col_fmt_prepend == FALSE) {
+    col_append_fstr(cinfo, COL_INFO, "%s ", val_to_str(*value, vals, "<unknown>"));
+  } else {
+    col_prepend_fstr(cinfo, COL_INFO, "%s ", val_to_str(*value, vals, "<unknown>"));
+  }
+}
+
 /* Initialize the protocol and registered fields */
 static int proto_h245 = -1;
 #include "packet-h245-hf.c"
@@ -393,7 +414,7 @@ static int ett_h245_returnedFunction = -1;
 static int dissect_h245_MultimediaSystemControlMessage(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_);
 static void reset_h245_pi(void *dummy _U_)
 {
-	h245_pi = NULL; /* Make sure we don't leave ep_alloc()ated memory lying around */
+	h245_pi = NULL; /* Make sure we don't leave wmem_packet_scoped() memory lying around */
 }
 
 #include "packet-h245-fn.c"
@@ -425,11 +446,11 @@ dissect_h245_h245(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, PSNAME);
 
-	it=proto_tree_add_protocol_format(parent_tree, proto_h245, tvb, 0, tvb_length(tvb), PSNAME);
+	it=proto_tree_add_protocol_format(parent_tree, proto_h245, tvb, 0, -1, PSNAME);
 	tr=proto_item_add_subtree(it, ett_h245);
 
 	/* assume that whilst there is more tvb data, there are more h245 commands */
-	while ( tvb_length_remaining( tvb, offset>>3 )>0 ){
+	while ( tvb_reported_length_remaining( tvb, offset>>3 )>0 ){
 		CLEANUP_PUSH(reset_h245_pi, NULL);
 		h245_pi=wmem_new(wmem_packet_scope(), h245_packet_info);
 		init_h245_packet_info(h245_pi);
@@ -450,7 +471,7 @@ dissect_h245_FastStart_OLC(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tr
   upcoming_channel = NULL;
   codec_type = NULL;
 
-  dissect_OpenLogicalChannel_PDU(tvb, pinfo, tree);
+  dissect_OpenLogicalChannel_PDU(tvb, pinfo, tree, NULL);
 
   if (h245_pi != NULL)
 	  h245_pi->msg_type = H245_OpenLogChn;
@@ -476,6 +497,9 @@ void proto_register_h245(void) {
       { "subMessageIdentifier", "h245.subMessageIdentifier.standard",
         FT_UINT32, BASE_DEC, VALS(h245_h239subMessageIdentifier_vals), 0,
         NULL, HFILL }},
+  	{ &hf_h245_debug_dissector_try_string,
+      { "*** DEBUG dissector_try_string", "h245.debug.dissector_try_string", FT_STRING, BASE_NONE,
+        NULL, 0, NULL, HFILL }},
 
 #include "packet-h245-hfarr.c"
   };
@@ -491,6 +515,7 @@ void proto_register_h245(void) {
   /* Register protocol */
   proto_h245 = proto_register_protocol(PNAME, PSNAME, PFNAME);
   register_init_routine(h245_init);
+  register_cleanup_routine(h245_cleanup);
   /* Register fields and subtrees */
   proto_register_field_array(proto_h245, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
@@ -507,6 +532,10 @@ void proto_register_h245(void) {
 		"Show short message types",
 		"Whether the dissector should show short names or the long names from the standard",
 		&h245_shorttypes);
+  prefs_register_bool_preference(h245_module, "prepand",
+    "Show h245 info in reversed order",
+    "Whether the dissector should print items of h245 Info column in reversed order",
+    &info_col_fmt_prepend);
   register_dissector("h245dg", dissect_h245_h245, proto_h245);
   register_dissector("h245", dissect_h245, proto_h245);
 
@@ -581,9 +610,9 @@ void proto_reg_handoff_h245(void) {
 
 
 	h245_handle = find_dissector("h245");
-	dissector_add_handle("tcp.port", h245_handle);
+	dissector_add_for_decode_as("tcp.port", h245_handle);
 	MultimediaSystemControlMessage_handle = find_dissector("h245dg");
-	dissector_add_handle("udp.port", MultimediaSystemControlMessage_handle);
+	dissector_add_for_decode_as("udp.port", MultimediaSystemControlMessage_handle);
 }
 
 static void init_h245_packet_info(h245_packet_info *pi)

@@ -29,8 +29,8 @@
 
 enum pdcp_plane
 {
-  SIGNALING_PLANE = 1,
-  USER_PLANE = 2
+    SIGNALING_PLANE = 1,
+    USER_PLANE = 2
 };
 
 typedef enum LogicalChannelType
@@ -100,7 +100,7 @@ typedef struct pdcp_lte_info
 /* and implemented by this dissector, using the definitions      */
 /* below. A link to an example program showing you how to encode */
 /* these headers and send LTE PDCP PDUs on a UDP socket is       */
-/* provided at http://wiki.wireshark.org/PDCP-LTE                */
+/* provided at https://wiki.wireshark.org/PDCP-LTE                */
 /*                                                               */
 /* A heuristic dissecter (enabled by a preference) will          */
 /* recognise a signature at the beginning of these frames.       */
@@ -188,3 +188,16 @@ void set_pdcp_lte_security_algorithms_failed(guint16 ueid);
 void set_pdcp_lte_rrc_ciphering_key(guint16 ueid, const char *key);
 void set_pdcp_lte_rrc_integrity_key(guint16 ueid, const char *key);
 void set_pdcp_lte_up_ciphering_key(guint16 ueid, const char *key);
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

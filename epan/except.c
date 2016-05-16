@@ -216,11 +216,11 @@ G_GNUC_NORETURN WS_MSVC_NORETURN static void do_throw(except_t *except)
 static void unhandled_catcher(except_t *except)
 {
     if (except->except_message == NULL) {
-        fprintf(stderr, "Unhandled exception (group=%ld, code=%ld)\n",
+        fprintf(stderr, "Unhandled exception (group=%lu, code=%lu)\n",
                 except->except_id.except_group,
                 except->except_id.except_code);
     } else {
-        fprintf(stderr, "Unhandled exception (\"%s\", group=%ld, code=%ld)\n",
+        fprintf(stderr, "Unhandled exception (\"%s\", group=%lu, code=%lu)\n",
                 except->except_message, except->except_id.except_group,
                 except->except_id.except_code);
     }
@@ -378,8 +378,6 @@ void except_free(void *ptr)
 
 #ifdef KAZLIB_TEST_MAIN
 
-#include <stdio.h>
-#include <ctype.h>
 
 static void cleanup(void *arg)
 {
@@ -392,7 +390,7 @@ static void bottom_level(void)
     printf("throw exception? "); fflush(stdout);
     fgets(buf, sizeof buf, stdin);
 
-    if (buf[0] >= 0 && toupper(buf[0]) == 'Y')
+    if (buf[0] >= 0 && (buf[0] == 'Y' || buf[0] == 'y'))
         except_throw(1, 1, "nasty exception");
 }
 
@@ -424,10 +422,10 @@ int main(int argc, char **argv)
             /* inner catch */
             msg = except_message(ex);
             if (msg == NULL) {
-                printf("caught exception (inner): s=%ld, c=%ld\n",
+                printf("caught exception (inner): s=%lu, c=%lu\n",
                        except_group(ex), except_code(ex));
             } else {
-                printf("caught exception (inner): \"%s\", s=%ld, c=%ld\n",
+                printf("caught exception (inner): \"%s\", s=%lu, c=%lu\n",
                        msg, except_group(ex), except_code(ex));
             }
             except_rethrow(ex);
@@ -437,10 +435,10 @@ int main(int argc, char **argv)
         /* outer catch */
         msg = except_message(ex);
         if (msg == NULL) {
-            printf("caught exception (outer): s=%ld, c=%ld\n",
+            printf("caught exception (outer): s=%lu, c=%lu\n",
                    except_group(ex), except_code(ex));
         } else {
-            printf("caught exception (outer): \"%s\", s=%ld, c=%ld\n",
+            printf("caught exception (outer): \"%s\", s=%lu, c=%lu\n",
                    except_message(ex), except_group(ex), except_code(ex));
         }
     }

@@ -22,15 +22,11 @@
  */
 
 #include "config.h"
-#include <stdio.h>
 #include <string.h>
-
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
 #endif
-
-#include <ctype.h>
 
 #include <gtk/gtk.h>
 
@@ -44,7 +40,7 @@
 
 #include <ui/alert_box.h>
 #include <ui/simple_dialog.h>
-#include <ui/utf8_entities.h>
+#include <wsutil/utf8_entities.h>
 #include <ui/util.h>
 
 #include "gtkglobals.h"
@@ -65,7 +61,7 @@
 #include <epan/dissectors/packet-ssl-utils.h>
 #endif
 
-static int
+static gboolean
 ssl_queue_packet_data(void *tapdata, packet_info *pinfo, epan_dissect_t *edt _U_, const void *ssl)
 {
     follow_info_t *      follow_info = (follow_info_t*) tapdata;
@@ -77,7 +73,7 @@ ssl_queue_packet_data(void *tapdata, packet_info *pinfo, epan_dissect_t *edt _U_
 
     /* Skip packets without decrypted payload data. */
     pi = (SslPacketInfo*) p_get_proto_data(wmem_file_scope(), pinfo, proto_ssl, 0);
-    if (!pi || !pi->appl_data) return 0;
+    if (!pi || !pi->appl_data) return FALSE;
 
     /* Compute the packet's sender. */
     if (follow_info->client_port == 0) {
@@ -121,7 +117,7 @@ ssl_queue_packet_data(void *tapdata, packet_info *pinfo, epan_dissect_t *edt _U_
         follow_info->bytes_written[from] += rec->data.data_len;
     }
 
-    return 0;
+    return FALSE;
 }
 /* Follow the SSL stream, if any, to which the last packet that we called
    a dissection routine on belongs (this might be the most recently
@@ -137,8 +133,7 @@ follow_ssl_stream_cb(GtkWidget * w _U_, gpointer data _U_)
     int             previous_filter_len;
     const char *    hostname0;
     const char *    hostname1;
-    const char *    port0;
-    const char *    port1;
+    char           *port0, *port1;
     const char *    client_hostname;
     const char *    server_hostname;
     const char *    client_port;
@@ -241,8 +236,8 @@ follow_ssl_stream_cb(GtkWidget * w _U_, gpointer data _U_)
         hostname1 = get_hostname(ipaddr);
     }
 
-    port0 = ep_tcp_port_to_display(stats.port[0]);
-    port1 = ep_tcp_port_to_display(stats.port[1]);
+    port0 = (char*)tcp_port_to_display(NULL, stats.port[0]);
+    port1 = (char*)tcp_port_to_display(NULL, stats.port[1]);
 
     follow_info->is_ipv6 = stats.is_ipv6;
 
@@ -279,6 +274,8 @@ follow_ssl_stream_cb(GtkWidget * w _U_, gpointer data _U_)
     follow_stream("Follow SSL Stream", follow_info, both_directions_string,
                     server_to_client_string, client_to_server_string);
 
+    wmem_free(NULL, port0);
+    wmem_free(NULL, port1);
     g_free(both_directions_string);
     g_free(server_to_client_string);
     g_free(client_to_server_string);

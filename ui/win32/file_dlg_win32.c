@@ -22,16 +22,11 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <tchar.h>
-#include <wchar.h>
 #include <stdlib.h>
-#include <sys/stat.h>
-#include <io.h>
 #include <fcntl.h>
 
 #include <windows.h>
-#include <windowsx.h>
 #include <commdlg.h>
 #include <richedit.h>
 #include <strsafe.h>
@@ -41,23 +36,20 @@
 #include "wsutil/file_util.h"
 #include "wsutil/unicode-utils.h"
 
-#include "wiretap/merge.h"
 
 #include "wsutil/filesystem.h"
 #include "epan/addr_resolv.h"
 #include "epan/prefs.h"
-#include "epan/print.h"
 
-#include "color.h"
 #include "color_filters.h"
 
 #include "ui/alert_box.h"
 #include "ui/help_url.h"
-#include "ui/file_dialog.h"
 #include "ui/last_open_dir.h"
 #include "ui/simple_dialog.h"
 #include "ui/ssl_key_export.h"
 #include "ui/util.h"
+#include "ui/all_files_wildcard.h"
 
 #include "file_dlg_win32.h"
 
@@ -75,19 +67,19 @@
 
 #define FILE_TYPES_RAW \
     _T("Raw data (*.bin, *.dat, *.raw)\0")               _T("*.bin;*.dat;*.raw\0") \
-    _T("All Files (*.*)\0")                              _T("*.*\0")
+    _T("All Files (") _T(ALL_FILES_WILDCARD) _T(")\0")   _T(ALL_FILES_WILDCARD) _T("\0")
 
 #define FILE_RAW_DEFAULT 1
 
 #define FILE_TYPES_SSLKEYS \
     _T("SSL Session Keys (*.keys)\0")                    _T("*.keys\0") \
-    _T("All Files (*.*)\0")                              _T("*.*\0")
+    _T("All Files (") _T(ALL_FILES_WILDCARD) _T(")\0")   _T(ALL_FILES_WILDCARD) _T("\0")
 
 #define FILE_SSLKEYS_DEFAULT 1
 
 #define FILE_TYPES_COLOR \
     _T("Text Files (*.txt)\0")                           _T("*.txt\0")   \
-    _T("All Files (*.*)\0")                              _T("*.*\0")
+    _T("All Files (") _T(ALL_FILES_WILDCARD) _T(")\0")   _T(ALL_FILES_WILDCARD) _T("\0")
 
 #define FILE_DEFAULT_COLOR 2
 
@@ -355,7 +347,6 @@ win32_save_as_file(HWND h_wnd, capture_file *cf, GString *file_name, int *file_t
     TCHAR  file_name16[MAX_PATH] = _T("");
     int    ofnsize;
     gboolean gsfn_ok;
-    gboolean discard_comments = FALSE;
 
     if (!file_name || !file_type || !compressed)
         return FALSE;
@@ -705,7 +696,7 @@ win32_export_file(HWND h_wnd, capture_file *cf, export_type_e export_type) {
                     g_free( (void *) ofn);
                     return;
                 }
-                status = cf_print_packets(cf, &print_args);
+                status = cf_print_packets(cf, &print_args, TRUE);
                 break;
             case export_type_ps:        /* PostScript (r) */
                 print_args.stream = print_stream_ps_new(TRUE, print_args.file);
@@ -714,7 +705,7 @@ win32_export_file(HWND h_wnd, capture_file *cf, export_type_e export_type) {
                     g_free( (void *) ofn);
                     return;
                 }
-                status = cf_print_packets(cf, &print_args);
+                status = cf_print_packets(cf, &print_args, TRUE);
                 break;
             case export_type_csv:       /* CSV */
                 status = cf_write_csv_packets(cf, &print_args);
@@ -1113,7 +1104,6 @@ static gboolean
 preview_set_file_info(HWND of_hwnd, gchar *preview_file) {
     HWND        cur_ctrl;
     int         i;
-    gboolean    enable = FALSE;
     wtap       *wth;
     const struct wtap_pkthdr *phdr;
     int         err = 0;
@@ -1317,7 +1307,7 @@ filter_tb_syntax_check(HWND hwnd, TCHAR *filter_text) {
         /* Default window background */
         SendMessage(hwnd, EM_SETBKGNDCOLOR, (WPARAM) 1, COLOR_WINDOW);
         return;
-    } else if (dfilter_compile(utf_16to8(strval), &dfp)) { /* colorize filter string entry */
+    } else if (dfilter_compile(utf_16to8(strval), &dfp, NULL)) { /* colorize filter string entry */
         if (dfp != NULL)
             dfilter_free(dfp);
         /* Valid (light green) */
@@ -1502,8 +1492,8 @@ build_file_open_type_list(void) {
     str16 = utf_8to16("All Files");
     sa = g_array_append_vals(sa, str16, (guint) strlen("All Files"));
     sa = g_array_append_val(sa, zero);
-    str16 = utf_8to16("*.*");
-    sa = g_array_append_vals(sa, str16, (guint) strlen("*.*"));
+    str16 = utf_8to16(ALL_FILES_WILDCARD);
+    sa = g_array_append_vals(sa, str16, (guint) strlen(ALL_FILES_WILDCARD));
     sa = g_array_append_val(sa, zero);
 
     /*
@@ -1571,13 +1561,11 @@ append_file_type(GArray *sa, int ft)
     extensions_list = wtap_get_file_extensions_list(ft, TRUE);
     if (extensions_list == NULL) {
         /* This file type doesn't have any particular extension
-           conventionally used for it, so we'll just use "*.*"
-           as the pattern; on Windows, that matches all file names
-           - even those with no extension -  so we don't need to
-           worry about compressed file extensions.  (It does not
-           do so on UN*X; the right pattern on UN*X would just
-           be "*".) */
-           g_string_printf(pattern_str, "*.*");
+           conventionally used for it, so we'll just use a
+           wildcard that matches all file names - even those with
+           no extension, so we don't need to worry about compressed
+           file extensions. */
+           g_string_printf(pattern_str, ALL_FILES_WILDCARD);
     } else {
         /* Construct the list of patterns. */
         g_string_printf(pattern_str, "");
@@ -1631,7 +1619,7 @@ static void
 build_file_format_list(HWND sf_hwnd) {
     HWND  format_cb;
     int   ft;
-    guint index;
+    guint file_index;
     guint item_to_select;
     gchar *s;
 
@@ -1643,7 +1631,7 @@ build_file_format_list(HWND sf_hwnd) {
     SendMessage(format_cb, CB_RESETCONTENT, 0, 0);
 
     /* Check all file types. */
-    index = 0;
+    file_index = 0;
     for (ft = 0; ft < WTAP_NUM_FILE_TYPES; ft++) {
         if (ft == WTAP_FILE_UNKNOWN)
             continue;  /* not a real file type */
@@ -1658,16 +1646,16 @@ build_file_format_list(HWND sf_hwnd) {
         if(wtap_file_extensions_string(ft) != NULL) {
             s = g_strdup_printf("%s (%s)", wtap_file_type_string(ft), wtap_file_extensions_string(ft));
         } else {
-            s = g_strdup_printf("%s (*.*)", wtap_file_type_string(ft));
+            s = g_strdup_printf("%s (" ALL_FILES_WILDCARD ")", wtap_file_type_string(ft));
         }
         SendMessage(format_cb, CB_ADDSTRING, 0, (LPARAM) utf_8to16(s));
         g_free(s);
-        SendMessage(format_cb, CB_SETITEMDATA, (LPARAM) index, (WPARAM) ft);
+        SendMessage(format_cb, CB_SETITEMDATA, (LPARAM) file_index, (WPARAM) ft);
         if (ft == g_filetype) {
             /* Default to the same format as the file, if it's supported. */
-            item_to_select = index;
+            item_to_select = file_index;
         }
-        index++;
+        file_index++;
     }
 
     SendMessage(format_cb, CB_SETCURSEL, (WPARAM) item_to_select, 0);
@@ -1678,7 +1666,7 @@ static UINT_PTR CALLBACK
 save_as_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
     HWND           cur_ctrl;
     OFNOTIFY      *notify = (OFNOTIFY *) l_param;
-    /*int            new_filetype, index;*/
+    /*int            new_filetype, file_index;*/
 
     switch(msg) {
         case WM_INITDIALOG: {
@@ -1703,9 +1691,9 @@ save_as_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
             switch (w_param) {
 #if 0
                 case (CBN_SELCHANGE << 16) | EWFD_FILE_TYPE_COMBO:
-                    index = SendMessage(cur_ctrl, CB_GETCURSEL, 0, 0);
-                    if (index != CB_ERR) {
-                        new_filetype = SendMessage(cur_ctrl, CB_GETITEMDATA, (WPARAM) index, 0);
+                    file_index = SendMessage(cur_ctrl, CB_GETCURSEL, 0, 0);
+                    if (file_index != CB_ERR) {
+                        new_filetype = SendMessage(cur_ctrl, CB_GETITEMDATA, (WPARAM) file_index, 0);
                         if (new_filetype != CB_ERR) {
                             if (g_filetype != new_filetype) {
                                 if (wtap_can_save_with_wiretap(new_filetype, cfile.linktypes)) {
@@ -1722,7 +1710,7 @@ save_as_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
                                 }
                                 g_filetype = new_filetype;
                                 cur_ctrl = GetDlgItem(sf_hwnd, EWFD_GZIP_CB);
-                                if (wtap_dump_can_compress(file_type) {
+                                if (wtap_dump_can_compress(file_type)) {
                                     EnableWindow(cur_ctrl);
                                 } else {
                                     g_compressed = FALSE;
@@ -1808,7 +1796,7 @@ static UINT_PTR CALLBACK
 export_specified_packets_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
     HWND           cur_ctrl;
     OFNOTIFY      *notify = (OFNOTIFY *) l_param;
-    /*int            new_filetype, index;*/
+    /*int            new_filetype, file_index;*/
 
     switch(msg) {
         case WM_INITDIALOG: {
@@ -1834,9 +1822,9 @@ export_specified_packets_file_hook_proc(HWND sf_hwnd, UINT msg, WPARAM w_param, 
             switch (w_param) {
 #if 0
                 case (CBN_SELCHANGE << 16) | EWFD_FILE_TYPE_COMBO:
-                    index = SendMessage(cur_ctrl, CB_GETCURSEL, 0, 0);
-                    if (index != CB_ERR) {
-                        new_filetype = SendMessage(cur_ctrl, CB_GETITEMDATA, (WPARAM) index, 0);
+                    file_index = SendMessage(cur_ctrl, CB_GETCURSEL, 0, 0);
+                    if (file_index != CB_ERR) {
+                        new_filetype = SendMessage(cur_ctrl, CB_GETITEMDATA, (WPARAM) file_index, 0);
                         if (new_filetype != CB_ERR) {
                             if (g_filetype != new_filetype) {
                                 if (wtap_can_save_with_wiretap(new_filetype, cfile.linktypes)) {
@@ -1953,7 +1941,7 @@ range_update_dynamics(HWND dlg_hwnd, packet_range_t *range) {
     if (range->remove_ignored && g_cf->current_frame && g_cf->current_frame->flags.ignored) {
         StringCchPrintf(static_val, STATIC_LABEL_CHARS, _T("0"));
     } else {
-        StringCchPrintf(static_val, STATIC_LABEL_CHARS, _T("%u"), selected_num ? 1 : 0);
+        StringCchPrintf(static_val, STATIC_LABEL_CHARS, _T("%d"), selected_num ? 1 : 0);
     }
     SetWindowText(cur_ctrl, static_val);
 
@@ -1962,7 +1950,7 @@ range_update_dynamics(HWND dlg_hwnd, packet_range_t *range) {
     if (range->remove_ignored && g_cf->current_frame && g_cf->current_frame->flags.ignored) {
         StringCchPrintf(static_val, STATIC_LABEL_CHARS, _T("0"));
     } else {
-        StringCchPrintf(static_val, STATIC_LABEL_CHARS, _T("%u"), selected_num ? 1 : 0);
+        StringCchPrintf(static_val, STATIC_LABEL_CHARS, _T("%d"), selected_num ? 1 : 0);
     }
     SetWindowText(cur_ctrl, static_val);
 
@@ -2113,8 +2101,11 @@ range_handle_wm_initdialog(HWND dlg_hwnd, packet_range_t *range) {
 
     /* Retain the filter text, and fill it in. */
     if(range->user_range != NULL) {
+        char* tmp_str;
         cur_ctrl = GetDlgItem(dlg_hwnd, EWFD_RANGE_EDIT);
-        SetWindowText(cur_ctrl, utf_8to16(range_convert_range(range->user_range)));
+        tmp_str = range_convert_range(NULL, range->user_range);
+        SetWindowText(cur_ctrl, utf_8to16(tmp_str));
+        wmem_free(NULL, tmp_str);
     }
 
     /* dynamic values in the range frame */
@@ -2289,7 +2280,7 @@ export_file_hook_proc(HWND ef_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
     HWND           cur_ctrl;
     OFNOTIFY      *notify = (OFNOTIFY *) l_param;
     gboolean       pkt_fmt_enable;
-    int            i, index;
+    int            i, filter_index;
 
     switch(msg) {
         case WM_INITDIALOG: {
@@ -2320,13 +2311,13 @@ export_file_hook_proc(HWND ef_hwnd, UINT msg, WPARAM w_param, LPARAM l_param) {
                 case CDN_FILEOK:
                     break;
                 case CDN_TYPECHANGE:
-                    index = notify->lpOFN->nFilterIndex;
+                    filter_index = notify->lpOFN->nFilterIndex;
 
-                    if (index == 2)     /* PostScript */
+                    if (filter_index == 2)     /* PostScript */
                         print_args.format = PR_FMT_TEXT;
                     else
                         print_args.format = PR_FMT_PS;
-                    if (index == 3 || index == 4 || index == 5 || index == 6)
+                    if (filter_index == 3 || filter_index == 4 || filter_index == 5 || filter_index == 6)
                         pkt_fmt_enable = FALSE;
                     else
                         pkt_fmt_enable = TRUE;

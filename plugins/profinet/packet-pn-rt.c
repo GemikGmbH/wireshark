@@ -26,15 +26,12 @@
 
 #include <epan/packet.h>
 #include <epan/reassemble.h>
-#include <epan/addr_resolv.h>
 #include <epan/prefs.h>
-#include <epan/strutil.h>
 #include <epan/etypes.h>
 #include <epan/expert.h>
-#include <epan/dissectors/packet-dcerpc.h>
 #include <epan/crc16-tvb.h>
+#include <epan/dissectors/packet-dcerpc.h>
 
-#include <wsutil/crc16.h>
 #include <wsutil/crc16-plain.h>
 #include "packet-pn.h"
 
@@ -154,7 +151,7 @@ dissect_DataStatus(tvbuff_t *tvb, int offset, proto_tree *tree, guint8 u8DataSta
 
 
 static gboolean
-IsDFP_Frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+IsDFP_Frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint16 u16FrameID)
 {
     guint16       u16SFCRC16;
     guint8        u8SFPosition;
@@ -164,10 +161,6 @@ IsDFP_Frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     guint16       crc;
     gint          tvb_len          = 0;
     unsigned char virtualFramebuffer[16];
-    guint16       u16FrameID;
-
-    /* the sub tvb will NOT contain the frame_id here! */
-    u16FrameID = GPOINTER_TO_UINT(pinfo->private_data);
 
     /* try to build a temporaray buffer for generating this CRC */
     if (!pinfo->src.data || !pinfo->dst.data ||
@@ -198,7 +191,7 @@ IsDFP_Frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     /* end of first CRC check */
 
     offset += 2;    /*Skip first crc */
-    tvb_len = tvb_length(tvb);
+    tvb_len = tvb_captured_length(tvb);
     if (offset + 4 > tvb_len)
         return FALSE;
     if (tvb_get_letohs(tvb, offset) == 0)
@@ -240,9 +233,10 @@ IsDFP_Frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 /* possibly dissect a CSF_SDU related PN-RT packet */
 gboolean
-dissect_CSF_SDU_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+dissect_CSF_SDU_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-    guint16     u16FrameID;
+    /* the sub tvb will NOT contain the frame_id here! */
+    guint16     u16FrameID = GPOINTER_TO_UINT(data);
     guint16     u16SFCRC16;
     guint8      u8SFPosition;
     guint8      u8SFDataLength = 255;
@@ -256,13 +250,10 @@ dissect_CSF_SDU_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
     guint16     crc;
 
 
-    /* the sub tvb will NOT contain the frame_id here! */
-    u16FrameID = GPOINTER_TO_UINT(pinfo->private_data);
-
     /* possible FrameID ranges for DFP */
     if ((u16FrameID < 0x100) || (u16FrameID > 0x0FFF))
         return (FALSE);
-    if (IsDFP_Frame(tvb, pinfo, tree)) {
+    if (IsDFP_Frame(tvb, pinfo, tree, u16FrameID)) {
         /* can't check this CRC, as the checked data bytes are not available */
         u16SFCRC16 = tvb_get_letohs(tvb, offset);
         if (u16SFCRC16 != 0)
@@ -351,33 +342,28 @@ static void
 pnio_defragment_init(void)
 {
     guint32 i;
-
-    if ( reasembled_frag_table != NULL ) {
-        g_hash_table_destroy( reasembled_frag_table );
-        reasembled_frag_table = NULL;
-    }
-
     for (i=0; i < 16; i++)    /* init  the reasemble help array */
         start_frag_OR_ID[i] = 0;
-
     reassembly_table_init(&pdu_reassembly_table,
                           &addresses_reassembly_table_functions);
-    if (reasembled_frag_table == NULL)
-    {
-        reasembled_frag_table =  g_hash_table_new(NULL, NULL);
-    }
+    reasembled_frag_table = g_hash_table_new(NULL, NULL);
+}
+
+static void
+pnio_defragment_cleanup(void)
+{
+    g_hash_table_destroy(reasembled_frag_table);
+    reassembly_table_destroy(&pdu_reassembly_table);
 }
 
 /* possibly dissect a FRAG_PDU related PN-RT packet */
 static gboolean
-dissect_FRAG_PDU_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+dissect_FRAG_PDU_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-    guint16 u16FrameID;
+    /* the sub tvb will NOT contain the frame_id here! */
+    guint16 u16FrameID = GPOINTER_TO_UINT(data);
     int     offset = 0;
 
-
-    /* the sub tvb will NOT contain the frame_id here! */
-    u16FrameID = GPOINTER_TO_UINT(pinfo->private_data);
 
     /* possible FrameID ranges for FRAG_PDU */
     if (u16FrameID >= 0xFF80 && u16FrameID <= 0xFF8F) {
@@ -412,12 +398,12 @@ dissect_FRAG_PDU_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void 
             val_to_str( (u8FragStatus & 0x80) >> 7, pn_rt_frag_status_more_follows, "Unknown"));
 
         /* Is this a string or a bunch of bytes? Should it be FT_BYTES? */
-        proto_tree_add_string_format(sub_tree, hf_pn_rt_frag_data, tvb, offset, tvb_length(tvb) - offset, "data",
-            "Fragment Length: %d bytes", tvb_length(tvb) - offset);
-        col_append_fstr(pinfo->cinfo, COL_INFO, " Fragment Length: %d bytes", tvb_length(tvb) - offset);
+        proto_tree_add_string_format(sub_tree, hf_pn_rt_frag_data, tvb, offset, tvb_captured_length_remaining(tvb, offset), "data",
+            "Fragment Length: %d bytes", tvb_captured_length_remaining(tvb, offset));
+        col_append_fstr(pinfo->cinfo, COL_INFO, " Fragment Length: %d bytes", tvb_captured_length_remaining(tvb, offset));
 
-        dissect_pn_user_data_bytes(tvb, offset, pinfo, sub_tree, tvb_length(tvb) - offset, FRAG_DATA);
-        if ((guint)(tvb_length(tvb) - offset) < (guint)(u8FragDataLength *8)) {
+        dissect_pn_user_data_bytes(tvb, offset, pinfo, sub_tree, tvb_captured_length_remaining(tvb, offset), FRAG_DATA);
+        if ((guint)tvb_captured_length_remaining(tvb, offset) < (guint)(u8FragDataLength *8)) {
             proto_item_append_text(status_item, ": FragDataLength out of Framerange -> discarding!");
             return (TRUE);
         }
@@ -440,7 +426,7 @@ dissect_FRAG_PDU_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void 
             /* use frame data instead of "pnio fraglen" which sets 8 octet steps */
             pdu_frag = fragment_add_seq(&pdu_reassembly_table, tvb, offset,
                                         pinfo, u32ReasembleID, NULL, uFragNumber,
-                                        (tvb_length(tvb) - offset)/*u8FragDataLength*8*/, bMoreFollows, 0);
+                                        (tvb_captured_length_remaining(tvb, offset))/*u8FragDataLength*8*/, bMoreFollows, 0);
 
             if (pdu_frag && !bMoreFollows) /* PDU is complete! and last fragment */
             {   /* store this fragment as the completed fragment in hash table */
@@ -801,17 +787,15 @@ dissect_pn_rt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     col_add_str(pinfo->cinfo, COL_INFO, szFieldSummary);
     col_set_str(pinfo->cinfo, COL_PROTOCOL, pszProtShort);
 
-    pinfo->private_data = GUINT_TO_POINTER( (guint32) u16FrameID);
-
     /* get frame user data tvb (without header and footer) */
-    next_tvb = tvb_new_subset(tvb, 2, data_len, data_len);
+    next_tvb = tvb_new_subset_length(tvb, 2, data_len);
 
     /* ask heuristics, if some sub-dissector is interested in this packet payload */
-    if (!dissector_try_heuristic(heur_subdissector_list, next_tvb, pinfo, tree, &hdtbl_entry, NULL)) {
+    if (!dissector_try_heuristic(heur_subdissector_list, next_tvb, pinfo, tree, &hdtbl_entry, GUINT_TO_POINTER( (guint32) u16FrameID))) {
         /*col_set_str(pinfo->cinfo, COL_INFO, "Unknown");*/
 
         /* Oh, well, we don't know this; dissect it as data. */
-        dissect_pn_undecoded(next_tvb, 0, pinfo, tree, tvb_length(next_tvb));
+        dissect_pn_undecoded(next_tvb, 0, pinfo, tree, tvb_captured_length(next_tvb));
     }
 }
 
@@ -997,10 +981,11 @@ proto_register_pn_rt(void)
                                    &pnio_desegment);
 
     /* register heuristics anchor for payload dissectors */
-    register_heur_dissector_list("pn_rt", &heur_subdissector_list);
+    heur_subdissector_list = register_heur_dissector_list("pn_rt");
 
     init_pn (proto_pn_rt);
     register_init_routine(pnio_defragment_init);
+    register_cleanup_routine(pnio_defragment_cleanup);
 }
 
 
@@ -1015,10 +1000,23 @@ proto_reg_handoff_pn_rt(void)
     dissector_add_uint("ethertype", ETHERTYPE_PROFINET, pn_rt_handle);
     dissector_add_uint("udp.port", 0x8892, pn_rt_handle);
 
-    heur_dissector_add("pn_rt", dissect_CSF_SDU_heur, proto_pn_rt);
-    heur_dissector_add("pn_rt", dissect_FRAG_PDU_heur, proto_pn_rt);
+    heur_dissector_add("pn_rt", dissect_CSF_SDU_heur, "PROFINET CSF_SDU IO", "pn_csf_sdu_pn_rt", proto_pn_rt, HEURISTIC_ENABLE);
+    heur_dissector_add("pn_rt", dissect_FRAG_PDU_heur, "PROFINET Frag PDU IO", "pn_frag_pn_rt", proto_pn_rt, HEURISTIC_ENABLE);
     data_handle = find_dissector("data");
 
     ethertype_subdissector_table = find_dissector_table("ethertype");
 }
 
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

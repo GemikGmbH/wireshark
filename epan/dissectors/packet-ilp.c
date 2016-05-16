@@ -34,7 +34,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/asn1.h>
@@ -42,6 +41,8 @@
 #include "packet-per.h"
 #include "packet-tcp.h"
 #include "packet-gsm_map.h"
+#include "packet-e164.h"
+#include "packet-e212.h"
 
 #define PNAME  "OMA Internal Location Protocol"
 #define PSNAME "ILP"
@@ -192,10 +193,10 @@ static int hf_ilp_setSessionID = -1;              /* SetSessionID */
 static int hf_ilp_spcSessionID = -1;              /* SpcSessionID */
 static int hf_ilp_sessionId = -1;                 /* INTEGER_0_65535 */
 static int hf_ilp_setId = -1;                     /* SETId */
-static int hf_ilp_msisdn = -1;                    /* OCTET_STRING_SIZE_8 */
-static int hf_ilp_mdn = -1;                       /* OCTET_STRING_SIZE_8 */
+static int hf_ilp_msisdn = -1;                    /* T_msisdn */
+static int hf_ilp_mdn = -1;                       /* T_mdn */
 static int hf_ilp_minsi = -1;                     /* BIT_STRING_SIZE_34 */
-static int hf_ilp_imsi = -1;                      /* OCTET_STRING_SIZE_8 */
+static int hf_ilp_imsi = -1;                      /* T_imsi */
 static int hf_ilp_nai = -1;                       /* IA5String_SIZE_1_1000 */
 static int hf_ilp_iPAddress = -1;                 /* IPAddress */
 static int hf_ilp_sessionID = -1;                 /* OCTET_STRING_SIZE_4 */
@@ -451,10 +452,12 @@ static int hf_ilp_GANSSSignals_signal7 = -1;
 static int hf_ilp_GANSSSignals_signal8 = -1;
 
 /*--- End of included file: packet-ilp-hf.c ---*/
-#line 61 "../../asn1/ilp/packet-ilp-template.c"
+#line 62 "../../asn1/ilp/packet-ilp-template.c"
+static int hf_ilp_mobile_directory_number = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_ilp = -1;
+static gint ett_ilp_setid = -1;
 
 /*--- Included file: packet-ilp-ett.c ---*/
 #line 1 "../../asn1/ilp/packet-ilp-ett.c"
@@ -595,7 +598,7 @@ static gint ett_ilp_T_lPPPayload = -1;
 static gint ett_ilp_T_tia801Payload = -1;
 
 /*--- End of included file: packet-ilp-ett.c ---*/
-#line 65 "../../asn1/ilp/packet-ilp-template.c"
+#line 68 "../../asn1/ilp/packet-ilp-template.c"
 
 /* Include constants */
 
@@ -612,7 +615,7 @@ static gint ett_ilp_T_tia801Payload = -1;
 #define maxPosSize                     1024
 
 /*--- End of included file: packet-ilp-val.h ---*/
-#line 68 "../../asn1/ilp/packet-ilp-template.c"
+#line 71 "../../asn1/ilp/packet-ilp-template.c"
 
 
 
@@ -747,9 +750,41 @@ dissect_ilp_SlcSessionID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 
 static int
-dissect_ilp_OCTET_STRING_SIZE_8(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+dissect_ilp_T_msisdn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 70 "../../asn1/ilp/ilp.cnf"
+  tvbuff_t *msisdn_tvb;
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
-                                       8, 8, FALSE, NULL);
+                                       8, 8, FALSE, &msisdn_tvb);
+
+  if (msisdn_tvb) {
+    proto_tree *subtree;
+
+    subtree = proto_item_add_subtree(actx->created_item, ett_ilp_setid);
+    dissect_e164_msisdn(msisdn_tvb, subtree, 0, 8, E164_ENC_BCD);
+  }
+
+
+
+  return offset;
+}
+
+
+
+static int
+dissect_ilp_T_mdn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 80 "../../asn1/ilp/ilp.cnf"
+  tvbuff_t *mdn_tvb;
+  offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
+                                       8, 8, FALSE, &mdn_tvb);
+
+  if (mdn_tvb) {
+    proto_tree *subtree;
+
+    subtree = proto_item_add_subtree(actx->created_item, ett_ilp_setid);
+    proto_tree_add_string(subtree, hf_ilp_mobile_directory_number, mdn_tvb, 0, 8, tvb_bcd_dig_to_wmem_packet_str(mdn_tvb, 0, 8, NULL, FALSE));
+  }
+
+
 
   return offset;
 }
@@ -760,6 +795,27 @@ static int
 dissect_ilp_BIT_STRING_SIZE_34(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
                                      34, 34, FALSE, NULL, NULL);
+
+  return offset;
+}
+
+
+
+static int
+dissect_ilp_T_imsi(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 90 "../../asn1/ilp/ilp.cnf"
+  tvbuff_t *imsi_tvb;
+  offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
+                                       8, 8, FALSE, &imsi_tvb);
+
+  if (imsi_tvb) {
+    proto_tree *subtree;
+
+    subtree = proto_item_add_subtree(actx->created_item, ett_ilp_setid);
+    dissect_e212_imsi(imsi_tvb, actx->pinfo, subtree, 0, 8, FALSE);
+  }
+
+
 
   return offset;
 }
@@ -786,10 +842,10 @@ static const value_string ilp_SETId_vals[] = {
 };
 
 static const per_choice_t SETId_choice[] = {
-  {   0, &hf_ilp_msisdn          , ASN1_EXTENSION_ROOT    , dissect_ilp_OCTET_STRING_SIZE_8 },
-  {   1, &hf_ilp_mdn             , ASN1_EXTENSION_ROOT    , dissect_ilp_OCTET_STRING_SIZE_8 },
+  {   0, &hf_ilp_msisdn          , ASN1_EXTENSION_ROOT    , dissect_ilp_T_msisdn },
+  {   1, &hf_ilp_mdn             , ASN1_EXTENSION_ROOT    , dissect_ilp_T_mdn },
   {   2, &hf_ilp_minsi           , ASN1_EXTENSION_ROOT    , dissect_ilp_BIT_STRING_SIZE_34 },
-  {   3, &hf_ilp_imsi            , ASN1_EXTENSION_ROOT    , dissect_ilp_OCTET_STRING_SIZE_8 },
+  {   3, &hf_ilp_imsi            , ASN1_EXTENSION_ROOT    , dissect_ilp_T_imsi },
   {   4, &hf_ilp_nai             , ASN1_EXTENSION_ROOT    , dissect_ilp_IA5String_SIZE_1_1000 },
   {   5, &hf_ilp_iPAddress       , ASN1_EXTENSION_ROOT    , dissect_ilp_IPAddress },
   { 0, NULL, 0, NULL }
@@ -3373,7 +3429,6 @@ dissect_ilp_T_lPPPayload_item(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
 
 
 
-
   return offset;
 }
 
@@ -4090,11 +4145,11 @@ static int dissect_ILP_PDU_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_
 
 
 /*--- End of included file: packet-ilp-fn.c ---*/
-#line 71 "../../asn1/ilp/packet-ilp-template.c"
+#line 74 "../../asn1/ilp/packet-ilp-template.c"
 
 
 static guint
-get_ilp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_ilp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
   /* PDU length = Message length */
   return tvb_get_ntohs(tvb,offset);
@@ -4105,7 +4160,7 @@ dissect_ilp_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
   tcp_dissect_pdus(tvb, pinfo, tree, ilp_desegment, ILP_HEADER_SIZE,
                    get_ilp_pdu_len, dissect_ILP_PDU_PDU, data);
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 void proto_reg_handoff_ilp(void);
@@ -4618,11 +4673,11 @@ void proto_register_ilp(void) {
     { &hf_ilp_msisdn,
       { "msisdn", "ilp.msisdn",
         FT_BYTES, BASE_NONE, NULL, 0,
-        "OCTET_STRING_SIZE_8", HFILL }},
+        NULL, HFILL }},
     { &hf_ilp_mdn,
       { "mdn", "ilp.mdn",
         FT_BYTES, BASE_NONE, NULL, 0,
-        "OCTET_STRING_SIZE_8", HFILL }},
+        NULL, HFILL }},
     { &hf_ilp_minsi,
       { "min", "ilp.min",
         FT_BYTES, BASE_NONE, NULL, 0,
@@ -4630,7 +4685,7 @@ void proto_register_ilp(void) {
     { &hf_ilp_imsi,
       { "imsi", "ilp.imsi",
         FT_BYTES, BASE_NONE, NULL, 0,
-        "OCTET_STRING_SIZE_8", HFILL }},
+        NULL, HFILL }},
     { &hf_ilp_nai,
       { "nai", "ilp.nai",
         FT_STRING, BASE_NONE, NULL, 0,
@@ -5641,12 +5696,17 @@ void proto_register_ilp(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-ilp-hfarr.c ---*/
-#line 97 "../../asn1/ilp/packet-ilp-template.c"
+#line 100 "../../asn1/ilp/packet-ilp-template.c"
+    { &hf_ilp_mobile_directory_number,
+      { "Mobile Directory Number", "ilp.mobile_directory_number",
+        FT_STRING, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
   };
 
   /* List of subtrees */
   static gint *ett[] = {
     &ett_ilp,
+    &ett_ilp_setid,
 
 /*--- Included file: packet-ilp-ettarr.c ---*/
 #line 1 "../../asn1/ilp/packet-ilp-ettarr.c"
@@ -5787,7 +5847,7 @@ void proto_register_ilp(void) {
     &ett_ilp_T_tia801Payload,
 
 /*--- End of included file: packet-ilp-ettarr.c ---*/
-#line 103 "../../asn1/ilp/packet-ilp-template.c"
+#line 111 "../../asn1/ilp/packet-ilp-template.c"
   };
 
   module_t *ilp_module;

@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 
@@ -115,7 +113,7 @@ proto_reg_handoff_newmail(void)
 
 	if(!inited) {
 		newmail_handle = find_dissector("newmail");
-		dissector_add_handle("udp.port", newmail_handle); /* for 'decode-as' */
+		dissector_add_for_decode_as("udp.port", newmail_handle);
 		inited = TRUE;
 	} else {
 		if (preference_default_port_last != 0) {
@@ -128,3 +126,16 @@ proto_reg_handoff_newmail(void)
 	}
 	preference_default_port_last = preference_default_port;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

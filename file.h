@@ -42,7 +42,7 @@ typedef enum {
 
 /** Return values from functions that read capture files. */
 typedef enum {
-    CF_READ_OK,	     /**< operation succeeded */
+    CF_READ_OK,      /**< operation succeeded */
     CF_READ_ERROR,   /**< operation got an error (function may provide err with details) */
     CF_READ_ABORTED  /**< operation aborted by user */
 } cf_read_status_t;
@@ -56,9 +56,9 @@ typedef enum {
 
 /** Return values from functions that print sets of packets. */
 typedef enum {
-	CF_PRINT_OK,            /**< print operation succeeded */
-	CF_PRINT_OPEN_ERROR,    /**< print operation failed while opening printer */
-	CF_PRINT_WRITE_ERROR    /**< print operation failed while writing to the printer */
+    CF_PRINT_OK,            /**< print operation succeeded */
+    CF_PRINT_OPEN_ERROR,    /**< print operation failed while opening printer */
+    CF_PRINT_WRITE_ERROR    /**< print operation failed while writing to the printer */
 } cf_print_status_t;
 
 typedef enum {
@@ -71,6 +71,8 @@ typedef enum {
     cf_cb_file_reload_finished,
     cf_cb_file_rescan_started,
     cf_cb_file_rescan_finished,
+    cf_cb_file_retap_started,
+    cf_cb_file_retap_finished,
     cf_cb_file_fast_save_finished,
     cf_cb_packet_selected,
     cf_cb_packet_unselected,
@@ -95,11 +97,29 @@ typedef struct {
     field_info    *finfo;
 } match_data;
 
+/**
+ * Add a capture file event callback.
+ *
+ * @param func The function to be called for each event.
+ *             The function will be passed three parameters: The event type (event),
+ *             event-dependent data (data), and user-supplied data (user_data).
+ *             Event-dependent data may be a capture_file pointer, character pointer,
+ *             or NULL.
+ * @param user_data User-supplied data to pass to the callback. May be NULL.
+ */
+
 extern void
 cf_callback_add(cf_callback_t func, gpointer user_data);
 
+/**
+ * Remove a capture file event callback.
+ *
+ * @param func The function to be removed.
+ * @param user_data User-supplied data. Must be the same value supplied to cf_callback_add.
+ */
+
 extern void
-cf_callback_remove(cf_callback_t func);
+cf_callback_remove(cf_callback_t func, gpointer user_data);
 
 /**
  * Open a capture file.
@@ -298,14 +318,6 @@ const gchar *cf_get_tempfile_source(capture_file *cf);
 int cf_get_packet_count(capture_file *cf);
 
 /**
- * Set the number of packets in the capture file.
- *
- * @param cf the capture file
- * @param packet_count the number of packets in the capture file
- */
-void cf_set_packet_count(capture_file *cf, int packet_count);
-
-/**
  * Is this capture file a temporary file?
  *
  * @param cf the capture file
@@ -408,9 +420,11 @@ void cf_timestamp_auto_precision(capture_file *cf);
  *
  * @param cf the capture file
  * @param print_args the arguments what and how to print
+ * @param show_progress_bar TRUE if a progress bar is to be shown
  * @return one of cf_print_status_t
  */
-cf_print_status_t cf_print_packets(capture_file *cf, print_args_t *print_args);
+cf_print_status_t cf_print_packets(capture_file *cf, print_args_t *print_args,
+                                   gboolean show_progress_bar);
 
 /**
  * Print (export) the capture file into PDML format.
@@ -673,9 +687,16 @@ gboolean cf_set_user_packet_comment(capture_file *cf, frame_data *fd, const gcha
  */
 guint32 cf_comment_types(capture_file *cf);
 
-#if defined(HAVE_HEIMDAL_KERBEROS) || defined(HAVE_MIT_KERBEROS)
-WS_DLL_PUBLIC
-void read_keytab_file(const char *);
+#ifdef WANT_PACKET_EDITOR
+/**
+ * Give a frame new, edited data.
+ *
+ * @param cf the capture file
+ * @param fd frame_data structure for the frame
+ * @param phdr the struct wtap_pkthdr for the frame
+ * @param pd the raw packet data for the frame
+ */
+void cf_set_frame_edited(capture_file *cf, frame_data *fd, struct wtap_pkthdr *phdr, guint8 *pd);
 #endif
 
 #ifdef __cplusplus
@@ -683,3 +704,16 @@ void read_keytab_file(const char *);
 #endif /* __cplusplus */
 
 #endif /* file.h */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

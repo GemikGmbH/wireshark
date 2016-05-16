@@ -24,8 +24,6 @@
 #include "config.h"
 
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
-
 #include "packet-mac-lte.h"
 
 void proto_register_mac_lte_framed(void);
@@ -56,7 +54,7 @@ static void dissect_mac_lte_framed(tvbuff_t *tvb, packet_info *pinfo,
        - fixed header bytes
        - tag for data
        - at least one byte of MAC PDU payload */
-    if ((size_t)tvb_length_remaining(tvb, offset) < (3+2)) {
+    if ((size_t)tvb_reported_length_remaining(tvb, offset) < (3+2)) {
         return;
     }
 
@@ -98,3 +96,15 @@ void proto_register_mac_lte_framed(void)
     register_dissector("mac-lte-framed", dissect_mac_lte_framed, proto_mac_lte_framed);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

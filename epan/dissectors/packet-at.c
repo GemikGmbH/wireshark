@@ -25,9 +25,7 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <ctype.h>
 
 void proto_register_at_command(void);
 void proto_reg_handoff_at_command(void);
@@ -46,7 +44,7 @@ static gboolean allowed_chars(tvbuff_t *tvb)
     gint offset, len;
     guint8 val;
 
-    len = tvb_length(tvb);
+    len = tvb_reported_length(tvb);
     for (offset = 0; offset < len; offset++) {
         val = tvb_get_guint8(tvb, offset);
         if (!(g_ascii_isprint(val) || (val == 0x0a) || (val == 0x0d)))
@@ -118,7 +116,19 @@ proto_register_at_command(void)
 void
 proto_reg_handoff_at_command(void)
 {
-    heur_dissector_add("usb.bulk", heur_dissect_at, proto_at);
-    heur_dissector_add("usb.control", heur_dissect_at, proto_at);
+    heur_dissector_add("usb.bulk", heur_dissect_at, "AT Command USB bulk endpoint", "at_usb_bulk", proto_at, HEURISTIC_ENABLE);
+    heur_dissector_add("usb.control", heur_dissect_at, "AT Command USB control endpoint", "at_usb_control", proto_at, HEURISTIC_ENABLE);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

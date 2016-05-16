@@ -10,40 +10,49 @@ and let us add features more easily.
 
 1. Getting up and running
 
-The Qt interface for Wireshark has been compiled and tested on Mac OS X 10.8
-(XCode LLVM/clang), Windows 7 x86 (Visual C++ 2010), and Ubuntu 12.04 (gcc).
-Compilation via Qt Creator and via the command line compilation using QMake and
-make or nmake should work.
+The Qt interface for Wireshark should compile out of the box on Windows, OS
+X, and Linux using Qt 4.7 or later (including Qt 5) and Visual C++, gcc/g++,
+and clang/clang++. The Qt UI is continuously built and tested at
+https://buildbot.wireshark.org/trunk/waterfall .
 
-There are several ways of building qtshark:
+There are several ways of building the Qt UI:
 
-1) Using qtcreator:
+1) Qt Creator + CMake (recommended if adding features):
 
-   The ui/qt directory is loosely coupled with the rest of the codebase.
-   The main Wireshark sources must be built beforehand using CMake on Linux
-   and OS X and nmake on Windows. Autotools + QMake is a basket full of
-   crazy that hasn't yet been sorted and folded.  (Autotools + Boring Old
-   Make, without using QMake at all, might actually be simpler:
+   Open the top-level CMakeLists.txt within Qt Creator. It should ask you to
+   choose a build location. Do so. It should then ask you to run CMake. Fill in
+   any desired build arguments (e.g. "-D CMAKE_BUILD_TYPE=Debug" or
+   "-D ENABLE_GTK3=OFF") and click the "Run CMake" button. When that
+   completes select "Build → Open Build and Run Kit Selector..." and make
+   sure wireshark is selected.
 
-    http://www.mail-archive.com/automake@gnu.org/msg11149.html
+   Note that Qt Creator uses output created by the CodeBlocks generator. If
+   you run CMake outside of Qt Creator you should use the "CodeBlocks - Unix
+   Makefiles" or "CodeBlocks - NMake Makefiles" generators, otherwise Qt
+   Creator will prompt you to re-run CMake.
 
-2) Using cmake:
-   set BUILD_qtshark to ON (default: OFF) in CmakeOptions.txt (may be set
-   in parallel with BUILD_wireshark) or add -DBUILD_qtshark=YES flag
-   Do the normal out-of-tree or in-tree build.
-   To build with Qt5 instead of Qt4, add the following option set ENABLE_QT5
-   to ON. Note: Qt5 requires cmake 2.8.3 or newer.
-   This has only been tested on a current openSUSE Linux system with fairly
-   current QT and cmake. It may be necessary to copy the FindQt4.cmake and
-   supporting files from cmake to Wireshark's cmake/modules/
-   If using cmake installing qtcreator is not required. Basically almost
-   all stuff below can be ignored ;-)
+2) CMake:
 
-3) Using autotools:
+   Qt (BUILD_wireshark) is enabled by default. Use the "cmake" command to
+   configure a normal out-of-tree or in-tree build, e.g.
 
-   Pass --with-qt to the configure script and build.
+    mkdir cmakebuild
+    cd cmakebuild
+    cmake
+    make
 
-Work is in progress on this.)
+   Note that CMake builds an application bundle (Wireshark.app) on OS X
+   by default. Use the option "-DENABLE_APPLICATION_BUNDLE=OFF" to create a
+   traditional UNIX/POSIX build.
+
+3) Autotools:
+
+   Qt (--with-qt) is enabled by default.
+
+4) Qt Creator + Wireshark.pro:
+
+   Wireshark.pro (formerly QtShark.pro) was used to bootstrap the UI porting
+   effort. It is still used by Nmake but will likely be removed at some point.
 
 1.1 Prerequisites
 
@@ -51,40 +60,17 @@ Before compiling you need the Qt SDK and Qt Creator.
 
 1.1.1 OS X
 
-Download the latest Qt Library + Qt Creator (currently 5.1) from
-http://qt-project.org/downloads/ and install it. For a more native
-look and feel you should also install Qt Mac Extras:
-
-    git clone http://qt.gitorious.org/qt/qtmacextras.git
-    cd qtmacextras
-    /path/to/qt5/qmake qtmacextras.pro
-    make
-    make -n install
-    # Make sure install output looks sensible
-    make install
-
-This may or may not work for you; see
-
-    https://bugreports.qt-project.org/browse/QTBUG-32594
+Download the latest Qt Library + Qt Creator from
+http://www.qt.io/download-open-source/. Qt 5.2 and later include
+Qt Mac Extras (http://doc.qt.io/qt-5/qtmacextras-index.html), which
+provides a better look and feel.
 
 1.1.2 Windows
 
-The default Qt SDK libraries are built using MinGW, which isn't supported for
-Wireshark. Instead of downloading the Qt SDK all-in-one package, download the Qt
-Libraries package from http://qt-project.org/downloads/ that matches your
-compiler (VS 2010 or VS 2012) and Qt Creator for Windows.
-
-Settings in config.nmake are passed to the Qt environment via
-ui/qt/config.pri. This file should be created automatically when you
-compile Wireshark in the top-level source directory. You can create it by
-hand by running "nmake -f Makefile.nmake ui\qt\config.pri".
-
-Qt Creator can be used to compile and run Wireshark.  Alternatively qmake
-and nmake at the cmd line can be used.
-
-The Windows Qt version of Wireshark will be compiled and linked with
-essentially the same options as that used when building the Gtk version of
-Wireshark.
+Download the Qt online installer from http://www.qt.io/download-open-source/
+and run it. Install a version of Qt that matches your compiler, e.g.
+"msvc2013 64-bit OpenGL". Install Qt Creator as well. Wireshark doesn't
+require anything beyond that.
 
 1.1.2.1 Qt Creator
 
@@ -93,7 +79,7 @@ select "Build Settings" and do the following:
 
 - In "Edit build configuration" make sure the "Release" build is selected.
   (The "Debug" build won't work unless Wireshark is recompiled to link with a "debug"
-   the "debug" C runtime library (using /MDd). See ui\qt\QtShark.pro for details).
+   the "debug" C runtime library (using /MDd). See ui\qt\Wireshark.pro for details).
 
 - Make sure "Qt version" matches your version of Visual Studio.
 - Make sure "Tool chain" matches your Visual C++ version.
@@ -115,20 +101,20 @@ XXX: (WMeier): I've not had too much satisfaction using the "native Windows debu
 
 - [Create and] Switch to a working dir to be used for .obj files, etc for Wireshark-qt compilation
 
-- Use qmake to create Windows Makefile (based upon info in ui\qt\QtShark.pro and config.pri)
+- Use qmake to create Windows Makefile (based upon info in ui\qt\Wireshark.pro and config.pri)
     qmake -o Makefile.nmake ..\..\ui\qt\QtShark.pro
                                   ;; (Only needs to be run once;
                                   ;; nmake -f Makefile.nmake  will redo qmake if any
-                                  ;; dependendencies (e.g., QtShark.pro) change.
+                                  ;; dependendencies (e.g., Wireshark.pro) change.
 
 - Compile & Build
-    nmake -f Makefile.nmake       ;; qtshark.exe + all DLL's will be in <working-dir>\wireshark-qt-debug
+    nmake -f Makefile.nmake       ;; wireshark.exe + all DLL's will be in <working-dir>\wireshark-qt-debug
 - Run:
     <working-dir>\wireshark-qt-debug
 
 - Debug (with Visual Studio debugger)
     Start Visual Studio;
-    File ! Open ! Project/Solution  ! .../<working-dir>/wireshark-qt-debug/qtshark.exe
+    File ! Open ! Project/Solution  ! .../<working-dir>/wireshark-qt-debug/wireshark.exe
     (Using  Solution Explorer ! Properties ! Environment to
      add PATH=C:\Qt\4.8.0\bin;%PATH% will pobably be required).
     ... Debug in the usual manner
@@ -140,7 +126,7 @@ Install the Qt libraries and Qt Creator via your package manager or from
 http://qt-project.org/downloads/. On Debian and Ubuntu the "qt-sdk" (and qttools5-dev when use Qt5) meta-package
 should provide everything you need. Build the top-level directory using CMake
 (see section "Using cmake" above). As an alternative do an in-tree build without
-QT and then inside ui/qt/ do "qtcreate QtShark.pro".
+QT and then inside ui/qt/ do "qtcreate Wireshark.pro".
 
 1.2 Other tools
 
@@ -167,21 +153,10 @@ porting a feature, consider the following:
 
 2.1 Coding guidelines
 
-2.1.1 Name conventions
+Moved to the Developer's Guide:
 
-Most of the code in the ui/qt directory uses three APIs: Qt (which uses
-InterCapConvention), GLib (which uses underscore_convention), and the Wireshark
-API (which also uses underscore_convention). As a general rule Wireshark's Qt
-code uses InterCapConvention for class names and methods and
-underscore_convention for variables, with a trailing underscore for member
-variables.
+https://www.wireshark.org/docs/wsdg_html_chunked/ChUIQt.html
 
-2.1.2 Mixing C and C++
-
-Sometimes we have to call C++ functions from one of Wireshark's C callbacks and
-pass C++ objects to or from C. The C++ FAQ describes how to do this safely:
-
-http://www.parashift.com/c++-faq/mixing-c-and-cpp.html
 
 2.2 Changes
 
@@ -200,17 +175,39 @@ http://www.parashift.com/c++-faq/mixing-c-and-cpp.html
 
 3. Translations (i18n)
 
+3.1 Make translation
+
 Qt makes translating the Wireshark UI into different languages easy.
 
-- Add your translation (qtshark_XX.ts) in QtShark.pro, i18n.qrc, ui/qt/Makefile.common
-    and ui/qt/CMakeList.txt .
-- Add also in epan/prefs.c, in ui/qt/main.cpp add case in switch(prefs_p->gui_qt_language)
-    and in main_windows_preferences_frame.ui (use qt-design) to add in prefs.
-- Run "lupdate QtShark.pro" to generate/update your translation file.
-- Translate with Qt Linguist.
-- Run "lrelease QtShark.pro" to create/update qtshark_xx.qm file.
+- Add your translation (ui/qt/wireshark_XX.ts) in ui/qt/Wireshark.pro, ui/qt/i18n.qrc,
+    ui/qt/Makefile.common and ui/qt/CMakeLists.txt
+- Please add flag (image) for your language in images/languages/XX.svg and image/languages/languages.qrc
+- Run "lupdate ui/qt/Wireshark.pro" to generate/update your translation file.
+  or "lupdate ui/qt -ts ui/qt/wireshark_XX.ts" for specified translation
+- Translate with Qt Linguist (in console: "linguist ui/qt/wireshark_XX.ts")
+- Run "lrelease Wireshark.pro" or
+  "lrelease ui/qt/wireshark_XX.ts -qm ui/qt/wireshark_XX.qm" to create/update wireshark_XX.qm file.
 - Push your translation to Gerrit for review ("git push").
+
+Alternatively you can only put your QM and flag files in "languages" directory in
+Wireshark user configuration directory (~/.wireshark/languages/ on unix)
 
 More information about Qt Linguist
 http://qt-project.org/doc/qt-4.8/linguist-manual.html
 
+3.2 Translate !
+
+You can now directly translate with Transifex Website
+https://www.transifex.com/projects/p/wireshark/
+
+Every week, translation is automatically resynced with the source code through the following steps
+* pull ts from Transifex
+* lupdate ts file
+* push and commit on Gerrit
+* push ts on Transifex
+
+4 Developing
+
+Moved to the Developer's Guide:
+
+https://www.wireshark.org/docs/wsdg_html_chunked/ChUIQt.html

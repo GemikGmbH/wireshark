@@ -19,14 +19,13 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
+#include <config.h>
 
 #include <stdio.h>
 #include <stdlib.h> /* for exit() */
 #include <glib.h>
 
 #include <string.h>
-#include <ctype.h>
 
 #ifdef HAVE_SYS_TYPES_H
 # include <sys/types.h>
@@ -64,10 +63,50 @@
 #include <sys/utsname.h>
 #endif
 
+/*
+ * Linux bonding devices mishandle unknown ioctls; they fail
+ * with ENODEV rather than ENOTSUP, EOPNOTSUPP, or ENOTTY,
+ * so pcap_can_set_rfmon() returns a "no such device" indication
+ * if we try to do SIOCGIWMODE on them.
+ *
+ * So, on Linux, we check for bonding devices, if we can, before
+ * trying pcap_can_set_rfmon(), as pcap_can_set_rfmon() will
+ * end up trying SIOCGIWMODE on the device if that ioctl exists.
+ */
+#if defined(HAVE_PCAP_CREATE) && defined(__linux__)
+
+#include <sys/ioctl.h>
+
+/*
+ * If we're building for a Linux version that supports bonding,
+ * HAVE_BONDING will be defined.
+ */
+
+#ifdef HAVE_LINUX_SOCKIOS_H
+#include <linux/sockios.h>
+#endif
+
+#ifdef HAVE_LINUX_IF_BONDING_H
+#include <linux/if_bonding.h>
+#endif
+
+#if defined(BOND_INFO_QUERY_OLD) || defined(SIOCBONDINFOQUERY)
+#define HAVE_BONDING
+#endif
+
+#endif /* defined(HAVE_PCAP_CREATE) && defined(__linux__) */
+
 #include <signal.h>
 #include <errno.h>
 
+#ifdef HAVE_LIBZ
+#include <zlib.h>      /* to get the libz version number */
+#endif
+
+#include <wsutil/cmdarg_err.h>
 #include <wsutil/crash_info.h>
+#include <wsutil/ws_diag_control.h>
+#include <wsutil/ws_version_info.h>
 
 #ifndef HAVE_GETOPT_LONG
 #include "wsutil/wsgetopt.h"
@@ -83,19 +122,17 @@
 #endif
 
 #include "ringbuffer.h"
-#include "clopts_common.h"
-#include "cmdarg_err.h"
-#include "version_info.h"
 
-#include "capture-pcap-util.h"
+#include "caputils/capture_ifinfo.h"
+#include "caputils/capture-pcap-util.h"
+#include "caputils/capture-pcap-util-int.h"
 #ifdef _WIN32
-#include "capture-wpcap.h"
+#include "caputils/capture-wpcap.h"
 #endif /* _WIN32 */
 
 #include "pcapio.h"
 
 #ifdef _WIN32
-#include "capture-wpcap.h"
 #include <wsutil/unicode-utils.h>
 #endif
 
@@ -107,14 +144,14 @@
 # include "wsutil/inet_v6defs.h"
 #endif
 
+#include <wsutil/clopts_common.h>
 #include <wsutil/privileges.h>
 
 #include "sync_pipe.h"
 
 #include "capture_opts.h"
-#include "capture_session.h"
-#include "capture_ifinfo.h"
-#include "capture_sync.h"
+#include <capchild/capture_session.h>
+#include <capchild/capture_sync.h>
 
 #include "conditions.h"
 #include "capture_stop_conditions.h"
@@ -122,8 +159,13 @@
 #include "wsutil/tempfile.h"
 #include "log.h"
 #include "wsutil/file_util.h"
+#include "wsutil/os_version_info.h"
 
-#include "ws80211_utils.h"
+#include "caputils/ws80211_utils.h"
+
+#ifdef HAVE_EXTCAP
+#include "extcap.h"
+#endif
 
 /*
  * Get information about libpcap format from "wiretap/libpcap.h".
@@ -185,7 +227,7 @@ enable_kernel_bpf_jit_compiler(void)
     ssize_t written _U_;
     static const char file[] = "/proc/sys/net/core/bpf_jit_enable";
 
-    fd = open(file, O_WRONLY);
+    fd = ws_open(file, O_WRONLY);
     if (fd < 0)
         return;
 
@@ -343,7 +385,7 @@ typedef struct _pcap_queue_element {
  */
 static const char please_report[] =
     "Please report this to the Wireshark developers.\n"
-    "http://bugs.wireshark.org/\n"
+    "https://bugs.wireshark.org/\n"
     "(This is not a crash; please do not report it as such.)";
 
 /*
@@ -468,20 +510,8 @@ create_timestamp(void) {
 }
 
 static void
-print_usage(gboolean print_ver)
+print_usage(FILE *output)
 {
-    FILE *output;
-
-    if (print_ver) {
-        output = stdout;
-        fprintf(output,
-                "Dumpcap " VERSION "%s\n"
-                "Capture network packets and dump them into a pcapng file.\n"
-                "See http://www.wireshark.org for more information.\n",
-                wireshark_gitversion);
-    } else {
-        output = stderr;
-    }
     fprintf(output, "\nUsage: dumpcap [options] ...\n");
     fprintf(output, "\n");
     fprintf(output, "Capture interface:\n");
@@ -495,7 +525,7 @@ print_usage(gboolean print_ver)
 #ifdef HAVE_PCAP_CREATE
     fprintf(output, "  -I                       capture in monitor mode, if available\n");
 #endif
-#if defined(_WIN32) || defined(HAVE_PCAP_CREATE)
+#ifdef CAN_SET_CAPTURE_BUFFER_SIZE
     fprintf(output, "  -B <buffer size>         size of kernel buffer in MiB (def: %dMiB)\n", DEFAULT_CAPTURE_BUFFER_SIZE);
 #endif
     fprintf(output, "  -y <link type>           link layer type (def: first appropriate)\n");
@@ -558,64 +588,43 @@ print_usage(gboolean print_ver)
     fprintf(output, "Use Ctrl-C to stop capturing at any time.\n");
 }
 
-static void
-show_version(GString *comp_info_str, GString *runtime_info_str)
-{
-    printf(
-        "Dumpcap " VERSION "%s\n"
-        "\n"
-        "%s\n"
-        "%s\n"
-        "%s\n"
-        "See http://www.wireshark.org for more information.\n",
-        wireshark_gitversion, get_copyright_info(), comp_info_str->str, runtime_info_str->str);
-}
-
 /*
  * Report an error in command-line arguments.
+ * If we're a capture child, send a message back to the parent, otherwise
+ * just print it.
  */
-void
-cmdarg_err(const char *fmt, ...)
+static void
+dumpcap_cmdarg_err(const char *fmt, va_list ap)
 {
-    va_list ap;
-
     if (capture_child) {
         gchar *msg;
         /* Generate a 'special format' message back to parent */
-        va_start(ap, fmt);
         msg = g_strdup_vprintf(fmt, ap);
         sync_pipe_errmsg_to_parent(2, msg, "");
         g_free(msg);
-        va_end(ap);
     } else {
-        va_start(ap, fmt);
         fprintf(stderr, "dumpcap: ");
         vfprintf(stderr, fmt, ap);
         fprintf(stderr, "\n");
-        va_end(ap);
     }
 }
 
 /*
  * Report additional information for an error in command-line arguments.
+ * If we're a capture child, send a message back to the parent, otherwise
+ * just print it.
  */
-void
-cmdarg_err_cont(const char *fmt, ...)
+static void
+dumpcap_cmdarg_err_cont(const char *fmt, va_list ap)
 {
-    va_list ap;
-
     if (capture_child) {
         gchar *msg;
-        va_start(ap, fmt);
         msg = g_strdup_vprintf(fmt, ap);
         sync_pipe_errmsg_to_parent(2, msg, "");
         g_free(msg);
-        va_end(ap);
     } else {
-        va_start(ap, fmt);
         vfprintf(stderr, fmt, ap);
         fprintf(stderr, "\n");
-        va_end(ap);
     }
 }
 
@@ -653,7 +662,12 @@ relinquish_all_capabilities(void)
 #endif
 
 static pcap_t *
-open_capture_device(interface_options *interface_opts,
+open_capture_device(capture_options *capture_opts
+#ifndef HAVE_PCAP_SET_TSTAMP_PRECISION
+                    _U_
+#endif
+                    ,
+                    interface_options *interface_opts,
                     char (*open_err_str)[PCAP_ERRBUF_SIZE])
 {
     pcap_t *pcap_h;
@@ -726,6 +740,22 @@ open_capture_device(interface_options *interface_opts,
             pcap_set_promisc(pcap_h, interface_opts->promisc_mode);
             pcap_set_timeout(pcap_h, CAP_READ_TIMEOUT);
 
+#ifdef HAVE_PCAP_SET_TSTAMP_PRECISION
+            /*
+             * If we're writing pcap-ng files, try to enable
+             * nanosecond-resolution capture; any code that
+             * can read pcap-ng files must be able to handle
+             * nanosecond-resolution time stamps.
+             *
+             * If we're writing pcap files, don't try to enable
+             * nanosecond-resolution capture, as not all code
+             * that reads pcap files recognizes the nanosecond-
+             * resolution pcap file magic number.
+             */
+            if (capture_opts->use_pcapng)
+                request_high_resolution_timestamp(pcap_h);
+#endif /* HAVE_PCAP_SET_TSTAMP_PRECISION */
+
             g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_DEBUG,
                   "buffersize %d.", interface_opts->buffer_size);
             if (interface_opts->buffer_size != 0) {
@@ -757,6 +787,23 @@ open_capture_device(interface_options *interface_opts,
                                 *open_err_str);
         g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_DEBUG,
               "pcap_open_live() returned %p.", (void *)pcap_h);
+
+/* Windows doesn't have pcap_create() yet */
+#ifdef _WIN32
+        /* try to set the capture buffer size -- but not for remote devices */
+        if (pcap_h && interface_opts->buffer_size > 1 &&
+            pcap_setbuff(pcap_h, interface_opts->buffer_size * 1024 * 1024) != 0) {
+            gchar      *sync_secondary_msg_str;
+
+            sync_secondary_msg_str = g_strdup_printf(
+                "Unable to set a capture buffer size of %d MiB.\n"
+                "Capturing using the default size of %d MiB instead.",
+                interface_opts->buffer_size, DEFAULT_CAPTURE_BUFFER_SIZE);
+            report_capture_error("Couldn't set the capture buffer size.",
+                                 sync_secondary_msg_str);
+            g_free(sync_secondary_msg_str);
+        }
+#endif
 #endif
     }
     g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_DEBUG, "open_capture_device %s : %s", pcap_h ? "SUCCESS" : "FAILURE", interface_opts->name);
@@ -784,15 +831,7 @@ get_capture_device_open_failure_messages(const char *open_err_str,
                  "\n"
                  "In order to capture packets, WinPcap must be installed; see\n"
                  "\n"
-                 "        http://www.winpcap.org/\n"
-                 "\n"
-                 "or the mirror at\n"
-                 "\n"
-                 "        http://www.mirrors.wiretapped.net/security/packet-capture/winpcap/\n"
-                 "\n"
-                 "or the mirror at\n"
-                 "\n"
-                 "        http://winpcap.cs.pu.edu.tw/\n"
+                 "        https://www.winpcap.org/\n"
                  "\n"
                  "for a downloadable version of WinPcap and for instructions on how to install\n"
                  "WinPcap.");
@@ -804,8 +843,8 @@ get_capture_device_open_failure_messages(const char *open_err_str,
                  "\n"
                  "Help can be found at:\n"
                  "\n"
-                 "       http://wiki.wireshark.org/WinPcap\n"
-                 "       http://wiki.wireshark.org/CaptureSetup\n",
+                 "       https://wiki.wireshark.org/WinPcap\n"
+                 "       https://wiki.wireshark.org/CaptureSetup\n",
                  iface);
     }
 #else
@@ -896,8 +935,10 @@ compile_capture_filter(const char *iface, pcap_t *pcap_h,
      * third argument to pcap_compile() as a const pointer.  Cast
      * away the warning.
      */
+DIAG_OFF(cast-qual)
     if (pcap_compile(pcap_h, fcode, (char *)cfilter, 1, netmask) < 0)
         return FALSE;
+DIAG_ON(cast-qual)
     return TRUE;
 }
 
@@ -917,7 +958,7 @@ show_filter_code(capture_options *capture_opts)
 
     for (j = 0; j < capture_opts->ifaces->len; j++) {
         interface_opts = g_array_index(capture_opts->ifaces, interface_options, j);
-        pcap_h = open_capture_device(&interface_opts, &open_err_str);
+        pcap_h = open_capture_device(capture_opts, &interface_opts, &open_err_str);
         if (pcap_h == NULL) {
             /* Open failed; get messages */
             get_capture_device_open_failure_messages(open_err_str,
@@ -1130,15 +1171,50 @@ create_data_link_info(int dlt)
     return data_link_info;
 }
 
+#if defined(HAVE_BONDING) && defined(HAVE_PCAP_CREATE)
+static gboolean
+is_linux_bonding_device(const char *ifname)
+{
+    int fd;
+    struct ifreq ifr;
+    ifbond ifb;
+
+    fd = socket(PF_INET, SOCK_DGRAM, 0);
+    if (fd == -1)
+        return FALSE;
+
+    memset(&ifr, 0, sizeof ifr);
+    g_strlcpy(ifr.ifr_name, ifname, sizeof ifr.ifr_name);
+    memset(&ifb, 0, sizeof ifb);
+    ifr.ifr_data = (caddr_t)&ifb;
+#if defined(SIOCBONDINFOQUERY)
+    if (ioctl(fd, SIOCBONDINFOQUERY, &ifr) == 0) {
+        close(fd);
+        return TRUE;
+    }
+#else
+    if (ioctl(fd, BOND_INFO_QUERY_OLD, &ifr) == 0) {
+        close(fd);
+        return TRUE;
+    }
+#endif
+
+    close(fd);
+    return FALSE;
+}
+#elif defined(HAVE_PCAP_CREATE)
+static gboolean
+is_linux_bonding_device(const char *ifname _U_)
+{
+    return FALSE;
+}
+#endif
+
 /*
  * Get the capabilities of a network device.
  */
 static if_capabilities_t *
-get_if_capabilities(const char *devicename, gboolean monitor_mode
-#ifndef HAVE_PCAP_CREATE
-        _U_
-#endif
-, char **err_str)
+get_if_capabilities(interface_options *interface_opts, char **err_str)
 {
     if_capabilities_t *caps;
     char errbuf[PCAP_ERRBUF_SIZE];
@@ -1174,7 +1250,19 @@ get_if_capabilities(const char *devicename, gboolean monitor_mode
      */
     errbuf[0] = '\0';
 #ifdef HAVE_PCAP_OPEN
-    pch = pcap_open(devicename, MIN_PACKET_SIZE, 0, 0, NULL, errbuf);
+#ifdef HAVE_PCAP_REMOTE
+    if (strncmp (interface_opts->name, "rpcap://", 8) == 0) {
+        struct pcap_rmtauth auth;
+
+        auth.type = interface_opts->auth_type == CAPTURE_AUTH_PWD ?
+            RPCAP_RMTAUTH_PWD : RPCAP_RMTAUTH_NULL;
+        auth.username = interface_opts->auth_username;
+        auth.password = interface_opts->auth_password;
+
+        pch = pcap_open(interface_opts->name, MIN_PACKET_SIZE, 0, 0, &auth, errbuf);
+    } else
+#endif
+        pch = pcap_open(interface_opts->name, MIN_PACKET_SIZE, 0, 0, NULL, errbuf);
     caps->can_set_rfmon = FALSE;
     if (pch == NULL) {
         if (err_str != NULL)
@@ -1183,14 +1271,26 @@ get_if_capabilities(const char *devicename, gboolean monitor_mode
         return NULL;
     }
 #elif defined(HAVE_PCAP_CREATE)
-    pch = pcap_create(devicename, errbuf);
+    pch = pcap_create(interface_opts->name, errbuf);
     if (pch == NULL) {
         if (err_str != NULL)
             *err_str = g_strdup(errbuf);
         g_free(caps);
         return NULL;
     }
-    status = pcap_can_set_rfmon(pch);
+    if (is_linux_bonding_device(interface_opts->name)) {
+        /*
+         * Linux bonding device; not Wi-Fi, so no monitor mode, and
+         * calling pcap_can_set_rfmon() might get a "no such device"
+         * error.
+         */
+        status = 0;
+    } else {
+        /*
+         * Not a Linux bonding device, so go ahead.
+         */
+        status = pcap_can_set_rfmon(pch);
+    }
     if (status < 0) {
         /* Error. */
         if (status == PCAP_ERROR)
@@ -1206,7 +1306,7 @@ get_if_capabilities(const char *devicename, gboolean monitor_mode
         caps->can_set_rfmon = FALSE;
     else if (status == 1) {
         caps->can_set_rfmon = TRUE;
-        if (monitor_mode)
+        if (interface_opts->monitor_mode)
             pcap_set_rfmon(pch, 1);
     } else {
         if (err_str != NULL) {
@@ -1233,7 +1333,7 @@ get_if_capabilities(const char *devicename, gboolean monitor_mode
         return NULL;
     }
 #else
-    pch = pcap_open_live(devicename, MIN_PACKET_SIZE, 0, 0, errbuf);
+    pch = pcap_open_live(interface_opts->name, MIN_PACKET_SIZE, 0, 0, errbuf);
     caps->can_set_rfmon = FALSE;
     if (pch == NULL) {
         if (err_str != NULL)
@@ -1242,7 +1342,7 @@ get_if_capabilities(const char *devicename, gboolean monitor_mode
         return NULL;
     }
 #endif
-    deflt = get_pcap_linktype(pch, devicename);
+    deflt = get_pcap_linktype(pch, interface_opts->name);
 #ifdef HAVE_PCAP_LIST_DATALINKS
     nlt = pcap_list_datalinks(pch, &linktypes);
     if (nlt == 0 || linktypes == NULL) {
@@ -1282,11 +1382,11 @@ get_if_capabilities(const char *devicename, gboolean monitor_mode
      *
      * See the mail threads starting at
      *
-     *    http://www.winpcap.org/pipermail/winpcap-users/2006-September/001421.html
+     *    https://www.winpcap.org/pipermail/winpcap-users/2006-September/001421.html
      *
      * and
      *
-     *    http://www.winpcap.org/pipermail/winpcap-users/2008-May/002498.html
+     *    https://www.winpcap.org/pipermail/winpcap-users/2008-May/002498.html
      */
 #ifndef _WIN32
 #define xx_free free  /* hack so checkAPIs doesn't complain */
@@ -1385,7 +1485,9 @@ print_machine_readable_interfaces(GList *if_list)
             printf("\tloopback");
         else
             printf("\tnetwork");
-
+#ifdef HAVE_EXTCAP
+        printf("\t%s", if_info->extcap);
+#endif
         printf("\n");
     }
 }
@@ -1442,22 +1544,29 @@ print_statistics_loop(gboolean machine_readable)
 
     if_list = get_interface_list(&err, &err_str);
     if (if_list == NULL) {
-        switch (err) {
-        case CANT_GET_INTERFACE_LIST:
-        case DONT_HAVE_PCAP:
+       if (err == 0)
+            cmdarg_err("There are no interfaces on which a capture can be done");
+        else {
             cmdarg_err("%s", err_str);
             g_free(err_str);
-            break;
-
-        case NO_INTERFACES_FOUND:
-            cmdarg_err("There are no interfaces on which a capture can be done");
-            break;
         }
         return err;
     }
 
     for (if_entry = g_list_first(if_list); if_entry != NULL; if_entry = g_list_next(if_entry)) {
         if_info = (if_info_t *)if_entry->data;
+
+#ifdef __linux__
+        /* On Linux nf* interfaces don't collect stats properly and don't allows multiple
+         * connections. We avoid collecting stats on them.
+         */
+        if (!strncmp(if_info->name, "nf", 2)) {
+            g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_DEBUG, "Skipping interface %s for stats",
+                if_info->name);
+            continue;
+        }
+#endif
+
 #ifdef HAVE_PCAP_OPEN
         pch = pcap_open(if_info->name, MIN_PACKET_SIZE, 0, 0, NULL, errbuf);
 #else
@@ -1582,7 +1691,7 @@ report_capture_count(gboolean reportit)
 {
     /* Don't print this if we're a capture child. */
     if (!capture_child && reportit) {
-        fprintf(stderr, "\rPackets captured: %u\n", global_ld.packet_count);
+        fprintf(stderr, "\rPackets captured: %d\n", global_ld.packet_count);
         /* stderr could be line buffered */
         fflush(stderr);
     }
@@ -1881,14 +1990,14 @@ cap_open_socket(char *pipename, pcap_options *pcap_opts, char *errmsg, int errms
     goto fail_invalid;
   }
 
-  strncpy(buf, sockname, len);
+  g_snprintf ( buf,(gulong)len + 1, "%s", sockname );
   buf[len] = '\0';
   if (inet_pton(AF_INET, buf, &sa.sin_addr) <= 0) {
     goto fail_invalid;
   }
 
   sa.sin_family = AF_INET;
-  sa.sin_port = htons((u_short)port);
+  sa.sin_port = g_htons((u_short)port);
 
   if (((fd = (int)socket(AF_INET, SOCK_STREAM, 0)) < 0) ||
       (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0)) {
@@ -1910,7 +2019,7 @@ cap_open_socket(char *pipename, pcap_options *pcap_opts, char *errmsg, int errms
       if (errorText)
           LocalFree(errorText);
 #else
-      "         %d: %s", errno, strerror(errno));
+      "         %d: %s", errno, g_strerror(errno));
 #endif
       pcap_opts->cap_pipe_err = PIPERR;
 
@@ -1964,16 +2073,21 @@ cap_pipe_open_live(char *pipename,
 #else /* _WIN32 */
     char    *pncopy, *pos;
     wchar_t *err_str;
+    interface_options interface_opts;
+#ifdef HAVE_EXTCAP
+    char* extcap_pipe_name;
+    gboolean extcap_pipe;
+#endif
 #endif
     ssize_t  b;
     int      fd = -1, sel_ret;
     size_t   bytes_read;
     guint32  magic = 0;
-
     pcap_opts->cap_pipe_fd = -1;
 #ifdef _WIN32
     pcap_opts->cap_pipe_h = INVALID_HANDLE_VALUE;
 #endif
+
     g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_DEBUG, "cap_pipe_open_live: %s", pipename);
 
     /*
@@ -2100,10 +2214,23 @@ cap_pipe_open_live(char *pipename,
             return;
         }
 
+        interface_opts = g_array_index(global_capture_opts.ifaces, interface_options, 0);
+#ifdef HAVE_EXTCAP
+        extcap_pipe_name = g_strconcat("\\\\.\\pipe\\", EXTCAP_PIPE_PREFIX, NULL);
+        extcap_pipe = strstr(interface_opts.name, extcap_pipe_name) ? TRUE : FALSE;
+        g_free(extcap_pipe_name);
+#endif
+
         /* Wait for the pipe to appear */
         while (1) {
-            pcap_opts->cap_pipe_h = CreateFile(utf_8to16(pipename), GENERIC_READ, 0, NULL,
-                                               OPEN_EXISTING, 0, NULL);
+
+#ifdef HAVE_EXTCAP
+            if(extcap_pipe)
+                pcap_opts->cap_pipe_h = GetStdHandle(STD_INPUT_HANDLE);
+            else
+#endif
+                pcap_opts->cap_pipe_h = CreateFile(utf_8to16(pipename), GENERIC_READ, 0, NULL,
+                                                   OPEN_EXISTING, 0, NULL);
 
             if (pcap_opts->cap_pipe_h != INVALID_HANDLE_VALUE)
                 break;
@@ -2122,7 +2249,7 @@ cap_pipe_open_live(char *pipename,
 
             if (!WaitNamedPipe(utf_8to16(pipename), 30 * 1000)) {
                 FormatMessage(FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_IGNORE_INSERTS,
-                              NULL, GetLastError(), 0, (LPTSTR) &err_str, 0, NULL);
+                             NULL, GetLastError(), 0, (LPTSTR) &err_str, 0, NULL);
                 g_snprintf(errmsg, errmsgl,
                            "The capture session on \"%s\" timed out during "
                            "pipe open: %s (error %d)",
@@ -2533,14 +2660,13 @@ capture_loop_open_input(capture_options *capture_opts, loop_data *ld,
     guint             i;
 #ifdef _WIN32
     int         err;
-    gchar      *sync_secondary_msg_str;
     WORD        wVersionRequested;
     WSADATA     wsaData;
 #endif
 
 /* XXX - opening Winsock on tshark? */
 
-    /* Initialize Windows Socket if we are in a WIN32 OS
+    /* Initialize Windows Socket if we are in a Win32 OS
        This needs to be done before querying the interface for network/netmask */
 #ifdef _WIN32
     /* XXX - do we really require 1.1 or earlier?
@@ -2588,7 +2714,7 @@ capture_loop_open_input(capture_options *capture_opts, loop_data *ld,
     if ((use_threads == FALSE) &&
         (capture_opts->ifaces->len > 1)) {
         g_snprintf(errmsg, (gulong) errmsg_len,
-                   "Using threads is required for capturing on multiple interfaces!");
+                   "Using threads is required for capturing on multiple interfaces.");
         return FALSE;
     }
 
@@ -2643,24 +2769,14 @@ capture_loop_open_input(capture_options *capture_opts, loop_data *ld,
         g_array_append_val(ld->pcaps, pcap_opts);
 
         g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_DEBUG, "capture_loop_open_input : %s", interface_opts.name);
-        pcap_opts->pcap_h = open_capture_device(&interface_opts, &open_err_str);
+        pcap_opts->pcap_h = open_capture_device(capture_opts, &interface_opts, &open_err_str);
 
         if (pcap_opts->pcap_h != NULL) {
             /* we've opened "iface" as a network device */
-#ifdef _WIN32
-            /* try to set the capture buffer size */
-            if (interface_opts.buffer_size > 1 &&
-                pcap_setbuff(pcap_opts->pcap_h, interface_opts.buffer_size * 1024 * 1024) != 0) {
-                sync_secondary_msg_str = g_strdup_printf(
-                    "The capture buffer size of %d MiB seems to be too high for your machine,\n"
-                    "the default of %d MiB will be used.\n"
-                    "\n"
-                    "Nonetheless, the capture is started.\n",
-                    interface_opts.buffer_size, DEFAULT_CAPTURE_BUFFER_SIZE);
-                report_capture_error("Couldn't set the capture buffer size!",
-                                     sync_secondary_msg_str);
-                g_free(sync_secondary_msg_str);
-            }
+
+#ifdef HAVE_PCAP_SET_TSTAMP_PRECISION
+            /* Find out if we're getting nanosecond-precision time stamps */
+            pcap_opts->ts_nsec = have_high_resolution_timestamp(pcap_opts->pcap_h);
 #endif
 
 #if defined(HAVE_PCAP_SETSAMPLING)
@@ -2854,7 +2970,7 @@ capture_loop_init_output(capture_options *capture_opts, loop_data *ld, char *err
     if ((capture_opts->use_pcapng == FALSE) &&
         (capture_opts->ifaces->len > 1)) {
         g_snprintf(errmsg, errmsg_len,
-                   "Using PCAPNG is required for capturing on multiple interfaces! Use the -n option.");
+                   "Using PCAPNG is required for capturing on multiple interfaces. Use the -n option.");
         return FALSE;
     }
 
@@ -2869,13 +2985,13 @@ capture_loop_init_output(capture_options *capture_opts, loop_data *ld, char *err
     }
     if (ld->pdh) {
         if (capture_opts->use_pcapng) {
-            char appname[100];
-            GString             *os_info_str;
+            char    *appname;
+            GString *os_info_str;
 
             os_info_str = g_string_new("");
             get_os_version_info(os_info_str);
 
-            g_snprintf(appname, sizeof(appname), "Dumpcap " VERSION "%s", wireshark_gitversion);
+            appname = g_strdup_printf("Dumpcap (Wireshark) %s", get_ws_vcs_version_info());
             successful = pcapng_write_session_header_block(ld->pdh,
                                 (const char *)capture_opts->capture_comment,   /* Comment*/
                                 NULL,                        /* HW*/
@@ -2884,6 +3000,7 @@ capture_loop_init_output(capture_options *capture_opts, loop_data *ld, char *err
                                 -1,                          /* section_length */
                                 &ld->bytes_written,
                                 &err);
+            g_free(appname);
 
             for (i = 0; successful && (i < capture_opts->ifaces->len); i++) {
                 interface_opts = g_array_index(capture_opts->ifaces, interface_options, i);
@@ -3146,7 +3263,7 @@ capture_loop_dispatch(loop_data *ld,
 
             /*
              * WinPcap's remote capturing feature doesn't work with pcap_dispatch(),
-             * see http://wiki.wireshark.org/CaptureSetup_2fWinPcapRemote
+             * see https://wiki.wireshark.org/CaptureSetup_2fWinPcapRemote
              * This should be fixed in the WinPcap 4.0 alpha release.
              *
              * For reference, an example remote interface:
@@ -3349,7 +3466,7 @@ do_file_switch_or_stop(capture_options *capture_opts,
 
     if (capture_opts->multi_files_on) {
         if (cnd_autostop_files != NULL &&
-            cnd_eval(cnd_autostop_files, ++global_ld.autostop_files)) {
+            cnd_eval(cnd_autostop_files, (guint64)++global_ld.autostop_files)) {
             /* no files left: stop here */
             global_ld.go = FALSE;
             return FALSE;
@@ -3362,13 +3479,13 @@ do_file_switch_or_stop(capture_options *capture_opts,
             /* File switch succeeded: reset the conditions */
             global_ld.bytes_written = 0;
             if (capture_opts->use_pcapng) {
-                char appname[100];
-                GString             *os_info_str;
+                char    *appname;
+                GString *os_info_str;
 
                 os_info_str = g_string_new("");
                 get_os_version_info(os_info_str);
 
-                g_snprintf(appname, sizeof(appname), "Dumpcap " VERSION "%s", wireshark_gitversion);
+                appname = g_strdup_printf("Dumpcap (Wireshark) %s", get_ws_vcs_version_info());
                 successful = pcapng_write_session_header_block(global_ld.pdh,
                                 NULL,                        /* Comment */
                                 NULL,                        /* HW */
@@ -3377,6 +3494,7 @@ do_file_switch_or_stop(capture_options *capture_opts,
                                                                 -1,                          /* section_length */
                                 &(global_ld.bytes_written),
                                 &global_ld.err);
+                g_free(appname);
 
                 for (i = 0; successful && (i < capture_opts->ifaces->len); i++) {
                     interface_opts = g_array_index(capture_opts->ifaces, interface_options, i);
@@ -3456,7 +3574,7 @@ pcap_read_handler(void* arg)
 static gboolean
 capture_loop_start(capture_options *capture_opts, gboolean *stats_known, struct pcap_stat *stats)
 {
-#ifdef WIN32
+#ifdef _WIN32
     DWORD              upd_time, cur_time; /* GetTickCount() returns a "DWORD" (which is 'unsigned long') */
 #else
     struct timeval     upd_time, cur_time;
@@ -3588,17 +3706,17 @@ capture_loop_start(capture_options *capture_opts, gboolean *stats_known, struct 
 
         if (capture_opts->has_autostop_files)
             cnd_autostop_files =
-                cnd_new(CND_CLASS_CAPTURESIZE, capture_opts->autostop_files);
+                cnd_new(CND_CLASS_CAPTURESIZE, (guint64)capture_opts->autostop_files);
     }
 
     /* init the time values */
-#ifdef WIN32
+#ifdef _WIN32
     upd_time = GetTickCount();
 #else
     gettimeofday(&upd_time, NULL);
 #endif
     start_time = create_timestamp();
-    g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_INFO, "Capture loop running!");
+    g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_INFO, "Capture loop running.");
 
     /* WOW, everything is prepared! */
     /* please fasten your seat belts, we will enter now the actual capture loop */
@@ -3694,7 +3812,7 @@ capture_loop_start(capture_options *capture_opts, gboolean *stats_known, struct 
          */
 #define DUMPCAP_UPD_TIME 500
 
-#ifdef WIN32
+#ifdef _WIN32
         cur_time = GetTickCount();  /* Note: wraps to 0 if sys runs for 49.7 days */
         if ((cur_time - upd_time) > DUMPCAP_UPD_TIME) { /* wrap just causes an extra update */
 #else
@@ -3904,7 +4022,7 @@ capture_loop_start(capture_options *capture_opts, gboolean *stats_known, struct 
     /* close the input file (pcap or capture pipe) */
     capture_loop_close_input(&global_ld);
 
-    g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_INFO, "Capture loop stopped!");
+    g_log(LOG_DOMAIN_CAPTURE_CHILD, G_LOG_LEVEL_INFO, "Capture loop stopped.");
 
     /* ok, if the write and the close were successful. */
     return write_ok && close_ok;
@@ -4169,6 +4287,40 @@ out:
     return ret;
 }
 
+static void
+get_dumpcap_compiled_info(GString *str)
+{
+    /* Capture libraries */
+    g_string_append(str, ", ");
+    get_compiled_caplibs_version(str);
+
+    /* LIBZ */
+    g_string_append(str, ", ");
+#ifdef HAVE_LIBZ
+    g_string_append(str, "with libz ");
+#ifdef ZLIB_VERSION
+    g_string_append(str, ZLIB_VERSION);
+#else /* ZLIB_VERSION */
+    g_string_append(str, "(version unknown)");
+#endif /* ZLIB_VERSION */
+#else /* HAVE_LIBZ */
+    g_string_append(str, "without libz");
+#endif /* HAVE_LIBZ */
+}
+
+static void
+get_dumpcap_runtime_info(GString *str)
+{
+    /* Capture libraries */
+    g_string_append(str, ", ");
+    get_runtime_caplibs_version(str);
+
+    /* zlib */
+#if defined(HAVE_LIBZ) && !defined(_WIN32)
+    g_string_append_printf(str, ", with libz %s", zlibVersion());
+#endif
+}
+
 /* And now our feature presentation... [ fade to music ] */
 int
 main(int argc, char *argv[])
@@ -4176,10 +4328,14 @@ main(int argc, char *argv[])
     GString          *comp_info_str;
     GString          *runtime_info_str;
     int               opt;
-    struct option     long_options[] = {
-        {(char *)"capture-comment", required_argument, NULL, LONGOPT_NUM_CAP_COMMENT },
+DIAG_OFF(cast-qual)
+    static const struct option long_options[] = {
+        {(char *)"help", no_argument, NULL, 'h'},
+        {(char *)"version", no_argument, NULL, 'v'},
+        LONGOPT_CAPTURE_COMMON
         {0, 0, 0, 0 }
     };
+DIAG_ON(cast-qual)
 
     gboolean          arg_error             = FALSE;
 
@@ -4210,21 +4366,21 @@ main(int argc, char *argv[])
 #endif
     GString          *str;
 
-    /* Assemble the compile-time version information string */
-    comp_info_str = g_string_new("Compiled ");
-    get_compiled_version_info(comp_info_str, NULL, NULL);
+    cmdarg_err_init(dumpcap_cmdarg_err, dumpcap_cmdarg_err_cont);
 
-    /* Assemble the run-time version information string */
-    runtime_info_str = g_string_new("Running ");
-    get_runtime_version_info(runtime_info_str, NULL);
+    /* Get the compile-time version information string */
+    comp_info_str = get_compiled_version_info(NULL, get_dumpcap_compiled_info);
+
+    /* Get the run-time version information string */
+    runtime_info_str = get_runtime_version_info(get_dumpcap_runtime_info);
 
     /* Add it to the information to be reported on a crash. */
-    ws_add_crash_info("Dumpcap " VERSION "%s\n"
+    ws_add_crash_info("Dumpcap (Wireshark) %s\n"
            "\n"
            "%s"
            "\n"
            "%s",
-        wireshark_gitversion, comp_info_str->str, runtime_info_str->str);
+        get_ws_vcs_version_info(), comp_info_str->str, runtime_info_str->str);
 
 #ifdef _WIN32
     arg_list_utf_16to8(argc, argv);
@@ -4237,12 +4393,16 @@ main(int argc, char *argv[])
     ws_init_dll_search_path();
 #endif
 
+#ifdef HAVE_BPF_IMAGE
+#define OPTSTRING_d "d"
+#else
+#define OPTSTRING_d ""
+#endif
+
 #ifdef HAVE_PCAP_REMOTE
-#define OPTSTRING_A "A:"
 #define OPTSTRING_r "r"
 #define OPTSTRING_u "u"
 #else
-#define OPTSTRING_A ""
 #define OPTSTRING_r ""
 #define OPTSTRING_u ""
 #endif
@@ -4253,29 +4413,11 @@ main(int argc, char *argv[])
 #define OPTSTRING_m ""
 #endif
 
-#if defined(_WIN32) || defined(HAVE_PCAP_CREATE)
-#define OPTSTRING_B "B:"
-#else
-#define OPTSTRING_B ""
-#endif  /* _WIN32 or HAVE_PCAP_CREATE */
-
-#ifdef HAVE_PCAP_CREATE
-#define OPTSTRING_I "I"
-#else
-#define OPTSTRING_I ""
-#endif
-
-#ifdef HAVE_BPF_IMAGE
-#define OPTSTRING_d "d"
-#else
-#define OPTSTRING_d ""
-#endif
-
-#define OPTSTRING "a:" OPTSTRING_A "b:" OPTSTRING_B "C:c:" OPTSTRING_d "Df:ghi:" OPTSTRING_I "k:L" OPTSTRING_m "MN:npPq" OPTSTRING_r "Ss:t" OPTSTRING_u "vw:y:Z:"
+#define OPTSTRING OPTSTRING_CAPTURE_COMMON "C:" OPTSTRING_d "gh" "k:" OPTSTRING_m "MN:nPq" OPTSTRING_r "St" OPTSTRING_u "vw:Z:"
 
 #ifdef DEBUG_CHILD_DUMPCAP
     if ((debug_log = ws_fopen("dumpcap_debug_log.tmp","w")) == NULL) {
-        fprintf (stderr, "Unable to open debug log file !\n");
+        fprintf (stderr, "Unable to open debug log file .\n");
         exit (1);
     }
 #endif
@@ -4485,7 +4627,7 @@ main(int argc, char *argv[])
     /*        This behaviour will apparently be changed in the kernel    */
     /*        to allow the kill (signal) in this case.                   */
     /*        See the following for details:                             */
-    /*           http://www.mail-archive.com/  [wrapped]                 */
+    /*           https://www.mail-archive.com/  [wrapped]                */
     /*             linux-security-module@vger.kernel.org/msg02913.html   */
     /*                                                                   */
     /*        It is therefore conceivable that if dumpcap somehow hangs  */
@@ -4519,25 +4661,28 @@ main(int argc, char *argv[])
     /* Set the initial values in the capture options. This might be overwritten
        by the command line parameters. */
     capture_opts_init(&global_capture_opts);
-
     /* We always save to a file - if no file was specified, we save to a
        temporary file. */
     global_capture_opts.saving_to_file      = TRUE;
     global_capture_opts.has_ring_num_files  = TRUE;
 
-	/* Pass on capture_child mode for capture_opts */
-	global_capture_opts.capture_child = capture_child;
+    /* Pass on capture_child mode for capture_opts */
+    global_capture_opts.capture_child = capture_child;
 
     /* Now get our args */
     while ((opt = getopt_long(argc, argv, OPTSTRING, long_options, NULL)) != -1) {
         switch (opt) {
         case 'h':        /* Print help and exit */
-            print_usage(TRUE);
+            printf("Dumpcap (Wireshark) %s\n"
+                   "Capture network packets and dump them into a pcapng or pcap file.\n"
+                   "See https://www.wireshark.org for more information.\n",
+                   get_ws_vcs_version_info());
+            print_usage(stdout);
             exit_main(0);
             break;
         case 'v':        /* Show version and exit */
         {
-            show_version(comp_info_str, runtime_info_str);
+            show_version("Dumpcap (Wireshark)", comp_info_str, runtime_info_str);
             g_string_free(comp_info_str, TRUE);
             g_string_free(runtime_info_str, TRUE);
             exit_main(0);
@@ -4565,9 +4710,9 @@ main(int argc, char *argv[])
 #ifdef HAVE_PCAP_SETSAMPLING
         case 'm':        /* Sampling */
 #endif
-#if defined(_WIN32) || defined(HAVE_PCAP_CREATE)
+#ifdef CAN_SET_CAPTURE_BUFFER_SIZE
         case 'B':        /* Buffer size */
-#endif /* _WIN32 or HAVE_PCAP_CREATE */
+#endif
 #ifdef HAVE_PCAP_CREATE
         case 'I':        /* Monitor mode */
 #endif
@@ -4609,28 +4754,41 @@ main(int argc, char *argv[])
             break;
             /*** all non capture option specific ***/
         case 'D':        /* Print a list of capture devices and exit */
-            list_interfaces = TRUE;
-            run_once_args++;
+            if (!list_interfaces) {
+                list_interfaces = TRUE;
+                run_once_args++;
+            }
             break;
         case 'L':        /* Print list of link-layer types and exit */
-            list_link_layer_types = TRUE;
-            run_once_args++;
+            if (!list_link_layer_types) {
+                list_link_layer_types = TRUE;
+                run_once_args++;
+            }
             break;
 #ifdef HAVE_BPF_IMAGE
         case 'd':        /* Print BPF code for capture filter and exit */
-            print_bpf_code = TRUE;
-            run_once_args++;
+            if (!print_bpf_code) {
+                print_bpf_code = TRUE;
+                run_once_args++;
+            }
             break;
 #endif
         case 'S':        /* Print interface statistics once a second */
-            print_statistics = TRUE;
-            run_once_args++;
+            if (!print_statistics) {
+                print_statistics = TRUE;
+                run_once_args++;
+            }
             break;
         case 'k':        /* Set wireless channel */
-            set_chan = TRUE;
-            set_chan_arg = optarg;
-            run_once_args++;
-           break;
+            if (!set_chan) {
+                set_chan = TRUE;
+                set_chan_arg = optarg;
+                run_once_args++;
+            } else {
+                cmdarg_err("Only one -k flag may be specified");
+                arg_error = TRUE;
+            }
+            break;
         case 'M':        /* For -D, -L, and -S, print machine-readable output */
             machine_readable = TRUE;
             break;
@@ -4677,12 +4835,16 @@ main(int argc, char *argv[])
         pcap_queue_packet_limit = 1000;
     }
     if (arg_error) {
-        print_usage(FALSE);
+        print_usage(stderr);
         exit_main(1);
     }
 
     if (run_once_args > 1) {
-        cmdarg_err("Only one of -D, -L, or -S may be supplied.");
+#ifdef HAVE_BPF_IMAGE
+        cmdarg_err("Only one of -D, -L, -d, -k, or -S may be supplied.");
+#else
+        cmdarg_err("Only one of -D, -L, -k, or -S may be supplied.");
+#endif
         exit_main(1);
     } else if (run_once_args == 1) {
         /* We're supposed to print some information, rather than
@@ -4739,15 +4901,7 @@ main(int argc, char *argv[])
 
         if_list = capture_interface_list(&err, &err_str,NULL);
         if (if_list == NULL) {
-            switch (err) {
-            case CANT_GET_INTERFACE_LIST:
-            case DONT_HAVE_PCAP:
-                cmdarg_err("%s", err_str);
-                g_free(err_str);
-                exit_main(2);
-                break;
-
-            case NO_INTERFACES_FOUND:
+            if (err == 0) {
                 /*
                  * If we're being run by another program, just give them
                  * an empty list of interfaces, don't report this as
@@ -4758,7 +4912,10 @@ main(int argc, char *argv[])
                     cmdarg_err("There are no interfaces on which a capture can be done");
                     exit_main(2);
                 }
-                break;
+            } else {
+                cmdarg_err("%s", err_str);
+                g_free(err_str);
+                exit_main(2);
             }
         }
 
@@ -4802,6 +4959,43 @@ main(int argc, char *argv[])
         exit_main(status);
     }
 
+    if (list_link_layer_types) {
+        /* Get the list of link-layer types for the capture device. */
+        if_capabilities_t *caps;
+        gchar *err_str;
+        guint  ii;
+
+        for (ii = 0; ii < global_capture_opts.ifaces->len; ii++) {
+            interface_options interface_opts;
+
+            interface_opts = g_array_index(global_capture_opts.ifaces, interface_options, ii);
+
+            caps = get_if_capabilities(&interface_opts, &err_str);
+            if (caps == NULL) {
+                cmdarg_err("The capabilities of the capture device \"%s\" could not be obtained (%s).\n"
+                           "Please check to make sure you have sufficient permissions, and that\n"
+                           "you have the proper interface or pipe specified.", interface_opts.name, err_str);
+                g_free(err_str);
+                exit_main(2);
+            }
+            if (caps->data_link_types == NULL) {
+                cmdarg_err("The capture device \"%s\" has no data link types.", interface_opts.name);
+                exit_main(2);
+            }
+            if (machine_readable)      /* tab-separated values to stdout */
+                /* XXX: We need to change the format and adopt consumers */
+                print_machine_readable_if_capabilities(caps);
+            else
+                /* XXX: We might want to print also the interface name */
+                capture_opts_print_if_capabilities(caps, interface_opts.name,
+                                                   interface_opts.monitor_mode);
+            free_if_capabilities(caps);
+        }
+        exit_main(0);
+    }
+
+    /* We're supposed to do a capture, or print the BPF code for a filter. */
+
     /* Let the user know what interfaces were chosen. */
     if (capture_child) {
         for (j = 0; j < global_capture_opts.ifaces->len; j++) {
@@ -4841,43 +5035,7 @@ main(int argc, char *argv[])
         g_string_free(str, TRUE);
     }
 
-    if (list_link_layer_types) {
-        /* Get the list of link-layer types for the capture device. */
-        if_capabilities_t *caps;
-        gchar *err_str;
-        guint  ii;
-
-        for (ii = 0; ii < global_capture_opts.ifaces->len; ii++) {
-            interface_options interface_opts;
-
-            interface_opts = g_array_index(global_capture_opts.ifaces, interface_options, ii);
-            caps = get_if_capabilities(interface_opts.name,
-                                       interface_opts.monitor_mode, &err_str);
-            if (caps == NULL) {
-                cmdarg_err("The capabilities of the capture device \"%s\" could not be obtained (%s).\n"
-                           "Please check to make sure you have sufficient permissions, and that\n"
-                           "you have the proper interface or pipe specified.", interface_opts.name, err_str);
-                g_free(err_str);
-                exit_main(2);
-            }
-            if (caps->data_link_types == NULL) {
-                cmdarg_err("The capture device \"%s\" has no data link types.", interface_opts.name);
-                exit_main(2);
-            }
-            if (machine_readable)      /* tab-separated values to stdout */
-                /* XXX: We need to change the format and adopt consumers */
-                print_machine_readable_if_capabilities(caps);
-            else
-                /* XXX: We might want to print also the interface name */
-                capture_opts_print_if_capabilities(caps, interface_opts.name,
-                                                   interface_opts.monitor_mode);
-            free_if_capabilities(caps);
-        }
-        exit_main(0);
-    }
-
-    /* We're supposed to do a capture, or print the BPF code for a filter.
-       Process the snapshot length, as that affects the generated BPF code. */
+    /* Process the snapshot length, as that affects the generated BPF code. */
     capture_opts_trim_snaplen(&global_capture_opts, MIN_PACKET_SIZE);
 
 #ifdef HAVE_BPF_IMAGE
@@ -4894,7 +5052,6 @@ main(int argc, char *argv[])
     fflush(stderr);
 
     /* Now start the capture. */
-
     if (capture_loop_start(&global_capture_opts, &stats_known, &stats) == TRUE) {
         /* capture ok */
         exit_main(0);
@@ -4946,7 +5103,7 @@ console_log_handler(const char *log_domain, GLogLevelFlags log_level,
         level = "Dbg ";
         break;
     default:
-        fprintf(stderr, "unknown log_level %u\n", log_level);
+        fprintf(stderr, "unknown log_level %d\n", log_level);
         level = NULL;
         g_assert_not_reached();
     }
@@ -5065,7 +5222,7 @@ report_cfilter_error(capture_options *capture_opts, guint i, const char *errmsg)
              */
             interface_opts = g_array_index(capture_opts->ifaces, interface_options, i);
             cmdarg_err(
-              "Invalid capture filter \"%s\" for interface '%s'!\n"
+              "Invalid capture filter \"%s\" for interface '%s'.\n"
               "\n"
               "That string isn't a valid capture filter (%s).\n"
               "See the User's Guide for a description of the capture filter syntax.",
@@ -5168,7 +5325,7 @@ signal_pipe_check_running(void)
 
 
 /*
- * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
  *
  * Local variables:
  * c-basic-offset: 4

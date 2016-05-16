@@ -28,7 +28,6 @@
 
 #include "packet-rpc.h"
 #include <epan/to_str.h>
-#include <epan/wmem/wmem.h>
 
 /*
  * For the protocol specifications, see
@@ -94,6 +93,9 @@
 
 #define VXI11_CORE_PROGRAM 0x0607AF
 #define VXI11_CORE_VERSION 1
+
+#define MAX_DATA_SHOW_SIZE 70
+
 
 void proto_register_vxi11_core(void);
 void proto_reg_handoff_vxi11_core(void);
@@ -322,21 +324,18 @@ dissect_reason(tvbuff_t *tvb, int offset, proto_tree *tree)
 
 static int
 dissect_create_link_parms(tvbuff_t *tvb,
-                          int offset,
                           packet_info *pinfo,
                           proto_tree *tree, void* data _U_)
 {
     const char *str;
+    int offset = 0;
 
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_client_id, offset);
     offset = dissect_rpc_bool(tvb, tree, hf_vxi11_core_lock_device, offset);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lock_timeout, offset);
     offset = dissect_rpc_string(tvb, tree, hf_vxi11_core_device, offset, &str);
 
-    if (tree)
-    {
-        proto_item_append_text(tree, " (Create_LinkParms) %s", str);
-    }
+    proto_item_append_text(tree, " (Create_LinkParms) %s", str);
     col_append_fstr(pinfo->cinfo, COL_INFO, " %s", str);
 
     return offset;
@@ -344,11 +343,11 @@ dissect_create_link_parms(tvbuff_t *tvb,
 
 static int
 dissect_create_link_resp(tvbuff_t *tvb,
-                         int offset,
                          packet_info *pinfo,
                          proto_tree *tree, void* data _U_)
 {
     guint32 error, lid;
+    int offset = 0;
 
     offset = dissect_error(tvb, offset, pinfo, tree, "Create_LinkResp", &error);
 
@@ -360,10 +359,7 @@ dissect_create_link_resp(tvbuff_t *tvb,
 
     if (error == VXI11_CORE_ERROR_NO_ERROR)
     {
-        if (tree)
-        {
-            proto_item_append_text(tree, " LID=%d", lid);
-        }
+        proto_item_append_text(tree, " LID=%d", lid);
         col_append_fstr(pinfo->cinfo, COL_INFO, " LID=%d", lid);
     }
 
@@ -372,28 +368,24 @@ dissect_create_link_resp(tvbuff_t *tvb,
 
 static int
 dissect_device_SRQ_parms(tvbuff_t *tvb,
-                         int offset,
                          packet_info *pinfo _U_,
                          proto_tree *tree, void* data _U_)
 {
-    offset = dissect_rpc_opaque_data(tvb, offset, tree, NULL, hf_vxi11_intr_handle, FALSE, 0, FALSE, NULL, NULL);
+    int offset = dissect_rpc_opaque_data(tvb, 0, tree, NULL, hf_vxi11_intr_handle, FALSE, 0, FALSE, NULL, NULL);
 
-    if (tree)
-    {
-        proto_item_append_text(tree, " (Device_SrqParms)");
-    }
+    proto_item_append_text(tree, " (Device_SrqParms)");
 
     return offset;
 }
 
 static int
 dissect_device_docmd_parms(tvbuff_t *tvb,
-                           int offset,
                            packet_info *pinfo,
                            proto_tree *tree, void* data _U_)
 {
     guint32 lid, cmd;
     const gchar *cmdstr;
+    int offset = 0;
 
     lid    = tvb_get_ntohl(tvb, offset);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lid, offset);
@@ -421,11 +413,11 @@ dissect_device_docmd_parms(tvbuff_t *tvb,
 
 static int
 dissect_device_docmd_resp(tvbuff_t *tvb,
-                          int offset,
                           packet_info *pinfo,
                           proto_tree *tree, void* data _U_)
 {
     guint32 error;
+    int offset = 0;
 
     offset = dissect_error(tvb, offset, pinfo, tree, "Device_DocmdResp", &error);
     offset = dissect_rpc_opaque_data(tvb, offset, tree, NULL, hf_vxi11_core_data, FALSE, 0, FALSE, NULL, NULL);
@@ -435,10 +427,10 @@ dissect_device_docmd_resp(tvbuff_t *tvb,
 
 static int
 dissect_device_enable_SRQ_parms(tvbuff_t *tvb,
-                                int offset,
                                 packet_info *pinfo,
                                 proto_tree *tree, void* data _U_)
 {
+    int offset = 0;
     guint32 lid = tvb_get_ntohl(tvb, offset);
 
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lid, offset);
@@ -456,21 +448,20 @@ dissect_device_enable_SRQ_parms(tvbuff_t *tvb,
 
 static int
 dissect_device_error(tvbuff_t *tvb,
-                     int offset,
                      packet_info *pinfo,
                      proto_tree *tree, void* data _U_)
 {
     guint32 error;
 
-    return dissect_error(tvb, offset, pinfo, tree, "Device_Error", &error);
+    return dissect_error(tvb, 0, pinfo, tree, "Device_Error", &error);
 }
 
 static int
 dissect_device_generic_parms(tvbuff_t *tvb,
-                             int offset,
                              packet_info *pinfo,
                              proto_tree *tree, void* data _U_)
 {
+    int offset = 0;
     guint32 lid = tvb_get_ntohl(tvb, offset);
 
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lid, offset);
@@ -489,10 +480,10 @@ dissect_device_generic_parms(tvbuff_t *tvb,
 
 static int
 dissect_device_link(tvbuff_t *tvb,
-                    int offset,
                     packet_info *pinfo,
                     proto_tree *tree, void* data _U_)
 {
+    int offset = 0;
     guint32 lid = tvb_get_ntohl(tvb, offset);
 
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lid, offset);
@@ -508,10 +499,10 @@ dissect_device_link(tvbuff_t *tvb,
 
 static int
 dissect_device_lock_parms(tvbuff_t *tvb,
-                          int offset,
                           packet_info *pinfo,
                           proto_tree *tree, void* data _U_)
 {
+    int offset = 0;
     guint32 lid = tvb_get_ntohl(tvb, offset);
 
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lid, offset);
@@ -529,10 +520,10 @@ dissect_device_lock_parms(tvbuff_t *tvb,
 
 static int
 dissect_device_read_parms(tvbuff_t *tvb,
-                          int offset,
                           packet_info *pinfo,
                           proto_tree *tree, void* data _U_)
 {
+    int offset = 0;
     guint32 lid = tvb_get_ntohl(tvb, offset);
 
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lid, offset);
@@ -542,10 +533,7 @@ dissect_device_read_parms(tvbuff_t *tvb,
     offset = dissect_flags(tvb, offset, tree);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_term_char, offset);
 
-    if (tree)
-    {
-        proto_item_append_text(tree, " (Device_ReadParms) LID=%d", lid);
-    }
+    proto_item_append_text(tree, " (Device_ReadParms) LID=%d", lid);
     col_append_fstr(pinfo->cinfo, COL_INFO, " LID=%d", lid);
 
     return offset;
@@ -553,14 +541,21 @@ dissect_device_read_parms(tvbuff_t *tvb,
 
 static int
 dissect_device_read_resp(tvbuff_t *tvb,
-                         int offset,
                          packet_info *pinfo,
                          proto_tree *tree, void* data _U_)
 {
     guint32 error;
+    int offset = 0;
+    guint32 datalength = 0;
 
     offset = dissect_error(tvb, offset, pinfo, tree, "Device_ReadResp", &error);
     offset = dissect_reason(tvb, offset, tree);
+
+    datalength = tvb_get_ntohl( tvb, offset);
+    if(MAX_DATA_SHOW_SIZE <=datalength)
+        datalength = MAX_DATA_SHOW_SIZE;
+    col_append_fstr( pinfo->cinfo, COL_INFO," %s",tvb_format_text(tvb, offset+4,(guint32) datalength));
+
     offset = dissect_rpc_opaque_data(tvb, offset, tree, NULL, hf_vxi11_core_data, FALSE, 0, FALSE, NULL, NULL);
 
     return offset;
@@ -568,11 +563,11 @@ dissect_device_read_resp(tvbuff_t *tvb,
 
 static int
 dissect_device_readstb_resp(tvbuff_t *tvb,
-                            int offset,
                             packet_info *pinfo,
                             proto_tree *tree, void* data _U_)
 {
     guint32 error, stb;
+    int offset = 0;
 
     offset = dissect_error(tvb, offset, pinfo, tree, "Device_ReadStbResp", &error);
 
@@ -581,10 +576,7 @@ dissect_device_readstb_resp(tvbuff_t *tvb,
 
     if (error == VXI11_CORE_ERROR_NO_ERROR)
     {
-        if (tree)
-        {
-            proto_item_append_text(tree, " STB=0x%02x", stb);
-        }
+        proto_item_append_text(tree, " STB=0x%02x", stb);
         col_append_fstr(pinfo->cinfo, COL_INFO, " STB=0x%02x", stb);
     }
 
@@ -593,15 +585,14 @@ dissect_device_readstb_resp(tvbuff_t *tvb,
 
 static int
 dissect_device_remote_func(tvbuff_t *tvb,
-                           int offset,
                            packet_info *pinfo,
                            proto_tree *tree, void* data _U_)
 {
-    guint32 addr, port;
+    guint32 port;
     const gchar *addrstr;
+    int offset = 0;
 
-    addr   = tvb_get_ipv4(tvb, offset);
-    addrstr = ip_to_str((guint8 *)&addr);
+    addrstr = tvb_ip_to_str(tvb, offset);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_host_addr, offset);
 
     port   = tvb_get_ntohl(tvb, offset);
@@ -611,10 +602,7 @@ dissect_device_remote_func(tvbuff_t *tvb,
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_prog_vers, offset);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_prog_family, offset);
 
-    if (tree)
-    {
-        proto_item_append_text(tree, " (Device_RemoteFunc) %s:%d", addrstr, port);
-    }
+    proto_item_append_text(tree, " (Device_RemoteFunc) %s:%d", addrstr, port);
     col_append_fstr(pinfo->cinfo, COL_INFO, " %s:%d", addrstr, port);
 
     return offset;
@@ -622,34 +610,40 @@ dissect_device_remote_func(tvbuff_t *tvb,
 
 static int
 dissect_device_write_parms(tvbuff_t *tvb,
-                           int offset,
                            packet_info *pinfo,
                            proto_tree *tree, void* data _U_)
 {
+    guint32 datalength = 0;
+    int offset = 0;
     guint32 lid = tvb_get_ntohl(tvb, offset);
 
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lid, offset);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_io_timeout, offset);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_lock_timeout, offset);
     offset = dissect_flags(tvb, offset, tree);
-    offset = dissect_rpc_opaque_data(tvb, offset, tree, NULL, hf_vxi11_core_data, FALSE, 0, FALSE, NULL, NULL);
+    col_append_fstr(pinfo->cinfo, COL_INFO, " LID=%d", lid);
 
+    datalength = tvb_get_ntohl( tvb, offset);
+    if(MAX_DATA_SHOW_SIZE <=datalength)
+        datalength = MAX_DATA_SHOW_SIZE;
+    col_append_fstr( pinfo->cinfo, COL_INFO," %s",tvb_format_text(tvb, offset+4,(guint32) datalength));
+
+    offset = dissect_rpc_opaque_data(tvb, offset, tree, NULL, hf_vxi11_core_data, FALSE, 0, FALSE, NULL, NULL);
     if (tree)
     {
         proto_item_append_text(tree, " (Device_WriteParms) LID=%d", lid);
     }
-    col_append_fstr(pinfo->cinfo, COL_INFO, " LID=%d", lid);
 
     return offset;
 }
 
 static int
 dissect_device_write_resp(tvbuff_t *tvb,
-                          int offset,
                           packet_info *pinfo,
                           proto_tree *tree, void* data _U_)
 {
     guint32 error;
+    int offset = 0;
 
     offset = dissect_error(tvb, offset, pinfo, tree, "Device_WriteResp", &error);
     offset = dissect_rpc_uint32(tvb, tree, hf_vxi11_core_size, offset);
@@ -894,10 +888,9 @@ void
 proto_reg_handoff_vxi11_core(void)
 {
     /* proc number, "proc name", dissect_request, dissect_reply     */
-    /* NULL as function pointer means: type of arguments is "void". */
     static const vsff vxi111_core_proc[] = {
         { VXI11_CORE_PROC_NULL, "NULL",
-          NULL, NULL },
+          dissect_rpc_void, dissect_rpc_void },
         { VXI11_CORE_PROC_CREATE_LINK, "CREATE_LINK",
           dissect_create_link_parms, dissect_create_link_resp },
         { VXI11_CORE_PROC_DEVICE_WRITE, "DEVICE_WRITE",
@@ -927,15 +920,15 @@ proto_reg_handoff_vxi11_core(void)
         { VXI11_CORE_PROC_CREATE_INTR_CHAN, "CREATE_INTR_CHAN",
           dissect_device_remote_func, dissect_device_error },
         { VXI11_CORE_PROC_DESTROY_INTR_CHAN, "DESTROY_INTR_CHAN",
-          NULL, dissect_device_error },
+          dissect_rpc_void, dissect_device_error },
         { 0, NULL, NULL, NULL }
     };
+    static const rpc_prog_vers_info vxi11_core_vers_info[] = {
+        { VXI11_CORE_VERSION, vxi111_core_proc, &hf_vxi11_core_procedure_v1 },
+    };
 
-    rpc_init_prog(proto_vxi11_core, VXI11_CORE_PROGRAM, ett_vxi11_core);
-    rpc_init_proc_table(VXI11_CORE_PROGRAM,
-                        VXI11_CORE_VERSION,
-                        vxi111_core_proc,
-                        hf_vxi11_core_procedure_v1);
+    rpc_init_prog(proto_vxi11_core, VXI11_CORE_PROGRAM, ett_vxi11_core,
+                  G_N_ELEMENTS(vxi11_core_vers_info), vxi11_core_vers_info);
 }
 
 
@@ -972,17 +965,17 @@ proto_reg_handoff_vxi11_async(void)
 {
     static const vsff vxi111_async_proc[] = {
         { VXI11_ASYNC_PROC_NULL, "NULL",
-          NULL, NULL },
+          dissect_rpc_void, dissect_rpc_void },
         { VXI11_ASYNC_PROC_DEVICE_ABORT, "DEVICE_ABORT",
           dissect_device_link, dissect_device_error },
         { 0, NULL, NULL, NULL }
     };
+    static const rpc_prog_vers_info vxi11_async_vers_info[] = {
+        { VXI11_ASYNC_VERSION, vxi111_async_proc, &hf_vxi11_async_procedure_v1 },
+    };
 
-    rpc_init_prog(proto_vxi11_async, VXI11_ASYNC_PROGRAM, ett_vxi11_async);
-    rpc_init_proc_table(VXI11_ASYNC_PROGRAM,
-                        VXI11_ASYNC_VERSION,
-                        vxi111_async_proc,
-                        hf_vxi11_async_procedure_v1);
+    rpc_init_prog(proto_vxi11_async, VXI11_ASYNC_PROGRAM, ett_vxi11_async,
+                  G_N_ELEMENTS(vxi11_async_vers_info), vxi11_async_vers_info);
 }
 
 
@@ -1025,15 +1018,28 @@ proto_reg_handoff_vxi11_intr(void)
 {
     static const vsff vxi111_intr_proc[] = {
         { VXI11_INTR_PROC_NULL, "NULL",
-          NULL, NULL },
+          dissect_rpc_void, dissect_rpc_void },
         { VXI11_INTR_PROC_DEVICE_INTR_SRQ, "DEVICE_INTR_SRQ",
-          dissect_device_SRQ_parms, NULL },
+          dissect_device_SRQ_parms, dissect_rpc_void },
         { 0, NULL, NULL, NULL }
     };
+    static const rpc_prog_vers_info vxi11_intr_vers_info[] = {
+        { VXI11_INTR_VERSION, vxi111_intr_proc, &hf_vxi11_intr_procedure_v1 },
+    };
 
-    rpc_init_prog(proto_vxi11_intr, VXI11_INTR_PROGRAM, ett_vxi11_intr);
-    rpc_init_proc_table(VXI11_INTR_PROGRAM,
-                        VXI11_INTR_VERSION,
-                        vxi111_intr_proc,
-                        hf_vxi11_intr_procedure_v1);
+    rpc_init_prog(proto_vxi11_intr, VXI11_INTR_PROGRAM, ett_vxi11_intr,
+                  G_N_ELEMENTS(vxi11_intr_vers_info), vxi11_intr_vers_info);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

@@ -62,7 +62,7 @@ XDayOf
 ZonalResult
 ZonalSelect
 
-#.SYNTAX
+#.SYNTAX_NEW
 BitString
 Boolean
 CaseIgnoreListMatch
@@ -101,7 +101,7 @@ TelexNumber
 UniqueIdentifier
 X121Address
 
-#.REGISTER
+#.REGISTER_NEW
 ObjectIdentifier        B "2.5.4.0"   "id-at-objectClass"
 #  - see x509if.cnf for "id-at-aliasedEntryName"
 DirectoryString         B "2.5.4.2"    "id-at-knowledgeInformation"
@@ -385,7 +385,7 @@ XDayOf/fifth				fifth_dayof
     offset=dissect_ber_identifier(actx->pinfo, tree, tvb, offset, &ber_class, &pc, &tag);
     offset=dissect_ber_length(actx->pinfo, tree, tvb, offset, &len, NULL);
   } else {
-    gint32 remaining=tvb_length_remaining(tvb, offset);
+    gint32 remaining=tvb_reported_length_remaining(tvb, offset);
     len=remaining>0 ? remaining : 0;
   }
 

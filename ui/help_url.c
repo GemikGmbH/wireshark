@@ -54,6 +54,8 @@ data_file_url(const gchar *filename)
     if((strlen(filename) > 1) && (filename[0] == '/')) {
       file_path = g_strdup(filename);
 #endif
+    } else if(running_in_build_directory()) {
+        file_path = g_strdup_printf("%s/doc/%s", get_datafile_dir(), filename);
     } else {
         file_path = g_strdup_printf("%s/%s", get_datafile_dir(), filename);
     }
@@ -71,40 +73,40 @@ topic_online_url(topic_action_e action)
 {
     switch(action) {
     case(ONLINEPAGE_HOME):
-        return "http://www.wireshark.org";
+        return "https://www.wireshark.org";
         break;
     case(ONLINEPAGE_WIKI):
-        return "http://wiki.wireshark.org";
+        return "https://wiki.wireshark.org";
         break;
     case(ONLINEPAGE_DOWNLOAD):
-        return "http://www.wireshark.org/download.html";
+        return "https://www.wireshark.org/download.html";
         break;
     case(ONLINEPAGE_USERGUIDE):
-        return "http://www.wireshark.org/docs/wsug_html_chunked/";
+        return "https://www.wireshark.org/docs/wsug_html_chunked/";
         break;
     case(ONLINEPAGE_FAQ):
         return "http://www.wireshark.org/faq.html";
         break;
     case(ONLINEPAGE_ASK):
-        return "http://ask.wireshark.org";
+        return "https://ask.wireshark.org";
         break;
     case(ONLINEPAGE_SAMPLE_FILES):
-        return "http://wiki.wireshark.org/SampleCaptures";
+        return "https://wiki.wireshark.org/SampleCaptures";
         break;
     case(ONLINEPAGE_CAPTURE_SETUP):
-        return "http://wiki.wireshark.org/CaptureSetup";
+        return "https://wiki.wireshark.org/CaptureSetup";
         break;
     case(ONLINEPAGE_NETWORK_MEDIA):
-        return "http://wiki.wireshark.org/CaptureSetup/NetworkMedia";
+        return "https://wiki.wireshark.org/CaptureSetup/NetworkMedia";
         break;
     case(ONLINEPAGE_SAMPLE_CAPTURES):
-        return "http://wiki.wireshark.org/SampleCaptures";
+        return "https://wiki.wireshark.org/SampleCaptures";
         break;
     case(ONLINEPAGE_SECURITY):
-        return "http://wiki.wireshark.org/Security";
+        return "https://wiki.wireshark.org/Security";
         break;
     case(ONLINEPAGE_CHIMNEY):
-        return "http://wiki.wireshark.org/CaptureSetup/Offloading#chimney";
+        return "https://wiki.wireshark.org/CaptureSetup/Offloading#chimney";
         break;
     default:
         return NULL;
@@ -117,7 +119,6 @@ topic_online_url(topic_action_e action)
 gchar *
 user_guide_url(const gchar *page) {
     GString *url = g_string_new("");
-    gchar *ug_url = NULL;
 
     /*
      * Try to open local .chm file. This is not the most intuitive way to
@@ -147,15 +148,13 @@ user_guide_url(const gchar *page) {
     } else {
 #endif /* ifdef DOC_DIR */
        /* try to open the HTML page from wireshark.org instead */
-        g_string_printf(url, "http://www.wireshark.org/docs/wsug_html_chunked/%s", page);
+        g_string_printf(url, "https://www.wireshark.org/docs/wsug_html_chunked/%s", page);
 #ifdef DOC_DIR
     }
 #endif /* ifdef DOC_DIR */
 
 
-    ug_url = url->str;
-    g_string_free(url, FALSE);
-    return ug_url;
+    return g_string_free(url, FALSE);
 }
 
 gchar *
@@ -215,6 +214,9 @@ topic_action_url(topic_action_e action)
     case(HELP_DISPLAY_FILTERS_DIALOG):
         url = user_guide_url("ChWorkDefineFilterSection.html");
         break;
+    case(HELP_FILTER_EXPRESSION_DIALOG):
+        url = user_guide_url("ChWorkFilterAddExpressionSection.html");
+        break;
     case(HELP_COLORING_RULES_DIALOG):
         url = user_guide_url("ChCustColorizationSection.html");
         break;
@@ -242,7 +244,13 @@ topic_action_url(topic_action_e action)
     case(HELP_CAPTURE_INFO_DIALOG):
         url = user_guide_url("ChCapRunningSection.html");
         break;
+    case(HELP_CAPTURE_MANAGE_INTERFACES_DIALOG):
+        url = user_guide_url("ChCapManageInterfacesSection.html");
+        break;
     case(HELP_ENABLED_PROTOCOLS_DIALOG):
+        url = user_guide_url("ChCustProtocolDissectionSection.html");
+        break;
+    case(HELP_ENABLED_HEURISTICS_DIALOG):
         url = user_guide_url("ChCustProtocolDissectionSection.html");
         break;
     case(HELP_DECODE_AS_DIALOG):
@@ -256,6 +264,9 @@ topic_action_url(topic_action_e action)
         break;
     case(HELP_EXPERT_INFO_DIALOG):
         url = user_guide_url("ChAdvExpert.html");
+        break;
+    case(HELP_EXTCAP_OPTIONS_DIALOG):
+        url = user_guide_url("ChExtcapOptions.html");
         break;
     case(HELP_STATS_SUMMARY_DIALOG):
         url = user_guide_url("ChStatSummary.html");
@@ -327,6 +338,21 @@ topic_action_url(topic_action_e action)
         break;
     case(HELP_FILTER_SAVE_DIALOG):
         url = user_guide_url("ChWorkFilterSaveSection.html");
+        break;
+    case(HELP_TELEPHONY_VOIP_CALLS_DIALOG):
+        url = user_guide_url("ChTelVoipCalls.html");
+        break;
+    case(HELP_RTP_ANALYSIS_DIALOG):
+        url = user_guide_url("ChTelRTPAnalysis.html");
+        break;
+    case(HELP_NEW_PACKET_DIALOG):
+        url = user_guide_url("ChapterWork.html#ChWorkPacketSepView");
+        break;
+    case(HELP_IAX2_ANALYSIS_DIALOG):
+        url = user_guide_url("ChTelIAX2Analysis.html");
+        break;
+    case(HELP_TELEPHONY_RTP_PLAYER_DIALOG):
+        url = user_guide_url("ChTelRtpPlayer.html");
         break;
 
     case(TOPIC_ACTION_NONE):

@@ -22,8 +22,8 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#ifndef _PACKET_IAX2_H
-#define _PACKET_IAX2_H
+#ifndef __PACKET_IAX2_H__
+#define __PACKET_IAX2_H__
 
 #include <epan/tap-voip.h>
 
@@ -252,4 +252,11 @@ typedef struct _iax2_info_t
 	const guint8 *payload_data;
 } iax2_info_t;
 
-#endif
+/* Container for passing data between dissectors */
+typedef struct _iax2_dissector_info_t
+{
+	circuit_type ctype;
+	guint32 circuit_id;
+} iax2_dissector_info_t;
+
+#endif /* __PACKET_IAX2_H__ */

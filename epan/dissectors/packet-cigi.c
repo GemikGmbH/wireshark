@@ -29,12 +29,10 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/exceptions.h>
+#include <epan/expert.h>
 #include <epan/prefs.h>
-#include <epan/wmem/wmem.h>
 #include <epan/to_str.h>
 
 /* Forward declaration */
@@ -46,7 +44,7 @@ static void dissect_cigi_pdu(tvbuff_t*, packet_info*, proto_tree*);
 static void cigi_add_tree(tvbuff_t*, proto_tree*);
 static gint cigi_add_data(tvbuff_t*, proto_tree*, gint);
 
-static void cigi2_add_tree(tvbuff_t*, proto_tree*);
+static void cigi2_add_tree(tvbuff_t*, packet_info*, proto_tree*);
 static gint cigi2_add_ig_control(tvbuff_t*, proto_tree*, gint);
 static gint cigi2_add_entity_control(tvbuff_t*, proto_tree*, gint);
 static gint cigi2_add_component_control(tvbuff_t*, proto_tree*, gint);
@@ -74,7 +72,7 @@ static gint cigi2_add_height_of_terrain_response(tvbuff_t*, proto_tree*, gint);
 static gint cigi2_add_collision_detection_volume_response(tvbuff_t*, proto_tree*, gint);
 static gint cigi2_add_image_generator_message(tvbuff_t*, proto_tree*, gint);
 
-static void cigi3_add_tree(tvbuff_t*, proto_tree*);
+static void cigi3_add_tree(tvbuff_t*, packet_info*, proto_tree*);
 static gint cigi3_add_ig_control(tvbuff_t*, proto_tree*, gint);
 static gint cigi3_add_entity_control(tvbuff_t*, proto_tree*, gint);
 static gint cigi3_add_conformal_clamped_entity_control(tvbuff_t*, proto_tree*, gint);
@@ -168,7 +166,7 @@ static const true_false_string cigi_valid_tfs = {
 static int hf_cigi_src_port = -1;
 static int hf_cigi_dest_port = -1;
 static int hf_cigi_port = -1;
-
+static int hf_cigi_data = -1;
 static int hf_cigi_packet_id = -1;
 static int hf_cigi_packet_size = -1;
 static int hf_cigi_version = -1;
@@ -483,6 +481,7 @@ static int hf_cigi2_special_effect_definition_x_scale = -1;
 static int hf_cigi2_special_effect_definition_y_scale = -1;
 static int hf_cigi2_special_effect_definition_z_scale = -1;
 static int hf_cigi2_special_effect_definition_time_scale = -1;
+static int hf_cigi2_special_effect_definition_spare = -1;
 static int hf_cigi2_special_effect_definition_effect_count = -1;
 static int hf_cigi2_special_effect_definition_separation = -1;
 static int hf_cigi2_special_effect_definition_burst_interval = -1;
@@ -2413,6 +2412,9 @@ static int hf_cigi3_image_generator_message_message = -1;
 static int hf_cigi3_user_defined = -1;
 
 
+static expert_field ei_cigi_invalid_len = EI_INIT;
+
+
 /* Global preferences */
 #define CIGI_VERSION_FROM_PACKET 0
 #define CIGI_VERSION_1   1
@@ -2455,7 +2457,7 @@ packet_is_cigi(tvbuff_t *tvb)
     /* CIGI 3 */
     guint16 byte_swap;
 
-    if (tvb_length(tvb) < 3) {
+    if (tvb_captured_length(tvb) < 3) {
         /* Not enough data available to check */
         return FALSE;
     }
@@ -2533,10 +2535,10 @@ packet_is_cigi(tvbuff_t *tvb)
             /* CIGI 3 requires that the first packet is always the IG Control or SOF */
             switch ( packet_id ) {
                 case CIGI3_PACKET_ID_IG_CONTROL:
-					if ( packet_size != CIGI3_PACKET_SIZE_IG_CONTROL ) {
-						if ( packet_size != CIGI3_2_PACKET_SIZE_IG_CONTROL ) {
-							return FALSE;
-						}
+                    if ( packet_size != CIGI3_PACKET_SIZE_IG_CONTROL ) {
+                        if ( packet_size != CIGI3_2_PACKET_SIZE_IG_CONTROL ) {
+                            return FALSE;
+                        }
                     }
 
                     if (!tvb_bytes_exist(tvb, 4, 2)) {
@@ -2551,10 +2553,10 @@ packet_is_cigi(tvbuff_t *tvb)
 
                     break;
                 case CIGI3_PACKET_ID_START_OF_FRAME:
-					if ( packet_size != CIGI3_PACKET_SIZE_START_OF_FRAME ) {
-						if ( packet_size != CIGI3_2_PACKET_SIZE_START_OF_FRAME) {
-							return FALSE;
-						}
+                    if ( packet_size != CIGI3_PACKET_SIZE_START_OF_FRAME ) {
+                        if ( packet_size != CIGI3_2_PACKET_SIZE_START_OF_FRAME) {
+                            return FALSE;
+                        }
                     }
 
                     if (!tvb_bytes_exist(tvb, 5, 1)) {
@@ -2562,7 +2564,7 @@ packet_is_cigi(tvbuff_t *tvb)
                         return FALSE;
                     }
 
-					break;
+                    break;
                 default:
                     return FALSE;
             }
@@ -2609,7 +2611,7 @@ dissect_cigi(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
     }
     dissect_cigi_pdu(tvb, pinfo, tree);
     /* We probably ate the entire packet. */
-    return tvb_length(tvb);
+    return tvb_reported_length(tvb);
 }
 
 /* Code to actually dissect the CIGI packets */
@@ -2639,14 +2641,14 @@ dissect_cigi_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     }
 
     /* Format the Info String */
-    src_str = (const char*)ip_to_str((const guint8 *)pinfo->src.data);
+    src_str = address_to_str(wmem_packet_scope(), &pinfo->src);
     if ( !g_ascii_strcasecmp(global_host_ip, src_str) ) {
         src_str = "Host";
     } else if ( !g_ascii_strcasecmp(global_ig_ip, src_str) ) {
         src_str = "IG";
     }
 
-    dest_str = (const char*)ip_to_str((const guint8 *)pinfo->dst.data);
+    dest_str = address_to_str(wmem_packet_scope(), &pinfo->dst);
     if ( !g_ascii_strcasecmp(global_host_ip, dest_str) ) {
         dest_str = "Host";
     } else if ( !g_ascii_strcasecmp(global_ig_ip, dest_str) ) {
@@ -2658,33 +2660,33 @@ dissect_cigi_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     if (tree) {
 
-        ti = proto_tree_add_protocol_format(tree, proto_cigi, tvb, 0, tvb_length(tvb), "Common Image Generator Interface (%i), %s => %s (%u bytes)",
+        ti = proto_tree_add_protocol_format(tree, proto_cigi, tvb, 0, tvb_reported_length(tvb), "Common Image Generator Interface (%i), %s => %s (%u bytes)",
                                             cigi_version, src_str, dest_str, tvb_reported_length(tvb));
 
         cigi_tree = proto_item_add_subtree(ti, ett_cigi);
 
         /* Ports */
         hidden_item = proto_tree_add_uint(cigi_tree, hf_cigi_src_port, tvb, 0, 0, pinfo->srcport);
-		PROTO_ITEM_SET_HIDDEN(hidden_item);
+        PROTO_ITEM_SET_HIDDEN(hidden_item);
         hidden_item = proto_tree_add_uint(cigi_tree, hf_cigi_dest_port, tvb, 0, 0, pinfo->destport);
-		PROTO_ITEM_SET_HIDDEN(hidden_item);
+        PROTO_ITEM_SET_HIDDEN(hidden_item);
         hidden_item = proto_tree_add_uint(cigi_tree, hf_cigi_port, tvb, 0, 0, pinfo->srcport);
-		PROTO_ITEM_SET_HIDDEN(hidden_item);
+        PROTO_ITEM_SET_HIDDEN(hidden_item);
         hidden_item = proto_tree_add_uint(cigi_tree, hf_cigi_port, tvb, 0, 0, pinfo->destport);
-		PROTO_ITEM_SET_HIDDEN(hidden_item);
+        PROTO_ITEM_SET_HIDDEN(hidden_item);
 
         /* Frame Size */
         hidden_item = proto_tree_add_uint(cigi_tree, hf_cigi_frame_size, tvb, 0, 0, tvb_reported_length(tvb));
-		PROTO_ITEM_SET_HIDDEN(hidden_item);
+        PROTO_ITEM_SET_HIDDEN(hidden_item);
 
         /* Since the versions of CIGI are not backwards compatible,
          * dissection is different for each version.
          * XXX - If another version of cigi is added to this dissector be
          * sure to place the version in this statement.*/
         if ( cigi_version == CIGI_VERSION_2 ) {
-            cigi2_add_tree(tvb, cigi_tree);
+            cigi2_add_tree(tvb, pinfo, cigi_tree);
         } else if ( cigi_version == CIGI_VERSION_3 ) {
-            cigi3_add_tree(tvb, cigi_tree);
+            cigi3_add_tree(tvb, pinfo, cigi_tree);
         } else {
             /* Since there exists no dissector to dissect this version
              * just put the data into a tree using an unknown version */
@@ -2707,7 +2709,7 @@ cigi_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
     proto_tree* cigi_packet_tree = NULL;
     proto_item* tipacket;
 
-    length = tvb_length(tvb);
+    length = tvb_reported_length(tvb);
 
     /* Each iteration through this loop is meant to be a separate cigi packet
      * therefore it is okay to assume that at the top of this look we are given
@@ -2718,12 +2720,10 @@ cigi_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
         packet_size = tvb_get_guint8(tvb, offset + 1);
         data_size = packet_size;
 
-        /* if the second byte of the packet carries a value that is less than
-         * then we know we have a malformed packet because every cigi packet
-         * at minimal must be a least 2 bytes ( 1 - packet_id; 2 - packet_size ). */
-        if ( packet_size < 2 ) {
-            THROW(ReportedBoundsError);
-        }
+        /* a cigi packet must be at least 2 bytes long
+           ( 1 - packet_id; 2 - packet_size ) */
+        if ( packet_size < 2 )
+            return;
 
         /* If we have the start of frame or IG Control packet set the version.
          * Since we have no cigi version we assume that packet id 1 is the
@@ -2755,7 +2755,7 @@ cigi_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
             data_size--;
         }
 
-        proto_tree_add_text(cigi_packet_tree, tvb, offset, data_size, "Data (%i bytes)", data_size );
+        proto_tree_add_item(cigi_packet_tree, hf_cigi_data, tvb, offset, data_size, ENC_NA);
         offset += data_size;
     }
 }
@@ -2771,11 +2771,10 @@ cigi_add_data(tvbuff_t *tvb, proto_tree *tree, gint offset)
 
     /* A cigi packet cannot be less than 2 bytes ( because every cigi packet
      * has a packet id (1 byte) and a packet size (1 byte) ). */
-    if ( packet_size < 2 ) {
-        THROW(ReportedBoundsError);
-    }
+    if ( packet_size < 2 )
+        return -1;
 
-    proto_tree_add_text(tree, tvb, offset, packet_size-2, "Data (%i bytes)", packet_size-2 );
+    proto_tree_add_item(tree, hf_cigi_data, tvb, offset, packet_size-2, ENC_NA);
     offset += packet_size-2;
 
     return offset;
@@ -2784,7 +2783,7 @@ cigi_add_data(tvbuff_t *tvb, proto_tree *tree, gint offset)
 /* Create the tree for CIGI 2
  * Note: CIGI 2 guarantee's that the byte order will be big endian. */
 static void
-cigi2_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
+cigi2_add_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *cigi_tree)
 {
     gint offset = 0;
     gint length = 0;
@@ -2798,7 +2797,7 @@ cigi2_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
     proto_item* tipacket;
     int hf_cigi2_packet = -1;
 
-    length = tvb_length(tvb);
+    length = tvb_reported_length(tvb);
 
     /* Each iteration through this loop is meant to be a separate cigi packet
      * therefore it is okay to assume that at the top of this look we are given
@@ -2915,72 +2914,101 @@ cigi2_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
         proto_tree_add_item(cigi_packet_tree, hf_cigi_packet_size, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset++;
 
-        if ( packet_id == CIGI2_PACKET_ID_IG_CONTROL ) {
+        switch(packet_id)
+        {
+        case CIGI2_PACKET_ID_IG_CONTROL:
             offset = cigi2_add_ig_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_ENTITY_CONTROL ) {
+            break;
+        case CIGI2_PACKET_ID_ENTITY_CONTROL:
             offset = cigi2_add_entity_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_COMPONENT_CONTROL ) {
+            break;
+        case CIGI2_PACKET_ID_COMPONENT_CONTROL:
             offset = cigi2_add_component_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_ARTICULATED_PARTS_CONTROL ) {
+            break;
+        case CIGI2_PACKET_ID_ARTICULATED_PARTS_CONTROL:
             offset = cigi2_add_articulated_parts_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_RATE_CONTROL ) {
+            break;
+        case CIGI2_PACKET_ID_RATE_CONTROL:
             offset = cigi2_add_rate_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_ENVIRONMENT_CONTROL ) {
+            break;
+        case CIGI2_PACKET_ID_ENVIRONMENT_CONTROL:
             offset = cigi2_add_environment_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_WEATHER_CONTROL ) {
+            break;
+        case CIGI2_PACKET_ID_WEATHER_CONTROL:
             offset = cigi2_add_weather_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_VIEW_CONTROL ) {
+            break;
+        case CIGI2_PACKET_ID_VIEW_CONTROL:
             offset = cigi2_add_view_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_SENSOR_CONTROL ) {
+            break;
+        case CIGI2_PACKET_ID_SENSOR_CONTROL:
             offset = cigi2_add_sensor_control(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_TRAJECTORY_DEFINITION ) {
+            break;
+        case CIGI2_PACKET_ID_TRAJECTORY_DEFINITION:
             offset = cigi2_add_trajectory_definition(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_SPECIAL_EFFECT_DEFINITION ) {
+            break;
+        case CIGI2_PACKET_ID_SPECIAL_EFFECT_DEFINITION:
             offset = cigi2_add_special_effect_definition(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_VIEW_DEFINITION ) {
+            break;
+        case CIGI2_PACKET_ID_VIEW_DEFINITION:
             offset = cigi2_add_view_definition(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_COLLISION_DETECTION_SEGMENT_DEFINITION ) {
+            break;
+        case CIGI2_PACKET_ID_COLLISION_DETECTION_SEGMENT_DEFINITION:
             offset = cigi2_add_collision_detection_segment_definition(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_COLLISION_DETECTION_VOLUME_DEFINITION ) {
+            break;
+        case CIGI2_PACKET_ID_COLLISION_DETECTION_VOLUME_DEFINITION:
             offset = cigi2_add_collision_detection_volume_definition(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_HEIGHT_ABOVE_TERRAIN_REQUEST ) {
+            break;
+        case CIGI2_PACKET_ID_HEIGHT_ABOVE_TERRAIN_REQUEST:
             offset = cigi2_add_height_above_terrain_request(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_LINE_OF_SIGHT_OCCULT_REQUEST ) {
+            break;
+        case CIGI2_PACKET_ID_LINE_OF_SIGHT_OCCULT_REQUEST:
             offset = cigi2_add_line_of_sight_occult_request(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_LINE_OF_SIGHT_RANGE_REQUEST ) {
+            break;
+        case CIGI2_PACKET_ID_LINE_OF_SIGHT_RANGE_REQUEST:
             offset = cigi2_add_line_of_sight_range_request(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_HEIGHT_OF_TERRAIN_REQUEST ) {
+            break;
+        case CIGI2_PACKET_ID_HEIGHT_OF_TERRAIN_REQUEST:
             offset = cigi2_add_height_of_terrain_request(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_START_OF_FRAME ) {
+            break;
+        case CIGI2_PACKET_ID_START_OF_FRAME:
             offset = cigi2_add_start_of_frame(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_HEIGHT_ABOVE_TERRAIN_RESPONSE ) {
+            break;
+        case CIGI2_PACKET_ID_HEIGHT_ABOVE_TERRAIN_RESPONSE:
             offset = cigi2_add_height_above_terrain_response(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_LINE_OF_SIGHT_RESPONSE ) {
+            break;
+        case CIGI2_PACKET_ID_LINE_OF_SIGHT_RESPONSE:
             offset = cigi2_add_line_of_sight_response(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_COLLISION_DETECTION_SEGMENT_RESPONSE ) {
+            break;
+        case CIGI2_PACKET_ID_COLLISION_DETECTION_SEGMENT_RESPONSE:
             offset = cigi2_add_collision_detection_segment_response(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_SENSOR_RESPONSE ) {
+            break;
+        case CIGI2_PACKET_ID_SENSOR_RESPONSE:
             offset = cigi2_add_sensor_response(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_HEIGHT_OF_TERRAIN_RESPONSE ) {
+            break;
+        case CIGI2_PACKET_ID_HEIGHT_OF_TERRAIN_RESPONSE:
             offset = cigi2_add_height_of_terrain_response(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_COLLISION_DETECTION_VOLUME_RESPONSE ) {
+            break;
+        case CIGI2_PACKET_ID_COLLISION_DETECTION_VOLUME_RESPONSE:
             offset = cigi2_add_collision_detection_volume_response(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id == CIGI2_PACKET_ID_IMAGE_GENERATOR_MESSAGE ) {
+            break;
+        case CIGI2_PACKET_ID_IMAGE_GENERATOR_MESSAGE:
             offset = cigi2_add_image_generator_message(tvb, cigi_packet_tree, offset);
-        } else if ( packet_id >= CIGI2_PACKET_ID_USER_DEFINABLE_MIN && packet_id <= CIGI2_PACKET_ID_USER_DEFINABLE_MAX ) {
+            break;
+        default:
             offset = cigi_add_data(tvb, cigi_packet_tree, offset);
-        } else {
-            offset = cigi_add_data(tvb, cigi_packet_tree, offset);
+            break;
         }
 
-        /* Does the packet offset match the supposed length of the packet? */
-        DISSECTOR_ASSERT_HINT(offset - init_offset == packet_length, "Packet offset does not match packet length");
+        if (offset-init_offset != packet_length) {
+            proto_tree_add_expert(cigi_packet_tree, pinfo, &ei_cigi_invalid_len, tvb, init_offset, offset-init_offset);
+            break;
+        }
     }
 }
 
 /* Create the tree for CIGI 3 */
 static void
-cigi3_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
+cigi3_add_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *cigi_tree)
 {
     gint offset = 0;
     gint length = 0;
@@ -2995,7 +3023,7 @@ cigi3_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
     proto_item* tipacket;
     int hf_cigi3_packet = -1;
 
-    length = tvb_length(tvb);
+    length = tvb_reported_length(tvb);
 
     /* Each iteration through this loop is meant to be a separate cigi packet
      * therefore it is okay to assume that at the top of this look we are given
@@ -3367,8 +3395,10 @@ cigi3_add_tree(tvbuff_t *tvb, proto_tree *cigi_tree)
             offset = cigi_add_data(tvb, cigi_packet_tree, offset);
         }
 
-        /* Does the packet offset match the supposed length of the packet? */
-        DISSECTOR_ASSERT_HINT(offset - init_offset == packet_length, "Packet offset does not match packet length");
+        if (offset-init_offset != packet_length) {
+            proto_tree_add_expert(cigi_packet_tree, pinfo, &ei_cigi_invalid_len, tvb, init_offset, offset-init_offset);
+            break;
+        }
     }
 }
 
@@ -3749,7 +3779,7 @@ cigi2_add_special_effect_definition(tvbuff_t *tvb, proto_tree *tree, gint offset
     proto_tree_add_float(tree, hf_cigi2_special_effect_definition_time_scale, tvb, offset, 2, tvb_get_fixed_point(tvb, offset, ENC_BIG_ENDIAN));
     offset += 2;
 
-    proto_tree_add_text(tree, tvb, offset, 2, "Spare");
+    proto_tree_add_item(tree, hf_cigi2_special_effect_definition_spare, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
 
     proto_tree_add_item(tree, hf_cigi2_special_effect_definition_effect_count, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -4145,9 +4175,8 @@ cigi2_add_image_generator_message(tvbuff_t *tvb, proto_tree *tree, gint offset)
 
     /* An image generator packet cannot be less than 4 bytes ( because every cigi packet
      * has a packet id (1 byte) and a packet size (1 byte) ). */
-    if ( packet_size < 4 ) {
-        THROW(ReportedBoundsError);
-    }
+    if ( packet_size < 4 )
+        return -1;
 
     proto_tree_add_item(tree, hf_cigi2_image_generator_message_id, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
@@ -5486,9 +5515,8 @@ cigi3_3_add_symbol_text_definition(tvbuff_t *tvb, proto_tree *tree, gint offset)
     packet_size = tvb_get_guint8(tvb, offset-1);
 
     /* A symbol text definition packet cannot be less than 16 bytes. */
-    if ( packet_size < 16 ) {
-        THROW(ReportedBoundsError);
-    }
+    if ( packet_size < 16 )
+        return -1;
 
     proto_tree_add_item(tree, hf_cigi3_3_symbol_text_definition_symbol_id, tvb, offset, 2, cigi_byte_order);
     offset += 2;
@@ -5519,9 +5547,8 @@ cigi3_3_add_symbol_circle_definition(tvbuff_t *tvb, proto_tree *tree, gint offse
     packet_size = tvb_get_guint8(tvb, offset-1);
 
     /* A symbol text definition packet cannot be less than 16 bytes. */
-    if ( packet_size < 16 ) {
-        THROW(ReportedBoundsError);
-    }
+    if ( packet_size < 16 )
+        return -1;
 
     ncircles = (packet_size - 16) / 24;
 
@@ -5573,9 +5600,8 @@ cigi3_3_add_symbol_line_definition(tvbuff_t *tvb, proto_tree *tree, gint offset)
     packet_size = tvb_get_guint8(tvb, offset-1);
 
     /* A symbol text definition packet cannot be less than 16 bytes. */
-    if ( packet_size < 16 ) {
-        THROW(ReportedBoundsError);
-    }
+    if ( packet_size < 16 )
+        return -1;
 
     nvertices = (packet_size - 16) / 8;
 
@@ -6373,9 +6399,8 @@ cigi3_add_image_generator_message(tvbuff_t *tvb, proto_tree *tree, gint offset)
 
     /* An image generator packet cannot be less than 4 bytes ( because every cigi packet
      * has a packet id (1 byte) and a packet size (1 byte) ). */
-    if ( packet_size < 4 ) {
-        THROW(ReportedBoundsError);
-    }
+    if ( packet_size < 4 )
+        return -1;
 
     proto_tree_add_item(tree, hf_cigi3_image_generator_message_id, tvb, offset, 2, cigi_byte_order);
     offset += 2;
@@ -6406,6 +6431,7 @@ void
 proto_register_cigi(void)
 {
     module_t *cigi_module;
+    expert_module_t* expert_cigi;
 
     static hf_register_info hf[] = {
         /* All Versions of CIGI */
@@ -6422,6 +6448,11 @@ proto_register_cigi(void)
         { &hf_cigi_port,
             { "Source or Destination Port", "cigi.port",
                 FT_UINT16, BASE_DEC, NULL, 0x0,
+                NULL, HFILL }
+        },
+        { &hf_cigi_data,
+            { "Data", "cigi.data",
+                FT_BYTES, BASE_NONE, NULL, 0x0,
                 NULL, HFILL }
         },
 
@@ -8627,6 +8658,11 @@ proto_register_cigi(void)
             { "Time Scale", "cigi.special_effect_def.time_scale",
                 FT_FLOAT, BASE_NONE, NULL, 0x0,
                 "Specifies a scale factor to apply to the time period for the effect's animation sequence", HFILL }
+        },
+        { &hf_cigi2_special_effect_definition_spare,
+            { "Spare", "cigi.special_effect_def.spare",
+                FT_UINT16, BASE_HEX, NULL, 0x0,
+                NULL, HFILL }
         },
         { &hf_cigi2_special_effect_definition_effect_count,
             { "Effect Count", "cigi.special_effect_def.effect_count",
@@ -11931,6 +11967,13 @@ proto_register_cigi(void)
         },
     };
 
+    static ei_register_info ei[] = {
+        { &ei_cigi_invalid_len,
+            { "cigi.invalid_len", PI_MALFORMED, PI_ERROR,
+                "Packet offset does not match packet length",
+                EXPFILL }}
+    };
+
     /* CIGI preferences */
     static const enum_val_t cigi_versions[] = {
         { "from_packet", "From Packet", CIGI_VERSION_FROM_PACKET },
@@ -11958,6 +12001,9 @@ proto_register_cigi(void)
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_cigi, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    expert_cigi = expert_register_protocol(proto_cigi);
+    expert_register_field_array(expert_cigi, ei, array_length(ei));
 
     /* Register preferences module */
     cigi_module = prefs_register_protocol(proto_cigi, proto_reg_handoff_cigi);
@@ -11997,7 +12043,7 @@ proto_reg_handoff_cigi(void)
         cigi_byte_order = ENC_LITTLE_ENDIAN;
         break;
 
-    default:	/* includes CIGI_BYTE_ORDER_FROM_PACKET */
+    default:  /* includes CIGI_BYTE_ORDER_FROM_PACKET */
         /* Leave it alone. */
         break;
     }
@@ -12005,10 +12051,23 @@ proto_reg_handoff_cigi(void)
     if( !inited ) {
 
         cigi_handle = new_create_dissector_handle(dissect_cigi, proto_cigi);
-        dissector_add_handle("udp.port", cigi_handle);
-        dissector_add_handle("tcp.port", cigi_handle);
-        heur_dissector_add("udp", dissect_cigi_heur, proto_cigi);
+        dissector_add_for_decode_as("udp.port", cigi_handle);
+        dissector_add_for_decode_as("tcp.port", cigi_handle);
+        heur_dissector_add("udp", dissect_cigi_heur, "CIGI over UDP", "cigi_udp", proto_cigi, HEURISTIC_ENABLE);
 
         inited = TRUE;
     }
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

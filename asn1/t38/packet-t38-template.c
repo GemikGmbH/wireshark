@@ -44,23 +44,19 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/reassemble.h>
 #include <epan/conversation.h>
 #include <epan/tap.h>
 #include <epan/expert.h>
-
-#include <string.h>
-
-#include "packet-t38.h"
+#include <epan/strutil.h>
 #include <epan/prefs.h>
 #include <epan/ipproto.h>
 #include <epan/asn1.h>
+
+#include "packet-t38.h"
 #include "packet-per.h"
 #include "packet-tpkt.h"
-#include <epan/wmem/wmem.h>
-#include <epan/strutil.h>
 
 void proto_register_t38(void);
 
@@ -144,6 +140,8 @@ static gint ett_t38_setup = -1;
 static gint ett_data_fragment = -1;
 static gint ett_data_fragments = -1;
 
+static expert_field ei_t38_malformed = EI_INIT;
+
 static gboolean primary_part = TRUE;
 static guint32 seq_number = 0;
 
@@ -206,6 +204,11 @@ static void t38_defragment_init(void)
 	/* Init reassembly table */
 	reassembly_table_init(&data_reassembly_table,
                               &addresses_reassembly_table_functions);
+}
+
+static void t38_defragment_cleanup(void)
+{
+    reassembly_table_destroy(&data_reassembly_table);
 }
 
 
@@ -353,7 +356,7 @@ force_reassemble_seq(reassembly_table *table, packet_info *pinfo, guint32 id)
 	for (fd_i=fd_head->next;fd_i && fd_i->len + dfpos <= size;fd_i=fd_i->next) {
 	  if (fd_i->len) {
 	    if(!last_fd || last_fd->offset!=fd_i->offset){
-	      memcpy(data+dfpos,tvb_get_ptr(fd_i->tvb_data,0,fd_i->len),fd_i->len);
+	      tvb_memcpy(fd_i->tvb_data, data+dfpos, 0, fd_i->len);
 	      dfpos += fd_i->len;
 	    } else {
 	      /* duplicate/retransmission/overlap */
@@ -425,7 +428,7 @@ init_t38_info_conv(packet_info *pinfo)
 	p_t38_conv = NULL;
 
 	/* Use existing packet info if available */
-	 p_t38_packet_conv = (t38_conv *)p_get_proto_data(wmem_file_scope(), pinfo, proto_t38, 0);
+	p_t38_packet_conv = (t38_conv *)p_get_proto_data(wmem_file_scope(), pinfo, proto_t38, 0);
 
 
 	/* find the conversation used for Reassemble and Setup Info */
@@ -442,38 +445,38 @@ init_t38_info_conv(packet_info *pinfo)
 		conversation_set_dissector(p_conv, t38_udp_handle);
 	}
 
+	p_t38_conv = (t38_conv *)conversation_get_proto_data(p_conv, proto_t38);
+
+	/* create the conversation if it doesn't exist */
+	if (!p_t38_conv) {
+		p_t38_conv = wmem_new(wmem_file_scope(), t38_conv);
+		p_t38_conv->setup_method[0] = '\0';
+		p_t38_conv->setup_frame_number = 0;
+
+		p_t38_conv->src_t38_info.reass_ID = 0;
+		p_t38_conv->src_t38_info.reass_start_seqnum = -1;
+		p_t38_conv->src_t38_info.reass_data_type = 0;
+		p_t38_conv->src_t38_info.last_seqnum = -1;
+		p_t38_conv->src_t38_info.packet_lost = 0;
+		p_t38_conv->src_t38_info.burst_lost = 0;
+		p_t38_conv->src_t38_info.time_first_t4_data = 0;
+		p_t38_conv->src_t38_info.additional_hdlc_data_field_counter = 0;
+		p_t38_conv->src_t38_info.seqnum_prev_data_field = -1;
+
+		p_t38_conv->dst_t38_info.reass_ID = 0;
+		p_t38_conv->dst_t38_info.reass_start_seqnum = -1;
+		p_t38_conv->dst_t38_info.reass_data_type = 0;
+		p_t38_conv->dst_t38_info.last_seqnum = -1;
+		p_t38_conv->dst_t38_info.packet_lost = 0;
+		p_t38_conv->dst_t38_info.burst_lost = 0;
+		p_t38_conv->dst_t38_info.time_first_t4_data = 0;
+		p_t38_conv->dst_t38_info.additional_hdlc_data_field_counter = 0;
+		p_t38_conv->dst_t38_info.seqnum_prev_data_field = -1;
+
+		conversation_add_proto_data(p_conv, proto_t38, p_t38_conv);
+	}
+
 	if (!p_t38_packet_conv) {
-		p_t38_conv = (t38_conv *)conversation_get_proto_data(p_conv, proto_t38);
-
-		/* create the conversation if it doen't exist */
-		if (!p_t38_conv) {
-			p_t38_conv = wmem_new(wmem_file_scope(), t38_conv);
-			p_t38_conv->setup_method[0] = '\0';
-			p_t38_conv->setup_frame_number = 0;
-
-			p_t38_conv->src_t38_info.reass_ID = 0;
-			p_t38_conv->src_t38_info.reass_start_seqnum = -1;
-			p_t38_conv->src_t38_info.reass_data_type = 0;
-			p_t38_conv->src_t38_info.last_seqnum = -1;
-			p_t38_conv->src_t38_info.packet_lost = 0;
-			p_t38_conv->src_t38_info.burst_lost = 0;
-			p_t38_conv->src_t38_info.time_first_t4_data = 0;
-			p_t38_conv->src_t38_info.additional_hdlc_data_field_counter = 0;
-			p_t38_conv->src_t38_info.seqnum_prev_data_field = -1;
-
-			p_t38_conv->dst_t38_info.reass_ID = 0;
-			p_t38_conv->dst_t38_info.reass_start_seqnum = -1;
-			p_t38_conv->dst_t38_info.reass_data_type = 0;
-			p_t38_conv->dst_t38_info.last_seqnum = -1;
-			p_t38_conv->dst_t38_info.packet_lost = 0;
-			p_t38_conv->dst_t38_info.burst_lost = 0;
-			p_t38_conv->dst_t38_info.time_first_t4_data = 0;
-			p_t38_conv->dst_t38_info.additional_hdlc_data_field_counter = 0;
-			p_t38_conv->dst_t38_info.seqnum_prev_data_field = -1;
-
-			conversation_add_proto_data(p_conv, proto_t38, p_t38_conv);
-		}
-
 		/* copy the t38 conversation info to the packet t38 conversation */
 		p_t38_packet_conv = wmem_new(wmem_file_scope(), t38_conv);
 		g_strlcpy(p_t38_packet_conv->setup_method, p_t38_conv->setup_method, MAX_T38_SETUP_METHOD_SIZE);
@@ -540,11 +543,9 @@ dissect_t38_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	offset = dissect_UDPTLPacket_PDU(tvb, pinfo, tr, NULL);
 
-	if (tvb_length_remaining(tvb,offset)>0){
-		if (tr){
-			proto_tree_add_text(tr, tvb, offset, tvb_reported_length_remaining(tvb, offset),
+	if (tvb_reported_length_remaining(tvb,offset)>0){
+		proto_tree_add_expert_format(tr, pinfo, &ei_t38_malformed, tvb, offset, tvb_reported_length_remaining(tvb, offset),
 				"[MALFORMED PACKET or wrong preference settings]");
-		}
 		col_append_str(pinfo->cinfo, COL_INFO, " [Malformed?]");
 	}
 }
@@ -579,18 +580,16 @@ dissect_t38_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	col_append_str(pinfo->cinfo, COL_INFO, "TCP: IFPPacket");
 
-	while(tvb_length_remaining(tvb,offset)>0)
+	while(tvb_reported_length_remaining(tvb,offset)>0)
 	{
 		next_tvb = tvb_new_subset_remaining(tvb, offset);
 		offset += dissect_IFPPacket_PDU(next_tvb, pinfo, tr, NULL);
 		ifp_packet_number++;
 
-		if(tvb_length_remaining(tvb,offset)>0){
+		if(tvb_reported_length_remaining(tvb,offset)>0){
 			if(t38_tpkt_usage == T38_TPKT_ALWAYS){
-				if(tr){
-					proto_tree_add_text(tr, tvb, offset, tvb_reported_length_remaining(tvb, offset),
+				proto_tree_add_expert_format(tr, pinfo, &ei_t38_malformed, tvb, offset, tvb_reported_length_remaining(tvb, offset),
 						"[MALFORMED PACKET or wrong preference settings]");
-				}
 				col_append_str(pinfo->cinfo, COL_INFO, " [Malformed?]");
 				break;
 			}else {
@@ -614,19 +613,6 @@ dissect_t38_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	}
 	else {
 		dissect_tpkt_encap(tvb,pinfo,tree,t38_tpkt_reassembly,t38_tcp_pdu_handle);
-	}
-}
-
-static void
-dissect_t38(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
-{
-	if(pinfo->ipproto == IP_PROTO_TCP)
-	{
-		dissect_t38_tcp(tvb, pinfo, tree);
-	}
-	else if(pinfo->ipproto == IP_PROTO_UDP)
-	{
-		dissect_t38_udp(tvb, pinfo, tree);
 	}
 }
 
@@ -722,15 +708,23 @@ proto_register_t38(void)
 		&ett_data_fragments
 	};
 
+	static ei_register_info ei[] = {
+		{ &ei_t38_malformed, { "t38.malformed", PI_MALFORMED, PI_ERROR, "Malformed packet", EXPFILL }},
+	};
+
 	module_t *t38_module;
+	expert_module_t* expert_t38;
 
 	proto_t38 = proto_register_protocol("T.38", "T.38", "t38");
 	proto_register_field_array(proto_t38, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
-	register_dissector("t38", dissect_t38, proto_t38);
+	expert_t38 = expert_register_protocol(proto_t38);
+	expert_register_field_array(expert_t38, ei, array_length(ei));
+	register_dissector("t38_udp", dissect_t38_udp, proto_t38);
 
 	/* Init reassemble tables for HDLC */
 	register_init_routine(t38_defragment_init);
+	register_cleanup_routine(t38_defragment_cleanup);
 
 	t38_tap = register_tap("t38");
 

@@ -31,7 +31,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 
 #include <epan/asn1.h>
@@ -87,7 +86,7 @@ static int hf_pkixtsp_PKIFailureInfo_addInfoNotAvailable = -1;
 static int hf_pkixtsp_PKIFailureInfo_systemFailure = -1;
 
 /*--- End of included file: packet-pkixtsp-hf.c ---*/
-#line 46 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
+#line 45 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
 
 /* Initialize the subtree pointers */
 static gint ett_pkixtsp = -1;
@@ -103,7 +102,7 @@ static gint ett_pkixtsp_TSTInfo = -1;
 static gint ett_pkixtsp_Accuracy = -1;
 
 /*--- End of included file: packet-pkixtsp-ett.c ---*/
-#line 50 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
+#line 49 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
 
 
 
@@ -352,15 +351,17 @@ dissect_pkixtsp_TSTInfo(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 /*--- PDUs ---*/
 
-static void dissect_TSTInfo_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TSTInfo_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkixtsp_TSTInfo(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkixtsp_TSTInfo_PDU);
+  offset = dissect_pkixtsp_TSTInfo(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkixtsp_TSTInfo_PDU);
+  return offset;
 }
 
 
 /*--- End of included file: packet-pkixtsp-fn.c ---*/
-#line 53 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
+#line 52 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
 
 
 static int
@@ -540,7 +541,7 @@ void proto_register_pkixtsp(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-pkixtsp-hfarr.c ---*/
-#line 104 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
+#line 103 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
   };
 
   /* List of subtrees */
@@ -558,7 +559,7 @@ void proto_register_pkixtsp(void) {
     &ett_pkixtsp_Accuracy,
 
 /*--- End of included file: packet-pkixtsp-ettarr.c ---*/
-#line 110 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
+#line 109 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
   };
 
   /* Register protocol */
@@ -585,10 +586,10 @@ void proto_reg_handoff_pkixtsp(void) {
 
 /*--- Included file: packet-pkixtsp-dis-tab.c ---*/
 #line 1 "../../asn1/pkixtsp/packet-pkixtsp-dis-tab.c"
-  register_ber_oid_dissector("1.2.840.113549.1.9.16.1.4", dissect_TSTInfo_PDU, proto_pkixtsp, "id-ct-TSTInfo");
+  new_register_ber_oid_dissector("1.2.840.113549.1.9.16.1.4", dissect_TSTInfo_PDU, proto_pkixtsp, "id-ct-TSTInfo");
 
 
 /*--- End of included file: packet-pkixtsp-dis-tab.c ---*/
-#line 134 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
+#line 133 "../../asn1/pkixtsp/packet-pkixtsp-template.c"
 }
 

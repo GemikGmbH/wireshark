@@ -1,4 +1,5 @@
-/* Routines for LTE PDCP
+/* packet-pdcp-lte.c
+ * Routines for LTE PDCP
  *
  * Martin Mathieson
  *
@@ -23,15 +24,10 @@
 
 #include "config.h"
 
-#include <string.h>
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
-#include <epan/addr_resolv.h>
-#include <epan/wmem/wmem.h>
-
 #include <epan/uat.h>
 
 #ifdef HAVE_LIBGCRYPT
@@ -60,7 +56,7 @@ void proto_reg_handoff_pdcp_lte(void);
    - Decipher even if sequence analysis isn't 'OK'?
       - know SN, but might be unsure about HFN.
    - Speed up AES decryption by keeping the crypt handle around for the channel
-     (like ESP decryption in IPSEC dissector) 
+     (like ESP decryption in IPSEC dissector)
    - Add Relay Node user plane data PDU dissection
 */
 
@@ -105,6 +101,7 @@ static int hf_pdcp_lte_fms = -1;
 static int hf_pdcp_lte_reserved4 = -1;
 static int hf_pdcp_lte_fms2 = -1;
 static int hf_pdcp_lte_bitmap = -1;
+static int hf_pdcp_lte_bitmap_byte = -1;
 
 
 /* Sequence Analysis */
@@ -252,7 +249,7 @@ static void update_key_from_string(const char *stringKey, guint8 *binaryKey, gbo
 }
 
 /* Update by checking whether the 3 key strings are valid or not, and storing result */
-static void uat_ue_keys_record_update_cb(void* record, const char** error _U_) {
+static gboolean uat_ue_keys_record_update_cb(void* record, char** error _U_) {
     uat_ue_keys_record_t* rec = (uat_ue_keys_record_t *)record;
 
     /* Check and convert RRC key */
@@ -263,6 +260,8 @@ static void uat_ue_keys_record_update_cb(void* record, const char** error _U_) {
 
     /* Check and convert Integrity key */
     update_key_from_string(rec->rrcIntegrityKeyString, rec->rrcIntegrityBinaryKey, &rec->rrcIntegrityKeyOK);
+
+    return TRUE;
 }
 
 /* Free heap parts of record */
@@ -340,8 +339,12 @@ void set_pdcp_lte_up_ciphering_key(guint16 ueid, const char *key)
 /* Preference settings for deciphering and integrity checking.  Currently all default to off */
 static gboolean global_pdcp_decipher_signalling = TRUE;
 static gboolean global_pdcp_decipher_userplane = FALSE;  /* Can be slow, so default to FALSE */
-static gboolean global_pdcp_check_integrity = FALSE;
+static gboolean global_pdcp_check_integrity = TRUE;
 
+/* Use these values where we know the keys but may have missed the algorithm,
+   e.g. when handing over and RRCReconfigurationRequest goes to target cell only */
+static enum security_ciphering_algorithm_e global_default_ciphering_algorithm = eea0;
+static enum security_integrity_algorithm_e global_default_integrity_algorithm = eia0;
 
 
 static const value_string direction_vals[] =
@@ -474,20 +477,6 @@ typedef struct
 /* The sequence analysis channel hash table.
    Maps key -> status */
 static GHashTable *pdcp_sequence_analysis_channel_hash = NULL;
-
-/* Equal keys */
-static gint pdcp_channel_equal(gconstpointer v, gconstpointer v2)
-{
-    /* Key fits in 4 bytes, so just compare pointers! */
-    return (v == v2);
-}
-
-/* Compute a hash value for a given key. */
-static guint pdcp_channel_hash_func(gconstpointer v)
-{
-    /* Just use pointer, as the fields are all in this value */
-    return GPOINTER_TO_UINT(v);
-}
 
 
 /* Hash table types & functions for frame reports */
@@ -1243,9 +1232,6 @@ static dissector_handle_t lookup_rrc_dissector_handle(struct pdcp_lte_info  *p_p
 /* Forwad declarations */
 static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
 
-/* Heuristic dissection */
-static gboolean global_pdcp_lte_heur = FALSE;
-
 /* Heuristic dissector looks for supported framing protocol (see wiki page)  */
 static gboolean dissect_pdcp_lte_heur(tvbuff_t *tvb, packet_info *pinfo,
                                      proto_tree *tree, void *data _U_)
@@ -1256,15 +1242,6 @@ static gboolean dissect_pdcp_lte_heur(tvbuff_t *tvb, packet_info *pinfo,
     guint8                tag                    = 0;
     gboolean              infoAlreadySet         = FALSE;
     gboolean              seqnumLengthTagPresent = FALSE;
-
-    /* This is a heuristic dissector, which means we get all the UDP
-     * traffic not sent to a known dissector and not claimed by
-     * a heuristic dissector called before us!
-     */
-
-    if (!global_pdcp_lte_heur) {
-        return FALSE;
-    }
 
     /* Do this again on re-dissection to re-discover offset of actual PDU */
 
@@ -1451,7 +1428,7 @@ void set_pdcp_lte_security_algorithms_failed(guint16 ueid)
 /* Decipher payload if algorithm is supported and plausible inputs are available */
 static tvbuff_t *decipher_payload(tvbuff_t *tvb, packet_info *pinfo, int *offset,
                                   pdu_security_settings_t *pdu_security_settings,
-                                  enum pdcp_plane plane, gboolean will_be_deciphered,
+                                  struct pdcp_lte_info *p_pdcp_info, gboolean will_be_deciphered,
                                   gboolean *deciphered)
 {
     guint8* decrypted_data = NULL;
@@ -1486,13 +1463,18 @@ static tvbuff_t *decipher_payload(tvbuff_t *tvb, packet_info *pinfo, int *offset
     }
 
     /* Don't decipher if turned off in preferences */
-    if (((plane == SIGNALING_PLANE) &&  !global_pdcp_decipher_signalling) ||
-        ((plane == USER_PLANE) &&       !global_pdcp_decipher_userplane)) {
+    if (((p_pdcp_info->plane == SIGNALING_PLANE) &&  !global_pdcp_decipher_signalling) ||
+        ((p_pdcp_info->plane == USER_PLANE) &&       !global_pdcp_decipher_userplane)) {
         return tvb;
     }
 
     /* Don't decipher control messages */
-    if ((plane == USER_PLANE) && ((tvb_get_guint8(tvb, 0) & 0x80) == 0x00)) {
+    if ((p_pdcp_info->plane == USER_PLANE) && ((tvb_get_guint8(tvb, 0) & 0x80) == 0x00)) {
+        return tvb;
+    }
+
+    /* Don't decipher common control messages */
+    if ((p_pdcp_info->plane == SIGNALING_PLANE) && (p_pdcp_info->channelType != Channel_DCCH)) {
         return tvb;
     }
 
@@ -1644,7 +1626,6 @@ static guint32 calculate_digest(pdu_security_settings_t *pdu_security_settings, 
                 size_t read_digest_length = 4;
 
                 /* Open gcrypt handle */
-                /* N.B. Unfortunately GCRY_MAC_CMAC_AES is not available in currently used version of gcrypt! */
                 gcrypt_err = gcry_mac_open(&mac_hd, GCRY_MAC_CMAC_AES, 0, NULL);
                 if (gcrypt_err != 0) {
                     return 0;
@@ -1783,6 +1764,20 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
                                 get_ueid_frame_hash_key(p_pdcp_info->ueid, pinfo->fd->num, TRUE),
                                 security_to_store);
         }
+        else {
+            /* No entry added from RRC, but still use configured defaults */
+            if ((global_default_ciphering_algorithm != eea0) ||
+                (global_default_integrity_algorithm != eia0)) {
+                /* Copy algorithms from preference defaults */
+                pdcp_security_info_t *security_to_store = wmem_new0(wmem_file_scope(), pdcp_security_info_t);
+                security_to_store->ciphering = global_default_ciphering_algorithm;
+                security_to_store->integrity = global_default_integrity_algorithm;
+                security_to_store->seen_next_ul_pdu = TRUE;
+                g_hash_table_insert(pdcp_security_result_hash,
+                                    get_ueid_frame_hash_key(p_pdcp_info->ueid, pinfo->fd->num, TRUE),
+                                    security_to_store);
+            }
+        }
     }
 
     /* Show security settings for this PDU */
@@ -1851,7 +1846,7 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
             write_pdu_label_and_info(root_ti, pinfo, " sn=%-2u ", seqnum);
             offset++;
 
-            if (tvb_reported_length_remaining(tvb, offset) == 0) {
+            if (tvb_captured_length_remaining(tvb, offset) == 0) {
                 /* Only PDCP header was captured, stop dissection here */
                 return;
             }
@@ -1986,7 +1981,7 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
                                             not_received++;
                                         }
                                     }
-                                    proto_tree_add_text(bitmap_tree, tvb, bit_offset/8, 1, "%s", buff);
+                                    proto_tree_add_uint_format(bitmap_tree, hf_pdcp_lte_bitmap_byte, tvb, bit_offset/8, 1, bits, "%s", buff);
                                     bit_offset += 8;
                                 }
                             }
@@ -2053,7 +2048,7 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
 
     /* Check pdu_security_settings - may need to do deciphering before calling
        further dissectors on payload */
-    payload_tvb = decipher_payload(tvb, pinfo, &offset, &pdu_security_settings, p_pdcp_info->plane,
+    payload_tvb = decipher_payload(tvb, pinfo, &offset, &pdu_security_settings, p_pdcp_info,
                                    pdu_security ? pdu_security->seen_next_ul_pdu: FALSE, &payload_deciphered);
 
     if (p_pdcp_info->plane == SIGNALING_PLANE) {
@@ -2063,8 +2058,11 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
         guint32  calculated_digest = 0;
         gboolean digest_was_calculated = FALSE;
 
+        /* Compute payload length (no MAC on common control channels) */
+        data_length = tvb_reported_length_remaining(payload_tvb, offset) - ((p_pdcp_info->channelType == Channel_DCCH) ? 4 : 0);
+
         /* Try to calculate digest so we can check it */
-        if (global_pdcp_check_integrity) {
+        if (global_pdcp_check_integrity && (p_pdcp_info->channelType == Channel_DCCH)) {
             calculated_digest = calculate_digest(&pdu_security_settings, tvb_get_guint8(tvb, 0), payload_tvb,
                                                  offset, &digest_was_calculated);
         }
@@ -2078,9 +2076,7 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
 
             if (rrc_handle != 0) {
                 /* Call RRC dissector if have one */
-                tvbuff_t *rrc_payload_tvb = tvb_new_subset(payload_tvb, offset,
-                                                           tvb_captured_length_remaining(payload_tvb, offset) - 4,
-                                                           tvb_reported_length_remaining(payload_tvb, offset) - 4);
+                tvbuff_t *rrc_payload_tvb = tvb_new_subset_length(payload_tvb, offset, data_length);
                 gboolean was_writable = col_get_writable(pinfo->cinfo);
 
                 /* We always want to see this in the info column */
@@ -2094,7 +2090,7 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
             else {
                  /* Just show data */
                     proto_tree_add_item(pdcp_tree, hf_pdcp_lte_signalling_data, payload_tvb, offset,
-                                        tvb_reported_length_remaining(tvb, offset) - 4, ENC_NA);
+                                        data_length, ENC_NA);
             }
 
             if (!pinfo->fd->flags.visited &&
@@ -2109,33 +2105,36 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
         else {
             /* Just show as unparsed data */
             proto_tree_add_item(pdcp_tree, hf_pdcp_lte_signalling_data, payload_tvb, offset,
-                                tvb_reported_length_remaining(tvb, offset) - 4, ENC_NA);
+                                data_length, ENC_NA);
         }
 
-        data_length = tvb_reported_length_remaining(payload_tvb, offset) - 4;
         offset += data_length;
 
-        /* Last 4 bytes are MAC */
-        mac = tvb_get_ntohl(payload_tvb, offset);
-        mac_ti = proto_tree_add_item(pdcp_tree, hf_pdcp_lte_mac, payload_tvb, offset, 4, ENC_BIG_ENDIAN);
-        offset += 4;
+        if (p_pdcp_info->channelType == Channel_DCCH) {
+            /* Last 4 bytes are MAC */
+            mac = tvb_get_ntohl(payload_tvb, offset);
+            mac_ti = proto_tree_add_item(pdcp_tree, hf_pdcp_lte_mac, payload_tvb, offset, 4, ENC_BIG_ENDIAN);
+            offset += 4;
 
-        if (digest_was_calculated) {
-            /* Compare what was found with calculated value! */
-            if (mac != calculated_digest) {
-                expert_add_info_format(pinfo, mac_ti, &ei_pdcp_lte_digest_wrong,
-                                       "MAC-I Digest wrong expected %08x but found %08x",
-                                       calculated_digest, mac);
+            if (digest_was_calculated) {
+                /* Compare what was found with calculated value! */
+                if (mac != calculated_digest) {
+                    expert_add_info_format(pinfo, mac_ti, &ei_pdcp_lte_digest_wrong,
+                                           "MAC-I Digest wrong expected %08x but found %08x",
+                                           calculated_digest, mac);
+                }
+                else {
+                    proto_item_append_text(mac_ti, " [Matches calculated result]");
+                }
             }
-            else {
-                proto_item_append_text(mac_ti, " [Matches calculated result]");
-            }
+
+            col_append_fstr(pinfo->cinfo, COL_INFO, " MAC=0x%08x (%u bytes data)",
+                            mac, data_length);
+        } else {
+            col_append_fstr(pinfo->cinfo, COL_INFO, "(%u bytes data)", data_length);
         }
-
-        col_append_fstr(pinfo->cinfo, COL_INFO, " MAC=0x%08x (%u bytes data)",
-                        mac, data_length);
     }
-    else {
+    else if (tvb_captured_length_remaining(payload_tvb, offset)) {
         /* User-plane payload here */
 
         /* If not compressed with ROHC, show as user-plane data */
@@ -2226,30 +2225,20 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree
  * file is loaded or re-loaded in wireshark */
 static void pdcp_lte_init_protocol(void)
 {
-    /* Destroy any existing hashes. */
-    if (pdcp_sequence_analysis_channel_hash) {
-        g_hash_table_destroy(pdcp_sequence_analysis_channel_hash);
-    }
-    if (pdcp_lte_sequence_analysis_report_hash) {
-        g_hash_table_destroy(pdcp_lte_sequence_analysis_report_hash);
-    }
-    if (pdcp_security_hash) {
-        g_hash_table_destroy(pdcp_security_hash);
-    }
-    if (pdcp_security_result_hash) {
-        g_hash_table_destroy(pdcp_security_result_hash);
-    }
-    if (pdcp_security_key_hash) {
-        g_hash_table_destroy(pdcp_security_key_hash);
-    }
-
-
-    /* Now create them over */
-    pdcp_sequence_analysis_channel_hash = g_hash_table_new(pdcp_channel_hash_func, pdcp_channel_equal);
+    pdcp_sequence_analysis_channel_hash = g_hash_table_new(g_direct_hash, g_direct_equal);
     pdcp_lte_sequence_analysis_report_hash = g_hash_table_new(pdcp_result_hash_func, pdcp_result_hash_equal);
     pdcp_security_hash = g_hash_table_new(pdcp_lte_ueid_hash_func, pdcp_lte_ueid_hash_equal);
     pdcp_security_result_hash = g_hash_table_new(pdcp_lte_ueid_frame_hash_func, pdcp_lte_ueid_frame_hash_equal);
     pdcp_security_key_hash = g_hash_table_new(pdcp_lte_ueid_hash_func, pdcp_lte_ueid_hash_equal);
+}
+
+static void pdcp_lte_cleanup_protocol(void)
+{
+    g_hash_table_destroy(pdcp_sequence_analysis_channel_hash);
+    g_hash_table_destroy(pdcp_lte_sequence_analysis_report_hash);
+    g_hash_table_destroy(pdcp_security_hash);
+    g_hash_table_destroy(pdcp_security_result_hash);
+    g_hash_table_destroy(pdcp_security_key_hash);
 }
 
 
@@ -2396,7 +2385,7 @@ void proto_register_pdcp(void)
         },
         { &hf_pdcp_lte_mac,
             { "MAC",
-              "pdcp-lte.mac", FT_UINT32, BASE_HEX_DEC, NULL, 0x0,
+              "pdcp-lte.mac", FT_UINT32, BASE_HEX, NULL, 0x0,
               NULL, HFILL
             }
         },
@@ -2442,7 +2431,12 @@ void proto_register_pdcp(void)
               "Status report bitmap (0=error, 1=OK)", HFILL
             }
         },
-
+        { &hf_pdcp_lte_bitmap_byte,
+            { "Bitmap byte",
+              "pdcp-lte.bitmap.byte", FT_UINT8, BASE_HEX, NULL, 0x0,
+              NULL, HFILL
+            }
+        },
 
         { &hf_pdcp_lte_sequence_analysis,
             { "Sequence Analysis",
@@ -2575,6 +2569,22 @@ void proto_register_pdcp(void)
         {NULL, NULL, -1}
     };
 
+    static const enum_val_t default_ciphering_algorithm_vals[] = {
+        {"eea0", "EEA0 (NULL)",   eea0},
+        {"eea1", "EEA1 (SNOW3G)", eea1},
+        {"eea2", "EEA2 (AES)",    eea2},
+        {"eea3", "EEA3 (ZUC)",    eea3},
+        {NULL, NULL, -1}
+    };
+
+    static const enum_val_t default_integrity_algorithm_vals[] = {
+        {"eia0", "EIA0 (NULL)",   eia0},
+        {"eia1", "EIA1 (SNOW3G)", eia1},
+        {"eia2", "EIA2 (AES)",    eia2},
+        {"eia3", "EIA3 (ZUC)",    eia3},
+        {NULL, NULL, -1}
+    };
+
   static uat_field_t ue_keys_uat_flds[] = {
       UAT_FLD_DEC(uat_ue_keys_records, ueid, "UEId", "UE Identifier of UE associated with keys"),
       UAT_FLD_CSTRING(uat_ue_keys_records, rrcCipherKeyString, "RRC Cipher Key",        "Key for deciphering signalling messages"),
@@ -2626,11 +2636,7 @@ void proto_register_pdcp(void)
         "Attempt to decode ROHC data",
         &global_pdcp_dissect_rohc);
 
-    prefs_register_bool_preference(pdcp_lte_module, "heuristic_pdcp_lte_over_udp",
-        "Try Heuristic LTE-PDCP over UDP framing",
-        "When enabled, use heuristic dissector to find PDCP-LTE frames sent with "
-        "UDP framing",
-        &global_pdcp_lte_heur);
+    prefs_register_obsolete_preference(pdcp_lte_module, "heuristic_pdcp_lte_over_udp");
 
     prefs_register_enum_preference(pdcp_lte_module, "layer_to_show",
         "Which layer info to show in Info column",
@@ -2657,6 +2663,16 @@ void proto_register_pdcp(void)
                                   "Preconfigured PDCP keys",
                                   ue_keys_uat);
 
+    prefs_register_enum_preference(pdcp_lte_module, "default_ciphering_algorithm",
+        "Ciphering algorithm to use if not signalled",
+        "If RRC Security Info not seen, e.g. in Handover",
+        (gint*)&global_default_ciphering_algorithm, default_ciphering_algorithm_vals, FALSE);
+
+    prefs_register_enum_preference(pdcp_lte_module, "default_integrity_algorithm",
+        "Integrity algorithm to use if not signalled",
+        "If RRC Security Info not seen, e.g. in Handover",
+        (gint*)&global_default_integrity_algorithm, default_integrity_algorithm_vals, FALSE);
+
     /* Attempt to decipher RRC messages */
     prefs_register_bool_preference(pdcp_lte_module, "decipher_signalling",
         "Attempt to decipher Signalling (RRC) SDUs",
@@ -2676,12 +2692,13 @@ void proto_register_pdcp(void)
         &global_pdcp_check_integrity);
 
     register_init_routine(&pdcp_lte_init_protocol);
+    register_cleanup_routine(&pdcp_lte_cleanup_protocol);
 }
 
 void proto_reg_handoff_pdcp_lte(void)
 {
     /* Add as a heuristic UDP dissector */
-    heur_dissector_add("udp", dissect_pdcp_lte_heur, proto_pdcp_lte);
+    heur_dissector_add("udp", dissect_pdcp_lte_heur, "PDCP-LTE over UDP", "pdcp_lte_udp", proto_pdcp_lte, HEURISTIC_DISABLE);
 
     ip_handle   = find_dissector("ip");
     ipv6_handle = find_dissector("ipv6");

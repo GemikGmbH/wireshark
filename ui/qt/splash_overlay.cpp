@@ -20,14 +20,18 @@
  */
 
 #include "splash_overlay.h"
-#include "ui_splash_overlay.h"
+#include <ui_splash_overlay.h>
 #include "wireshark_application.h"
 
 #include <QPainter>
 
 #include "ui/util.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 #include "tango_colors.h"
+
+#ifdef HAVE_LUA
+#include "epan/wslua/init_wslua.h"
+#endif
 
 // Uncomment to slow the update progress
 //#define THROTTLE_STARTUP 1
@@ -35,11 +39,9 @@
 /*
  * Update frequency for the splash screen, given in milliseconds.
  */
-int info_update_freq_ = 15;
+static int info_update_freq_ = 100;
 
-void splash_update(register_action_e action, const char *message, void *dummy) {
-    Q_UNUSED(dummy);
-
+void splash_update(register_action_e action, const char *message, void *) {
     emit wsApp->registerUpdate(action, message);
 }
 
@@ -51,20 +53,14 @@ SplashOverlay::SplashOverlay(QWidget *parent) :
 {
     so_ui_->setupUi(this);
 
-    /* additional 6 for:
-     * dissectors, listeners,
-     * registering plugins, handingoff plugins,
-     * preferences and configuration
-     */
-    int register_add = 6;
+    // Number of register action transitions (e.g. RA_NONE -> RA_DISSECTORS,
+    // RA_DISSECTORS -> RA_PLUGIN_REGISTER) minus two.
+    int register_add = 4;
 #ifdef HAVE_LUA
-      register_add++;   /* additional one for lua plugins */
-#endif
-#ifdef HAVE_PYTHON
-      register_add += 2;   /* additional 2 for python register and handoff */
+      register_add += wslua_count_plugins();   /* get count of lua plugins */
 #endif
     so_ui_->progressBar->setMaximum((int)register_count() + register_add);
-    time_.start();
+    elapsed_timer_.start();
 
     setPalette(Qt::transparent);
     setStyleSheet(QString(
@@ -88,7 +84,7 @@ SplashOverlay::SplashOverlay(QWidget *parent) :
 
 #ifndef THROTTLE_STARTUP
     // Check for a remote connection
-    if (strlen (get_conn_cfilter()) > 0)
+    if (display_is_remote())
         info_update_freq_ = 1000;
 #endif
 
@@ -119,11 +115,11 @@ void SplashOverlay::splashUpdate(register_action_e action, const char *message)
     QString action_msg = UTF8_HORIZONTAL_ELLIPSIS;
 
 #ifdef THROTTLE_STARTUP
-    ThrottleThread::msleep(100);
+    ThrottleThread::msleep(10);
 #endif
 
     register_cur_++;
-    if (last_action_ == action && time_.elapsed() < info_update_freq_ && register_cur_ < so_ui_->progressBar->maximum()) {
+    if (last_action_ == action && elapsed_timer_.elapsed() < info_update_freq_ && register_cur_ != so_ui_->progressBar->maximum()) {
       /* Only update every splash_register_freq milliseconds */
       return;
     }
@@ -137,25 +133,22 @@ void SplashOverlay::splashUpdate(register_action_e action, const char *message)
         action_msg = tr("Initializing tap listeners");
         break;
     case RA_REGISTER:
-        action_msg = tr("Registering dissector");
+        action_msg = tr("Registering dissectors");
         break;
     case RA_PLUGIN_REGISTER:
         action_msg = tr("Registering plugins");
         break;
-    case RA_PYTHON_REGISTER:
-        action_msg = tr("Registering Python dissectors");
-        break;
     case RA_HANDOFF:
-        action_msg = tr("Handing off dissector");
+        action_msg = tr("Handing off dissectors");
         break;
     case RA_PLUGIN_HANDOFF:
         action_msg = tr("Handing off plugins");
         break;
-    case RA_PYTHON_HANDOFF:
-        action_msg = tr("Handing off Python dissectors");
-        break;
     case RA_LUA_PLUGINS:
         action_msg = tr("Loading Lua plugins");
+        break;
+    case RA_LUA_DEREGISTER:
+        action_msg = tr("Removing Lua plugins");
         break;
     case RA_PREFERENCES:
         action_msg = tr("Loading module preferences");
@@ -177,18 +170,14 @@ void SplashOverlay::splashUpdate(register_action_e action, const char *message)
     }
     so_ui_->actionLabel->setText(action_msg);
 
-    register_cur_++;
     so_ui_->progressBar->setValue(register_cur_);
 
     wsApp->processEvents();
-
-    time_.restart();
+    elapsed_timer_.restart();
 }
 
-void SplashOverlay::paintEvent(QPaintEvent *event)
+void SplashOverlay::paintEvent(QPaintEvent *)
 {
-    Q_UNUSED(event);
-
     QPainter painter(this);
 
     painter.setRenderHint(QPainter::Antialiasing);

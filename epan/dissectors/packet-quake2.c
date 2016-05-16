@@ -30,7 +30,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 
@@ -42,6 +41,8 @@ static int hf_quake2_s2c = -1;
 static int hf_quake2_c2s = -1;
 static int hf_quake2_connectionless = -1;
 static int hf_quake2_game = -1;
+static int hf_quake2_userinfo = -1;
+static int hf_quake2_command = -1;
 static int hf_quake2_connectionless_marker = -1;
 static int hf_quake2_connectionless_text = -1;
 static int hf_quake2_game_seq1 = -1;
@@ -89,7 +90,6 @@ dissect_quake2_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo _U_,
         proto_tree *tree, int direction _U_)
 {
     proto_tree *cl_tree;
-    proto_item *cl_item;
     guint8  *text;
     int  len;
     int  offset;
@@ -97,17 +97,16 @@ dissect_quake2_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo _U_,
     guint32 marker;
 
     marker = tvb_get_ntohl(tvb, 0);
-    cl_item = proto_tree_add_text(tree, tvb,
-            0, -1, "Connectionless");
-    cl_tree = proto_item_add_subtree(cl_item, ett_quake2_connectionless);
+    cl_tree = proto_tree_add_subtree(tree, tvb,
+            0, -1, ett_quake2_connectionless, NULL, "Connectionless");
     proto_tree_add_uint(cl_tree, hf_quake2_connectionless_marker,
             tvb, 0, 4, marker);
 
     /* all the rest of the packet is just text */
     offset = 4;
 
-    len = tvb_length_remaining(tvb, offset);
-    text = tvb_get_string(wmem_packet_scope(), tvb, offset, len);
+    len = tvb_captured_length_remaining(tvb, offset);
+    text = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len, ENC_ASCII);
     proto_tree_add_string(cl_tree, hf_quake2_connectionless_text,
             tvb, offset, len, text);
     /*offset += len;*/
@@ -224,17 +223,15 @@ dissect_quake2_client_commands_move(tvbuff_t *tvb, packet_info *pinfo _U_,
 
     move[MOVES].bits[Q_OFFSET] = offset;
     for (i=0; i < MOVES; i++) {
-        proto_item *move_item, *movebits_item, *bit_item;
+        proto_item *movebits_item, *bit_item;
         proto_item *sub_tree, *field_tree;
 #define SHORT2ANGLE(x) ((float)x/65536.0*360.0)
 
-        move_item = proto_tree_add_text(tree,
+        sub_tree = proto_tree_add_subtree_format(tree,
                 tvb,
                 move[i].bits[Q_OFFSET],
                 move[i+1].bits[Q_OFFSET]-move[i].bits[Q_OFFSET],
-                "Move %u", i+1);
-        sub_tree = proto_item_add_subtree(move_item,
-                ett_quake2_game_clc_cmd_move_moves);
+                ett_quake2_game_clc_cmd_move_moves, NULL, "Move %u", i+1);
 
         movebits_item =
             proto_tree_add_uint(sub_tree, hf_quake2_game_client_command_move,
@@ -338,8 +335,7 @@ dissect_quake2_client_commands_uinfo(tvbuff_t *tvb, packet_info *pinfo _U_,
 
     len = tvb_strsize(tvb, 0);
 
-    proto_tree_add_text(tree, tvb, 0, len, "Userinfo: %s",
-            tvb_get_string(wmem_packet_scope(), tvb, 0, len));
+    proto_tree_add_item(tree, hf_quake2_userinfo, tvb, 0, len, ENC_NA|ENC_ASCII);
 
     return len;
 }
@@ -352,8 +348,7 @@ dissect_quake2_client_commands_stringcmd(tvbuff_t *tvb, packet_info *pinfo _U_,
 
     len = tvb_strsize(tvb, 0);
 
-    proto_tree_add_text(tree, tvb, 0, len, "Command: %s",
-            tvb_get_string(wmem_packet_scope(), tvb, 0, len));
+    proto_tree_add_item(tree, hf_quake2_command, tvb, 0, len, ENC_NA|ENC_ASCII);
 
     return len;
 }
@@ -398,8 +393,7 @@ dissect_quake2_client_commands(tvbuff_t *tvb, packet_info *pinfo,
         offset++;
         rest_length = tvb_reported_length(tvb) - offset;
         if (rest_length)
-            next_tvb = tvb_new_subset(tvb, offset,
-                    rest_length, rest_length);
+            next_tvb = tvb_new_subset_remaining(tvb, offset);
         else
             return;
 
@@ -499,7 +493,7 @@ dissect_quake2_server_commands(tvbuff_t *tvb, packet_info *pinfo,
     offset++;
     rest_length = tvb_reported_length(tvb) - offset;
     if (rest_length)
-        next_tvb = tvb_new_subset(tvb, offset, rest_length, rest_length);
+        next_tvb = tvb_new_subset_remaining(tvb, offset);
     else
         return;
 
@@ -573,7 +567,6 @@ dissect_quake2_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
         proto_tree *tree, int direction)
 {
     proto_tree *game_tree;
-    proto_item *game_item;
     guint32    seq1;
     guint32    seq2;
     int        rel1;
@@ -584,9 +577,8 @@ dissect_quake2_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
     direction = (pinfo->destport == gbl_quake2ServerPort) ?
         DIR_C2S : DIR_S2C;
 
-    game_item = proto_tree_add_text(tree, tvb,
-            0, -1, "Game");
-    game_tree = proto_item_add_subtree(game_item, ett_quake2_game);
+    game_tree = proto_tree_add_subtree(tree, tvb,
+            0, -1, ett_quake2_game, NULL, "Game");
 
     offset = 0;
 
@@ -594,11 +586,9 @@ dissect_quake2_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
     rel1 = seq1 & 0x80000000 ? 1 : 0;
     seq1 &= ~0x80000000;
     if (game_tree) {
-        proto_item *seq1_item = proto_tree_add_text(game_tree,
-                tvb, offset, 4, "Current Sequence: %u (%s)",
+        proto_tree *seq1_tree = proto_tree_add_subtree_format(game_tree,
+                tvb, offset, 4, ett_quake2_game_seq1, NULL, "Current Sequence: %u (%s)",
                 seq1, val_to_str(rel1,names_reliable,"%u"));
-        proto_tree *seq1_tree = proto_item_add_subtree(
-                seq1_item, ett_quake2_game_seq1);
         proto_tree_add_uint(seq1_tree, hf_quake2_game_seq1,
                 tvb, offset, 4, seq1);
         proto_tree_add_boolean(seq1_tree, hf_quake2_game_rel1,
@@ -610,11 +600,9 @@ dissect_quake2_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
     rel2 = seq2 & 0x80000000 ? 1 : 0;
     seq2 &= ~0x80000000;
     if (game_tree) {
-        proto_item *seq2_item = proto_tree_add_text(game_tree,
-                tvb, offset, 4, "Acknowledge Sequence: %u (%s)",
+        proto_tree *seq2_tree = proto_tree_add_subtree_format(game_tree,
+                tvb, offset, 4, ett_quake2_game_seq2, NULL, "Acknowledge Sequence: %u (%s)",
                 seq2, val_to_str(rel2,names_reliable,"%u"));
-        proto_tree *seq2_tree = proto_item_add_subtree(
-                seq2_item, ett_quake2_game_seq2);
         proto_tree_add_uint(seq2_tree, hf_quake2_game_seq2,
                 tvb, offset, 4, seq2);
         proto_tree_add_boolean(seq2_tree, hf_quake2_game_rel2,
@@ -636,26 +624,17 @@ dissect_quake2_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
     rest_length = tvb_reported_length(tvb) - offset;
     if (rest_length) {
         tvbuff_t *next_tvb =
-            tvb_new_subset(tvb, offset, rest_length , rest_length);
+            tvb_new_subset_remaining(tvb, offset);
+        proto_tree *c_tree;
 
         if (direction == DIR_C2S) {
-            proto_tree *c_tree = NULL;
-            if (tree) {
-                proto_item *c_item;
-                c_item = proto_tree_add_text(game_tree, next_tvb,
-                        0, -1, "Client Commands");
-                c_tree = proto_item_add_subtree(c_item, ett_quake2_game_clc);
-            }
+            c_tree = proto_tree_add_subtree(game_tree, next_tvb,
+                        0, -1, ett_quake2_game_clc, NULL, "Client Commands");
             dissect_quake2_client_commands(next_tvb, pinfo, c_tree);
         }
         else {
-            proto_tree *c_tree = NULL;
-            if (tree) {
-                proto_item *c_item;
-                c_item = proto_tree_add_text(game_tree, next_tvb,
-                        0, -1, "Server Commands");
-                c_tree = proto_item_add_subtree(c_item, ett_quake2_game_svc);
-            }
+            c_tree = proto_tree_add_subtree(game_tree, next_tvb,
+                        0, -1, ett_quake2_game_svc, NULL, "Server Commands");
             dissect_quake2_server_commands(next_tvb, pinfo, c_tree);
         }
     }
@@ -730,6 +709,14 @@ proto_register_quake2(void)
         { &hf_quake2_game,
             { "Game", "quake2.game",
                 FT_UINT32, BASE_DEC, NULL, 0x0,
+                NULL, HFILL }},
+        { &hf_quake2_userinfo,
+            { "Userinfo", "quake2.userinfo",
+                FT_STRING, BASE_NONE, NULL, 0x0,
+                NULL, HFILL }},
+        { &hf_quake2_command,
+            { "Command", "quake2.command",
+                FT_STRING, BASE_NONE, NULL, 0x0,
                 NULL, HFILL }},
         { &hf_quake2_connectionless_marker,
             { "Marker", "quake2.connectionless.marker",

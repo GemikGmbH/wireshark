@@ -58,14 +58,15 @@
 #define DIRECTION_DOWNLINK 1
 
 /* rntiType */
-#define NO_RNTI  0
-#define P_RNTI   1
-#define RA_RNTI  2
-#define C_RNTI   3
-#define SI_RNTI  4
-#define SPS_RNTI 5
-#define M_RNTI   6
-
+#define NO_RNTI     0
+#define P_RNTI      1
+#define RA_RNTI     2
+#define C_RNTI      3
+#define SI_RNTI     4
+#define SPS_RNTI    5
+#define M_RNTI      6
+#define SL_BCH_RNTI 7
+#define SL_RNTI     8
 
 typedef enum mac_lte_oob_event {
     ltemac_send_preamble,
@@ -130,6 +131,12 @@ typedef struct mac_lte_info
     /* UL only.  Indicates if the R10 extendedBSR-Sizes parameter is set */
     gboolean        isExtendedBSRSizes;
 
+    /* UL only.  Indicates if the R10 simultaneousPUCCH-PUSCH parameter is set for PCell */
+    gboolean        isSimultPUCCHPUSCHPCell;
+
+    /* UL only.  Indicates if the R10 extendedBSR-Sizes parameter is set for PSCell */
+    gboolean        isSimultPUCCHPUSCHPSCell;
+
     /* Status of CRC check. For UE it is DL only. For eNodeB it is UL
        only. For an analyzer, it is present for both DL and UL. */
     gboolean        crcStatusValid;
@@ -193,7 +200,7 @@ typedef struct mac_lte_tap_info {
     guint8   isPHYRetx;
     guint16  ueInTTI;
 
-    nstime_t time;
+    nstime_t mac_lte_time;
 
     /* Number of bytes (which part is used depends upon context settings) */
     guint32  single_number_of_bytes;
@@ -219,7 +226,7 @@ int is_mac_lte_frame_retx(packet_info *pinfo, guint8 direction);
 /* and implemented by this dissector, using the definitions      */
 /* below. A link to an example program showing you how to encode */
 /* these headers and send LTE MAC PDUs on a UDP socket is        */
-/* provided at http://wiki.wireshark.org/MAC-LTE                 */
+/* provided at https://wiki.wireshark.org/MAC-LTE                 */
 /*                                                               */
 /* A heuristic dissecter (enabled by a preference) will          */
 /* recognise a signature at the beginning of these frames.       */
@@ -278,6 +285,12 @@ int is_mac_lte_frame_retx(packet_info *pinfo, guint8 direction);
           MCS index (1 byte), redundancy version (1 byte), resource block length (1 byte),
           HARQ id (1 byte), NDI (1 byte), TB (1 byte), DL reTx (1 byte) */
 
+#define MAC_LTE_SIMULT_PUCCH_PUSCH_PCELL  0x0C
+/* 0 byte */
+
+#define MAC_LTE_SIMULT_PUCCH_PUSCH_PSCELL 0x0D
+/* 0 byte */
+
 /* MAC PDU. Following this tag comes the actual MAC PDU (there is no length, the PDU
    continues until the end of the frame) */
 #define MAC_LTE_PAYLOAD_TAG 0x01
@@ -287,18 +300,20 @@ int is_mac_lte_frame_retx(packet_info *pinfo, guint8 direction);
 /* Some are optional, and may not be seen (e.g. on reestablishment) */
 typedef struct drb_mapping_t
 {
-    guint16    ueid;              /* Mandatory */
-    guint8     drbid;             /* Mandatory */
+    guint16    ueid;                /* Mandatory */
+    guint8     drbid;               /* Mandatory */
     gboolean   lcid_present;
-    guint8     lcid;              /* Part of LogicalChannelConfig - optional */
+    guint8     lcid;                /* Part of LogicalChannelConfig - optional */
     gboolean   rlcMode_present;
-    guint8     rlcMode;           /* Part of RLC config - optional */
+    guint8     rlcMode;             /* Part of RLC config - optional */
+    gboolean   rlc_ul_ext_li_field; /* Part of RLC config - optional */
+    gboolean   rlc_dl_ext_li_field; /* Part of RLC config - optional */
     gboolean   um_sn_length_present;
-    guint8     um_sn_length;      /* Part of RLC config - optional */
+    guint8     um_sn_length;        /* Part of RLC config - optional */
     gboolean   ul_priority_present;
-    guint8     ul_priority;       /* Part of LogicalChannelConfig - optional */
+    guint8     ul_priority;         /* Part of LogicalChannelConfig - optional */
     gboolean   pdcp_sn_size_present;
-    guint8     pdcp_sn_size;      /* Part of pdcp-Config - optional */
+    guint8     pdcp_sn_size;        /* Part of pdcp-Config - optional */
 } drb_mapping_t;
 
 
@@ -334,7 +349,14 @@ void set_mac_lte_drx_config_release(guint16 ueid,  packet_info *pinfo);
 void set_mac_lte_rapid_ranges(guint groupA, guint all_RA);
 
 /* RRC can indicate whether extended BSR sizes are used */
-void set_mac_lte_extended_bsr_sizes(guint16 ueid, gboolean use_ext_bsr_sizes);
+void set_mac_lte_extended_bsr_sizes(guint16 ueid, gboolean use_ext_bsr_sizes, packet_info *pinfo);
+
+/* RRC can indicate whether simultaneous PUCCH/PUSCH is used */
+typedef enum {
+    SIMULT_PUCCH_PUSCH_PCELL = 0,
+    SIMULT_PUCCH_PUSCH_PSCELL
+} simult_pucch_pusch_cell_type;
+void set_mac_lte_simult_pucch_pusch(guint16 ueid, simult_pucch_pusch_cell_type cell_type, gboolean use_simult_pucch_pusch, packet_info *pinfo);
 
 /* Functions to be called from outside this module (e.g. in a plugin, where mac_lte_info
    isn't available) to get/set per-packet data */

@@ -38,7 +38,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/expert.h>
 
@@ -329,7 +328,7 @@ dissect_glbp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   offset += 2;
   proto_tree_add_item(glbp_tree, hf_glbp_ownerid, tvb, offset, 6, ENC_NA);
   offset += 6;
-  while (tvb_length_remaining(tvb, offset) > 0) {
+  while (tvb_reported_length_remaining(tvb, offset) > 0) {
 
     type = tvb_get_guint8(tvb, offset);
     length = tvb_get_guint8(tvb, offset+1);
@@ -382,7 +381,7 @@ static gboolean
 test_glbp(tvbuff_t *tvb, packet_info *pinfo)
 {
   guint32 unknown1;
-  if ( tvb_length(tvb) < 2)
+  if ( tvb_captured_length(tvb) < 2)
     return FALSE;
   unknown1 = tvb_get_guint8(tvb, 1);
   if (tvb_get_guint8(tvb, 0) != 1 /* version? */
@@ -613,3 +612,16 @@ proto_reg_handoff_glbp(void)
   glbp_handle = new_create_dissector_handle(dissect_glbp_static, proto_glbp);
   dissector_add_uint("udp.port", 3222, glbp_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

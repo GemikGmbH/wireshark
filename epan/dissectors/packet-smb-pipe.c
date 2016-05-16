@@ -31,21 +31,16 @@ XXX  Fixme : shouldn't show [malformed frame] for long packets
 
 #include "config.h"
 
-#include <time.h>
-#include <string.h>
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/to_str.h>
 #include <epan/expert.h>
-#include <epan/dissectors/packet-smb.h>
+#include <epan/reassemble.h>
+#include "packet-smb.h"
 #include "packet-smb-pipe.h"
 #include "packet-smb-browse.h"
 #include "packet-smb-common.h"
 #include "packet-windows-common.h"
-#include "packet-dcerpc.h"
-#include <epan/reassemble.h>
 
 void proto_register_pipe_lanman(void);
 void proto_register_pipe_dcerpc(void);
@@ -105,11 +100,15 @@ static int hf_param_desc = -1;
 static int hf_return_desc = -1;
 static int hf_aux_data_desc = -1;
 static int hf_detail_level = -1;
+static int hf_padding = -1;
 static int hf_recv_buf_len = -1;
 static int hf_send_buf_len = -1;
 /* static int hf_continuation_from = -1; */
 static int hf_status = -1;
 static int hf_convert = -1;
+static int hf_param_no_descriptor = -1;
+static int hf_data_no_descriptor = -1;
+static int hf_data_no_recv_buffer = -1;
 static int hf_ecount = -1;
 static int hf_acount = -1;
 static int hf_share_name = -1;
@@ -180,6 +179,9 @@ static int hf_code_page = -1;
 static int hf_new_password = -1;
 static int hf_old_password = -1;
 static int hf_reserved = -1;
+static int hf_share = -1;
+static int hf_server = -1;
+static int hf_aux_data_struct_count  = -1;
 
 /* Generated from convert_proto_tree_add_text.pl */
 static int hf_smb_pipe_stringz_param = -1;
@@ -310,7 +312,7 @@ add_bytes_param(tvbuff_t *tvb, int offset, int count, packet_info *pinfo _U_,
 		}
 	} else {
 		if (count == 1) {
-			proto_tree_add_item(tree, hf_smb_pipe_byte_param, tvb, offset, count, ENC_NA);
+			proto_tree_add_item(tree, hf_smb_pipe_byte_param, tvb, offset, count, ENC_LITTLE_ENDIAN);
 		} else {
 			proto_tree_add_item(tree, hf_smb_pipe_bytes_param, tvb, offset, count, ENC_NA);
 		}
@@ -511,7 +513,7 @@ add_reltime(tvbuff_t *tvb, int offset, int count _U_, packet_info *pinfo _U_,
 	nstime.nsecs = 0;
 	proto_tree_add_time_format_value(tree, hf_index, tvb, offset, 4,
 	    &nstime, "%s",
-	    time_secs_to_ep_str( (gint32) nstime.secs));
+	    time_secs_to_str(wmem_packet_scope(),  (gint32) nstime.secs));
 	offset += 4;
 	return offset;
 }
@@ -545,10 +547,18 @@ add_abstime_common(tvbuff_t *tvb, int offset, proto_tree *tree, int hf_index,
 		 * as UTC.
 		 */
 		tmp = gmtime(&nstime.secs);
-		tmp->tm_isdst = -1;	/* we don't know if it's DST or not */
-		nstime.secs = mktime(tmp);
-		proto_tree_add_time(tree, hf_index, tvb, offset, 4,
-		    &nstime);
+		if (tmp == NULL) {
+			/*
+			 * Can't be represented.
+			 */
+			proto_tree_add_time_format_value(tree, hf_index, tvb,
+			    offset, 4, &nstime, "Not representable");
+		} else {
+			tmp->tm_isdst = -1;	/* we don't know if it's DST or not */
+			nstime.secs = mktime(tmp);
+			proto_tree_add_time(tree, hf_index, tvb, offset, 4,
+			    &nstime);
+		}
 	}
 	offset += 4;
 	return offset;
@@ -625,7 +635,7 @@ add_logon_hours(tvbuff_t *tvb, int offset, int count, packet_info *pinfo _U_,
 			proto_tree_add_bytes_format_value(tree, hf_index, tvb,
 			    cptr, count, NULL,
 			    "%s (wrong length, should be 21, is %d",
-			    tvb_bytes_to_ep_str(tvb, cptr, count), count);
+			    tvb_bytes_to_str(wmem_packet_scope(), tvb, cptr, count), count);
 		}
 	} else {
 		proto_tree_add_bytes_format_value(tree, hf_index, tvb, 0, 0,
@@ -645,11 +655,11 @@ add_tzoffset(tvbuff_t *tvb, int offset, int count _U_, packet_info *pinfo _U_,
 	if (tzoffset < 0) {
 		proto_tree_add_int_format_value(tree, hf_tzoffset, tvb, offset, 2,
 		    tzoffset, "%s east of UTC",
-		    time_secs_to_ep_str(-tzoffset*60));
+		    time_secs_to_str(wmem_packet_scope(), -tzoffset*60));
 	} else if (tzoffset > 0) {
 		proto_tree_add_int_format_value(tree, hf_tzoffset, tvb, offset, 2,
 		    tzoffset, "%s west of UTC",
-		    time_secs_to_ep_str(tzoffset*60));
+		    time_secs_to_str(wmem_packet_scope(), tzoffset*60));
 	} else {
 		proto_tree_add_int_format_value(tree, hf_tzoffset, tvb, offset, 2,
 		    tzoffset, "at UTC");
@@ -788,8 +798,8 @@ static proto_item *
 netshareenum_share_entry(tvbuff_t *tvb, proto_tree *tree, int offset)
 {
 	if (tree) {
-		return proto_tree_add_text(tree, tvb, offset, -1,
-		    "Share %.13s", tvb_get_string(wmem_packet_scope(), tvb, offset, 13));
+		return proto_tree_add_string(tree, hf_share, tvb, offset, -1,
+						tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 13, ENC_ASCII));
 	} else
 		return NULL;
 }
@@ -988,8 +998,8 @@ static proto_item *
 netserverenum2_server_entry(tvbuff_t *tvb, proto_tree *tree, int offset)
 {
 	if (tree) {
-		return proto_tree_add_text(tree, tvb, offset, -1,
-			    "Server %.16s", tvb_get_string(wmem_packet_scope(), tvb, offset, 16));
+		return proto_tree_add_string(tree, hf_server, tvb, offset, -1,
+						tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 16, ENC_ASCII));
 	} else
 		return NULL;
 }
@@ -1706,7 +1716,7 @@ dissect_request_parameters(tvbuff_t *tvb, int offset, packet_info *pinfo,
 				    "%s: Value is %s, type is wrong (b)",
 				    proto_registrar_get_name((*items->hf_index == -1) ?
 				      hf_smb_pipe_bytes_param : *items->hf_index),
-				    tvb_bytes_to_ep_str(tvb, offset, count));
+				    tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, count));
 				offset += count;
 				items++;
 			} else {
@@ -1779,7 +1789,7 @@ dissect_request_parameters(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			 * One or more pad bytes.
 			 */
 			desc = get_count(desc, &count);
-			proto_tree_add_text(tree, tvb, offset, count, "Padding");
+			proto_tree_add_item(tree, hf_padding, tvb, offset, count, ENC_NA);
 			offset += count;
 			break;
 
@@ -1859,7 +1869,7 @@ dissect_response_parameters(tvbuff_t *tvb, int offset, packet_info *pinfo,
 				    "%s: Value is %s, type is wrong (g)",
 				    proto_registrar_get_name((*items->hf_index == -1) ?
 				      hf_smb_pipe_bytes_param : *items->hf_index),
-				    tvb_bytes_to_ep_str(tvb, offset, count));
+				    tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, count));
 				offset += count;
 				items++;
 			} else {
@@ -2056,7 +2066,7 @@ dissect_transact_data(tvbuff_t *tvb, int offset, int convert,
 				    "%s: Value is %s, type is wrong (B)",
 				    proto_registrar_get_name((*items->hf_index == -1) ?
 				      hf_smb_pipe_bytes_param : *items->hf_index),
-				    tvb_bytes_to_ep_str(tvb, offset, count));
+				    tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, count));
 				offset += count;
 				items++;
 			} else {
@@ -2148,7 +2158,7 @@ dissect_transact_data(tvbuff_t *tvb, int offset, int convert,
 				    "%s: Value is %s, type is wrong (b)",
 				    proto_registrar_get_name((*items->hf_index == -1) ?
 				      hf_smb_pipe_bytes_param : *items->hf_index),
-				    tvb_bytes_to_ep_str(tvb, cptr, count));
+				    tvb_bytes_to_str(wmem_packet_scope(), tvb, cptr, count));
 				items++;
 			} else {
 				offset = (*items->func)(tvb, offset, count,
@@ -2163,9 +2173,7 @@ dissect_transact_data(tvbuff_t *tvb, int offset, int convert,
 			 * XXX - hf_acount?
 			 */
 			WParam = tvb_get_letohs(tvb, offset);
-			proto_tree_add_text(tree, tvb, offset, 2,
-			    "Auxiliary data structure count: %u (0x%04X)",
-			    WParam, WParam);
+			proto_tree_add_uint(tree, hf_aux_data_struct_count, tvb, offset, 2, WParam);
 			offset += 2;
 			if (aux_count_p != NULL)
 				*aux_count_p = WParam;  /* Save this for later retrieval */
@@ -2455,8 +2463,8 @@ dissect_response_data(tvbuff_t *tvb, packet_info *pinfo, int convert,
 	const char *label;
 	gint ett;
 	const item_t *resp_data;
-	proto_item *data_item;
-	proto_tree *data_tree;
+	proto_item *data_item = NULL;
+	proto_tree *data_tree = NULL;
 	proto_item *entry_item;
 	proto_tree *entry_tree;
 	guint i, j;
@@ -2488,18 +2496,9 @@ dissect_response_data(tvbuff_t *tvb, packet_info *pinfo, int convert,
 				ett = *lanman->ett_data_entry_list;
 			else
 				ett = ett_lanman_unknown_entries;
-			data_item = proto_tree_add_text(tree, tvb, offset, -1, "%s", label);
-			data_tree = proto_item_add_subtree(data_item, ett);
-		} else {
-			data_item = NULL;
-			data_tree = NULL;
+
+			data_tree = proto_tree_add_subtree(tree, tvb, offset, -1, ett, &data_item, label);
 		}
-	} else {
-		/*
-		 * Just leave it at the top level.
-		 */
-		data_item = NULL;
-		data_tree = tree;
 	}
 
 	if (trp->data_descrip == NULL) {
@@ -2521,10 +2520,9 @@ dissect_response_data(tvbuff_t *tvb, packet_info *pinfo, int convert,
 				    " (No descriptor available)");
 			}
 		} else {
-			proto_tree_add_text(data_tree, tvb, offset, -1,
-			    "Data (no descriptor available)");
+			proto_tree_add_item(data_tree, hf_data_no_descriptor, tvb, offset, -1, ENC_NA);
 		}
-		offset += tvb_length_remaining(tvb, offset);
+		offset += tvb_captured_length_remaining(tvb, offset);
 	} else {
 		/*
 		 * If we have an entry count, show all the entries,
@@ -2645,7 +2643,7 @@ dissect_pipe_lanman(tvbuff_t *pd_tvb, tvbuff_t *p_tvb, tvbuff_t *d_tvb,
 		offset += 2;
 
 		if(!trp){
-			return FALSE; /* cant dissect this request */
+			return FALSE; /* can't dissect this request */
 		}
 
 		/*
@@ -2817,8 +2815,7 @@ dissect_pipe_lanman(tvbuff_t *pd_tvb, tvbuff_t *p_tvb, tvbuff_t *d_tvb,
 			 * We can't dissect the parameters; just show them
 			 * as raw data.
 			 */
-			proto_tree_add_text(tree, p_tvb, offset, -1,
-			    "Parameters (no descriptor available)");
+			proto_tree_add_item(tree, hf_param_no_descriptor, p_tvb, offset, -1, ENC_NA);
 
 			/*
 			 * We don't know whether we have a receive buffer,
@@ -2826,8 +2823,7 @@ dissect_pipe_lanman(tvbuff_t *pd_tvb, tvbuff_t *p_tvb, tvbuff_t *d_tvb,
 			 * bytes purport to be data.
 			 */
 			if (d_tvb && tvb_reported_length(d_tvb) > 0) {
-				proto_tree_add_text(tree, d_tvb, 0, -1,
-				    "Data (no descriptor available)");
+				proto_tree_add_item(tree, hf_data_no_descriptor, d_tvb, 0, -1, ENC_NA);
 			}
 		} else {
 			/* rest of the parameters */
@@ -2856,8 +2852,7 @@ dissect_pipe_lanman(tvbuff_t *pd_tvb, tvbuff_t *p_tvb, tvbuff_t *d_tvb,
 					 * but we do have data, so just
 					 * show what bytes are data.
 					 */
-					proto_tree_add_text(tree, d_tvb, 0, -1,
-					    "Data (no receive buffer)");
+					proto_tree_add_item(tree, hf_data_no_recv_buffer, d_tvb, 0, -1, ENC_NA);
 				}
 			}
 		}
@@ -2890,6 +2885,10 @@ proto_register_pipe_lanman(void)
 			{ "Detail Level", "lanman.level", FT_UINT16, BASE_DEC,
 			NULL, 0, "LANMAN Detail Level", HFILL }},
 
+		{ &hf_padding,
+			{ "Padding", "lanman.padding", FT_BYTES, BASE_NONE,
+			NULL, 0, NULL, HFILL }},
+
 		{ &hf_recv_buf_len,
 			{ "Receive Buffer Length", "lanman.recv_buf_len", FT_UINT16, BASE_DEC,
 			NULL, 0, "LANMAN Receive Buffer Length", HFILL }},
@@ -2911,6 +2910,18 @@ proto_register_pipe_lanman(void)
 		{ &hf_convert,
 			{ "Convert", "lanman.convert", FT_UINT16, BASE_DEC,
 			NULL, 0, "LANMAN Convert", HFILL }},
+
+		{ &hf_param_no_descriptor,
+			{ "Parameters (no descriptor available)", "lanman.param_no_descriptor", FT_BYTES, BASE_NONE,
+			NULL, 0, NULL, HFILL }},
+
+		{ &hf_data_no_descriptor,
+			{ "Data (no descriptor available)", "lanman.data_no_descriptor", FT_BYTES, BASE_NONE,
+			NULL, 0, NULL, HFILL }},
+
+		{ &hf_data_no_recv_buffer,
+			{ "Data (no receive buffer)", "lanman.data_no_recv_buffer", FT_BYTES, BASE_NONE,
+			NULL, 0, NULL, HFILL }},
 
 		{ &hf_ecount,
 			{ "Entry Count", "lanman.entry_count", FT_UINT16, BASE_DEC,
@@ -3193,6 +3204,18 @@ proto_register_pipe_lanman(void)
 			{ "Reserved", "lanman.reserved", FT_UINT32, BASE_HEX,
 			NULL, 0, "LANMAN Reserved", HFILL }},
 
+		{ &hf_share,
+			{ "Share", "lanman.share", FT_STRING, BASE_NONE,
+			NULL, 0, NULL, HFILL }},
+
+		{ &hf_server,
+			{ "Server", "lanman.server", FT_STRING, BASE_NONE,
+			NULL, 0, NULL, HFILL }},
+
+		{ &hf_aux_data_struct_count,
+			{ "Auxiliary data structure count", "lanman.aux_data_struct_count", FT_UINT16, BASE_DEC_HEX,
+			NULL, 0, NULL, HFILL }},
+
 	};
 	static gint *ett[] = {
 		&ett_lanman,
@@ -3229,9 +3252,15 @@ smb_dcerpc_reassembly_init(void)
 	    &addresses_reassembly_table_functions);
 }
 
+static void
+smb_dcerpc_reassembly_cleanup(void)
+{
+	reassembly_table_destroy(&dcerpc_reassembly_table);
+}
+
 gboolean
 dissect_pipe_dcerpc(tvbuff_t *d_tvb, packet_info *pinfo, proto_tree *parent_tree,
-    proto_tree *tree, guint32 fid)
+    proto_tree *tree, guint32 fid, void *data)
 {
 	gboolean result=0;
 	gboolean save_fragmented;
@@ -3253,7 +3282,7 @@ dissect_pipe_dcerpc(tvbuff_t *d_tvb, packet_info *pinfo, proto_tree *parent_tree
 	pinfo->desegment_offset = 0;
 	pinfo->desegment_len = 0;
 	reported_len = tvb_reported_length(d_tvb);
-	if(smb_dcerpc_reassembly && tvb_length(d_tvb) >= reported_len){
+	if(smb_dcerpc_reassembly && tvb_captured_length(d_tvb) >= reported_len){
 		pinfo->can_desegment=2;
 	}
 
@@ -3264,7 +3293,7 @@ dissect_pipe_dcerpc(tvbuff_t *d_tvb, packet_info *pinfo, proto_tree *parent_tree
 	   and bail out
 	*/
 	if(!pinfo->can_desegment){
-		result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, NULL);
+		result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, data);
 		goto clean_up_and_exit;
 	}
 
@@ -3295,9 +3324,9 @@ dissect_pipe_dcerpc(tvbuff_t *d_tvb, packet_info *pinfo, proto_tree *parent_tree
 			 * Try the heuristic dissectors and see if we
 			 * find someone that recognizes this payload.
 			 */
-			result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, NULL);
+			result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, data);
 
-			/* no this didnt look like something we know */
+			/* no this didn't look like something we know */
 			if(!result){
 				goto clean_up_and_exit;
 			}
@@ -3346,7 +3375,7 @@ dissect_pipe_dcerpc(tvbuff_t *d_tvb, packet_info *pinfo, proto_tree *parent_tree
 			    tree, pinfo, d_tvb, &frag_tree_item);
 
 			/* dissect the full PDU */
-			result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, NULL);
+			result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, data);
 		}
 		goto clean_up_and_exit;
 	}
@@ -3363,15 +3392,15 @@ dissect_pipe_dcerpc(tvbuff_t *d_tvb, packet_info *pinfo, proto_tree *parent_tree
 	fd_head=fragment_add_check(&dcerpc_reassembly_table,
 	    d_tvb, 0, pinfo, fid, NULL, 0, 0, TRUE);
 	if(!fd_head){
-		/* we didnt find it, try any of the heuristic dissectors
+		/* we didn't find it, try any of the heuristic dissectors
 		   and bail out
 		*/
-		result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, NULL);
+		result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, data);
 		goto clean_up_and_exit;
 	}
 	if(!(fd_head->flags&FD_DEFRAGMENTED)){
-		/* we dont have a fully reassembled frame */
-		result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, NULL);
+		/* we don't have a fully reassembled frame */
+		result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, data);
 		goto clean_up_and_exit;
 	}
 
@@ -3395,7 +3424,7 @@ dissect_pipe_dcerpc(tvbuff_t *d_tvb, packet_info *pinfo, proto_tree *parent_tree
 		    tree, pinfo, d_tvb, &frag_tree_item);
 
 	/* dissect the full PDU */
-	result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, NULL);
+	result = dissector_try_heuristic(smb_transact_heur_subdissector_list, d_tvb, pinfo, parent_tree, &hdtbl_entry, data);
 
 
 
@@ -3415,8 +3444,9 @@ clean_up_and_exit:
 void
 proto_register_pipe_dcerpc(void)
 {
-	register_heur_dissector_list("smb_transact", &smb_transact_heur_subdissector_list);
+	smb_transact_heur_subdissector_list = register_heur_dissector_list("smb_transact");
 	register_init_routine(smb_dcerpc_reassembly_init);
+	register_cleanup_routine(smb_dcerpc_reassembly_cleanup);
 }
 
 #define CALL_NAMED_PIPE		0x54
@@ -3497,7 +3527,7 @@ dissect_pipe_smb(tvbuff_t *sp_tvb, tvbuff_t *s_tvb, tvbuff_t *pd_tvb,
 	 * anything.)
 	 */
 	if (sp_tvb != NULL)
-		sp_len = tvb_length(sp_tvb);
+		sp_len = tvb_captured_length(sp_tvb);
 	else
 		sp_len = 0;
 	if (tree) {
@@ -3510,7 +3540,7 @@ dissect_pipe_smb(tvbuff_t *sp_tvb, tvbuff_t *s_tvb, tvbuff_t *pd_tvb,
 	/*
 	 * Do we have any setup words at all?
 	 */
-	if (s_tvb != NULL && tvb_length(s_tvb) != 0) {
+	if (s_tvb != NULL && tvb_reported_length(s_tvb) != 0) {
 		/*
 		 * Yes.  The first of them is the function.
 		 */
@@ -3637,7 +3667,7 @@ dissect_pipe_smb(tvbuff_t *sp_tvb, tvbuff_t *s_tvb, tvbuff_t *pd_tvb,
 			if (fid != -1) {
 				if (d_tvb == NULL)
 					return FALSE;
-				return dissect_pipe_dcerpc(d_tvb, pinfo, tree, pipe_tree, fid);
+				return dissect_pipe_dcerpc(d_tvb, pinfo, tree, pipe_tree, fid, smb_info);
 			}
 			break;
 		}

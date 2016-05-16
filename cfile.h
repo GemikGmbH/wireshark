@@ -36,7 +36,7 @@ extern "C" {
 
 /* Current state of file. */
 typedef enum {
-  FILE_CLOSED,	                /* No file open */
+  FILE_CLOSED,                  /* No file open */
   FILE_READ_IN_PROGRESS,        /* Reading a file we've opened */
   FILE_READ_ABORTED,            /* Read aborted by user */
   FILE_READ_DONE                /* Read completed */
@@ -70,6 +70,8 @@ typedef struct _capture_file {
   gchar       *source;          /* Temp file source, e.g. "Pipe from elsewhere" */
   gboolean     is_tempfile;     /* Is capture file a temporary file? */
   gboolean     unsaved_changes; /* Does the capture file have changes that have not been saved? */
+  gboolean     stop_flag;       /* Stop current processing (loading, searching, etc.) */
+
   gint64       f_datalen;       /* Size of capture file data (uncompressed) */
   guint16      cd_t;            /* File type of capture file */
   unsigned int open_type;       /* open_routine index+1 used, if selected, or WTAP_TYPE_AUTO */
@@ -112,15 +114,15 @@ typedef struct _capture_file {
   guint32      first_displayed; /* Frame number of first frame displayed */
   guint32      last_displayed;  /* Frame number of last frame displayed */
   column_info  cinfo;           /* Column formatting information */
-  gboolean     columns_changed; /**< Have the columns been changed in the prefs? */
+  gboolean     columns_changed; /**< Have the columns been changed in the prefs? (GTK+ only) */
   frame_data  *current_frame;   /* Frame data for current frame */
   gint         current_row;     /* Row number for current frame */
   epan_dissect_t *edt;          /* Protocol dissection for currently selected packet */
-  field_info  *finfo_selected;	/* Field info for currently selected field */
+  field_info  *finfo_selected;  /* Field info for currently selected field */
 #ifdef WANT_PACKET_EDITOR
   GTree       *edited_frames;   /* BST with modified frames */
 #endif
-  gpointer     window;		/* Top-level window associated with file */
+  gpointer     window;          /* Top-level window associated with file */
   GTree       *frames_user_comments;   /* BST with user comments for frames (key = frame_data) */
   gulong       computed_elapsed;
 
@@ -139,3 +141,16 @@ extern const char *cap_file_get_interface_name(void *data, guint32 interface_id)
 #endif /* __cplusplus */
 
 #endif /* cfile.h */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

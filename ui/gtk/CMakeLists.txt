@@ -19,12 +19,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+ADD_CUSTOM_CMAKE_INCLUDE()
 
 set(WIRESHARK_GTK_SRC
 	about_dlg.c
 	addr_resolution_dlg.c
-	airpcap_dlg.c
-	airpcap_gui_utils.c
 	bytes_view.c
 	capture_dlg.c
 	capture_file_dlg.c
@@ -69,7 +68,6 @@ set(WIRESHARK_GTK_SRC
 	macros_dlg.c
 	main.c
 	main_80211_toolbar.c
-	main_airpcap_toolbar.c
 	main_filter_toolbar.c
 	main_menubar.c
 	main_statusbar.c
@@ -77,7 +75,6 @@ set(WIRESHARK_GTK_SRC
 	main_toolbar.c
 	main_welcome.c
 	manual_addr_resolv.c
-	mcast_stream.c
 	packet_history.c
 	packet_list_store.c
 	packet_list.c
@@ -101,13 +98,13 @@ set(WIRESHARK_GTK_SRC
 	proto_hier_tree_model.c
 	proto_tree_model.c
 	range_utils.c
-	rtp_player.c
-	rtp_stream.c
+	response_time_delay_table.c
 	sctp_byte_graph_dlg.c
 	sctp_error_dlg.c
 	sctp_graph_dlg.c
 	service_response_time_table.c
 	simple_dialog.c
+	simple_stattable.c
 	stock_icons.c
 	summary_dlg.c
 	supported_protos_dlg.c
@@ -115,95 +112,118 @@ set(WIRESHARK_GTK_SRC
 	text_page_utils.c
 	time_shift_dlg.c
 	uat_gui.c
-	voip_calls.c
 	webbrowser.c
+	${WIRESHARK_CUSTOM_GTK_SRC}
 )
 
-set(WIRESHARK_DIRTY_TAP_SRC
-)
+if (AIRPCAP_FOUND)
+	set(WIRESHARK_GTK_SRC
+		${WIRESHARK_GTK_SRC}
+		airpcap_dlg.c
+		airpcap_gui_utils.c
+		main_airpcap_toolbar.c
+	)
+endif()
+
+if(PORTAUDIO_FOUND)
+	set(WIRESHARK_GTK_SRC
+		${WIRESHARK_GTK_SRC}
+		rtp_player.c
+	)
+
+	# For Win32, there is no PortAudio lib, we compile the files locally
+	if(WIN32)
+		add_definitions(
+			-DPA_NO_DS
+			-DPA_NO_ASIO
+		)
+		set(PORTAUDIO_SRC
+			${PORTAUDIO_SRC_DIR}/common/pa_allocation.c
+			${PORTAUDIO_SRC_DIR}/common/pa_converters.c
+			${PORTAUDIO_SRC_DIR}/common/pa_cpuload.c
+			${PORTAUDIO_SRC_DIR}/common/pa_dither.c
+			${PORTAUDIO_SRC_DIR}/common/pa_front.c
+			${PORTAUDIO_SRC_DIR}/common/pa_process.c
+			${PORTAUDIO_SRC_DIR}/common/pa_skeleton.c
+			${PORTAUDIO_SRC_DIR}/common/pa_stream.c
+			${PORTAUDIO_SRC_DIR}/common/pa_trace.c
+			${PORTAUDIO_SRC_DIR}/os/win/pa_win_hostapis.c
+			${PORTAUDIO_SRC_DIR}/os/win/pa_win_util.c
+			${PORTAUDIO_SRC_DIR}/os/win/pa_x86_plain_converters.c
+			${PORTAUDIO_SRC_DIR}/os/win/pa_win_waveformat.c
+			${PORTAUDIO_SRC_DIR}/hostapi/wmme/pa_win_wmme.c
+		)
+		add_library(portaudio OBJECT
+			${PORTAUDIO_SRC}
+		)
+		set_target_properties(portaudio PROPERTIES
+			INCLUDE_DIRECTORIES "${PORTAUDIO_INCLUDE_DIRS}"
+			FOLDER "UI")
+
+		# Portaudio has some warnings, annoyingly the combination of CMake
+		# and MSBuild means that just disabling the warnings on the specific
+		# source files doesn't work, so set them to level 4 for the target
+		#set_source_files_properties(${PORTAUDIO_SRC_DIR}/common/pa_front.c
+		#	PROPERTIES
+		#	COMPILE_FLAGS "/wd4189"
+		#)
+		#set_source_files_properties(${PORTAUDIO_SRC_DIR}/os/win/pa_x86_plain_converters.c
+		#	PROPERTIES
+		#	COMPILE_FLAGS "/wd4305"
+		#)
+		target_compile_options(portaudio
+			PUBLIC "/w44189"
+			PUBLIC "/w44305"
+		)
+
+		# Portaudio has some size_t > long warnings as a result of using strlen() on x64.
+		if ("${WIRESHARK_TARGET_PLATFORM}" STREQUAL "win64")
+			#set_source_files_properties(${PORTAUDIO_SRC_DIR}/hostapi/wmme/pa_win_wmme.c
+			#	PROPERTIES
+			#	COMPILE_FLAGS "/wd4267"
+			#)
+			target_compile_options(portaudio
+				PUBLIC "/w44267"
+			)
+		endif()
+	endif()
+endif()
+
+if(ENABLE_EXTCAP)
+	set(WIRESHARK_GTK_SRC
+		${WIRESHARK_GTK_SRC}
+		extcap_gtk.c
+	)
+endif()
 
 set(WIRESHARK_TAP_SRC
-	afp_stat.c
-	ansi_a_stat.c
-	ansi_map_stat.c
-	bootp_stat.c
-	camel_counter.c
-	camel_srt.c
 	compare_stat.c
-	conversations_eth.c
-	conversations_fc.c
-	conversations_fddi.c
-	conversations_ip.c
-	conversations_ipv6.c
-	conversations_ipx.c
-	conversations_jxta.c
-	conversations_ncp.c
-	conversations_rsvp.c
-	conversations_sctp.c
-	conversations_tcpip.c
-	conversations_tr.c
-	conversations_udpip.c
-	conversations_usb.c
-	conversations_wlan.c
 	dcerpc_stat.c
-	diameter_stat.c
 	expert_comp_dlg.c
-	fc_stat.c
 	flow_graph.c
 	funnel_stat.c
-	gsm_a_stat.c
-	gsm_map_stat.c
 	gsm_map_summary.c
-	gtp_stat.c
-	h225_counter.c
-	h225_ras_srt.c
-	hostlist_eth.c
-	hostlist_fc.c
-	hostlist_fddi.c
-	hostlist_ip.c
-	hostlist_ipv6.c
-	hostlist_ipx.c
-	hostlist_jxta.c
-	hostlist_ncp.c
-	hostlist_rsvp.c
-	hostlist_sctp.c
-	hostlist_tcpip.c
-	hostlist_tr.c
-	hostlist_udpip.c
-	hostlist_usb.c
-	hostlist_wlan.c
 	iax2_analysis.c
 	io_stat.c
 	lbm_stream_dlg.c
 	lbm_uimflow_dlg.c
-	ldap_stat.c
 	mac_lte_stat_dlg.c
 	mcast_stream_dlg.c
-	megaco_stat.c
-	mgcp_stat.c
-	mtp3_stat.c
 	mtp3_summary.c
-	ncp_stat.c
-	radius_stat.c
 	rlc_lte_graph.c
 	rlc_lte_stat_dlg.c
-	rpc_progs.c
 	rpc_stat.c
 	rtp_analysis.c
 	rtp_stream_dlg.c
-	scsi_stat.c
 	sctp_assoc_analyse.c
 	sctp_chunk_stat.c
 	sctp_chunk_stat_dlg.c
 	sctp_stat_dlg.c
-	sip_stat.c
-	smb_stat.c
-	smb2_stat.c
 	stats_tree_stat.c
 	tcp_graph.c
 	voip_calls_dlg.c
 	wlan_stat_dlg.c
-	wsp_stat.c
+	${WIRESHARK_CUSTOM_TAP_SRC}
 )
 
 set(CLEAN_FILES
@@ -215,7 +235,7 @@ if (WERROR)
 	set_source_files_properties(
 		${CLEAN_FILES}
 		PROPERTIES
-		COMPILE_FLAGS -Werror
+		COMPILE_FLAGS "-Werror -Wno-error=deprecated-declarations"
 	)
 endif()
 
@@ -243,12 +263,6 @@ else()
 	)
 endif()
 
-if (WANT_PACKET_EDITOR)
-	add_definitions(
-		-DWANT_PACKET_EDITOR
-	)
-endif()
-
 if(WIN32)
 	set(PLATFORM_UI_SRC
 		capture_if_details_dlg_win32.c
@@ -260,24 +274,17 @@ register_tap_files(wireshark-tap-register.c
 	${WIRESHARK_TAP_SRC}
 )
 
+if(WIN32)
+	set(PORTAUDIO_OBJ $<TARGET_OBJECTS:portaudio>)
+endif()
+
 add_library(gtkui STATIC
 	${WIRESHARK_GTK_SRC}
 	${WIRESHARK_TAP_SRC}
-	${WIRESHARK_DIRTY_TAP_SRC}
 	${PLATFORM_UI_SRC}
+	${PORTAUDIO_OBJ}
 	wireshark-tap-register.c
 )
-set_target_properties(gtkui PROPERTIES LINK_FLAGS "${WS_LINK_FLAGS}")
-set_target_properties(gtkui PROPERTIES FOLDER "UI")
-
-install(
-	DIRECTORY
-		ui
-	DIRECTORY_PERMISSIONS
-		OWNER_EXECUTE OWNER_WRITE OWNER_READ
-		GROUP_EXECUTE GROUP_READ
-		WORLD_EXECUTE WORLD_READ
-	DESTINATION
-		${CMAKE_INSTALL_DATADIR}/${CPACK_PACKAGE_NAME}
-	PATTERN ".svn" EXCLUDE
-)
+set_target_properties(gtkui PROPERTIES
+	LINK_FLAGS "${WS_LINK_FLAGS}"
+	FOLDER "UI")

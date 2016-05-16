@@ -24,15 +24,17 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/conversation.h>
 #include <epan/prefs.h>
 
+#include "packet-ssl-utils.h"
 #include "packet-tcp.h"
 
 void proto_register_pgsql(void);
 void proto_reg_handoff_pgsql(void);
+
+static dissector_handle_t pgsql_handle;
+static dissector_handle_t ssl_handle;
 
 static int proto_pgsql = -1;
 static int hf_frontend = -1;
@@ -46,6 +48,7 @@ static int hf_passwd = -1;
 static int hf_salt = -1;
 static int hf_statement = -1;
 static int hf_portal = -1;
+static int hf_return = -1;
 static int hf_tag = -1;
 static int hf_status = -1;
 static int hf_copydata = -1;
@@ -88,6 +91,10 @@ static gint ett_values = -1;
 static guint pgsql_port = 5432;
 static gboolean pgsql_desegment = TRUE;
 static gboolean first_message = TRUE;
+
+typedef struct pgsql_conn_data {
+    gboolean    ssl_requested;
+} pgsql_conn_data_t;
 
 static const value_string fe_messages[] = {
     { 'p', "Password message" },
@@ -159,12 +166,12 @@ static const value_string format_vals[] = {
 };
 
 static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
-                                 gint n, proto_tree *tree)
+                                 gint n, proto_tree *tree,
+                                 pgsql_conn_data_t *conv_data)
 {
     guchar c;
     gint i, siz;
     char *s;
-    proto_item *ti, *hidden_item;
     proto_tree *shrub;
 
     switch (type) {
@@ -191,8 +198,7 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
         n += siz;
 
         i = tvb_get_ntohs(tvb, n);
-        ti = proto_tree_add_text(tree, tvb, n, 2, "Parameters: %d", i);
-        shrub = proto_item_add_subtree(ti, ett_values);
+        shrub = proto_tree_add_subtree_format(tree, tvb, n, 2, ett_values, NULL, "Parameters: %d", i);
         n += 2;
         while (i-- > 0) {
             proto_tree_add_item(shrub, hf_typeoid, tvb, n, 4, ENC_BIG_ENDIAN);
@@ -211,8 +217,7 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
         n += siz;
 
         i = tvb_get_ntohs(tvb, n);
-        ti = proto_tree_add_text(tree, tvb, n, 2, "Parameter formats: %d", i);
-        shrub = proto_item_add_subtree(ti, ett_values);
+        shrub = proto_tree_add_subtree_format(tree, tvb, n, 2, ett_values, NULL, "Parameter formats: %d", i);
         n += 2;
         while (i-- > 0) {
             proto_tree_add_item(shrub, hf_format, tvb, n, 2, ENC_BIG_ENDIAN);
@@ -220,8 +225,7 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
         }
 
         i = tvb_get_ntohs(tvb, n);
-        ti = proto_tree_add_text(tree, tvb, n, 2, "Parameter values: %d", i);
-        shrub = proto_item_add_subtree(ti, ett_values);
+        shrub = proto_tree_add_subtree_format(tree, tvb, n, 2, ett_values, NULL, "Parameter values: %d", i);
         n += 2;
         while (i-- > 0) {
             siz = tvb_get_ntohl(tvb, n);
@@ -234,8 +238,7 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
         }
 
         i = tvb_get_ntohs(tvb, n);
-        ti = proto_tree_add_text(tree, tvb, n, 2, "Result formats: %d", i);
-        shrub = proto_item_add_subtree(ti, ett_values);
+        shrub = proto_tree_add_subtree_format(tree, tvb, n, 2, ett_values, NULL, "Result formats: %d", i);
         n += 2;
         while (i-- > 0) {
             proto_tree_add_item(shrub, hf_format, tvb, n, 2, ENC_BIG_ENDIAN);
@@ -249,13 +252,11 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
         proto_tree_add_item(tree, hf_portal, tvb, n, siz, ENC_ASCII|ENC_NA);
         n += siz;
 
-        ti = proto_tree_add_text(tree, tvb, n, 4, "Returns: ");
         i = tvb_get_ntohl(tvb, n);
         if (i == 0)
-            proto_item_append_text(ti, "all");
+            proto_tree_add_uint_format_value(tree, hf_return, tvb, n, 4, i, "all rows");
         else
-            proto_item_append_text(ti, "%d", i);
-        proto_item_append_text(ti, " rows");
+            proto_tree_add_uint_format_value(tree, hf_return, tvb, n, 4, i, "%d rows", i);
         break;
 
     /* Describe, Close */
@@ -267,16 +268,9 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
         else
             i = hf_statement;
 
-        if (i != 0) {
-            n += 1;
-            s = tvb_get_stringz(wmem_packet_scope(), tvb, n, &siz);
-            hidden_item = proto_tree_add_string(tree, i, tvb, n, siz, s);
-            PROTO_ITEM_SET_HIDDEN(hidden_item);
-            proto_tree_add_text(
-                tree, tvb, n-1, siz, "%s: %s",
-                (c == 'P' ? "Portal" : "Statement"), s
-            );
-        }
+        n += 1;
+        s = tvb_get_stringz_enc(wmem_packet_scope(), tvb, n, &siz, ENC_ASCII);
+        proto_tree_add_string(tree, i, tvb, n, siz, s);
         break;
 
     /* Messages without a type identifier */
@@ -306,8 +300,8 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
 
         /* SSL request */
         case 80877103:
-            /* There's nothing to parse here, but what do we do if the
-               SSL negotiation succeeds? */
+            /* Next reply will be a single byte. */
+            conv_data->ssl_requested = TRUE;
             break;
 
         /* Cancellation request */
@@ -335,8 +329,7 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
         n += 4;
 
         i = tvb_get_ntohs(tvb, n);
-        ti = proto_tree_add_text(tree, tvb, n, 2, "Parameter formats: %d", i);
-        shrub = proto_item_add_subtree(ti, ett_values);
+        shrub = proto_tree_add_subtree_format(tree, tvb, n, 2, ett_values, NULL, "Parameter formats: %d", i);
         n += 2;
         while (i-- > 0) {
             proto_tree_add_item(shrub, hf_format, tvb, n, 2, ENC_BIG_ENDIAN);
@@ -344,8 +337,7 @@ static void dissect_pgsql_fe_msg(guchar type, guint length, tvbuff_t *tvb,
         }
 
         i = tvb_get_ntohs(tvb, n);
-        ti = proto_tree_add_text(tree, tvb, n, 2, "Parameter values: %d", i);
-        shrub = proto_item_add_subtree(ti, ett_values);
+        shrub = proto_tree_add_subtree_format(tree, tvb, n, 2, ett_values, NULL, "Parameter values: %d", i);
         n += 2;
         while (i-- > 0) {
             siz = tvb_get_ntohl(tvb, n);
@@ -369,7 +361,7 @@ static void dissect_pgsql_be_msg(guchar type, guint length, tvbuff_t *tvb,
     guchar c;
     gint i, siz;
     char *s, *t;
-    proto_item *ti, *hidden_item;
+    proto_item *ti;
     proto_tree *shrub;
 
     switch (type) {
@@ -393,23 +385,20 @@ static void dissect_pgsql_be_msg(guchar type, guint length, tvbuff_t *tvb,
 
     /* Parameter status */
     case 'S':
-        s = tvb_get_stringz(wmem_packet_scope(), tvb, n, &siz);
-        hidden_item = proto_tree_add_string(tree, hf_parameter_name, tvb, n, siz, s);
-        PROTO_ITEM_SET_HIDDEN(hidden_item);
+        s = tvb_get_stringz_enc(wmem_packet_scope(), tvb, n, &siz, ENC_ASCII);
+        proto_tree_add_string(tree, hf_parameter_name, tvb, n, siz, s);
         n += siz;
-        t = tvb_get_stringz(wmem_packet_scope(), tvb, n, &i);
-        hidden_item = proto_tree_add_string(tree, hf_parameter_value, tvb, n, i, t);
-        PROTO_ITEM_SET_HIDDEN(hidden_item);
-        proto_tree_add_text(tree, tvb, n-siz, siz+i, "%s: %s", s, t);
+        t = tvb_get_stringz_enc(wmem_packet_scope(), tvb, n, &i, ENC_ASCII);
+        proto_tree_add_string(tree, hf_parameter_value, tvb, n, i, t);
         break;
 
     /* Parameter description */
     case 't':
         i = tvb_get_ntohs(tvb, n);
-        proto_tree_add_text(tree, tvb, n, 2, "Parameters: %d", i);
+        shrub = proto_tree_add_subtree_format(tree, tvb, n, 2, ett_values, NULL, "Parameters: %d", i);
         n += 2;
         while (i-- > 0) {
-            proto_tree_add_item(tree, hf_typeoid, tvb, n, 4, ENC_BIG_ENDIAN);
+            proto_tree_add_item(shrub, hf_typeoid, tvb, n, 4, ENC_BIG_ENDIAN);
             n += 4;
         }
         break;
@@ -466,7 +455,7 @@ static void dissect_pgsql_be_msg(guchar type, guint length, tvbuff_t *tvb,
 
     /* Ready */
     case 'Z':
-        proto_tree_add_item(tree, hf_status, tvb, n, 1, ENC_NA);
+        proto_tree_add_item(tree, hf_status, tvb, n, 1, ENC_BIG_ENDIAN);
         break;
 
     /* Error, Notice */
@@ -477,7 +466,7 @@ static void dissect_pgsql_be_msg(guchar type, guint length, tvbuff_t *tvb,
             c = tvb_get_guint8(tvb, n);
             if (c == '\0')
                 break;
-            s = tvb_get_stringz(wmem_packet_scope(), tvb, n+1, &siz);
+            s = tvb_get_stringz_enc(wmem_packet_scope(), tvb, n+1, &siz, ENC_ASCII);
             i = hf_text;
             switch (c) {
             case 'S': i = hf_severity;          break;
@@ -522,8 +511,7 @@ static void dissect_pgsql_be_msg(guchar type, guint length, tvbuff_t *tvb,
         proto_tree_add_item(tree, hf_format, tvb, n, 1, ENC_BIG_ENDIAN);
         n += 1;
         i = tvb_get_ntohs(tvb, n);
-        ti = proto_tree_add_text(tree, tvb, n, 2, "Columns: %d", i);
-        shrub = proto_item_add_subtree(ti, ett_values);
+        shrub = proto_tree_add_subtree_format(tree, tvb, n, 2, ett_values, NULL, "Columns: %d", i);
         n += 2;
         while (i-- > 2) {
             proto_tree_add_item(shrub, hf_format, tvb, n, 2, ENC_BIG_ENDIAN);
@@ -549,7 +537,7 @@ static void dissect_pgsql_be_msg(guchar type, guint length, tvbuff_t *tvb,
 /* This function is called by tcp_dissect_pdus() to find the size of the
    message starting at tvb[offset]. */
 static guint
-pgsql_length(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+pgsql_length(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
     gint n = 0;
     guchar type;
@@ -572,12 +560,22 @@ dissect_pgsql_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
 {
     proto_item *ti, *hidden_item;
     proto_tree *ptree;
+    conversation_t      *conversation;
+    pgsql_conn_data_t   *conn_data;
 
     gint n;
     guchar type;
     const char *typestr;
     guint length;
     gboolean fe = (pinfo->match_uint == pinfo->destport);
+
+    conversation = find_or_create_conversation(pinfo);
+    conn_data = (pgsql_conn_data_t *)conversation_get_proto_data(conversation, proto_pgsql);
+    if (!conn_data) {
+        conn_data = wmem_new(wmem_file_scope(), pgsql_conn_data_t);
+        conn_data->ssl_requested = FALSE;
+        conversation_add_proto_data(conversation, proto_pgsql, conn_data);
+    }
 
     n = 0;
     type = tvb_get_guint8(tvb, 0);
@@ -617,28 +615,26 @@ dissect_pgsql_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
                     ( first_message ? "" : "/" ), type);
     first_message = FALSE;
 
-    if (tree) {
+    {
         ti = proto_tree_add_item(tree, proto_pgsql, tvb, 0, -1, ENC_NA);
         ptree = proto_item_add_subtree(ti, ett_pgsql);
 
         n = 1;
         if (type == '\0')
             n = 0;
-        proto_tree_add_text(ptree, tvb, 0, n, "Type: %s", typestr);
-        hidden_item = proto_tree_add_item(ptree, hf_type, tvb, 0, n, ENC_ASCII|ENC_NA);
-        PROTO_ITEM_SET_HIDDEN(hidden_item);
+        proto_tree_add_string(ptree, hf_type, tvb, 0, n, typestr);
         proto_tree_add_item(ptree, hf_length, tvb, n, 4, ENC_BIG_ENDIAN);
         hidden_item = proto_tree_add_boolean(ptree, hf_frontend, tvb, 0, 0, fe);
         PROTO_ITEM_SET_HIDDEN(hidden_item);
         n += 4;
 
         if (fe)
-            dissect_pgsql_fe_msg(type, length, tvb, n, ptree);
+            dissect_pgsql_fe_msg(type, length, tvb, n, ptree, conn_data);
         else
             dissect_pgsql_be_msg(type, length, tvb, n, ptree);
     }
 
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 /* This function is called once per TCP packet. It sets COL_PROTOCOL and
@@ -648,21 +644,38 @@ dissect_pgsql_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
 static int
 dissect_pgsql(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
-    /* conversation_t *cv; */
+    conversation_t      *conversation;
+    pgsql_conn_data_t   *conn_data;
 
     first_message = TRUE;
 
-    /* We don't use conversation data yet, but... */
-    /* cv = find_or_create_conversation(pinfo); */
+    conversation = find_or_create_conversation(pinfo);
+    conn_data = (pgsql_conn_data_t *)conversation_get_proto_data(conversation, proto_pgsql);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "PGSQL");
     col_set_str(pinfo->cinfo, COL_INFO,
                     (pinfo->match_uint == pinfo->destport) ?
                      ">" : "<");
 
+    if (conn_data && conn_data->ssl_requested) {
+        /* Response to SSLRequest. */
+        switch (tvb_get_guint8(tvb, 0)) {
+        case 'S':   /* Willing to perform SSL */
+            /* Next packet will start using SSL. */
+            ssl_starttls_ack(ssl_handle, pinfo, pgsql_handle);
+            break;
+        case 'N':   /* Unwilling to perform SSL */
+        default:    /* ErrorMessage when server does not support SSL. */
+            /* TODO: maybe add expert info here? */
+            break;
+        }
+        conn_data->ssl_requested = FALSE;
+        return tvb_captured_length(tvb);
+    }
+
     tcp_dissect_pdus(tvb, pinfo, tree, pgsql_desegment, 5,
                      pgsql_length, dissect_pgsql_msg, data);
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -717,6 +730,11 @@ proto_register_pgsql(void)
         { &hf_portal,
           { "Portal", "pgsql.portal", FT_STRINGZ, BASE_NONE, NULL, 0,
             "The name of a portal.", HFILL }
+        },
+        { &hf_return,
+          { "Returns", "pgsql.returns", FT_UINT32, BASE_DEC,
+            NULL, 0,
+            NULL, HFILL }
         },
         { &hf_tag,
           { "Tag", "pgsql.tag", FT_STRINGZ, BASE_NONE, NULL, 0,
@@ -883,7 +901,6 @@ void
 proto_reg_handoff_pgsql(void)
 {
     static gboolean initialized = FALSE;
-    static dissector_handle_t pgsql_handle;
     static guint saved_pgsql_port;
 
     if (!initialized) {
@@ -895,6 +912,19 @@ proto_reg_handoff_pgsql(void)
 
     dissector_add_uint("tcp.port", pgsql_port, pgsql_handle);
     saved_pgsql_port = pgsql_port;
+
+    ssl_handle = find_dissector("ssl");
 }
 
-
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

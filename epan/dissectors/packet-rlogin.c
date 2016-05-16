@@ -26,13 +26,7 @@
 #include "config.h"
 
 #include <stdlib.h>
-#include <string.h>
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/conversation.h>
-#include <epan/wmem/wmem.h>
-
 #include "packet-tcp.h"
 
 #define RLOGIN_PORT 513
@@ -58,6 +52,7 @@ static int hf_user_info_server_user_name = -1;
 static int hf_user_info_terminal_type = -1;
 static int hf_user_info_terminal_speed = -1;
 static int hf_control_message = -1;
+static int hf_magic_cookie = -1;
 static int hf_window_info = -1;
 static int hf_window_info_ss = -1;
 static int hf_window_info_rows = -1;
@@ -68,11 +63,11 @@ static int hf_data = -1;
 
 static const value_string control_message_vals[] =
 {
-    { 0x02,     "Clear buffer"        },
-    { 0x10,     "Raw mode"            },
-    { 0x20,     "Cooked mode"         },
-    { 0x80,     "Window size request" },
-    { 0, NULL }
+	{ 0x02,     "Clear buffer"        },
+	{ 0x10,     "Raw mode"            },
+	{ 0x20,     "Cooked mode"         },
+	{ 0x80,     "Window size request" },
+	{ 0, NULL }
 };
 
 
@@ -122,7 +117,7 @@ rlogin_state_machine(rlogin_hash_entry_t *hash_info, tvbuff_t *tvb, packet_info 
 	}
 
 	/* exit if no data */
-	length = tvb_length(tvb);
+	length = tvb_captured_length(tvb);
 	if (length == 0)
 	{
 		return;
@@ -178,10 +173,10 @@ rlogin_state_machine(rlogin_hash_entry_t *hash_info, tvbuff_t *tvb, packet_info 
 
 /* Dissect details of packet */
 static void rlogin_display(rlogin_hash_entry_t *hash_info,
-                           tvbuff_t *tvb,
-                           packet_info *pinfo,
-                           proto_tree *tree,
-                           struct tcpinfo *tcpinfo)
+			   tvbuff_t *tvb,
+			   packet_info *pinfo,
+			   proto_tree *tree,
+			   struct tcpinfo *tcpinfo)
 {
 	/* Display the proto tree */
 	int             offset = 0;
@@ -197,7 +192,7 @@ static void rlogin_display(rlogin_hash_entry_t *hash_info,
 	rlogin_tree = proto_item_add_subtree(ti, ett_rlogin);
 
 	/* Return if data empty */
-	length = tvb_length(tvb);
+	length = tvb_captured_length(tvb);
 	if (length == 0)
 	{
 		return;
@@ -261,7 +256,7 @@ static void rlogin_display(rlogin_hash_entry_t *hash_info,
 
 		/* First frame of conversation, assume user info... */
 
-		info_len = tvb_length_remaining(tvb, offset);
+		info_len = tvb_captured_length_remaining(tvb, offset);
 		if (info_len <= 0)
 			return;
 
@@ -334,7 +329,7 @@ static void rlogin_display(rlogin_hash_entry_t *hash_info,
 		window_tree = proto_item_add_subtree(window_info_item, ett_rlogin_window);
 
 		/* Cookie */
-		proto_tree_add_text(window_tree, tvb, offset, 2, "Magic Cookie: (0xff, 0xff)");
+		proto_tree_add_item(window_tree, hf_magic_cookie, tvb, offset, 2, ENC_BIG_ENDIAN);
 		offset += 2;
 
 		/* These bytes should be "ss" */
@@ -421,7 +416,7 @@ dissect_rlogin(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 	}
 
 	/* Work out packet content summary for display */
-	length = tvb_length(tvb);
+	length = tvb_reported_length(tvb);
 	if (length != 0)
 	{
 		/* Initial NULL byte represents part of connection handshake */
@@ -452,7 +447,7 @@ dissect_rlogin(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 			else
 			{
 				/* Show any text data in the frame */
-				int bytes_to_copy = tvb_length(tvb);
+				int bytes_to_copy = tvb_captured_length(tvb);
 				if (bytes_to_copy > 128)
 				{
 					/* Truncate to 128 bytes for display */
@@ -473,7 +468,7 @@ dissect_rlogin(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 	/* Dissect in detail */
 	rlogin_display(hash_info, tvb, pinfo, tree, tcpinfo);
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 
@@ -531,6 +526,11 @@ void proto_register_rlogin(void)
 				 VALS(control_message_vals), 0x0, NULL, HFILL
 			}
 		},
+		{ &hf_magic_cookie,
+			{ "Magic Cookie", "rlogin.magic_cookie", FT_UINT16, BASE_HEX,
+				 NULL, 0x0, NULL, HFILL
+			}
+		},
 		{ &hf_window_info,
 			{ "Window Info", "rlogin.window_size", FT_NONE, BASE_NONE,
 				 NULL, 0x0, NULL, HFILL
@@ -580,3 +580,16 @@ void proto_reg_handoff_rlogin(void)
 	dissector_handle_t rlogin_handle = new_create_dissector_handle(dissect_rlogin,proto_rlogin);
 	dissector_add_uint("tcp.port", RLOGIN_PORT, rlogin_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

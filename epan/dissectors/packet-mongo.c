@@ -31,8 +31,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/prefs.h>
@@ -297,7 +295,7 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
     gint doc_len = -1;   /* Document length */
 
     e_type = tvb_get_guint8(tvb, offset);
-    tvb_get_stringz(wmem_packet_scope(), tvb, offset+1, &str_len);
+    tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset+1, &str_len, ENC_ASCII);
 
     element = proto_tree_add_item(elements_tree, hf_mongo_element_name, tvb, offset+1, str_len-1, ENC_UTF_8|ENC_NA);
     element_sub_tree = proto_item_add_subtree(element, ett_mongo_element);
@@ -351,11 +349,11 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
         break;
       case BSON_ELEMENT_TYPE_REGEX:
         /* regex pattern */
-        tvb_get_stringz(wmem_packet_scope(), tvb, offset, &str_len);
+        tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &str_len, ENC_ASCII);
         proto_tree_add_item(element_sub_tree, hf_mongo_element_value_regex_pattern, tvb, offset, str_len, ENC_UTF_8|ENC_NA);
         offset += str_len;
         /* regex options */
-        tvb_get_stringz(wmem_packet_scope(), tvb, offset, &str_len);
+        tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &str_len, ENC_ASCII);
         proto_tree_add_item(element_sub_tree, hf_mongo_element_value_regex_options, tvb, offset, str_len, ENC_UTF_8|ENC_NA);
         offset += str_len;
         break;
@@ -402,6 +400,7 @@ dissect_bson_document(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tre
 
   return document_length;
 }
+
 static int
 dissect_mongo_reply(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tree *tree)
 {
@@ -433,6 +432,7 @@ dissect_mongo_reply(tvbuff_t *tvb, packet_info *pinfo, guint offset, proto_tree 
   }
   return offset;
 }
+
 static int
 dissect_mongo_msg(tvbuff_t *tvb, guint offset, proto_tree *tree)
 {
@@ -574,6 +574,7 @@ dissect_mongo_kill_cursors(tvbuff_t *tvb, guint offset, proto_tree *tree)
   }
   return offset;
 }
+
 static int
 dissect_mongo_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
@@ -646,10 +647,10 @@ dissect_mongo_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* dat
       expert_add_info(pinfo, ti, &ei_mongo_unknown);
     }
 
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 static guint
-get_mongo_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_mongo_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
   guint32 plen;
 
@@ -665,7 +666,7 @@ static int
 dissect_mongo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
   tcp_dissect_pdus(tvb, pinfo, tree, 1, 4, get_mongo_pdu_len, dissect_mongo_pdu, data);
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 void
@@ -1029,6 +1030,9 @@ proto_register_mongo(void)
   };
 
   proto_mongo = proto_register_protocol("Mongo Wire Protocol", "MONGO", "mongo");
+
+  /* Allow dissector to find be found by name. */
+  new_register_dissector("mongo", dissect_mongo, proto_mongo);
 
   proto_register_field_array(proto_mongo, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));

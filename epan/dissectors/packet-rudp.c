@@ -42,7 +42,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 
@@ -130,13 +129,13 @@ dissect_rudp(tvbuff_t *tvb, packet_info *pinfo _U_ , proto_tree *tree)
 		/* If we have even more bytes their meaning is unknown - we have seen this
 		 * in live captures */
 		if (hlen > 6) {
-			next_tvb = tvb_new_subset(tvb, 6, hlen-6, hlen-6);
+			next_tvb = tvb_new_subset_length(tvb, 6, hlen-6);
 			call_dissector(data_handle, next_tvb, pinfo, rudp_tree);
 		}
 	}
 
 	next_tvb = tvb_new_subset_remaining(tvb, hlen);
-	if (tvb_length(next_tvb) && sm_handle)
+	if (tvb_captured_length(next_tvb) && sm_handle)
 		call_dissector(sm_handle, next_tvb, pinfo, tree);
 }
 
@@ -251,7 +250,7 @@ proto_reg_handoff_rudp(void) {
 
 	if (!initialized) {
 		rudp_handle = create_dissector_handle(dissect_rudp, proto_rudp);
-		dissector_add_handle("udp.port", rudp_handle);  /* for "decode as" */
+		dissector_add_for_decode_as("udp.port", rudp_handle);
 		sm_handle = find_dissector("sm");
 		data_handle = find_dissector("data");
 		initialized = TRUE;
@@ -266,3 +265,16 @@ proto_reg_handoff_rudp(void) {
 	}
 	saved_udp_port = udp_port;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -26,7 +26,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/etypes.h>
@@ -41,6 +40,7 @@
 #include "packet-vlan.h"
 #include "packet-ieee8021ah.h"
 #include "packet-vines.h"
+#include "packet-llc.h"
 
 
 void proto_register_ethertype(void);
@@ -53,7 +53,7 @@ static dissector_handle_t data_handle;
 static int proto_ethertype = -1;
 
 const value_string etype_vals[] = {
-	{ ETHERTYPE_IP,                   "IP" },
+	{ ETHERTYPE_IP,                   "IPv4" },
 	{ ETHERTYPE_IPv6,                 "IPv6" },
 	{ ETHERTYPE_VLAN,                 "802.1Q Virtual LAN" },
 	{ ETHERTYPE_ARP,                  "ARP" },
@@ -180,9 +180,12 @@ const value_string etype_vals[] = {
 	{ ETHERTYPE_ROCE,                 "RDMA over Converged Ethernet" },
 	{ ETHERTYPE_TDMOE,                "Digium TDM over Ethernet Protocol" },
 	{ ETHERTYPE_WAI,                  "WAI Authentication Protocol" },
+	{ ETHERTYPE_VNTAG,                "VN-Tag" },
 	{ ETHERTYPE_HSR,                  "High-availability Seamless Redundancy (IEC62439 Part 3)" },
 	{ ETHERTYPE_BPQ,                  "AX.25"},
 	{ ETHERTYPE_CMD,                  "CiscoMetaData"},
+	{ ETHERTYPE_XIP,                  "eXpressive Internet Protocol"},
+	{ ETHERTYPE_NWP,                  "Neighborhood Watch Protocol"},
 	{ 0, NULL }
 };
 
@@ -232,6 +235,9 @@ capture_ethertype(guint16 etype, const guchar *pd, int offset, int len,
 	case ETHERTYPE_BPQ:
 		capture_bpq(pd, offset, len, ld);
 		break;
+	case ETHERTYPE_JUMBO_LLC:
+		capture_llc(pd, offset, len, ld);
+		break;
 	default:
 		ld->other++;
 		break;
@@ -247,14 +253,13 @@ ethertype(guint16 etype, tvbuff_t *tvb, int offset_after_etype,
 static int
 dissect_ethertype(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-	const char		*description;
-	tvbuff_t		*volatile next_tvb;
-	guint			length_before;
-	gint			captured_length, reported_length;
-	volatile gboolean	dissector_found = FALSE;
-	const char		*volatile saved_proto;
-	void			*pd_save;
-	ethertype_data_t* ethertype_data;
+	const char	  *description;
+	tvbuff_t	  *volatile next_tvb;
+	guint		   length_before;
+	gint		   captured_length, reported_length;
+	volatile int  dissector_found = 0;
+	const char	  *volatile saved_proto;
+	ethertype_data_t  *ethertype_data;
 
 	/* Reject the packet if data is NULL */
 	if (data == NULL)
@@ -267,7 +272,7 @@ dissect_ethertype(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 
 	/* Get the captured length and reported length of the data
 	   after the Ethernet type. */
-	captured_length = tvb_length_remaining(tvb, ethertype_data->offset_after_ethertype);
+	captured_length = tvb_captured_length_remaining(tvb, ethertype_data->offset_after_ethertype);
 	reported_length = tvb_reported_length_remaining(tvb,
 							ethertype_data->offset_after_ethertype);
 
@@ -298,7 +303,6 @@ dissect_ethertype(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 	   was reduced by some dissector before an exception was thrown,
 	   we can still put in an item for the trailer. */
 	saved_proto = pinfo->current_proto;
-	pd_save = pinfo->private_data;
 	TRY {
 		dissector_found = dissector_try_uint(ethertype_dissector_table,
 						     ethertype_data->etype, next_tvb, pinfo, tree);
@@ -316,12 +320,7 @@ dissect_ethertype(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 		   before we called the subdissector. */
 		show_exception(next_tvb, pinfo, tree, EXCEPT_CODE, GET_MESSAGE);
 
-		/*  Restore the private_data structure in case one of the
-		 *  called dissectors modified it (and, due to the exception,
-		 *  was unable to restore it).
-		 */
-		pinfo->private_data = pd_save;
-		dissector_found = TRUE;
+		dissector_found = 1;
 		pinfo->current_proto = saved_proto;
 	}
 	ENDTRY;
@@ -343,7 +342,7 @@ dissect_ethertype(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 	add_dix_trailer(pinfo, tree, ethertype_data->fh_tree, ethertype_data->trailer_id, tvb, next_tvb, ethertype_data->offset_after_ethertype,
 			length_before, ethertype_data->fcs_len);
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 static void
@@ -393,6 +392,8 @@ proto_register_ethertype(void)
 
 
 	proto_ethertype = proto_register_protocol("Ethertype", "Ethertype", "ethertype");
+	/* This isn't a real protocol, so you can't disable its dissection. */
+	proto_set_cant_toggle(proto_ethertype);
 
 	new_register_dissector("ethertype", dissect_ethertype, proto_ethertype);
 
@@ -408,3 +409,16 @@ proto_reg_handoff_ethertype(void)
 {
 	data_handle = find_dissector("data");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

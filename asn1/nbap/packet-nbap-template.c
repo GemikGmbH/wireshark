@@ -25,12 +25,9 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/sctpppids.h>
 #include <epan/asn1.h>
-#include <epan/wmem/wmem.h>
 #include <epan/conversation.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
@@ -58,17 +55,9 @@
 
 /* Debug */
 #if 0
-#define nbap_debug0(str) g_warning(str)
-#define nbap_debug1(str,p1) g_warning(str,p1)
-#define nbap_debug2(str,p1,p2) g_warning(str,p1,p2)
-#define nbap_debug3(str,p1,p2,p3) g_warning(str,p1,p2,p3)
-#define nbap_debug4(str,p1,p2,p3,p4) g_warning(str,p1,p2,p3,p4)
+#define nbap_debug(...) g_warning(__VA_ARGS__)
 #else
-#define nbap_debug0(str)
-#define nbap_debug1(str,p1)
-#define nbap_debug2(str,p1,p2)
-#define nbap_debug3(str,p1,p2,p3)
-#define nbap_debug4(str,p1,p2,p3,p4)
+#define nbap_debug(...)
 #endif
 
 void proto_register_nbap(void);
@@ -323,30 +312,30 @@ static void add_hsdsch_bind(packet_info * pinfo);
 
 static int dissect_ProtocolIEFieldValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-  return (dissector_try_uint_new(nbap_ies_dissector_table, ProtocolIE_ID, tvb, pinfo, tree, FALSE, NULL)) ? tvb_length(tvb) : 0;
+  return (dissector_try_uint_new(nbap_ies_dissector_table, ProtocolIE_ID, tvb, pinfo, tree, FALSE, NULL)) ? tvb_captured_length(tvb) : 0;
 }
 
 static int dissect_ProtocolExtensionFieldExtensionValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-  return (dissector_try_uint_new(nbap_extension_dissector_table, ProtocolIE_ID, tvb, pinfo, tree, FALSE, NULL)) ? tvb_length(tvb) : 0;
+  return (dissector_try_uint_new(nbap_extension_dissector_table, ProtocolIE_ID, tvb, pinfo, tree, FALSE, NULL)) ? tvb_captured_length(tvb) : 0;
 }
 
 static int dissect_InitiatingMessageValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
   if (!ProcedureID) return 0;
-  return (dissector_try_string(nbap_proc_imsg_dissector_table, ProcedureID, tvb, pinfo, tree, NULL)) ? tvb_length(tvb) : 0;
+  return (dissector_try_string(nbap_proc_imsg_dissector_table, ProcedureID, tvb, pinfo, tree, NULL)) ? tvb_captured_length(tvb) : 0;
 }
 
 static int dissect_SuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
   if (!ProcedureID) return 0;
-  return (dissector_try_string(nbap_proc_sout_dissector_table, ProcedureID, tvb, pinfo, tree, NULL)) ? tvb_length(tvb) : 0;
+  return (dissector_try_string(nbap_proc_sout_dissector_table, ProcedureID, tvb, pinfo, tree, NULL)) ? tvb_captured_length(tvb) : 0;
 }
 
 static int dissect_UnsuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
   if (!ProcedureID) return 0;
-  return (dissector_try_string(nbap_proc_uout_dissector_table, ProcedureID, tvb, pinfo, tree, NULL)) ? tvb_length(tvb) : 0;
+  return (dissector_try_string(nbap_proc_uout_dissector_table, ProcedureID, tvb, pinfo, tree, NULL)) ? tvb_captured_length(tvb) : 0;
 }
 static void add_hsdsch_bind(packet_info *pinfo){
 	address 	null_addr;
@@ -385,7 +374,7 @@ static void add_hsdsch_bind(packet_info *pinfo){
 					umts_fp_conversation_info->channel           = CHANNEL_HSDSCH;
 					umts_fp_conversation_info->dl_frame_number   = 0;
 					umts_fp_conversation_info->ul_frame_number   = pinfo->fd->num;
-					SE_COPY_ADDRESS(&(umts_fp_conversation_info->crnc_address), &nbap_hsdsch_channel_info[i].crnc_address);
+					WMEM_COPY_ADDRESS(wmem_file_scope(), &(umts_fp_conversation_info->crnc_address), &nbap_hsdsch_channel_info[i].crnc_address);
 					umts_fp_conversation_info->crnc_port         = nbap_hsdsch_channel_info[i].crnc_port;
 
 					/*Added june 3, normally just the iterator variable*/
@@ -422,16 +411,9 @@ static gint nbap_key_cmp(gconstpointer a_ptr, gconstpointer b_ptr, gpointer igno
 	}*/
 
 static void nbap_init(void){
-	guint8 i;
-	/*Cleanup*/
-	if(com_context_map){
-		g_tree_destroy(com_context_map);
-	}
-	if(edch_flow_port_map){
-		g_tree_destroy(edch_flow_port_map);
-	}
-	/*Initialize*/
-	com_context_map = g_tree_new_full(nbap_key_cmp,
+    guint8 i;
+    /*Initialize*/
+    com_context_map = g_tree_new_full(nbap_key_cmp,
                        NULL,      /* data pointer, optional */
                        NULL,      /* function to free the memory allocated for the key used when removing the entry */
                        g_free);
@@ -444,11 +426,18 @@ static void nbap_init(void){
                        g_free);
 
     for (i = 0; i < 15; i++) {
-		lchId_type_table[i+1] = *lch_contents[i];
-	}
+        lchId_type_table[i+1] = *lch_contents[i];
+    }
 }
-static void
-dissect_nbap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+
+static void nbap_cleanup(void){
+    /*Cleanup*/
+    g_tree_destroy(com_context_map);
+    g_tree_destroy(edch_flow_port_map);
+}
+
+static int
+dissect_nbap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
 	proto_item	*nbap_item = NULL;
 	proto_tree	*nbap_tree = NULL;
@@ -465,7 +454,7 @@ dissect_nbap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		nbap_hsdsch_channel_info[i].entity = hs;
 	}
 
-	dissect_NBAP_PDU_PDU(tvb, pinfo, nbap_tree);
+	return dissect_NBAP_PDU_PDU(tvb, pinfo, nbap_tree, data);
 }
 
 /*--- proto_register_nbap -------------------------------------------*/
@@ -518,7 +507,7 @@ void proto_register_nbap(void)
 	expert_register_field_array(expert_nbap, ei, array_length(ei));
 
 	/* Register dissector */
-	register_dissector("nbap", dissect_nbap, proto_nbap);
+	new_register_dissector("nbap", dissect_nbap, proto_nbap);
 
 	nbap_module = prefs_register_protocol(proto_nbap, NULL);
 
@@ -535,6 +524,7 @@ void proto_register_nbap(void)
 	nbap_proc_uout_dissector_table = register_dissector_table("nbap.proc.uout", "NBAP-ELEMENTARY-PROCEDURE UnsuccessfulOutcome", FT_STRING, BASE_NONE);
 
 	register_init_routine(nbap_init);
+	register_cleanup_routine(nbap_cleanup);
 }
 
 /*
@@ -550,9 +540,9 @@ proto_reg_handoff_nbap(void)
 	fp_handle = find_dissector("fp");
 	dissector_add_uint("sctp.ppi", NBAP_PAYLOAD_PROTOCOL_ID, nbap_handle);
 #ifdef EXTRA_PPI
-		dissector_add_uint("sctp.ppi", 17, nbap_handle);
+	dissector_add_uint("sctp.ppi", 17, nbap_handle);
 #endif
-	dissector_add_handle("sctp.port", nbap_handle);  /* for "decode-as" */
+	dissector_add_for_decode_as("sctp.port", nbap_handle);
 
 #include "packet-nbap-dis-tab.c"
 }

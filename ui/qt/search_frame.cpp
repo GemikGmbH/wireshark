@@ -20,7 +20,9 @@
  */
 
 #include "search_frame.h"
-#include "ui_search_frame.h"
+#include <ui_search_frame.h>
+
+#include "file.h"
 
 #include <epan/proto.h>
 #include <epan/strutil.h>
@@ -29,17 +31,23 @@
 #include <QKeyEvent>
 #include <QCheckBox>
 
-const int in_packet_list = 0;
-const int in_proto_tree = 1;
-const int in_bytes = 2;
+enum {
+    in_packet_list_,
+    in_proto_tree_,
+    in_bytes_
+};
 
-const int df_search = 0;
-const int hex_search = 1;
-const int string_search = 2;
+enum {
+    df_search_,
+    hex_search_,
+    string_search_
+};
 
-const int narrow_and_wide_chars = 0;
-const int narrow_chars = 1;
-const int wide_chars = 2;
+enum {
+    narrow_and_wide_chars_,
+    narrow_chars_,
+    wide_chars_
+};
 
 SearchFrame::SearchFrame(QWidget *parent) :
     AccordionFrame(parent),
@@ -53,8 +61,8 @@ SearchFrame::SearchFrame(QWidget *parent) :
         w->setAttribute(Qt::WA_MacSmallSize, true);
     }
 #endif
-    sf_ui_->searchTypeComboBox->setCurrentIndex(0);
-    enableWidgets();
+    sf_ui_->searchTypeComboBox->setCurrentIndex(df_search_);
+    updateWidgets();
 }
 
 SearchFrame::~SearchFrame()
@@ -64,9 +72,9 @@ SearchFrame::~SearchFrame()
 
 void SearchFrame::animatedShow()
 {
-    sf_ui_->searchLineEdit->setFocus();
-
     AccordionFrame::animatedShow();
+
+    sf_ui_->searchLineEdit->setFocus();
 }
 
 void SearchFrame::findNext()
@@ -93,21 +101,27 @@ void SearchFrame::findPrevious()
     on_findButton_clicked();
 }
 
+void SearchFrame::setFocus()
+{
+    sf_ui_->searchLineEdit->setFocus();
+    cap_file_->dir = SD_FORWARD;
+}
+
 void SearchFrame::setCaptureFile(capture_file *cf)
 {
     cap_file_ = cf;
     if (!cf && isVisible()) {
         animatedHide();
     }
-    enableWidgets();
+    updateWidgets();
 }
 
 void SearchFrame::findFrameWithFilter(QString &filter)
 {
     animatedShow();
     sf_ui_->searchLineEdit->setText(filter);
-    sf_ui_->searchTypeComboBox->setCurrentIndex(0);
-    enableWidgets();
+    sf_ui_->searchTypeComboBox->setCurrentIndex(df_search_);
+    updateWidgets();
 }
 
 void SearchFrame::keyPressEvent(QKeyEvent *event)
@@ -124,7 +138,7 @@ void SearchFrame::keyPressEvent(QKeyEvent *event)
     }
 }
 
-void SearchFrame::enableWidgets()
+void SearchFrame::updateWidgets()
 {
     if (cap_file_) {
         setEnabled(true);
@@ -133,16 +147,16 @@ void SearchFrame::enableWidgets()
         return;
     }
 
-    bool enable = sf_ui_->searchTypeComboBox->currentIndex() == string_search;
+    bool enable = sf_ui_->searchTypeComboBox->currentIndex() == string_search_;
     sf_ui_->searchInComboBox->setEnabled(enable);
     sf_ui_->caseCheckBox->setEnabled(enable);
     sf_ui_->charEncodingComboBox->setEnabled(enable);
 
     switch (sf_ui_->searchTypeComboBox->currentIndex()) {
-    case df_search:
+    case df_search_:
         sf_ui_->searchLineEdit->checkDisplayFilter(sf_ui_->searchLineEdit->text());
         break;
-    case hex_search:
+    case hex_search_:
         if (sf_ui_->searchLineEdit->text().isEmpty()) {
             sf_ui_->searchLineEdit->setSyntaxState(SyntaxLineEdit::Invalid);
         } else {
@@ -157,7 +171,7 @@ void SearchFrame::enableWidgets()
             }
         }
         break;
-    case string_search:
+    case string_search_:
         if (sf_ui_->searchLineEdit->text().isEmpty()) {
             sf_ui_->searchLineEdit->setSyntaxState(SyntaxLineEdit::Invalid);
         } else {
@@ -165,8 +179,7 @@ void SearchFrame::enableWidgets()
         }
         break;
     default:
-        QString err_string = tr("No valid search type selected. Please report this to the development team.");
-        emit pushFilterSyntaxStatus(err_string);
+        // currentIndex is probably -1. Nothing is selected or list is empty.
         return;
     }
 
@@ -177,16 +190,14 @@ void SearchFrame::enableWidgets()
     }
 }
 
-void SearchFrame::on_searchTypeComboBox_currentIndexChanged(int index)
+void SearchFrame::on_searchTypeComboBox_currentIndexChanged(int)
 {
-    Q_UNUSED(index);
-    enableWidgets();
+    updateWidgets();
 }
 
-void SearchFrame::on_searchLineEdit_textChanged(const QString &search_string)
+void SearchFrame::on_searchLineEdit_textChanged(const QString &)
 {
-    Q_UNUSED(search_string);
-    enableWidgets();
+    updateWidgets();
 }
 
 void SearchFrame::on_findButton_clicked()
@@ -211,8 +222,8 @@ void SearchFrame::on_findButton_clicked()
     cap_file_->scs_type = SCS_NARROW_AND_WIDE;
 
     switch (sf_ui_->searchTypeComboBox->currentIndex()) {
-    case df_search:
-        if (!dfilter_compile(sf_ui_->searchLineEdit->text().toUtf8().constData(), &dfp)) {
+    case df_search_:
+        if (!dfilter_compile(sf_ui_->searchLineEdit->text().toUtf8().constData(), &dfp, NULL)) {
             err_string = tr("Invalid filter.");
             emit pushFilterSyntaxStatus(err_string);
             return;
@@ -224,7 +235,7 @@ void SearchFrame::on_findButton_clicked()
             return;
         }
         break;
-    case hex_search:
+    case hex_search_:
         bytes = convert_string_to_hex(sf_ui_->searchLineEdit->text().toUtf8().constData(), &nbytes);
         if (bytes == NULL) {
             err_string = tr("That's not a valid hex string.");
@@ -233,7 +244,7 @@ void SearchFrame::on_findButton_clicked()
         }
         cap_file_->hex = TRUE;
         break;
-    case string_search:
+    case string_search_:
         if (sf_ui_->searchLineEdit->text().isEmpty()) {
             err_string = tr("You didn't specify any text for which to search.");
             emit pushFilterSyntaxStatus(err_string);
@@ -242,13 +253,13 @@ void SearchFrame::on_findButton_clicked()
         cap_file_->string = TRUE;
         cap_file_->case_type = sf_ui_->caseCheckBox->isChecked() ? FALSE : TRUE;
         switch (sf_ui_->charEncodingComboBox->currentIndex()) {
-        case narrow_and_wide_chars:
+        case narrow_and_wide_chars_:
             cap_file_->scs_type = SCS_NARROW_AND_WIDE;
             break;
-        case narrow_chars:
+        case narrow_chars_:
             cap_file_->scs_type = SCS_NARROW;
             break;
-        case wide_chars:
+        case wide_chars_:
             cap_file_->scs_type = SCS_WIDE;
             break;
         default:
@@ -265,13 +276,13 @@ void SearchFrame::on_findButton_clicked()
     }
 
     switch (sf_ui_->searchInComboBox->currentIndex()) {
-    case in_packet_list:
+    case in_packet_list_:
         cap_file_->summary_data = TRUE;
         break;
-    case in_proto_tree:
+    case in_proto_tree_:
         cap_file_->decode_data  = TRUE;
         break;
-    case in_bytes:
+    case in_bytes_:
         cap_file_->packet_data  = TRUE;
         break;
     default:
@@ -338,6 +349,22 @@ void SearchFrame::on_findButton_clicked()
 void SearchFrame::on_cancelButton_clicked()
 {
     animatedHide();
+}
+
+void SearchFrame::changeEvent(QEvent* event)
+{
+    if (0 != event)
+    {
+        switch (event->type())
+        {
+        case QEvent::LanguageChange:
+            sf_ui_->retranslateUi(this);
+            break;
+        default:
+            break;
+        }
+    }
+    AccordionFrame::changeEvent(event);
 }
 
 /*

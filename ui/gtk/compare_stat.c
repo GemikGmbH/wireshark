@@ -32,54 +32,42 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
 
-#include <glib.h>
 #include <gtk/gtk.h>
 
 #include <wsutil/report_err.h>
 
-#include <epan/packet_info.h>
-#include <epan/epan.h>
-#include <epan/epan_dissect.h>
-#include <epan/stat_cmd_args.h>
+#include <epan/stat_tap_ui.h>
 #include <epan/to_str.h>
 #include <epan/tap.h>
-#include <epan/emem.h>
 #include <epan/packet.h>
 #include <epan/dissectors/packet-ip.h>
 #include <epan/in_cksum.h>
 
-#include "../stat_menu.h"
-#include "epan/timestats.h"
 
 #include "ui/simple_dialog.h"
 
-#include "ui/gtk/gui_stat_menu.h"
 #include "ui/gtk/stock_icons.h"
 #include "ui/gtk/help_dlg.h"
 #include "ui/gtk/filter_autocomplete.h"
 
+
+#include "ui/gtk/gui_stat_menu.h"
 #include "gui_utils.h"
 #include "dlg_utils.h"
-#include "register.h"
-#include "main.h"
 #include "filter_dlg.h"
 #include "service_response_time_table.h"
 #include "gtkglobals.h"
-#include "gui_utils.h"
 #include "globals.h"
 
 /* Color settings */
 #include "color.h"
 #include "color_filters.h"
-#include "color_dlg.h"
 #include "packet_list.h"
 
-#include "ui/gtk/old-gtk-compat.h"
 
 void register_tap_listener_gtkcomparestat(void);
 
@@ -217,8 +205,8 @@ comparestat_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, const
 	}
 
 	/* collect all packet infos */
-	fInfo=(frame_info*)se_alloc(sizeof(frame_info));
-	fInfo->fg=(for_gui*)se_alloc(sizeof(for_gui));
+	fInfo=(frame_info*)g_malloc(sizeof(frame_info));
+	fInfo->fg=(for_gui*)g_malloc(sizeof(for_gui));
 	fInfo->fg->partner=NULL;
 	fInfo->fg->count=1;
 	fInfo->fg->cksum=computed_cksum;
@@ -240,6 +228,15 @@ comparestat_packet(void *arg, packet_info *pinfo, epan_dissect_t *edt _U_, const
 	}
 }
 
+static void
+frame_info_free(gpointer data)
+{
+	frame_info *fInfo = (frame_info *)data;
+
+	g_free(fInfo->fg);
+	g_free(fInfo);
+}
+
 /* Find equal packets, same IP-Id, count them and make time statistics */
 static void
 call_foreach_count_ip_id(gpointer key _U_, gpointer value, gpointer arg)
@@ -250,8 +247,8 @@ call_foreach_count_ip_id(gpointer key _U_, gpointer value, gpointer arg)
 	guint i;
 
 	/* we only need one value out of pinfo we use a temp one */
-	packet_info *pinfo=(packet_info*)ep_alloc(sizeof(packet_info));
-	pinfo->fd=(frame_data*)ep_alloc(sizeof(frame_data));
+	packet_info *pinfo=(packet_info*)g_malloc(sizeof(packet_info));
+	pinfo->fd=(frame_data*)g_malloc(sizeof(frame_data));
 	pinfo->fd->num = fInfo->num;
 
 	fInfoTemp=(frame_info *)g_hash_table_lookup(cs->ip_id_set, GINT_TO_POINTER((gint)fInfo->id));
@@ -314,6 +311,9 @@ call_foreach_count_ip_id(gpointer key _U_, gpointer value, gpointer arg)
 		}
 		g_array_append_val(cs->ip_ttl_list, fInfo->ip_ttl);
 	}
+
+	g_free(pinfo->fd);
+	g_free(pinfo);
 }
 
 /*Create new numbering in the Info column, to create a zebra effect */
@@ -524,6 +524,7 @@ win_destroy_cb(GtkWindow *win _U_, gpointer data)
 	gtk_tree_store_clear(cs->simple_list);
 	g_hash_table_destroy(cs->packet_set);
 	g_hash_table_destroy(cs->nr_set);
+	g_hash_table_destroy(cs->ip_id_set);
 	g_free(cs);
 }
 
@@ -537,6 +538,7 @@ comparestat_draw(void *arg)
 	const gchar *statis_string;
 	frame_info *fInfo;
 	guint32 first_file_amount, second_file_amount;
+	char* addr_str;
 
 	/* initial steps, clear all data before start*/
 	cs->zebra_time.secs=0;
@@ -563,7 +565,6 @@ comparestat_draw(void *arg)
 		return;
 	}
 
-	cs->ip_id_set=g_hash_table_new(NULL, NULL);
 	g_hash_table_foreach(cs->packet_set, call_foreach_count_ip_id, cs);
 
 	/* set up TTL choice if only one number found */
@@ -579,8 +580,6 @@ comparestat_draw(void *arg)
 	second_file_amount=cs->second_file_amount;
 	/* reset after numbering */
 	g_hash_table_remove_all(cs->nr_set);
-	/* microsecond precision for Info column*/
-	timestamp_set_precision(TS_PREC_AUTO_NSEC);
 	/* reset ordering */
 	nstime_set_unset(&cs->current_time);
 
@@ -588,7 +587,9 @@ comparestat_draw(void *arg)
 	if(TTL_method&&cs->ip_ttl_list->len!=0){
 		g_string_printf(filter_str, "%s %i %s %i", "ip.ttl ==", g_array_index(cs->ip_ttl_list, guint8, 0), "|| ip.ttl ==", g_array_index(cs->ip_ttl_list, guint8, 1));
 	} else if(cs->eth_dst.len!=0&&cs->eth_src.len!=0){
-		g_string_printf(filter_str, "%s %s %s %s", "eth.dst==", ep_address_to_str(&cs->eth_dst), "|| eth.dst==", ep_address_to_str(&cs->eth_src));
+		addr_str = (char*)address_to_str(NULL, &cs->eth_dst);
+		g_string_printf(filter_str, "%s %s %s %s", "eth.dst==", addr_str, "|| eth.dst==", addr_str);
+		wmem_free(NULL, addr_str);
 	}
 	color_filters_set_tmp(COLOR_N, filter_str->str, FALSE);
 	packet_list_colorize_packets();
@@ -616,7 +617,6 @@ comparestat_draw(void *arg)
 	}
 
 	g_hash_table_foreach(cs->ip_id_set, call_foreach_print_ip_tree, cs);
-	g_hash_table_destroy(cs->ip_id_set);
 	g_string_free(filter_str, TRUE);
 	g_array_free(cs->ip_ttl_list, TRUE);
 }
@@ -699,14 +699,8 @@ gtk_comparestat_init(const char *opt_arg, void* userdata _U_)
 	GString *error_string;
 
 	if(sscanf(opt_arg,"compare,%d,%d,%d,%d,%lf%n",&start, &stop, &ttl, &order, &variance, &pos)==5){
-		if(pos){
-			if(*(opt_arg+pos)==',')
-				filter=opt_arg+pos+1;
-			else
-				filter=opt_arg+pos;
-		} else {
-			filter=NULL;
-		}
+		if(*(opt_arg+pos)==',')
+			filter=opt_arg+pos+1;
 	} else {
 		fprintf(stderr, "wireshark: invalid \"-z compare,<start>,<stop>,<ttl[0|1]>,<order[0|1]>,<variance>[,<filter>]\" argument\n");
 		exit(1);
@@ -734,13 +728,11 @@ gtk_comparestat_init(const char *opt_arg, void* userdata _U_)
 	cs->zebra_time.secs=0;
 	cs->zebra_time.nsecs=1;
 	cs->nr_set=g_hash_table_new(NULL, NULL);
-	/* microsecond precision */
-	timestamp_set_precision(TS_PREC_AUTO_NSEC);
 
 	/* transient_for top_level */
 	cs->win=dlg_window_new("compare-stat");
 	gtk_window_set_destroy_with_parent (GTK_WINDOW(cs->win), TRUE);
-	gtk_window_set_default_size(GTK_WINDOW(cs->win), 550, 400);
+	gtk_window_set_default_size(GTK_WINDOW(cs->win), SRT_PREFERRED_WIDTH, SRT_PREFERRED_HEIGHT);
 	comparestat_set_title(cs);
 
 	vbox=ws_gtk_box_new(GTK_ORIENTATION_VERTICAL, 3, FALSE);
@@ -790,7 +782,9 @@ gtk_comparestat_init(const char *opt_arg, void* userdata _U_)
 	gtk_box_pack_start(GTK_BOX(vbox), cs->scrolled_win, TRUE, TRUE, 0);
 
 	/* create a Hash to count the packets with the same ip.id */
-	cs->packet_set=g_hash_table_new(NULL, NULL);
+	cs->packet_set=g_hash_table_new_full(NULL, NULL, NULL, frame_info_free);
+
+	cs->ip_id_set=g_hash_table_new(NULL, NULL);
 
 	error_string=register_tap_listener("ip", cs, filter, 0, comparestat_reset, comparestat_packet, comparestat_draw);
 	if(error_string){
@@ -798,6 +792,7 @@ gtk_comparestat_init(const char *opt_arg, void* userdata _U_)
 		g_string_free(error_string, TRUE);
 		gtk_tree_store_clear(cs->simple_list);
 		g_hash_table_destroy(cs->packet_set);
+		g_hash_table_destroy(cs->ip_id_set);
 		g_free(cs);
 		return;
 	}
@@ -1050,11 +1045,19 @@ gtk_comparestat_cb(GtkAction *action _U_, gpointer user_data _U_)
 	window_present(dlg);
 }
 
+static stat_tap_ui compare_stat_ui = {
+	REGISTER_STAT_GROUP_GENERIC,
+	NULL,
+	"compare",
+	gtk_comparestat_init,
+	0,
+	NULL
+};
 
 void
 register_tap_listener_gtkcomparestat(void)
 {
-	register_stat_cmd_arg("compare", gtk_comparestat_init, NULL);
+	register_stat_tap_ui(&compare_stat_ui, NULL);
 }
 
 /*

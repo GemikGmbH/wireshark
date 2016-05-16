@@ -42,19 +42,14 @@
 
 #include "config.h"
 
-#include <string.h>
-
-#include <glib.h>
 
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include <epan/prefs.h>
+#include <epan/srt_table.h>
 #include "packet-ipx.h"
 #include "packet-tcp.h"
 #include "packet-ncp-int.h"
-#include <epan/reassemble.h>
-#include <epan/conversation.h>
-#include <epan/tap.h>
+#include <epan/conversation_table.h>
 
 void proto_register_ncp(void);
 void proto_reg_handoff_ncp(void);
@@ -172,8 +167,12 @@ static const value_string burst_command[] = {
    ISBN: 0-929392-31-0
 
    And:
-   http:developer.novell.com
+
+   https://www.novell.com/developer/ndk/netware_core_protocols.html
+
    NCP documentation
+
+   (formerly http:developer.novell.com)
 
 */
 
@@ -195,6 +194,253 @@ static const value_string ncp_oplock_vals[] = {
     { 0x24, "Clear Op-lock" },
     { 0, NULL }
 };
+
+enum ncp_table_values
+{
+    NCP_NCP_SRT_TABLE_INDEX = 0,
+    NCP_NDS_SRT_TABLE_INDEX,
+    NCP_FUNC_SRT_TABLE_INDEX,
+    NCP_SSS_SRT_TABLE_INDEX,
+    NCP_NMAS_SRT_TABLE_INDEX,
+    NCP_SUB17_SRT_TABLE_INDEX,
+    NCP_SUB21_SRT_TABLE_INDEX,
+    NCP_SUB22_SRT_TABLE_INDEX,
+    NCP_SUB23_SRT_TABLE_INDEX,
+    NCP_SUB32_SRT_TABLE_INDEX,
+    NCP_SUB34_SRT_TABLE_INDEX,
+    NCP_SUB35_SRT_TABLE_INDEX,
+    NCP_SUB36_SRT_TABLE_INDEX,
+    NCP_SUB86_SRT_TABLE_INDEX,
+    NCP_SUB87_SRT_TABLE_INDEX,
+    NCP_SUB89_SRT_TABLE_INDEX,
+    NCP_SUB90_SRT_TABLE_INDEX,
+    NCP_SUB92_SRT_TABLE_INDEX,
+    NCP_SUB94_SRT_TABLE_INDEX,
+    NCP_SUB104_SRT_TABLE_INDEX,
+    NCP_SUB111_SRT_TABLE_INDEX,
+    NCP_SUB114_SRT_TABLE_INDEX,
+    NCP_SUB123_SRT_TABLE_INDEX,
+    NCP_SUB131_SRT_TABLE_INDEX
+
+};
+
+#define NCP_NUM_PROCEDURES     0
+
+static void
+ncpstat_init(struct register_srt* srt _U_, GArray* srt_array, srt_gui_init_cb gui_callback, void* gui_data)
+{
+    /* Initialize all of the SRT tables with 0 rows.  That way we can "filter" the drawing
+       function to only output tables with rows > 0 */
+
+    init_srt_table("NCP", "Groups", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.group", gui_callback, gui_data, NULL);
+
+    /* NDS Verbs */
+    init_srt_table("NDS Verbs", "NDS", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.ndsverb", gui_callback, gui_data, NULL);
+
+    /* NCP Functions */
+    init_srt_table("NCP Functions without Subfunctions", "Functions", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func", gui_callback, gui_data, NULL);
+
+    /* Secret Store Verbs */
+    init_srt_table("Secret Store Verbs", "SSS", srt_array, NCP_NUM_PROCEDURES, NULL, "sss.subverb", gui_callback, gui_data, NULL);
+
+    /* NMAS Verbs */
+    init_srt_table("NMAS Verbs", "NMAS", srt_array, NCP_NUM_PROCEDURES, NULL, "nmas.subverb", gui_callback, gui_data, NULL);
+
+    /* NCP Subfunctions */
+    init_srt_table("Subfunctions for NCP 17", "17", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==17 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 21", "21", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==21 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 22", "22", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==22 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 23", "23", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==23 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 32", "32", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==32 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 34", "34", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==34 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 35", "35", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==35 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 36", "36", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==36 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 86", "86", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==86 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 87", "87", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==87 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 89 (Extended NCP's with UTF8 Support)", "89", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==89 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 90", "90", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==90 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 92 (Secret Store Services)", "92", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==92 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 94 (Novell Modular Authentication Services)", "94", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==94 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 104", "104", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==104 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 111", "111", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==111 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 114", "114", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==114 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 123", "123", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==123 && ncp.subfunc", gui_callback, gui_data, NULL);
+    init_srt_table("Subfunctions for NCP 131", "131", srt_array, NCP_NUM_PROCEDURES, NULL, "ncp.func==131 && ncp.subfunc", gui_callback, gui_data, NULL);
+}
+
+static int
+ncpstat_packet(void *pss, packet_info *pinfo, epan_dissect_t *edt _U_, const void *prv)
+{
+    guint i = 0;
+    srt_stat_table *ncp_srt_table;
+    srt_data_t *data = (srt_data_t *)pss;
+    const ncp_req_hash_value *request_val=(const ncp_req_hash_value *)prv;
+    gchar* tmp_str;
+
+    /* if we haven't seen the request, just ignore it */
+    if(!request_val || request_val->ncp_rec==0){
+        return 0;
+    }
+
+    /* By Group */
+    tmp_str = val_to_str_wmem(NULL, request_val->ncp_rec->group, ncp_group_vals, "Unknown(%u)");
+    i = NCP_NCP_SRT_TABLE_INDEX;
+    ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+    init_srt_table_row(ncp_srt_table, request_val->ncp_rec->group, tmp_str);
+    wmem_free(NULL, tmp_str);
+    add_srt_table_data(ncp_srt_table, request_val->ncp_rec->group, &request_val->req_frame_time, pinfo);
+    /* By NCP number without subfunction*/
+    if (request_val->ncp_rec->subfunc==0) {
+        i = NCP_FUNC_SRT_TABLE_INDEX;
+        ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+        init_srt_table_row(ncp_srt_table, request_val->ncp_rec->func, request_val->ncp_rec->name);
+        add_srt_table_data(ncp_srt_table, request_val->ncp_rec->func, &request_val->req_frame_time, pinfo);
+    }
+    /* By Subfunction number */
+    if(request_val->ncp_rec->subfunc!=0){
+        if (request_val->ncp_rec->func==17) {
+            i = NCP_SUB17_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==21) {
+            i = NCP_SUB21_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==22) {
+            i = NCP_SUB22_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==23) {
+            i = NCP_SUB23_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==32) {
+            i = NCP_SUB32_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==34) {
+            i = NCP_SUB34_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==35) {
+            i = NCP_SUB35_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==36) {
+            i = NCP_SUB36_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==86) {
+            i = NCP_SUB86_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==87) {
+            i = NCP_SUB87_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==89) {
+            i = NCP_SUB89_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==90) {
+            i = NCP_SUB90_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==92) {
+            i = NCP_SUB92_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==94) {
+            i = NCP_SUB94_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==104) {
+            i = NCP_SUB104_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==111) {
+            i = NCP_SUB111_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==114) {
+            i = NCP_SUB114_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==123) {
+            i = NCP_SUB123_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+        if (request_val->ncp_rec->func==131) {
+            i = NCP_SUB131_SRT_TABLE_INDEX;
+            ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+            init_srt_table_row(ncp_srt_table, (request_val->ncp_rec->subfunc), request_val->ncp_rec->name);
+            add_srt_table_data(ncp_srt_table, (request_val->ncp_rec->subfunc), &request_val->req_frame_time, pinfo);
+        }
+    }
+    /* By NDS verb */
+    if (request_val->ncp_rec->func==0x68) {
+        tmp_str = val_to_str_wmem(NULL, request_val->nds_request_verb, ncp_nds_verb_vals, "Unknown(%u)");
+        i = NCP_NDS_SRT_TABLE_INDEX;
+        ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+        init_srt_table_row(ncp_srt_table, (request_val->nds_request_verb), tmp_str);
+        add_srt_table_data(ncp_srt_table, (request_val->nds_request_verb), &request_val->req_frame_time, pinfo);
+        wmem_free(NULL, tmp_str);
+    }
+    if (request_val->ncp_rec->func==0x5c) {
+        tmp_str = val_to_str_wmem(NULL, request_val->req_nds_flags, sss_verb_enum, "Unknown(%u)");
+        i = NCP_SSS_SRT_TABLE_INDEX;
+        ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+        init_srt_table_row(ncp_srt_table, (request_val->req_nds_flags), tmp_str);
+        add_srt_table_data(ncp_srt_table, (request_val->req_nds_flags), &request_val->req_frame_time, pinfo);
+        wmem_free(NULL, tmp_str);
+    }
+    if (request_val->ncp_rec->func==0x5e) {
+        tmp_str = val_to_str_wmem(NULL, request_val->req_nds_flags, nmas_subverb_enum, "Unknown(%u)");
+        i = NCP_NMAS_SRT_TABLE_INDEX;
+        ncp_srt_table = g_array_index(data->srt_array, srt_stat_table*, i);
+        init_srt_table_row(ncp_srt_table, (request_val->req_nds_flags), tmp_str);
+        add_srt_table_data(ncp_srt_table, (request_val->req_nds_flags), &request_val->req_frame_time, pinfo);
+        wmem_free(NULL, tmp_str);
+    }
+    return 1;
+}
+
 
 /* Conversation Struct so we can detect NCP server sessions */
 
@@ -242,18 +488,13 @@ mncp_hash(gconstpointer v)
 static void
 mncp_init_protocol(void)
 {
-    if (mncp_rhash)
-        g_hash_table_destroy(mncp_rhash);
-
     mncp_rhash = g_hash_table_new(mncp_hash, mncp_equal);
 }
 
-/* After the sequential run, we don't need the ncp_request hash and keys
- * anymore; the lookups have already been done and the vital info
- * saved in the reply-packets' private_data in the frame_data struct. */
 static void
-mncp_postseq_cleanup(void)
+mncp_cleanup_protocol(void)
 {
+    g_hash_table_destroy(mncp_rhash);
 }
 
 static mncp_rhash_value*
@@ -295,6 +536,53 @@ mncp_hash_lookup(conversation_t *conversation, guint32 nwconnection, guint8 nwta
     return (mncp_rhash_value *)g_hash_table_lookup(mncp_rhash, &key);
 }
 
+static const char* ncp_conv_get_filter_type(conv_item_t* conv _U_, conv_filter_type_e filter)
+{
+    if ((filter == CONV_FT_SRC_PORT) || (filter == CONV_FT_DST_PORT) || (filter == CONV_FT_ANY_PORT))
+        return "ncp.connection";
+
+    return CONV_FILTER_INVALID;
+}
+
+static ct_dissector_info_t ncp_ct_dissector_info = {&ncp_conv_get_filter_type};
+
+static int
+ncp_conversation_packet(void *pct, packet_info *pinfo, epan_dissect_t *edt _U_, const void *vip)
+{
+    conv_hash_t *hash = (conv_hash_t*) pct;
+    const struct ncp_common_header *ncph=(const struct ncp_common_header *)vip;
+    guint32 connection;
+
+    connection = (ncph->conn_high * 256)+ncph->conn_low;
+    if (connection < 65535) {
+        add_conversation_table_data(hash, &pinfo->src, &pinfo->dst, connection, connection, 1, pinfo->fd->pkt_len, &pinfo->rel_ts, &pinfo->fd->abs_ts, &ncp_ct_dissector_info, PT_NCP);
+    }
+
+    return 1;
+}
+
+static const char* ncp_host_get_filter_type(hostlist_talker_t* host _U_, conv_filter_type_e filter)
+{
+    return ncp_conv_get_filter_type(NULL, filter);
+}
+
+static hostlist_dissector_info_t ncp_host_dissector_info = {&ncp_host_get_filter_type};
+
+static int
+ncp_hostlist_packet(void *pit, packet_info *pinfo, epan_dissect_t *edt _U_, const void *vip _U_)
+{
+    conv_hash_t *hash = (conv_hash_t*) pit;
+    /*const ncp_common_header *ncphdr=vip;*/
+
+    /* Take two "add" passes per packet, adding for each direction, ensures that all
+    packets are counted properly (even if address is sending to itself)
+    XXX - this could probably be done more efficiently inside hostlist_table */
+    add_hostlist_table_data(hash, &pinfo->src, 0, TRUE, 1, pinfo->fd->pkt_len, &ncp_host_dissector_info, PT_NCP);
+    add_hostlist_table_data(hash, &pinfo->dst, 0, FALSE, 1, pinfo->fd->pkt_len, &ncp_host_dissector_info, PT_NCP);
+
+    return 1;
+}
+
 /*
  * Burst packet system flags.
  */
@@ -327,7 +615,6 @@ dissect_ncp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     guint16               missing_fraglist_count = 0;
     mncp_rhash_value      *request_value = NULL;
     conversation_t        *conversation;
-    proto_item            *expert_item;
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "NCP");
     col_clear(pinfo->cinfo, COL_INFO);
@@ -657,7 +944,7 @@ dissect_ncp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         break;
 
     case NCP_ALLOCATE_SLOT:        /* Allocate Slot Request */
-        length_remaining = tvb_length_remaining(tvb, commhdr + 4);
+        length_remaining = tvb_reported_length_remaining(tvb, commhdr + 4);
         if (length_remaining > 4) {
             testvar = tvb_get_ntohl(tvb, commhdr+4);
             if (testvar == 0x4c495020) {
@@ -685,12 +972,11 @@ dissect_ncp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     switch (header.type) {
 
     case NCP_ALLOCATE_SLOT:        /* Allocate Slot Request */
-        length_remaining = tvb_length_remaining(tvb, commhdr + 4);
+        length_remaining = tvb_reported_length_remaining(tvb, commhdr + 4);
         if (length_remaining > 4) {
             testvar = tvb_get_ntohl(tvb, commhdr+4);
             if (testvar == 0x4c495020) {
-                proto_tree_add_text(ncp_tree, tvb, commhdr, -1,
-                    "Lip Echo Packet");
+                proto_tree_add_item(ncp_tree, hf_lip_echo, tvb, commhdr, -1, ENC_ASCII|ENC_NA);
                 /*break;*/
             }
         }
@@ -801,7 +1087,7 @@ dissect_ncp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
              * length of the packet, but that's arguably a
              * feature in this case.
              */
-            length_remaining = tvb_length_remaining(tvb, offset);
+            length_remaining = tvb_captured_length_remaining(tvb, offset);
             if (length_remaining > data_len)
                 length_remaining = data_len;
             if (data_len != 0) {
@@ -814,18 +1100,14 @@ dissect_ncp_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         break;
 
     case NCP_LIP_ECHO:        /* LIP Echo Packet */
-        proto_tree_add_text(ncp_tree, tvb, commhdr, -1,
-            "Lip Echo Packet");
+        proto_tree_add_item(ncp_tree, hf_lip_echo, tvb, commhdr, -1, ENC_ASCII|ENC_NA);
         break;
 
     default:
-        expert_item = proto_tree_add_text(ncp_tree, tvb, commhdr + 6, -1,
+        proto_tree_add_expert_format(ncp_tree, pinfo, &ei_ncp_type, tvb, commhdr + 6, -1,
             "%s packets not supported yet",
             val_to_str(header.type, ncp_type_vals,
                 "Unknown type (0x%04x)"));
-        if (ncp_echo_err) {
-            expert_add_info_format(pinfo, expert_item, &ei_ncp_type, "%s packets not supported yet", val_to_str(header.type, ncp_type_vals, "Unknown type (0x%04x)"));
-        }
         break;
     }
 }
@@ -837,7 +1119,7 @@ dissect_ncp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 }
 
 static guint
-get_ncp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_ncp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
     guint32 signature;
 
@@ -849,7 +1131,7 @@ get_ncp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
      */
     signature = tvb_get_ntohl(tvb, offset);
     if (signature != NCPIP_RQST && signature != NCPIP_RPLY)
-        return tvb_length_remaining(tvb, offset);
+        return tvb_captured_length_remaining(tvb, offset);
 
     /*
      * Get the length of the NCP-over-TCP packet.  Strip off the "has
@@ -863,7 +1145,7 @@ static int
 dissect_ncp_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     dissect_ncp_common(tvb, pinfo, tree, TRUE);
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 static int
@@ -871,7 +1153,7 @@ dissect_ncp_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
     tcp_dissect_pdus(tvb, pinfo, tree, ncp_desegment, 8, get_ncp_pdu_len,
                      dissect_ncp_tcp_pdu, data);
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -1056,6 +1338,7 @@ proto_register_ncp(void)
     expert_module_t* expert_ncp;
 
     proto_ncp = proto_register_protocol("NetWare Core Protocol", "NCP", "ncp");
+
     proto_register_field_array(proto_ncp, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
     expert_ncp = expert_register_protocol(proto_ncp);
@@ -1097,9 +1380,12 @@ proto_register_ncp(void)
                                    "Whether the NCP dissector should echo file open/close/oplock information to the expert table.",
                                    &ncp_echo_file);
     register_init_routine(&mncp_init_protocol);
+    register_cleanup_routine(&mncp_cleanup_protocol);
     ncp_tap.stat=register_tap("ncp_srt");
-    ncp_tap.hdr=register_tap("ncp_hdr");
-    register_postseq_cleanup_routine(&mncp_postseq_cleanup);
+    ncp_tap.hdr=register_tap("ncp");
+
+    register_conversation_table(proto_ncp, FALSE, ncp_conversation_packet, ncp_hostlist_packet);
+    register_srt_table(proto_ncp, "ncp_srt", 24, ncpstat_packet, ncpstat_init, NULL);
 }
 
 void

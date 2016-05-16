@@ -32,8 +32,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/expert.h>
 
@@ -263,7 +261,7 @@ void dissect_pw_cesopsn( tvbuff_t * tvb_original
 			{
 				tvbuff_t* tvb;
 				proto_item* item2;
-				tvb = tvb_new_subset(tvb_original, 0, PWC_SIZEOF_CW, PWC_SIZEOF_CW);
+				tvb = tvb_new_subset_length(tvb_original, 0, PWC_SIZEOF_CW);
 				item2 = proto_tree_add_item(tree2, hf_cw, tvb, 0, -1, ENC_NA);
 				pwc_item_append_cw(item2,tvb_get_ntohl(tvb, 0),FALSE);
 				{
@@ -339,7 +337,7 @@ void dissect_pw_cesopsn( tvbuff_t * tvb_original
 			{
 				proto_item* item2;
 				tvbuff_t* tvb;
-				tvb = tvb_new_subset(tvb_original, PWC_SIZEOF_CW, payload_size, payload_size);
+				tvb = tvb_new_subset_length(tvb_original, PWC_SIZEOF_CW, payload_size);
 				item2 = proto_tree_add_item(tree2, hf_payload, tvb, 0, -1, ENC_NA);
 				pwc_item_append_text_n_items(item2,(int)payload_size,"octet");
 				if (properties & PWC_PAY_SIZE_BAD)
@@ -446,7 +444,6 @@ void proto_register_pw_cesopsn(void)
 	proto_register_subtree_array(ett_array, array_length(ett_array));
 	expert_pwcesopsn = expert_register_protocol(proto);
 	expert_register_field_array(expert_pwcesopsn, ei, array_length(ei));
-	register_dissector("pw_cesopsn_mpls", dissect_pw_cesopsn_mpls, proto);
 	register_dissector("pw_cesopsn_udp", dissect_pw_cesopsn_udp, proto);
 	return;
 }
@@ -454,9 +451,28 @@ void proto_register_pw_cesopsn(void)
 
 void proto_reg_handoff_pw_cesopsn(void)
 {
+	dissector_handle_t pw_cesopsn_mpls_handle;
+
 	data_handle = find_dissector("data");
 	pw_padding_handle = find_dissector("pw_padding");
-	dissector_add_uint("mpls.label", MPLS_LABEL_INVALID, find_dissector("pw_cesopsn_mpls"));
-	dissector_add_handle("udp.port", find_dissector("pw_cesopsn_udp")); /* For Decode-As */
+
+	/* For Decode As */
+	pw_cesopsn_mpls_handle = create_dissector_handle( dissect_pw_cesopsn_mpls, proto );
+	dissector_add_for_decode_as("mpls.label", pw_cesopsn_mpls_handle);
+
+	dissector_add_for_decode_as("udp.port", find_dissector("pw_cesopsn_udp"));
 	return;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

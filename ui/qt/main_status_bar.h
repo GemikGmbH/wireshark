@@ -22,15 +22,22 @@
 #ifndef MAIN_STATUS_BAR_H
 #define MAIN_STATUS_BAR_H
 
-#include "wireshark_application.h"
-#include "label_stack.h"
-#include "progress_bar.h"
-
-#include <QStatusBar>
-#include <QLabel>
-#include <QMenu>
+#include "config.h"
 
 #include "cfile.h"
+
+#include "capchild/capture_session.h"
+
+#include "label_stack.h"
+#include "progress_frame.h"
+#include "wireshark_application.h"
+
+#include <QLabel>
+#include <QMenu>
+#include <QStatusBar>
+
+class CaptureFile;
+class QToolButton;
 
 class MainStatusBar : public QStatusBar
 {
@@ -38,13 +45,15 @@ class MainStatusBar : public QStatusBar
 public:
     explicit MainStatusBar(QWidget *parent = 0);
     void showExpert();
-    void hideExpert();
+    void captureFileClosing();
     void expertUpdate();
+    void setFileName(CaptureFile &cf);
 
 private:
-    QLabel expert_status_;
+    QToolButton *expert_button_;
+    QToolButton *comment_button_;
     LabelStack info_status_;
-    ProgressBar progress_bar_;
+    ProgressFrame progress_frame_;
     LabelStack packet_status_;
     LabelStack profile_status_;
     capture_file *cap_file_;
@@ -54,24 +63,36 @@ private:
     QAction *delete_action_;
 
 signals:
+    void showExpertInfo();
+    void editCaptureComment();
+    void stopLoading();
 
 public slots:
     void setCaptureFile(capture_file *cf);
-    void pushTemporaryStatus(QString &message);
+    void pushTemporaryStatus(const QString &message);
     void popTemporaryStatus();
-    void pushFileStatus(QString &message);
+    void pushFileStatus(const QString &message, const QString &messagetip = QString());
     void popFileStatus();
-    void pushFieldStatus(QString &message);
+    void pushFieldStatus(const QString &message);
     void popFieldStatus();
-    void pushFilterStatus(QString &message);
+    void pushByteStatus(const QString &message);
+    void popByteStatus();
+    void pushFilterStatus(const QString &message);
     void popFilterStatus();
     void pushProfileName();
+    void pushBusyStatus(const QString &message, const QString &messagetip = QString());
+    void popBusyStatus();
+    void pushProgressStatus(const QString &message, bool animate, bool terminate_is_stop = false, gboolean *stop_flag = NULL);
+    void updateProgressStatus(int value);
+    void popProgressStatus();
+
     void updateCaptureStatistics(capture_session * cap_session);
+    void updateCaptureFixedStatistics(capture_session * cap_session);
 
 private slots:
-    void pushPacketStatus(QString &message);
+    void pushPacketStatus(const QString &message);
     void popPacketStatus();
-    void pushProfileStatus(QString &message);
+    void pushProfileStatus(const QString &message);
     void popProfileStatus();
     void toggleBackground(bool enabled);
     void switchToProfile();

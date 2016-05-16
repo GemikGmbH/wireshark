@@ -68,8 +68,7 @@
 #define	AIRPDCAP_WPA_PASSPHRASE_MAX_LEN	63	/* null-terminated string, the actual length of the storage is 64	*/
 #define	AIRPDCAP_WPA_SSID_MIN_LEN			0
 #define	AIRPDCAP_WPA_SSID_MAX_LEN			32
-#define	AIRPDCAP_WPA_PSK_LEN				64
-#define	AIRPDCAP_WPA_PMK_LEN				32
+#define	AIRPDCAP_WPA_PSK_LEN				32
 /*																										*/
 /*																										*/
 /******************************************************************************/
@@ -149,11 +148,9 @@ typedef struct _AIRPDCAP_KEY_ITEM {
 		 * three fields and necessary fields will be automatically
 		 * calculated.
 		 */
-		union AIRPDCAP_KEY_ITEMDATA_WPA {
-
+		struct AIRPDCAP_KEY_ITEMDATA_WPA {
 			UCHAR Psk[AIRPDCAP_WPA_PSK_LEN];
-
-			UCHAR Pmk[AIRPDCAP_WPA_PMK_LEN];
+			UCHAR Ptk[AIRPDCAP_WPA_PTK_LEN];
 		} Wpa;
 	} KeyData;
 
@@ -214,7 +211,7 @@ typedef struct _AIRPDCAP_KEYS_COLLECTION {
  * - AIRPDCAP_KEY_TYPE_WPA_PSK (WPA + 256-bit raw key)
  * @return A pointer to a freshly-g_malloc()ed decryption_key_t struct on
  *   success, or NULL on failure.
- * @see get_key_string()
+ * @see get_key_string(), free_key_string()
  */
 WS_DLL_PUBLIC
 decryption_key_t*
@@ -230,6 +227,15 @@ parse_key_string(gchar* key_string, guint8 key_type);
 WS_DLL_PUBLIC
 gchar*
 get_key_string(decryption_key_t* dk);
+
+/**
+ * Releases memory associated with a given decryption_key_t struct.
+ * @param dk [IN] Pointer to the key to be freed
+ * @see parse_key_string()
+ */
+WS_DLL_PUBLIC
+void
+free_key_string(decryption_key_t *dk);
 
 /******************************************************************************/
 

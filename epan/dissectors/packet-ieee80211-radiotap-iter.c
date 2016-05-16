@@ -26,9 +26,9 @@
 
 #include "config.h"
 
-#include <stddef.h>
 #include <errno.h>
-#include <glib.h>
+
+#include <epan/packet.h>
 #include <wsutil/pint.h>
 
 #define le16_to_cpu		GINT16_FROM_LE
@@ -156,11 +156,11 @@ int ieee80211_radiotap_iterator_init(
 #endif
 
 	/* find payload start allowing for extended bitmap(s) */
-	if (iterator->_bitmap_shifter & (1<<IEEE80211_RADIOTAP_EXT)) {
+	if (iterator->_bitmap_shifter & (1U << IEEE80211_RADIOTAP_EXT)) {
 		if (!ITERATOR_VALID(iterator, sizeof(guint32)))
 			return -EINVAL;
 		while (get_unaligned_le32(iterator->_arg) &
-					(1 << IEEE80211_RADIOTAP_EXT)) {
+					(1U << IEEE80211_RADIOTAP_EXT)) {
 			iterator->_arg += sizeof(guint32);
 
 			/*

@@ -22,7 +22,7 @@
 #ifndef PREFERENCES_DIALOG_H
 #define PREFERENCES_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
@@ -30,9 +30,12 @@
 
 #include <epan/prefs.h>
 
+#include "wireshark_application.h"
+
 #include <QDialog>
 #include <QTreeWidgetItem>
-#include <QComboBox>
+
+class QComboBox;
 
 extern pref_t *prefFromPrefPtr(void *pref_ptr);
 extern guint fill_advanced_prefs(module_t *module, gpointer root_ptr);
@@ -46,8 +49,20 @@ class PreferencesDialog : public QDialog
     Q_OBJECT
 
 public:
+    // This, prefsTree, and stackedWidget must all correspond to each other.
+    enum PreferencesPane {
+        ppAppearance,
+        ppLayout,
+        ppColumn,
+        ppFontAndColor,
+        ppCapture,
+        ppFilterExpressions
+    };
+
     explicit PreferencesDialog(QWidget *parent = 0);
     ~PreferencesDialog();
+    void setPane(PreferencesPane start_pane);
+    void setPane(const QString module_name);
 
 protected:
     void showEvent(QShowEvent *evt);
@@ -58,6 +73,7 @@ private:
     void updateItem(QTreeWidgetItem &item);
 
     Ui::PreferencesDialog *pd_ui_;
+    QHash<PreferencesDialog::PreferencesPane, QTreeWidgetItem *>prefs_pane_to_item_;
     int cur_pref_type_;
     QLineEdit *cur_line_edit_;
     QString saved_string_pref_;

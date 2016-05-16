@@ -32,8 +32,7 @@
 #include <epan/prefs.h>
 #include <epan/to_str.h>
 
-#include "../capture_ui_utils.h"
-
+#include "ui/capture_ui_utils.h"
 #include "ui/capture_globals.h"
 #include "ui/iface_lists.h"
 #include "../log.h"
@@ -55,6 +54,37 @@ if_list_comparator_alph(const void *first_arg, const void *second_arg)
     }
 }
 
+static void
+fill_from_ifaces (interface_t *device)
+{
+    interface_options interface_opts;
+    guint i;
+
+    for (i = 0; i < global_capture_opts.ifaces->len; i++) {
+        interface_opts = g_array_index(global_capture_opts.ifaces, interface_options, i);
+        if (strcmp(interface_opts.name, device->name) != 0) {
+            continue;
+        }
+
+#if defined(HAVE_PCAP_CREATE)
+        device->buffer = interface_opts.buffer_size;
+        device->monitor_mode_enabled = interface_opts.monitor_mode;
+#endif
+        device->pmode = interface_opts.promisc_mode;
+        device->has_snaplen = interface_opts.has_snaplen;
+        device->snaplen = interface_opts.snaplen;
+        device->cfilter = g_strdup(interface_opts.cfilter);
+        if (interface_opts.linktype != -1) {
+            device->active_dlt = interface_opts.linktype;
+        }
+        if (!device->selected) {
+            device->selected = TRUE;
+            global_capture_opts.num_selected++;
+        }
+        return;
+    }
+}
+
 /*
  * Fetch the list of local interfaces with capture_interface_list()
  * and set the list of "all interfaces" in *capture_opts to include
@@ -64,14 +94,13 @@ void
 scan_local_interfaces(void (*update_cb)(void))
 {
     GList             *if_entry, *lt_entry, *if_list;
-    if_info_t         *if_info, *temp;
-    char              *if_string;
+    if_info_t         *if_info, temp;
     gchar             *descr;
     if_capabilities_t *caps=NULL;
     gint              linktype_count;
     gboolean          monitor_mode;
     GSList            *curr_addr;
-    int               ips = 0, i, err;
+    int               ips = 0, i;
     guint             count = 0, j;
     if_addr_t         *addr, *temp_addr;
     link_row          *link = NULL;
@@ -87,12 +116,34 @@ scan_local_interfaces(void (*update_cb)(void))
             device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
             if (device.local && device.type != IF_PIPE && device.type != IF_STDIN) {
                 global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
+
+                if (device.selected) {
+                    global_capture_opts.num_selected--;
+                    /* if device was to be used after this statement,
+                       we should set device.selected=FALSE here */
+                }
+
+                /* if we remove an interface from all_interfaces,
+                   it must also be removed from ifaces if it is present there
+                   otherwise, it would be re-added to all_interfaces below
+                   (interfaces set with -i on the command line are initially present in ifaces but not
+                   in all_interfaces, but these interfaces are not removed here) */
+                for (j = 0; j < global_capture_opts.ifaces->len; j++) {
+                    interface_opts = g_array_index(global_capture_opts.ifaces, interface_options, j);
+                    if (strcmp(device.name, interface_opts.name) == 0) {
+                        /* 2nd param must be the index of ifaces (not all_ifaces) */
+                        capture_opts_del_iface(&global_capture_opts, j);
+                    }
+                }
             }
         }
     }
 
     /* Scan through the list and build a list of strings to display. */
-    if_list = capture_interface_list(&err, NULL, update_cb);
+    g_free(global_capture_opts.ifaces_err_info);
+    if_list = capture_interface_list(&global_capture_opts.ifaces_err,
+                                     &global_capture_opts.ifaces_err_info,
+                                     update_cb);
     count = 0;
     for (if_entry = if_list; if_entry != NULL; if_entry = g_list_next(if_entry)) {
         if_info = (if_info_t *)if_entry->data;
@@ -109,57 +160,27 @@ scan_local_interfaces(void (*update_cb)(void))
         }
         device.hidden = FALSE;
         device.locked = FALSE;
-        temp = (if_info_t *)g_malloc0(sizeof(if_info_t));
-        temp->name = g_strdup(if_info->name);
-        temp->friendly_name = g_strdup(if_info->friendly_name);
-        temp->vendor_description = g_strdup(if_info->vendor_description);
-        temp->loopback = if_info->loopback;
-        temp->type = if_info->type;
+        memset(&temp, 0, sizeof(temp));
+        temp.name = g_strdup(if_info->name);
+        temp.friendly_name = g_strdup(if_info->friendly_name);
+        temp.vendor_description = g_strdup(if_info->vendor_description);
+        temp.loopback = if_info->loopback;
+        temp.type = if_info->type;
+#ifdef HAVE_EXTCAP
+        temp.extcap = g_strdup(if_info->extcap);
+#endif
         /* Is this interface hidden and, if so, should we include it anyway? */
 
-        /* Do we have a user-supplied description? */
         descr = capture_dev_user_descr_find(if_info->name);
-        if (descr != NULL) {
-            /* Yes, we have a user-supplied description; use it. */
-            if_string = g_strdup_printf("%s: %s", descr, if_info->name);
-            g_free(descr);
-        } else {
-            /* No, we don't have a user-supplied description; did we get
-            one from the OS or libpcap? */
-            if (if_info->friendly_name != NULL) {
-                /* We have a friendly name from the OS, use it */
-#ifdef _WIN32
-                /*
-                 * On Windows, if we have a friendly name, just show it,
-                 * don't show the name, as that's a string made out of
-                 * the device GUID, and not at all friendly.
-                 */
-                if_string = g_strdup_printf("%s", if_info->friendly_name);
-#else
-		/*
-		 * On UN*X, if we have a friendly name, show it along
-		 * with the interface name; the interface name is short
-		 * and somewhat friendly, and many UN*X users are used
-		 * to interface names, so we should show it.
-		 */
-                if_string = g_strdup_printf("%s: %s", if_info->friendly_name, if_info->name);
-#endif
-            } else if (if_info->vendor_description != NULL) {
-                /* We have a device description from libpcap - use it. */
-                if_string = g_strdup_printf("%s: %s", if_info->vendor_description, if_info->name);
-            } else {
-                /* No. */
-                if_string = g_strdup(if_info->name);
-            }
-        }
-        device.display_name = if_string;
+        device.display_name = get_iface_display_name(descr, if_info);
+        g_free(descr);
         device.selected = FALSE;
         if (prefs_is_capture_device_hidden(if_info->name)) {
             device.hidden = TRUE;
         }
         device.type = if_info->type;
         monitor_mode = prefs_capture_device_monitor_mode(if_info->name);
-        caps = capture_get_if_capabilities(if_info->name, monitor_mode, NULL, update_cb);
+        caps = capture_get_if_capabilities(if_info->name, monitor_mode, NULL, NULL, update_cb);
         for (; (curr_addr = g_slist_nth(if_info->addrs, ips)) != NULL; ips++) {
             temp_addr = (if_addr_t *)g_malloc0(sizeof(if_addr_t));
             if (ips != 0) {
@@ -167,26 +188,33 @@ scan_local_interfaces(void (*update_cb)(void))
             }
             addr = (if_addr_t *)curr_addr->data;
             if (addr) {
+                address addr_str;
+                char* temp_addr_str = NULL;
                 temp_addr->ifat_type = addr->ifat_type;
                 switch (addr->ifat_type) {
                     case IF_AT_IPv4:
                         temp_addr->addr.ip4_addr = addr->addr.ip4_addr;
-                        g_string_append(ip_str, ip_to_str((guint8 *)&addr->addr.ip4_addr));
+                        SET_ADDRESS(&addr_str, AT_IPv4, 4, &addr->addr.ip4_addr);
+                        temp_addr_str = address_to_str(NULL, &addr_str);
+                        g_string_append(ip_str, temp_addr_str);
                         break;
                     case IF_AT_IPv6:
                         memcpy(temp_addr->addr.ip6_addr, addr->addr.ip6_addr, sizeof(addr->addr));
-                        g_string_append(ip_str,  ip6_guint8_to_str(addr->addr.ip6_addr));
+                        SET_ADDRESS(&addr_str, AT_IPv6, 16, addr->addr.ip6_addr);
+                        temp_addr_str = address_to_str(NULL, &addr_str);
+                        g_string_append(ip_str, temp_addr_str);
                         break;
                     default:
                         /* In case we add non-IP addresses */
                         break;
                 }
+                wmem_free(NULL, temp_addr_str);
             } else {
                 g_free(temp_addr);
                 temp_addr = NULL;
             }
             if (temp_addr) {
-                temp->addrs = g_slist_append(temp->addrs, temp_addr);
+                temp.addrs = g_slist_append(temp.addrs, temp_addr);
             }
         }
 #ifdef HAVE_PCAP_REMOTE
@@ -213,28 +241,10 @@ scan_local_interfaces(void (*update_cb)(void))
             device.monitor_mode_supported = caps->can_set_rfmon;
 #endif
             /*
-             * If there's a preference for the link-layer header type for
-             * this interface, use it.  If not, use the all-interface
-             * default; if that's not set on the command line, that will
-             * be -1, meaning "use per-interface defaults", otherwise
-             * we'll fail if it's not one of the types the interface
-             * supports.
-             */
-            if ((device.active_dlt = capture_dev_user_linktype_find(if_info->name)) == -1) {
-                device.active_dlt = global_capture_opts.default_options.linktype;
-            }
-
-            /*
              * Process the list of link-layer header types.
-             * If the active link-layer header type wasn't set from a
-             * preference or a global option (meaning it's -1), default
-             * to the first link-layer header type in the list.
              */
             for (lt_entry = caps->data_link_types; lt_entry != NULL; lt_entry = g_list_next(lt_entry)) {
                 data_link_info = (data_link_info_t *)lt_entry->data;
-                if (linktype_count == 0 && device.active_dlt == -1) {
-                    device.active_dlt = data_link_info->dlt;
-                }
                 link = (link_row *)g_malloc(sizeof(link_row));
                 if (data_link_info->description != NULL) {
                     link->dlt = data_link_info->dlt;
@@ -246,6 +256,11 @@ scan_local_interfaces(void (*update_cb)(void))
                 device.links = g_list_append(device.links, link);
                 linktype_count++;
             }
+
+            /*
+             * Set the active DLT for the device appropriately.
+             */
+            set_active_dlt(&device, global_capture_opts.default_options.linktype);
         } else {
 #if defined(HAVE_PCAP_CREATE)
             device.monitor_mode_enabled = FALSE;
@@ -256,47 +271,29 @@ scan_local_interfaces(void (*update_cb)(void))
         device.addresses = g_strdup(ip_str->str);
         device.no_addresses = ips;
         device.local = TRUE;
-        device.if_info = *temp;
+        device.if_info = temp;
         device.last_packets = 0;
-        if ((device.pmode = capture_dev_user_pmode_find(if_info->name)) == -1) {
+        if (!capture_dev_user_pmode_find(if_info->name, &device.pmode)) {
             device.pmode = global_capture_opts.default_options.promisc_mode;
         }
-        if ((device.has_snaplen = capture_dev_user_hassnap_find(if_info->name)) == -1) {
+        if (!capture_dev_user_snaplen_find(if_info->name, &device.has_snaplen,
+                                           &device.snaplen)) {
             device.has_snaplen = global_capture_opts.default_options.has_snaplen;
-        }
-        if (capture_dev_user_snaplen_find(if_info->name) == -1) {
             device.snaplen = global_capture_opts.default_options.snaplen;
-        } else {
-            device.snaplen = (guint)capture_dev_user_snaplen_find(if_info->name);
         }
         device.cfilter      = g_strdup(global_capture_opts.default_options.cfilter);
-#if defined(_WIN32) || defined(HAVE_PCAP_CREATE)
+#ifdef CAN_SET_CAPTURE_BUFFER_SIZE
         if ((device.buffer = capture_dev_user_buffersize_find(if_info->name)) == -1) {
             device.buffer = global_capture_opts.default_options.buffer_size;
         }
 #endif
 
-        if (global_capture_opts.ifaces->len > 0) {
-            for (j = 0; j < global_capture_opts.ifaces->len; j++) {
-                interface_opts = g_array_index(global_capture_opts.ifaces, interface_options, j);
-                if (strcmp(interface_opts.name, device.name) == 0) {
-#if defined(HAVE_PCAP_CREATE)
-                    device.buffer = interface_opts.buffer_size;
-                    device.monitor_mode_enabled = interface_opts.monitor_mode;
+        fill_from_ifaces(&device);
+
+#ifdef HAVE_EXTCAP
+        /* Extcap devices start with no cached args */
+        device.external_cap_args_settings = NULL;
 #endif
-                    device.pmode = interface_opts.promisc_mode;
-                    device.has_snaplen = interface_opts.has_snaplen;
-                    device.snaplen = interface_opts.snaplen;
-                    device.cfilter = g_strdup(interface_opts.cfilter);
-                    if (interface_opts.linktype != -1) {
-                        device.active_dlt = interface_opts.linktype;
-                    }
-                    device.selected = TRUE;
-                    global_capture_opts.num_selected++;
-                    break;
-                }
-            }
-        }
         if (global_capture_opts.all_ifaces->len <= count) {
             g_array_append_val(global_capture_opts.all_ifaces, device);
             count = global_capture_opts.all_ifaces->len;
@@ -324,11 +321,13 @@ scan_local_interfaces(void (*update_cb)(void))
         }
         if (!found) {  /* new interface, maybe a pipe */
             device.name         = g_strdup(interface_opts.name);
-            device.display_name = g_strdup_printf("%s: %s", device.name, interface_opts.descr);
+            device.display_name = interface_opts.descr ?
+                g_strdup_printf("%s: %s", device.name, interface_opts.descr) :
+                g_strdup_printf("%s", device.name);
             device.hidden       = FALSE;
             device.selected     = TRUE;
             device.type         = IF_PIPE;
-#if defined(_WIN32) || defined(HAVE_PCAP_CREATE)
+#ifdef CAN_SET_CAPTURE_BUFFER_SIZE
             device.buffer = interface_opts.buffer_size;
 #endif
 #if defined(HAVE_PCAP_CREATE)
@@ -351,6 +350,9 @@ scan_local_interfaces(void (*update_cb)(void))
             device.if_info.vendor_description = g_strdup(interface_opts.descr);
             device.if_info.addrs = NULL;
             device.if_info.loopback = FALSE;
+#ifdef HAVE_EXTCAP
+            device.if_info.extcap = g_strdup(interface_opts.extcap);
+#endif
 
             g_array_append_val(global_capture_opts.all_ifaces, device);
             global_capture_opts.num_selected++;
@@ -366,24 +368,24 @@ scan_local_interfaces(void (*update_cb)(void))
 void
 fill_in_local_interfaces(void(*update_cb)(void))
 {
-	GTimeVal start_time;
-	GTimeVal end_time;
-	float elapsed;
-	static gboolean initialized = FALSE;
+    GTimeVal start_time;
+    GTimeVal end_time;
+    float elapsed;
+    static gboolean initialized = FALSE;
 
-	/* record the time we started, so we can log total time later */
-	g_get_current_time(&start_time);
-	g_log(LOG_DOMAIN_MAIN, G_LOG_LEVEL_INFO, "fill_in_local_interfaces() starts");
+    /* record the time we started, so we can log total time later */
+    g_get_current_time(&start_time);
+    g_log(LOG_DOMAIN_MAIN, G_LOG_LEVEL_INFO, "fill_in_local_interfaces() starts");
 
     if (!initialized) {
-		/* do the actual work */
+        /* do the actual work */
         scan_local_interfaces(update_cb);
         initialized = TRUE;
     }
-	/* log how long it took */
+    /* log how long it took */
     g_get_current_time(&end_time);
     elapsed = (float) ((end_time.tv_sec - start_time.tv_sec) +
-                        ((end_time.tv_usec - start_time.tv_usec) / 1e6));
+                       ((end_time.tv_usec - start_time.tv_usec) / 1e6));
 
     g_log(LOG_DOMAIN_MAIN, G_LOG_LEVEL_INFO, "fill_in_local_interfaces() ends, taking %.3fs", elapsed);
 }
@@ -418,6 +420,28 @@ hide_interface(gchar* new_hide)
         if (!found) {
             device.hidden = FALSE;
         }
+        global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
+        g_array_insert_val(global_capture_opts.all_ifaces, i, device);
+    }
+}
+
+void
+update_local_interfaces(void)
+{
+    interface_t device;
+    gchar *descr;
+    guint i;
+
+    for (i = 0; i < global_capture_opts.all_ifaces->len; i++) {
+        device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
+        device.type = capture_dev_user_linktype_find(device.name);
+        g_free (device.display_name);
+        descr = capture_dev_user_descr_find(device.name);
+        device.display_name = get_iface_display_name(descr, &device.if_info);
+        g_free (descr);
+        device.hidden = prefs_is_capture_device_hidden(device.name);
+        fill_from_ifaces(&device);
+
         global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
         g_array_insert_val(global_capture_opts.all_ifaces, i, device);
     }

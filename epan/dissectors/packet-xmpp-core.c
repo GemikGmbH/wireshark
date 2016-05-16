@@ -24,26 +24,16 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include <epan/conversation.h>
-#include <epan/expert.h>
 
-#include <epan/dissectors/packet-xml.h>
-
-#include <packet-xmpp-utils.h>
-#include <packet-xmpp.h>
-#include <packet-xmpp-core.h>
-#include <packet-xmpp-jingle.h>
-#include <packet-xmpp-other.h>
-#include <packet-xmpp-gtalk.h>
-#include <packet-xmpp-conference.h>
-
-#include <epan/strutil.h>
-
-#include "epan/tvbparse.h"
+#include "packet-xmpp.h"
+#include "packet-xmpp-core.h"
+#include "packet-xmpp-jingle.h"
+#include "packet-xmpp-other.h"
+#include "packet-xmpp-gtalk.h"
+#include "packet-xmpp-conference.h"
+#include "packet-ssl-utils.h"
 
 tvbparse_wanted_t *want_ignore;
 tvbparse_wanted_t *want_stream_end_tag;
@@ -594,7 +584,8 @@ xmpp_failure_text(proto_tree *tree, tvbuff_t *tvb, xmpp_element_t *element)
 {
     xmpp_attr_t *lang = xmpp_get_attr(element,"xml:lang");
 
-    proto_tree_add_text(tree, tvb, element->offset, element->length, "TEXT%s: %s",
+    proto_tree_add_string_format(tree, hf_xmpp_failure_text, tvb, element->offset, element->length,
+            element->data?element->data->value:"", "TEXT%s: %s",
             lang?wmem_strdup_printf(wmem_packet_scope(), "(%s)",lang->value):"",
             element->data?element->data->value:"");
 }
@@ -603,7 +594,7 @@ void
 xmpp_xml_header(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo _U_, xmpp_element_t *packet)
 {
     col_add_fstr(pinfo->cinfo, COL_INFO, "XML ");
-    proto_tree_add_text(tree, tvb, packet->offset, packet->length, "XML HEADER VER. %s","1.0");
+    proto_tree_add_string(tree, hf_xmpp_xml_header_version, tvb, packet->offset, packet->length, "1.0");
 }
 
 void
@@ -643,7 +634,7 @@ xmpp_stream_close(proto_tree *tree, tvbuff_t *tvb, packet_info* pinfo)
 
     if((elem = tvbparse_get(tt,want_stream_end_tag))!=NULL)
     {
-        proto_tree_add_text(tree, tvb, elem->offset, elem->len, "STREAM END");
+        proto_tree_add_item(tree, hf_xmpp_stream_end, tvb, elem->offset, elem->len, ENC_NA);
         col_add_fstr(pinfo->cinfo, COL_INFO, "STREAM END");
 
         return TRUE;
@@ -674,7 +665,6 @@ xmpp_features(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_element_
 static void
 xmpp_features_mechanisms(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_element_t *packet)
 {
-    proto_item *mechanisms_item;
     proto_tree *mechanisms_tree;
 
     xmpp_attr_info attrs_info [] = {
@@ -685,8 +675,7 @@ xmpp_features_mechanisms(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xm
         {NAME, "mechanism", xmpp_simple_cdata_elem, MANY},
     };
 
-    mechanisms_item = proto_tree_add_text(tree, tvb, packet->offset, packet->length, "MECHANISMS");
-    mechanisms_tree = proto_item_add_subtree(mechanisms_item, ett_xmpp_features_mechanisms);
+    mechanisms_tree = proto_tree_add_subtree(tree, tvb, packet->offset, packet->length, ett_xmpp_features_mechanisms, NULL, "MECHANISMS");
 
     xmpp_display_attrs(mechanisms_tree, packet, pinfo, tvb, attrs_info, array_length(attrs_info));
     xmpp_display_elems(mechanisms_tree, packet, pinfo, tvb, elems_info, array_length(elems_info));
@@ -725,6 +714,7 @@ xmpp_proceed(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo,
 {
     proto_item *proceed_item;
     proto_tree *proceed_tree;
+    guint32 ssl_proceed;
 
     xmpp_attr_info attrs_info [] = {
         {"xmlns", &hf_xmpp_xmlns, TRUE, TRUE, NULL, NULL},
@@ -739,11 +729,11 @@ xmpp_proceed(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo,
         expert_add_info(pinfo, proceed_item, &ei_xmpp_starttls_missing);
     }
 
-    if (xmpp_info->ssl_proceed && xmpp_info->ssl_proceed != pinfo->fd->num) {
-        expert_add_info_format(pinfo, proceed_item, &ei_xmpp_proceed_already_in_frame, "Already saw PROCEED in frame %u", xmpp_info->ssl_proceed);
-    }
-    else {
-        xmpp_info->ssl_proceed = pinfo->fd->num;
+    ssl_proceed =
+        ssl_starttls_ack(find_dissector("ssl"), pinfo, find_dissector("xmpp"));
+    if (ssl_proceed > 0 && ssl_proceed != pinfo->fd->num) {
+        expert_add_info_format(pinfo, proceed_item, &ei_xmpp_proceed_already_in_frame,
+                               "Already saw PROCEED in frame %u", ssl_proceed);
     }
 
     xmpp_display_attrs(proceed_tree, packet, pinfo, tvb, attrs_info, array_length(attrs_info));

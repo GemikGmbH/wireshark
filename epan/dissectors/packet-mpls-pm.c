@@ -28,10 +28,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <packet-ip.h>
+#include "packet-ip.h"
 
 void proto_register_mpls_pm(void);
 void proto_reg_handoff_mpls_pm(void);
@@ -97,7 +95,15 @@ static int hf_mpls_pm_timestamp1_r_ntp = -1;
 static int hf_mpls_pm_timestamp1_q_ptp = -1;
 static int hf_mpls_pm_timestamp1_r_ptp = -1;
 static int hf_mpls_pm_timestamp1_unk = -1;
-static int hf_mpls_pm_timestamp2_null = -1;
+static int hf_mpls_pm_timestamp2_q_null = -1;
+static int hf_mpls_pm_timestamp2_r_null = -1;
+static int hf_mpls_pm_timestamp2_q_seq = -1;
+static int hf_mpls_pm_timestamp2_r_seq = -1;
+static int hf_mpls_pm_timestamp2_q_ntp = -1;
+static int hf_mpls_pm_timestamp2_r_ntp = -1;
+static int hf_mpls_pm_timestamp2_q_ptp = -1;
+static int hf_mpls_pm_timestamp2_r_ptp = -1;
+static int hf_mpls_pm_timestamp2_unk = -1;
 static int hf_mpls_pm_timestamp3_null = -1;
 static int hf_mpls_pm_timestamp3_r_null = -1;
 static int hf_mpls_pm_timestamp3_r_seq = -1;
@@ -110,12 +116,6 @@ static int hf_mpls_pm_timestamp4_r_seq = -1;
 static int hf_mpls_pm_timestamp4_r_ntp = -1;
 static int hf_mpls_pm_timestamp4_r_ptp = -1;
 static int hf_mpls_pm_timestamp4_unk = -1;
-
-static dissector_handle_t mpls_pm_dlm_handle;
-static dissector_handle_t mpls_pm_ilm_handle;
-static dissector_handle_t mpls_pm_dm_handle;
-static dissector_handle_t mpls_pm_dlm_dm_handle;
-static dissector_handle_t mpls_pm_ilm_dm_handle;
 
 /*
  * FF: please keep this list in sync with
@@ -271,7 +271,9 @@ mpls_pm_dissect_timestamp(tvbuff_t *tvb, proto_tree *pm_tree,
     if (query) {
         /*
          * FF: when a query is sent from A, Timestamp 1 is set to T1 and the
-         * other timestamp fields are set to 0.
+         * other timestamp fields are set to 0.  Moreover, it might be useful
+         * to decode Timestamp 2 (set to T2) as well because data can be captured
+         * somewhere at the responder box after the timestamp has been taken.
          */
         switch (i) {
         case 1:
@@ -309,9 +311,34 @@ mpls_pm_dissect_timestamp(tvbuff_t *tvb, proto_tree *pm_tree,
             }
             break;
         case 2:
-            proto_tree_add_item(pm_tree,
-                                hf_mpls_pm_timestamp2_null, tvb,
-                                offset, 8, ENC_BIG_ENDIAN);
+            switch (qtf) {
+            case MPLS_PM_TSF_NULL:
+                proto_tree_add_item(pm_tree,
+                                    hf_mpls_pm_timestamp2_q_null, tvb,
+                                    offset, 8, ENC_BIG_ENDIAN);
+                break;
+            case MPLS_PM_TSF_SEQ:
+                proto_tree_add_item(pm_tree, hf_mpls_pm_timestamp2_q_seq, tvb,
+                                    offset, 8, ENC_BIG_ENDIAN);
+                break;
+            case MPLS_PM_TSF_NTP:
+                proto_tree_add_item(pm_tree, hf_mpls_pm_timestamp2_q_ntp, tvb,
+                                    offset, 8, ENC_TIME_NTP|ENC_BIG_ENDIAN);
+                break;
+            case MPLS_PM_TSF_PTP:
+                {
+                    nstime_t ts;
+                    ts.secs = tvb_get_ntohl(tvb, offset);
+                    ts.nsecs = tvb_get_ntohl(tvb, offset + 4);
+                    proto_tree_add_time(pm_tree, hf_mpls_pm_timestamp2_q_ptp,
+                                        tvb, offset, 8, &ts);
+                }
+                break;
+            default:
+                proto_tree_add_item(pm_tree, hf_mpls_pm_timestamp2_unk, tvb,
+                                    offset, 8, ENC_BIG_ENDIAN);
+                break;
+            }
             break;
         case 3:
             proto_tree_add_item(pm_tree,
@@ -331,7 +358,9 @@ mpls_pm_dissect_timestamp(tvbuff_t *tvb, proto_tree *pm_tree,
         /*
          * FF: when B transmits the response, Timestamp 1 is set to T3,
          * Timestamp 3 is set to T1 and Timestamp 4 is set to T2.  Timestamp 2
-         * is set to 0.
+         * is set to 0.  Moreover, it might be useful to decode Timestamp 2
+         * (set to T4) as well because data can be captured somewhere at the
+         * querier box after the timestamp has been taken.
          */
         switch (i) {
         case 1:
@@ -369,9 +398,34 @@ mpls_pm_dissect_timestamp(tvbuff_t *tvb, proto_tree *pm_tree,
             }
             break;
         case 2:
-            proto_tree_add_item(pm_tree,
-                                hf_mpls_pm_timestamp2_null, tvb,
-                                offset, 8, ENC_BIG_ENDIAN);
+            switch (rtf) {
+            case MPLS_PM_TSF_NULL:
+                proto_tree_add_item(pm_tree,
+                                    hf_mpls_pm_timestamp2_r_null, tvb,
+                                    offset, 8, ENC_BIG_ENDIAN);
+                break;
+            case MPLS_PM_TSF_SEQ:
+                proto_tree_add_item(pm_tree, hf_mpls_pm_timestamp2_r_seq, tvb,
+                                    offset, 8, ENC_BIG_ENDIAN);
+                break;
+            case MPLS_PM_TSF_NTP:
+                proto_tree_add_item(pm_tree, hf_mpls_pm_timestamp2_r_ntp, tvb,
+                                    offset, 8, ENC_TIME_NTP|ENC_BIG_ENDIAN);
+                break;
+            case MPLS_PM_TSF_PTP:
+                {
+                    nstime_t ts;
+                    ts.secs = tvb_get_ntohl(tvb, offset);
+                    ts.nsecs = tvb_get_ntohl(tvb, offset + 4);
+                    proto_tree_add_time(pm_tree, hf_mpls_pm_timestamp2_r_ptp,
+                                        tvb, offset, 8, &ts);
+                }
+                break;
+            default:
+                proto_tree_add_item(pm_tree, hf_mpls_pm_timestamp2_unk, tvb,
+                                    offset, 8, ENC_BIG_ENDIAN);
+                break;
+            }
             break;
         case 3:
             switch (rtf) {
@@ -515,12 +569,12 @@ dissect_mpls_pm_loss(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     pm_tree = proto_item_add_subtree(ti, ett_mpls_pm);
 
     /* add version to the subtree */
-    proto_tree_add_item(pm_tree, hf_mpls_pm_version, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(pm_tree, hf_mpls_pm_version, tvb, offset, 1, ENC_BIG_ENDIAN);
 
     /* ctrl flags subtree */
 
     ti = proto_tree_add_item(pm_tree, hf_mpls_pm_flags, tvb,
-                             offset, 1, ENC_NA);
+                             offset, 1, ENC_BIG_ENDIAN);
     pm_tree_flags = proto_item_add_subtree(ti, ett_mpls_pm_flags);
     proto_tree_add_item(pm_tree_flags, hf_mpls_pm_flags_r, tvb,
                         offset, 1, ENC_NA);
@@ -532,10 +586,10 @@ dissect_mpls_pm_loss(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     if (query) {
         proto_tree_add_item(pm_tree, hf_mpls_pm_query_ctrl_code,
-                            tvb, offset, 1, ENC_NA);
+                            tvb, offset, 1, ENC_BIG_ENDIAN);
     } else {
         proto_tree_add_item(pm_tree, hf_mpls_pm_response_ctrl_code,
-                            tvb, offset, 1, ENC_NA);
+                            tvb, offset, 1, ENC_BIG_ENDIAN);
     }
     offset += 1;
 
@@ -545,7 +599,7 @@ dissect_mpls_pm_loss(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     /* data flags subtree */
     ti = proto_tree_add_item(pm_tree, hf_mpls_pm_dflags, tvb,
-                             offset, 1, ENC_NA);
+                             offset, 1, ENC_BIG_ENDIAN);
     pm_tree_dflags = proto_item_add_subtree(ti, ett_mpls_pm_dflags);
     proto_tree_add_item(pm_tree_dflags, hf_mpls_pm_dflags_x, tvb,
                         offset, 1, ENC_NA);
@@ -566,7 +620,7 @@ dissect_mpls_pm_loss(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     proto_tree_add_uint(pm_tree, hf_mpls_pm_session_id, tvb, offset, 4, sid);
 
     if (class_specific) {
-        proto_tree_add_item(pm_tree, hf_mpls_pm_ds, tvb, offset + 3, 1, ENC_NA);
+        proto_tree_add_item(pm_tree, hf_mpls_pm_ds, tvb, offset + 3, 1, ENC_BIG_ENDIAN);
     }
     offset += 4;
 
@@ -649,10 +703,10 @@ dissect_mpls_pm_delay(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     pm_tree = proto_item_add_subtree(ti, ett_mpls_pm);
 
     /* add version to the subtree */
-    proto_tree_add_item(pm_tree, hf_mpls_pm_version, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(pm_tree, hf_mpls_pm_version, tvb, offset, 1, ENC_BIG_ENDIAN);
 
     /* ctrl flags subtree */
-    ti = proto_tree_add_item(pm_tree, hf_mpls_pm_flags, tvb, offset, 1, ENC_NA);
+    ti = proto_tree_add_item(pm_tree, hf_mpls_pm_flags, tvb, offset, 1, ENC_BIG_ENDIAN);
     pm_tree_flags = proto_item_add_subtree(ti, ett_mpls_pm_flags);
     proto_tree_add_item(pm_tree_flags, hf_mpls_pm_flags_r, tvb,
                         offset, 1, ENC_NA);
@@ -664,10 +718,10 @@ dissect_mpls_pm_delay(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     if (query) {
         proto_tree_add_item(pm_tree, hf_mpls_pm_query_ctrl_code,
-                            tvb, offset, 1, ENC_NA);
+                            tvb, offset, 1, ENC_BIG_ENDIAN);
     } else {
         proto_tree_add_item(pm_tree, hf_mpls_pm_response_ctrl_code,
-                            tvb, offset, 1, ENC_NA);
+                            tvb, offset, 1, ENC_BIG_ENDIAN);
     }
     offset += 1;
 
@@ -695,7 +749,7 @@ dissect_mpls_pm_delay(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     proto_tree_add_uint(pm_tree, hf_mpls_pm_session_id, tvb, offset, 4, sid);
 
     if (class_specific) {
-        proto_tree_add_item(pm_tree, hf_mpls_pm_ds, tvb, offset + 3, 1, ENC_NA);
+        proto_tree_add_item(pm_tree, hf_mpls_pm_ds, tvb, offset + 3, 1, ENC_BIG_ENDIAN);
     }
     offset += 4;
 
@@ -745,10 +799,10 @@ dissect_mpls_pm_combined(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     pm_tree = proto_item_add_subtree(ti, ett_mpls_pm);
 
     /* add version to the subtree */
-    proto_tree_add_item(pm_tree, hf_mpls_pm_version, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(pm_tree, hf_mpls_pm_version, tvb, offset, 1, ENC_BIG_ENDIAN);
 
     /* ctrl flags subtree */
-    ti = proto_tree_add_item(pm_tree, hf_mpls_pm_flags, tvb, offset, 1, ENC_NA);
+    ti = proto_tree_add_item(pm_tree, hf_mpls_pm_flags, tvb, offset, 1, ENC_BIG_ENDIAN);
     pm_tree_flags = proto_item_add_subtree(ti, ett_mpls_pm_flags);
     proto_tree_add_item(pm_tree_flags, hf_mpls_pm_flags_r, tvb,
                         offset, 1, ENC_NA);
@@ -760,10 +814,10 @@ dissect_mpls_pm_combined(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     if (query) {
         proto_tree_add_item(pm_tree, hf_mpls_pm_query_ctrl_code,
-                            tvb, offset, 1, ENC_NA);
+                            tvb, offset, 1, ENC_BIG_ENDIAN);
     } else {
         proto_tree_add_item(pm_tree, hf_mpls_pm_response_ctrl_code,
-                            tvb, offset, 1, ENC_NA);
+                            tvb, offset, 1, ENC_BIG_ENDIAN);
     }
     offset += 1;
 
@@ -773,7 +827,7 @@ dissect_mpls_pm_combined(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     /* data flags subtree */
     ti = proto_tree_add_item(pm_tree, hf_mpls_pm_dflags, tvb,
-                             offset, 1, ENC_NA);
+                             offset, 1, ENC_BIG_ENDIAN);
     pm_tree_dflags = proto_item_add_subtree(ti, ett_mpls_pm_dflags);
     proto_tree_add_item(pm_tree_dflags, hf_mpls_pm_dflags_x, tvb,
                         offset, 1, ENC_NA);
@@ -807,7 +861,7 @@ dissect_mpls_pm_combined(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     proto_tree_add_uint(pm_tree, hf_mpls_pm_session_id, tvb, offset, 4, sid);
 
     if (class_specific) {
-        proto_tree_add_item(pm_tree, hf_mpls_pm_ds, tvb, offset + 3, 1, ENC_NA);
+        proto_tree_add_item(pm_tree, hf_mpls_pm_ds, tvb, offset + 3, 1, ENC_BIG_ENDIAN);
     }
     offset += 4;
 
@@ -999,7 +1053,7 @@ proto_register_mpls_pm(void)
             {
                 "Origin Timestamp",
                 "mpls_pm.origin.timestamp.ntp",
-                FT_RELATIVE_TIME, BASE_NONE,
+                FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC,
                 NULL, 0x0,
                 NULL, HFILL
             }
@@ -1169,7 +1223,7 @@ proto_register_mpls_pm(void)
             {
                 "Timestamp 1 (T1)",
                 "mpls_pm.timestamp1.ntp",
-                FT_RELATIVE_TIME, BASE_NONE,
+                FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC,
                 NULL, 0x0,
                 NULL, HFILL
             }
@@ -1179,7 +1233,7 @@ proto_register_mpls_pm(void)
             {
                 "Timestamp 1 (T3)",
                 "mpls_pm.timestamp1.ntp",
-                FT_RELATIVE_TIME, BASE_NONE,
+                FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC,
                 NULL, 0x0,
                 NULL, HFILL
             }
@@ -1215,10 +1269,90 @@ proto_register_mpls_pm(void)
             }
         },
         {
-            &hf_mpls_pm_timestamp2_null,
+            &hf_mpls_pm_timestamp2_q_null,
             {
-                "Timestamp 2",
+                "Timestamp 2 (T2)",
                 "mpls_pm.timestamp2.null",
+                FT_UINT64, BASE_DEC,
+                NULL, 0x0,
+                NULL, HFILL
+            }
+        },
+        {
+            &hf_mpls_pm_timestamp2_r_null,
+            {
+                "Timestamp 2 (T4)",
+                "mpls_pm.timestamp2.null",
+                FT_UINT64, BASE_DEC,
+                NULL, 0x0,
+                NULL, HFILL
+            }
+        },
+        {
+            &hf_mpls_pm_timestamp2_q_seq,
+            {
+                "Timestamp 2 (T2)",
+                "mpls_pm.timestamp2.seq",
+                FT_UINT64, BASE_DEC,
+                NULL, 0x0,
+                NULL, HFILL
+            }
+        },
+        {
+            &hf_mpls_pm_timestamp2_r_seq,
+            {
+                "Timestamp 2 (T4)",
+                "mpls_pm.timestamp2.seq",
+                FT_UINT64, BASE_DEC,
+                NULL, 0x0,
+                NULL, HFILL
+            }
+        },
+        {
+            &hf_mpls_pm_timestamp2_q_ntp,
+            {
+                "Timestamp 2 (T2)",
+                "mpls_pm.timestamp2.ntp",
+                FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC,
+                NULL, 0x0,
+                NULL, HFILL
+            }
+        },
+        {
+            &hf_mpls_pm_timestamp2_r_ntp,
+            {
+                "Timestamp 2 (T4)",
+                "mpls_pm.timestamp2.ntp",
+                FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC,
+                NULL, 0x0,
+                NULL, HFILL
+            }
+        },
+        {
+            &hf_mpls_pm_timestamp2_q_ptp,
+            {
+                "Timestamp 2 (T2)",
+                "mpls_pm.timestamp2.ptp",
+                FT_RELATIVE_TIME, BASE_NONE,
+                NULL, 0x0,
+                NULL, HFILL
+            }
+        },
+        {
+            &hf_mpls_pm_timestamp2_r_ptp,
+            {
+                "Timestamp 2 (T4)",
+                "mpls_pm.timestamp2.ptp",
+                FT_RELATIVE_TIME, BASE_NONE,
+                NULL, 0x0,
+                NULL, HFILL
+            }
+        },
+        {
+            &hf_mpls_pm_timestamp2_unk,
+            {
+                "Timestamp 2 (Unknown Type)",
+                "mpls_pm.timestamp2.unk",
                 FT_UINT64, BASE_DEC,
                 NULL, 0x0,
                 NULL, HFILL
@@ -1259,7 +1393,7 @@ proto_register_mpls_pm(void)
             {
                 "Timestamp 3 (T1)",
                 "mpls_pm.timestamp3.ntp",
-                FT_RELATIVE_TIME, BASE_NONE,
+                FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC,
                 NULL, 0x0,
                 NULL, HFILL
             }
@@ -1319,7 +1453,7 @@ proto_register_mpls_pm(void)
             {
                 "Timestamp 4 (T2)",
                 "mpls_pm.timestamp4.ntp",
-                FT_RELATIVE_TIME, BASE_NONE,
+                FT_ABSOLUTE_TIME, ABSOLUTE_TIME_UTC,
                 NULL, 0x0,
                 NULL, HFILL
             }
@@ -1343,7 +1477,7 @@ proto_register_mpls_pm(void)
                 NULL, 0x0,
                 NULL, HFILL
             }
-        },
+        }
     };
 
     static gint *ett[] = {
@@ -1383,31 +1517,25 @@ proto_register_mpls_pm(void)
 
     proto_register_field_array(proto_mpls_pm_dlm, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
-
-    register_dissector("mpls_pm_dlm", dissect_mpls_pm_dlm,
-                       proto_mpls_pm_dlm);
-
-    register_dissector("mpls_pm_ilm", dissect_mpls_pm_ilm,
-                       proto_mpls_pm_ilm);
-
-    register_dissector("mpls_pm_dm", dissect_mpls_pm_delay,
-                       proto_mpls_pm_dm);
-
-    register_dissector("mpls_pm_dlm_dm", dissect_mpls_pm_dlm_dm,
-                       proto_mpls_pm_dlm_dm);
-
-    register_dissector("mpls_pm_ilm_dm", dissect_mpls_pm_ilm_dm,
-                       proto_mpls_pm_ilm_dm);
 }
 
 void
 proto_reg_handoff_mpls_pm(void)
 {
-    mpls_pm_dlm_handle    = find_dissector("mpls_pm_dlm");
-    mpls_pm_ilm_handle    = find_dissector("mpls_pm_ilm");
-    mpls_pm_dm_handle     = find_dissector("mpls_pm_dm");
-    mpls_pm_dlm_dm_handle = find_dissector("mpls_pm_dlm_dm");
-    mpls_pm_ilm_dm_handle = find_dissector("mpls_pm_ilm_dm");
+    dissector_handle_t mpls_pm_dlm_handle, mpls_pm_ilm_handle, mpls_pm_dm_handle,
+                       mpls_pm_dlm_dm_handle, mpls_pm_ilm_dm_handle;
+
+    mpls_pm_dlm_handle    = create_dissector_handle( dissect_mpls_pm_dlm, proto_mpls_pm_dlm );
+    dissector_add_uint("pwach.channel_type", 0x000A, mpls_pm_dlm_handle); /* FF: MPLS PM, RFC 6374, DLM */
+    mpls_pm_ilm_handle    = create_dissector_handle( dissect_mpls_pm_ilm, proto_mpls_pm_ilm );
+    dissector_add_uint("pwach.channel_type", 0x000B, mpls_pm_ilm_handle); /* FF: MPLS PM, RFC 6374, ILM */
+    mpls_pm_dm_handle    = create_dissector_handle( dissect_mpls_pm_delay, proto_mpls_pm_dm );
+    dissector_add_uint("pwach.channel_type", 0x000C, mpls_pm_dm_handle); /* FF: MPLS PM, RFC 6374, DM */
+    mpls_pm_dlm_dm_handle    = create_dissector_handle( dissect_mpls_pm_dlm_dm, proto_mpls_pm_dlm_dm );
+    dissector_add_uint("pwach.channel_type", 0x000D, mpls_pm_dlm_dm_handle); /* FF: MPLS PM, RFC 6374, DLM+DM */
+    mpls_pm_ilm_dm_handle    = create_dissector_handle( dissect_mpls_pm_ilm_dm, proto_mpls_pm_ilm_dm );
+    dissector_add_uint("pwach.channel_type", 0x000E, mpls_pm_ilm_dm_handle); /* FF: MPLS PM, RFC 6374, ILM+DM */
+
 }
 
 /*

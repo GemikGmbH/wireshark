@@ -2,7 +2,7 @@
  * Routines for text-based media dissection.
  *
  * NOTE - The media type is either found in pinfo->match_string,
- *        pinfo->private_data, or passed into the dissector (preferred)
+ *        or passed into the dissector
  *
  * (C) Olivier Biot, 2004.
  *
@@ -32,8 +32,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 
 
@@ -62,7 +60,7 @@ dissect_text_lines(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
 	gint		offset = 0, next_offset;
 	gint		len;
 	const char	*data_name;
-	int length = tvb_length(tvb);
+	int length = tvb_captured_length(tvb);
 
 	/* Check if this is actually xml
 	 * If there is less than 38 characters this is not XML
@@ -71,7 +69,7 @@ dissect_text_lines(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
 	if(length > 38){
 		if (tvb_strncaseeql(tvb, 0, "<?xml", 5) == 0){
 			call_dissector(xml_handle, tvb, pinfo, tree);
-			return tvb_length(tvb);
+			return length;
 		}
 	}
 
@@ -85,13 +83,7 @@ dissect_text_lines(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
 			/*
 			 * No information from dissector data
 			 */
-			data_name = (char *)(pinfo->private_data);
-			if (! (data_name && data_name[0])) {
-				/*
-				 * No information from "private_data"
-				 */
-				data_name = NULL;
-			}
+			data_name = NULL;
 		}
 	}
 
@@ -106,19 +98,17 @@ dissect_text_lines(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
 			proto_item_append_text(ti, ": %s", data_name);
 		subtree = proto_item_add_subtree(ti, ett_text_lines);
 		/* Read the media line by line */
-		while (tvb_reported_length_remaining(tvb, offset) != 0) {
+		while (tvb_offset_exists(tvb, offset)) {
 			/*
 			 * XXX - we need to be passed the parameters
-			 * of the content type via "pinfo->private_data",
+			 * of the content type via data parameter,
 			 * so that we know the character set.  We'd
 			 * have to handle that character set, which
 			 * might be a multibyte character set such
 			 * as "iso-10646-ucs-2", or might require other
 			 * special processing.
 			 */
-			len = tvb_find_line_end(tvb, offset,
-					tvb_ensure_length_remaining(tvb, offset),
-					&next_offset, FALSE);
+			len = tvb_find_line_end(tvb, offset, -1, &next_offset, FALSE);
 			if (len == -1)
 				break;
 
@@ -131,7 +121,7 @@ dissect_text_lines(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
 		}
 	}
 
-	return tvb_length(tvb);
+	return length;
 }
 
 void
@@ -180,3 +170,16 @@ proto_reg_handoff_text_lines(void)
 	dissector_add_string("media_type", "application/x-rtsp-udp-packetpair", text_lines_handle);
 	xml_handle = find_dissector("xml");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

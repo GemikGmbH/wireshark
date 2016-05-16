@@ -30,7 +30,7 @@
 #include <epan/packet.h>
 #include <wiretap/wtap.h>
 #include <epan/expert.h>
-#include <epan/dissectors/packet-tcp.h>
+#include "packet-tcp.h"
 
 void proto_register_dbus(void);
 void proto_reg_handoff_dbus(void);
@@ -309,7 +309,7 @@ dissect_dbus_sig(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree, int offset
 			len = dinfo->get32(tvb, offset);
 			offset += 4;
 
-			val = tvb_get_string(wmem_packet_scope(), tvb, offset, len);
+			val = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len, ENC_ASCII);
 			offset += (len + 1 /* NUL-byte */ + 3) & ~3;
 
 			if (sig == 's') {
@@ -337,7 +337,7 @@ dissect_dbus_sig(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree, int offset
 			len = tvb_get_guint8(tvb, offset);
 			offset += 1;
 
-			val = tvb_get_string(wmem_packet_scope(), tvb, offset, len);
+			val = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len, ENC_ASCII);
 			offset += (len + 1);
 
 			ti = proto_tree_add_string_format(tree, hfi_dbus_value_str.id, tvb, org_offset, offset - org_offset, val, "SIGNATURE: %s", val);
@@ -355,7 +355,7 @@ dissect_dbus_sig(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree, int offset
 }
 
 static int
-dissect_dbus_field_signature(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree, int offset, int field_code)
+dissect_dbus_field_signature(tvbuff_t *tvb, packet_info *pinfo, dbus_info_t *dinfo, proto_tree *tree, int offset, int field_code)
 {
 	const int org_offset = offset;
 
@@ -368,7 +368,7 @@ dissect_dbus_field_signature(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree
 
 	/* sig_len = tvb_strsize(tvb, offset); */
 
-	sig = tvb_get_string(wmem_packet_scope(), tvb, offset, sig_len);
+	sig = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, sig_len, ENC_ASCII);
 	offset += (sig_len + 1);
 
 	ti = proto_tree_add_string(tree, &hfi_dbus_type_signature, tvb, org_offset, offset - org_offset, sig);
@@ -397,7 +397,7 @@ dissect_dbus_field_signature(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree
 				offset = dissect_dbus_sig(tvb, dinfo, tree, offset, 's', &addr_val);
 				if (offset != -1)
 					SET_ADDRESS((field_code == DBUS_HEADER_FIELD_DESTINATION) ? &dinfo->pinfo->dst : &dinfo->pinfo->src,
-					            AT_STRINGZ, (int)strlen(addr_val.str)+1, addr_val.str);
+					            AT_STRINGZ, (int)strlen(addr_val.str)+1, wmem_strdup(pinfo->pool, addr_val.str));
 				return offset;
 			}
 			break;
@@ -426,7 +426,7 @@ dissect_dbus_field_signature(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree
 }
 
 static int
-dissect_dbus_hdr_fields(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree, int offset)
+dissect_dbus_hdr_fields(tvbuff_t *tvb, packet_info *pinfo, dbus_info_t *dinfo, proto_tree *tree, int offset)
 {
 	int end_offset;
 
@@ -446,7 +446,7 @@ dissect_dbus_hdr_fields(tvbuff_t *tvb, dbus_info_t *dinfo, proto_tree *tree, int
 		proto_item_append_text(ti, ": %s", val_to_str(field_code, field_code_vals, "Unknown: %d"));
 		offset += 1;
 
-		offset = dissect_dbus_field_signature(tvb, dinfo, field_tree, offset, field_code);
+		offset = dissect_dbus_field_signature(tvb, pinfo, dinfo, field_tree, offset, field_code);
 		if (offset == -1)
 			break;
 
@@ -573,7 +573,7 @@ dissect_dbus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
 
 	offset = 0;
 	offset = dissect_dbus_hdr(tvb, &dinfo, dbus_tree, offset);
-	offset = dissect_dbus_hdr_fields(tvb, &dinfo, dbus_tree, offset);
+	offset = dissect_dbus_hdr_fields(tvb, pinfo, &dinfo, dbus_tree, offset);
 	/* header aligned to 8B */
 	offset = (offset + 7) & ~7;
 
@@ -588,7 +588,8 @@ dissect_dbus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
 #define DBUS_HEADER_LEN 16
 
 static guint
-get_dbus_message_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_dbus_message_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                     int offset, void *data _U_)
 {
 	guint32 (*get_guint32)(tvbuff_t *, const gint);
 
@@ -621,7 +622,7 @@ static int
 dissect_dbus_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
 	tcp_dissect_pdus(tvb, pinfo, tree, dbus_desegment, DBUS_HEADER_LEN, get_dbus_message_len, dissect_dbus_pdu, data);
-	return tvb_length(tvb);
+	return tvb_reported_length(tvb);
 }
 
 void
@@ -686,6 +687,18 @@ void
 proto_reg_handoff_dbus(void)
 {
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_DBUS, dbus_handle);
-	dissector_add_handle("tcp.port", dbus_handle_tcp);
+	dissector_add_for_decode_as("tcp.port", dbus_handle_tcp);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

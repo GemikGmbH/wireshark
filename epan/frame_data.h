@@ -23,8 +23,13 @@
 #ifndef __FRAME_DATA_H__
 #define __FRAME_DATA_H__
 
+#ifdef __cplusplus
+extern "C" {
+#endif /* __cplusplus */
+
 #include <epan/tvbuff.h>
 #include <wsutil/nstime.h>
+#include <wsutil/ws_diag_control.h>
 #include "ws_symbol_export.h"
 
 struct _packet_info;
@@ -56,6 +61,7 @@ typedef enum {
 /** The frame number is the ordinal number of the frame in the capture, so
    it's 1-origin.  In various contexts, 0 as a frame number means "frame
    number unknown". */
+DIAG_OFF(pedantic)
 typedef struct _frame_data {
   GSList      *pfd;          /**< Per frame proto data */
   guint32      num;          /**< Frame number */
@@ -68,6 +74,7 @@ typedef struct _frame_data {
   struct {
     unsigned int passed_dfilter : 1; /**< 1 = display, 0 = no display */
     unsigned int dependent_of_displayed : 1; /**< 1 if a displayed frame depends on this frame */
+    /* Do NOT use packet_char_enc enum here: MSVC compiler does not handle an enum in a bit field properly */
     unsigned int encoding       : 1; /**< Character encoding (ASCII, EBCDIC...) */
     unsigned int visited        : 1; /**< Has this packet been visited yet? 1=Yes,0=No*/
     unsigned int marked         : 1; /**< 1 = marked by user, 0 = normal */
@@ -77,6 +84,7 @@ typedef struct _frame_data {
     unsigned int has_phdr_comment : 1; /** 1 = there's comment for this packet */
     unsigned int has_user_comment : 1; /** 1 = user set (also deleted) comment for this packet */
   } flags;
+  gint16       tsprec;       /**< Time stamp precision */
 
   const void *color_filter;  /**< Per-packet matching color_filter_t object */
 
@@ -85,6 +93,7 @@ typedef struct _frame_data {
   guint32      frame_ref_num; /**< Previous reference frame (0 if this is one) */
   guint32      prev_dis_num; /**< Previous displayed frame (0 if first one) */
 } frame_data;
+DIAG_ON(pedantic)
 
 /* Utility routines used by packet*.c */
 WS_DLL_PUBLIC void p_add_proto_data(wmem_allocator_t *scope, struct _packet_info* pinfo, int proto, guint32 key, void *proto_data);
@@ -117,6 +126,10 @@ WS_DLL_PUBLIC void frame_data_set_after_dissect(frame_data *fdata,
                 guint32 *cum_bytes);
 
 /** @} */
+
+#ifdef __cplusplus
+}
+#endif /* __cplusplus */
 
 #endif  /* __FRAME_DATA__ */
 

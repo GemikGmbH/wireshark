@@ -22,7 +22,7 @@
 #ifndef FILE_SET_DIALOG_H
 #define FILE_SET_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
@@ -30,7 +30,8 @@
 #include "fileset.h"
 
 #include <QDialog>
-#include <QTreeWidgetItem>
+
+class QTreeWidgetItem;
 
 namespace Ui {
 class FileSetDialog;
@@ -49,7 +50,7 @@ public:
     void addFile(fileset_entry *entry = NULL);
 
 signals:
-    void fileSetOpenCaptureFile(QString &);
+    void fileSetOpenCaptureFile(QString);
 
 private slots:
     void on_buttonBox_helpRequested();

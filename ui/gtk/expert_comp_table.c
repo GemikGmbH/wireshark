@@ -27,18 +27,15 @@
 
 #include <string.h>
 #include <stdlib.h>
-#include <stdio.h>
 #include <math.h>
 
-#include <gtk/gtk.h>
 
 #include "epan/packet_info.h"
 #include "epan/strutil.h"
 
-#include <epan/expert.h>
 
 #include "ui/simple_dialog.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "ui/gtk/expert_comp_table.h"
 #include "ui/gtk/filter_utils.h"
@@ -50,7 +47,6 @@
 #include "ui/gtk/webbrowser.h"
 #include "ui/gtk/stock_icons.h"
 
-#include "ui/gtk/old-gtk-compat.h"
 
 const char  *packet = "Packet:";
 
@@ -208,20 +204,22 @@ error_select_filter_cb(GtkWidget *widget _U_, gpointer callback_data, guint call
 
     if (action != ACTION_WEB_LOOKUP && action != ACTION_COPY) {
         char *msg;
-        if (0 /*procedure->fvalue_value==NULL*/) {
+#if 0
+        if (procedure->fvalue_value==NULL) {
             if (action != ACTION_FIND_FRAME && action != ACTION_FIND_NEXT && action != ACTION_FIND_PREVIOUS) {
                 simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "Wireshark cannot create a filter on this item - %s, try using find instead.",
                               procedure->entries[1]);
                 return;
             }
         }
+#endif
         msg = (char *)g_malloc(escape_string_len(procedure->entries[1]));
         escape_string(msg, procedure->entries[1]);
         switch(type){
         case ACTYPE_SELECTED:
             /* if no expert item was passed */
             if (procedure->fvalue_value==NULL) {
-                g_snprintf(str, sizeof(str), "expert.message==%s", msg);
+                g_snprintf(str, sizeof(str), "_ws.expert.message==%s", msg);
             }
             else
             {
@@ -232,7 +230,7 @@ error_select_filter_cb(GtkWidget *widget _U_, gpointer callback_data, guint call
         case ACTYPE_NOT_SELECTED:
             /* if no expert item was passed */
             if (procedure->fvalue_value==NULL) {
-                g_snprintf(str, sizeof(str), "!(expert.message==%s)", msg);
+                g_snprintf(str, sizeof(str), "!(_ws.expert.message==%s)", msg);
             }
             else
             {
@@ -243,27 +241,27 @@ error_select_filter_cb(GtkWidget *widget _U_, gpointer callback_data, guint call
             /* the remaining cases will only exist if the expert item exists so no need to check */
         case ACTYPE_AND_SELECTED:
             if ((!current_filter) || (0 == strlen(current_filter)))
-                g_snprintf(str, sizeof(str), "expert.message==%s", msg);
+                g_snprintf(str, sizeof(str), "_ws.expert.message==%s", msg);
             else
-                g_snprintf(str, sizeof(str), "(%s) && (expert.message==%s)", current_filter, msg);
+                g_snprintf(str, sizeof(str), "(%s) && (_ws.expert.message==%s)", current_filter, msg);
             break;
         case ACTYPE_OR_SELECTED:
             if ((!current_filter) || (0 == strlen(current_filter)))
-                g_snprintf(str, sizeof(str), "expert.message==%s", msg);
+                g_snprintf(str, sizeof(str), "_ws.expert.message==%s", msg);
             else
-                g_snprintf(str, sizeof(str), "(%s) || (expert.message==%s)", current_filter, msg);
+                g_snprintf(str, sizeof(str), "(%s) || (_ws.expert.message==%s)", current_filter, msg);
             break;
         case ACTYPE_AND_NOT_SELECTED:
             if ((!current_filter) || (0 == strlen(current_filter)))
-                g_snprintf(str, sizeof(str), "!(expert.message==%s)", msg);
+                g_snprintf(str, sizeof(str), "!(_ws.expert.message==%s)", msg);
             else
-                g_snprintf(str, sizeof(str), "(%s) && !(expert.message==%s)", current_filter, msg);
+                g_snprintf(str, sizeof(str), "(%s) && !(_ws.expert.message==%s)", current_filter, msg);
             break;
         case ACTYPE_OR_NOT_SELECTED:
             if ((!current_filter) || (0 == strlen(current_filter)))
-                g_snprintf(str, sizeof(str), "!(expert.message==%s)", msg);
+                g_snprintf(str, sizeof(str), "!(_ws.expert.message==%s)", msg);
             else
-                g_snprintf(str, sizeof(str), "(%s) || !(expert.message==%s)", current_filter, msg);
+                g_snprintf(str, sizeof(str), "(%s) || !(_ws.expert.message==%s)", current_filter, msg);
             break;
         default:
             simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "Can't find menu type - %u", type);
@@ -275,7 +273,7 @@ error_select_filter_cb(GtkWidget *widget _U_, gpointer callback_data, guint call
     case ACTION_MATCH:
         gtk_entry_set_text(GTK_ENTRY(main_display_filter_widget), str);
         main_filter_packets(&cfile, str, FALSE);
-	gdk_window_raise(gtk_widget_get_window(top_level));
+        gdk_window_raise(gtk_widget_get_window(top_level));
         break;
     case ACTION_PREPARE:
         gtk_entry_set_text(GTK_ENTRY(main_display_filter_widget), str);
@@ -322,7 +320,7 @@ error_select_filter_cb(GtkWidget *widget _U_, gpointer callback_data, guint call
         break;
     case ACTION_WEB_LOOKUP:
         /* Lookup expert string on internet. Default search via www.google.com */
-        g_snprintf(str, sizeof(str), "http://www.google.com/search?hl=en&q=%s+'%s'", procedure->entries[0], procedure->entries[1]);
+        g_snprintf(str, sizeof(str), "https://www.google.com/search?hl=en&q=%s+'%s'", procedure->entries[0], procedure->entries[1]);
         browser_open_url(str);
         break;
     case ACTION_COPY:
@@ -524,49 +522,49 @@ static const char *ui_desc_expert_filter_popup =
  *   const gchar     *tooltip;
  *   GCallback  callback;
  * } GtkActionEntry;
- * const gchar *name;			The name of the action.
- * const gchar *stock_id;		The stock id for the action, or the name of an icon from the icon theme.
- * const gchar *label;			The label for the action. This field should typically be marked for translation,
- *								see gtk_action_group_set_translation_domain().
- *								If label is NULL, the label of the stock item with id stock_id is used.
- * const gchar *accelerator;	The accelerator for the action, in the format understood by gtk_accelerator_parse().
- * const gchar *tooltip;		The tooltip for the action. This field should typically be marked for translation,
+ * const gchar *name;           The name of the action.
+ * const gchar *stock_id;       The stock id for the action, or the name of an icon from the icon theme.
+ * const gchar *label;          The label for the action. This field should typically be marked for translation,
  *                              see gtk_action_group_set_translation_domain().
- * GCallback callback;			The function to call when the action is activated.
+ *                              If label is NULL, the label of the stock item with id stock_id is used.
+ * const gchar *accelerator;    The accelerator for the action, in the format understood by gtk_accelerator_parse().
+ * const gchar *tooltip;        The tooltip for the action. This field should typically be marked for translation,
+ *                              see gtk_action_group_set_translation_domain().
+ * GCallback callback;          The function to call when the action is activated.
  *
  */
 static const GtkActionEntry expert_popup_entries[] = {
-  { "/Apply as Filter",							NULL, "Apply as Filter",				NULL, NULL,								NULL },
-  { "/Prepare a Filter",						NULL, "Prepare a Filter",				NULL, NULL,								NULL },
-  { "/Find Frame",								NULL, "Find Frame",						NULL, NULL,								NULL },
-  { "/Find Frame/Find Frame",					NULL, "Find Frame",						NULL, NULL,								NULL },
-  { "/Find Frame/Find Next",					NULL, "Find Next" ,						NULL, NULL,								NULL },
-  { "/Find Frame/Find Previous",				NULL, "Find Previous",					NULL, NULL,								NULL },
-  { "/Colorize Procedure",						NULL, "Colorize Procedure",				NULL, NULL,								NULL },
-  { "/Apply as Filter/Selected",				NULL, "Selected",						NULL, "Selected",						G_CALLBACK(apply_as_selected_cb) },
-  { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " not Selected",		NULL, UTF8_HORIZONTAL_ELLIPSIS " not Selected",				NULL, UTF8_HORIZONTAL_ELLIPSIS " not Selected",				G_CALLBACK(apply_as_not_selected_cb) },
-  { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " and Selected",		NULL, UTF8_HORIZONTAL_ELLIPSIS " and Selected",				NULL, UTF8_HORIZONTAL_ELLIPSIS " and Selected",				G_CALLBACK(apply_as_and_selected_cb) },
-  { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " or Selected",			NULL, UTF8_HORIZONTAL_ELLIPSIS " or Selected",				NULL, UTF8_HORIZONTAL_ELLIPSIS " or Selected",				G_CALLBACK(apply_as_or_selected_cb) },
-  { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " and not Selected",	NULL, UTF8_HORIZONTAL_ELLIPSIS " and not Selected",			NULL, UTF8_HORIZONTAL_ELLIPSIS " and not Selected",			G_CALLBACK(apply_as_and_not_selected_cb) },
-  { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " or not Selected",		NULL, UTF8_HORIZONTAL_ELLIPSIS " or not Selected",			NULL, UTF8_HORIZONTAL_ELLIPSIS " or not Selected",			G_CALLBACK(apply_as_or_not_selected_cb) },
-  { "/Prepare a Filter/Selected",				NULL, "Selected",						NULL, "selcted",						G_CALLBACK(prep_as_selected_cb) },
-  { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " not Selected",		NULL, UTF8_HORIZONTAL_ELLIPSIS " not Selected",				NULL, UTF8_HORIZONTAL_ELLIPSIS " not Selected",				G_CALLBACK(prep_as_not_selected_cb) },
-  { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " and Selected",		NULL, UTF8_HORIZONTAL_ELLIPSIS " and Selected",				NULL, UTF8_HORIZONTAL_ELLIPSIS " and Selected",				G_CALLBACK(prep_as_and_selected_cb) },
-  { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " or Selected",		NULL, UTF8_HORIZONTAL_ELLIPSIS " or Selected",				NULL, UTF8_HORIZONTAL_ELLIPSIS " or Selected",				G_CALLBACK(prep_as_or_selected_cb) },
-  { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " and not Selected",	NULL, UTF8_HORIZONTAL_ELLIPSIS " and not Selected",			NULL, UTF8_HORIZONTAL_ELLIPSIS " and not Selected",			G_CALLBACK(prep_as_and_not_selected_cb) },
-  { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " or not Selected",	NULL, UTF8_HORIZONTAL_ELLIPSIS " or not Selected",			NULL, UTF8_HORIZONTAL_ELLIPSIS " or not Selected",			G_CALLBACK(prep_as_or_not_selected_cb) },
-  { "/Find Frame/Selected",						NULL, "Selected",						NULL, "Selected",						G_CALLBACK(find_selected_cb) },
-  { "/Find Frame/Not Selected",					NULL, "Not Selected",					NULL, "Not Selected",					G_CALLBACK(find_not_selected_cb) },
-  { "/Find Previous/Selected",					NULL, "Selected",						NULL, "Selected",						G_CALLBACK(find_prev_selected_cb) },
-  { "/Find Previous/Not Selected",				NULL, "Not Selected",					NULL, "Not Selected",					G_CALLBACK(find_prev_not_selected_cb) },
-  { "/Find Next/Selected",						NULL, "Selected",						NULL, "Selected",						G_CALLBACK(find_next_selected_cb) },
-  { "/Find Next/Not Selected",					NULL, "Not Selected",					NULL, "Not Selected",					G_CALLBACK(find_next_not_selected_cb) },
-  { "/Colorize Procedure/Selected",				NULL, "Selected",						NULL, "Selected",						G_CALLBACK(color_selected_cb) },
-  { "/Colorize Procedure/Not Selected",			NULL, "Not Selected",					NULL, "Not Selected",					G_CALLBACK(color_not_selected_cb) },
-  { "/Internet Search",	    WIRESHARK_STOCK_INTERNET, "Internet Search",				NULL, "Internet Search",				NULL },
-  { "/For Info Text",							NULL, "For Info Text",					NULL, "For Info Text",					G_CALLBACK(internet_search_cb) },
-  { "/Copy",									NULL, "Copy",							NULL, "Copy",							NULL },
-  { "/Copy/Protocol Plus Summary",				NULL, "Protocol Plus Summary",			NULL, "Protocol Plus Summary",			G_CALLBACK(copy_cb) },
+    { "/Apply as Filter",                         NULL, "Apply as Filter",                NULL, NULL,                             NULL },
+    { "/Prepare a Filter",                        NULL, "Prepare a Filter",               NULL, NULL,                             NULL },
+    { "/Find Frame",                              NULL, "Find Frame",                     NULL, NULL,                             NULL },
+    { "/Find Frame/Find Frame",                   NULL, "Find Frame",                     NULL, NULL,                             NULL },
+    { "/Find Frame/Find Next",                    NULL, "Find Next" ,                     NULL, NULL,                             NULL },
+    { "/Find Frame/Find Previous",                NULL, "Find Previous",                  NULL, NULL,                             NULL },
+    { "/Colorize Procedure",                      NULL, "Colorize Procedure",             NULL, NULL,                             NULL },
+    { "/Apply as Filter/Selected",                NULL, "Selected",                       NULL, "Selected",                       G_CALLBACK(apply_as_selected_cb) },
+    { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " not Selected",       NULL, UTF8_HORIZONTAL_ELLIPSIS " not Selected",             NULL, UTF8_HORIZONTAL_ELLIPSIS " not Selected",             G_CALLBACK(apply_as_not_selected_cb) },
+    { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " and Selected",       NULL, UTF8_HORIZONTAL_ELLIPSIS " and Selected",             NULL, UTF8_HORIZONTAL_ELLIPSIS " and Selected",             G_CALLBACK(apply_as_and_selected_cb) },
+    { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " or Selected",            NULL, UTF8_HORIZONTAL_ELLIPSIS " or Selected",              NULL, UTF8_HORIZONTAL_ELLIPSIS " or Selected",              G_CALLBACK(apply_as_or_selected_cb) },
+    { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " and not Selected",   NULL, UTF8_HORIZONTAL_ELLIPSIS " and not Selected",         NULL, UTF8_HORIZONTAL_ELLIPSIS " and not Selected",         G_CALLBACK(apply_as_and_not_selected_cb) },
+    { "/Apply as Filter/" UTF8_HORIZONTAL_ELLIPSIS " or not Selected",        NULL, UTF8_HORIZONTAL_ELLIPSIS " or not Selected",          NULL, UTF8_HORIZONTAL_ELLIPSIS " or not Selected",          G_CALLBACK(apply_as_or_not_selected_cb) },
+    { "/Prepare a Filter/Selected",               NULL, "Selected",                       NULL, "selcted",                        G_CALLBACK(prep_as_selected_cb) },
+    { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " not Selected",      NULL, UTF8_HORIZONTAL_ELLIPSIS " not Selected",             NULL, UTF8_HORIZONTAL_ELLIPSIS " not Selected",             G_CALLBACK(prep_as_not_selected_cb) },
+    { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " and Selected",      NULL, UTF8_HORIZONTAL_ELLIPSIS " and Selected",             NULL, UTF8_HORIZONTAL_ELLIPSIS " and Selected",             G_CALLBACK(prep_as_and_selected_cb) },
+    { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " or Selected",       NULL, UTF8_HORIZONTAL_ELLIPSIS " or Selected",              NULL, UTF8_HORIZONTAL_ELLIPSIS " or Selected",              G_CALLBACK(prep_as_or_selected_cb) },
+    { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " and not Selected",  NULL, UTF8_HORIZONTAL_ELLIPSIS " and not Selected",         NULL, UTF8_HORIZONTAL_ELLIPSIS " and not Selected",         G_CALLBACK(prep_as_and_not_selected_cb) },
+    { "/Prepare a Filter/" UTF8_HORIZONTAL_ELLIPSIS " or not Selected",   NULL, UTF8_HORIZONTAL_ELLIPSIS " or not Selected",          NULL, UTF8_HORIZONTAL_ELLIPSIS " or not Selected",          G_CALLBACK(prep_as_or_not_selected_cb) },
+    { "/Find Frame/Selected",                     NULL, "Selected",                       NULL, "Selected",                       G_CALLBACK(find_selected_cb) },
+    { "/Find Frame/Not Selected",                 NULL, "Not Selected",                   NULL, "Not Selected",                   G_CALLBACK(find_not_selected_cb) },
+    { "/Find Previous/Selected",                  NULL, "Selected",                       NULL, "Selected",                       G_CALLBACK(find_prev_selected_cb) },
+    { "/Find Previous/Not Selected",              NULL, "Not Selected",                   NULL, "Not Selected",                   G_CALLBACK(find_prev_not_selected_cb) },
+    { "/Find Next/Selected",                      NULL, "Selected",                       NULL, "Selected",                       G_CALLBACK(find_next_selected_cb) },
+    { "/Find Next/Not Selected",                  NULL, "Not Selected",                   NULL, "Not Selected",                   G_CALLBACK(find_next_not_selected_cb) },
+    { "/Colorize Procedure/Selected",             NULL, "Selected",                       NULL, "Selected",                       G_CALLBACK(color_selected_cb) },
+    { "/Colorize Procedure/Not Selected",         NULL, "Not Selected",                   NULL, "Not Selected",                   G_CALLBACK(color_not_selected_cb) },
+    { "/Internet Search",     WIRESHARK_STOCK_INTERNET, "Internet Search",                NULL, "Internet Search",                NULL },
+    { "/For Info Text",                           NULL, "For Info Text",                  NULL, "For Info Text",                  G_CALLBACK(internet_search_cb) },
+    { "/Copy",                                    NULL, "Copy",                           NULL, "Copy",                           NULL },
+    { "/Copy/Protocol Plus Summary",              NULL, "Protocol Plus Summary",          NULL, "Protocol Plus Summary",          G_CALLBACK(copy_cb) },
 };
 
 int gselection_count = 0;
@@ -660,7 +658,7 @@ init_error_table(error_equiv_table *err, guint num_procs, GtkWidget *vbox)
 
     /* Create the first column, associating the "text" attribute of the
      * cell_renderer to the first column of the model
-	 */
+     */
     column = gtk_tree_view_column_new_with_attributes ("Group", renderer, NULL);
     gtk_tree_view_column_set_sort_column_id(column, GROUP_COLUMN);
     gtk_tree_view_column_set_resizable(column, TRUE);
@@ -784,7 +782,10 @@ init_error_table_row(error_equiv_table *err, const expert_info_t *expert_data)
             g_assert(PITEM_FINFO(expert_data->pitem));
             filter = proto_construct_match_selected_string(PITEM_FINFO(expert_data->pitem), NULL);
             if (filter != NULL)
+            {
                 procedure->fvalue_value = g_string_chunk_insert_const(err->text, filter);
+                wmem_free(NULL, filter);
+            }
         }
         /* Store the updated count of events */
         err->num_procs = ++old_num_procs;
@@ -853,3 +854,16 @@ free_error_table_data(error_equiv_table *err)
     g_string_chunk_free(err->text);
     g_array_free(err->procs_array, TRUE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

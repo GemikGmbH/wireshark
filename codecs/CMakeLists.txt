@@ -23,13 +23,30 @@ set(CODECS_FILES
   codecs.c
   G711a/G711adecode.c
   G711u/G711udecode.c
-  G722/G722decode.c
-  G726/G726decode.c
-  sbc/sbc.c
+  # These are wrapped in "#ifdef HAVE_SPANDSP", which we don't currently
+  # handle or define.
+  # G722/G722decode.c
+  # G726/G726decode.c
+  speex/resample.c
 )
+
+# Enables visibility in IDEs
+file(GLOB EXTRA_CODEC_HEADERS
+  codecs.h
+  G711a/G711adecode.h G711a/G711atable.h
+  G711u/G711udecode.h G711u/G711utable.h
+  speex/arch.h
+  speex/speex_resampler.h
+  speex/stack_alloc.h
+)
+
+if(SBC_FOUND)
+  set(CODECS_FILES ${CODECS_FILES} sbc/sbc.c)
+endif()
 
 add_library(codecs STATIC
   ${CODECS_FILES}
 )
-set_target_properties(codecs PROPERTIES LINK_FLAGS "${WS_LINK_FLAGS}")
-set_target_properties(codecs PROPERTIES FOLDER "codecs")
+set_target_properties(codecs PROPERTIES
+	LINK_FLAGS "${WS_LINK_FLAGS}"
+	FOLDER "Libs")

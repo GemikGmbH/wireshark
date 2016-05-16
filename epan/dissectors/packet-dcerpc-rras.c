@@ -24,7 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 #include "packet-dcerpc-rras.h"
@@ -43,7 +42,7 @@ static gint ett_dcerpc_rras = -1;
  * and the \pipe\ROUTER named pipe as endpoint.
  */
 
-static e_uuid_t uuid_dcerpc_rras = {
+static e_guid_t uuid_dcerpc_rras = {
 	0x8f09f000, 0xb7ed, 0x11ce,
 	{ 0xbb, 0xd2, 0x00, 0x00, 0x1a, 0x18, 0x1c, 0xad }
 };
@@ -124,7 +123,7 @@ static dcerpc_sub_dissector dcerpc_rras_dissectors[] = {
 	{ RRAS_RI_GET_CRED_EX, "RouterInterfaceGetCredentialsEx", NULL, NULL },
 	{ RRAS_ADMIN_CONNECTION_REM_QUARANT,
 		"RasAdminConnectionRemoveQuarantine", NULL, NULL },
-        { 0, NULL, NULL,  NULL }
+	{ 0, NULL, NULL,  NULL }
 };
 
 
@@ -132,7 +131,7 @@ void
 proto_register_dcerpc_rras(void)
 {
 
-        static hf_register_info hf[] = {
+	static hf_register_info hf[] = {
 
 		{ &hf_rras_opnum,
 		  { "Operation", "rras.opnum", FT_UINT16, BASE_DEC,
@@ -140,9 +139,9 @@ proto_register_dcerpc_rras(void)
 	};
 
 
-        static gint *ett[] = {
-                &ett_dcerpc_rras,
-        };
+	static gint *ett[] = {
+		&ett_dcerpc_rras,
+	};
 
 
 	proto_dcerpc_rras = proto_register_protocol(
@@ -150,7 +149,7 @@ proto_register_dcerpc_rras(void)
 
 	proto_register_field_array(proto_dcerpc_rras, hf, array_length(hf));
 
-        proto_register_subtree_array(ett, array_length(ett));
+	proto_register_subtree_array(ett, array_length(ett));
 
 }
 
@@ -164,3 +163,16 @@ proto_reg_handoff_dcerpc_rras(void)
 		proto_dcerpc_rras, ett_dcerpc_rras, &uuid_dcerpc_rras,
 		ver_dcerpc_rras, dcerpc_rras_dissectors, hf_rras_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

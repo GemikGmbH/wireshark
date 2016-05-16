@@ -57,24 +57,12 @@
  *       REGISTER_STAT_GROUP_my_group);
  * }
  *
- * See also: h225_ras_srt.c or h225_counter.c
+ * See also: h225_ras_srt.c
  *
  */
 
 #include <epan/params.h>
-
-typedef enum {
-	PARAM_UINT,
-	PARAM_STRING,
-	PARAM_ENUM,
-	PARAM_FILTER
-} param_type;
-
-typedef struct _tap_param {
-	param_type type;
-	const char *title;
-	const enum_val_t *enum_vals;
-} tap_param;
+#include <epan/stat_tap_ui.h>
 
 typedef struct _tap_param_dlg {
 	const char *win_title;		/* title */
@@ -83,6 +71,7 @@ typedef struct _tap_param_dlg {
 	gint index;			/* initiate this value always with "-1" */
 	size_t nparams;			/* number of parameters */
 	tap_param *params;		/* pointer to table of parameter info */
+	gpointer user_data;		/* Optional "dialog specific" data */
 } tap_param_dlg;
 
 /*

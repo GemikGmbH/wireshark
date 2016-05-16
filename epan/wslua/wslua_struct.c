@@ -23,7 +23,6 @@
 /*
 ** {======================================================
 ** Library for packing/unpacking structures.
-** $Id: struct.c,v 1.4 2012/07/04 18:54:29 roberto Exp $
 ** See Copyright Notice above.
 **
 ** Small changes were made by Hadriel Kaplan - those changes
@@ -118,36 +117,36 @@
 
   The supported elements in the format string are as follows:
 
-    * "` `" (empty space) ignored.
-    * "`!`n" flag to set the current alignment requirement to 'n' (necessarily a power of 2);
+    * `$$ $$' (empty space) ignored.
+    * `++!++__n__' flag to set the current alignment requirement to 'n' (necessarily a power of 2);
       an absent 'n' means the machine's native alignment.
-    * "`>`" flag to set mode to big endian (i.e., network-order).
-    * "`<`" flag to set mode to little endian.
-    * "`x`" a padding zero byte with no corresponding Lua value.
-    * "`b`" a signed char.
-    * "`B`" an unsigned char.
-    * "`h`" a signed short (native size).
-    * "`H`" an unsigned short (native size).
-    * "`l`" a signed long (native size).
-    * "`L`" an unsigned long (native size).
-    * "`T`" a size_t (native size).
-    * "`i`n" a signed integer with 'n' bytes. An absent 'n' means the native size of an int.
-    * "`I`n" like "`i`n" but unsigned.
-    * "`e`" signed 8-byte Integer (64-bits, long long), to/from a `Int64` object.
-    * "`E`" unsigned 8-byte Integer (64-bits, long long), to/from a `UInt64` object.
-    * "`f`" a float (native size).
-    * "`d`" a double (native size).
-    * "`s`" a zero-terminated string.
-    * "`c`n" a sequence of exactly 'n' chars corresponding to a single Lua string. An absent 'n'
+    * `++>++' flag to set mode to big endian (i.e., network-order).
+    * `++<++' flag to set mode to little endian.
+    * `++x++' a padding zero byte with no corresponding Lua value.
+    * `++b++' a signed char.
+    * `++B++' an unsigned char.
+    * `++h++' a signed short (native size).
+    * `++H++' an unsigned short (native size).
+    * `++l++' a signed long (native size).
+    * `++L++' an unsigned long (native size).
+    * `++T++' a size_t (native size).
+    * `++i++__n__' a signed integer with 'n' bytes. An absent 'n' means the native size of an int.
+    * `++I++__n__' like `++i++__n__' but unsigned.
+    * `++e++' signed 8-byte Integer (64-bits, long long), to/from a +Int64+ object.
+    * `++E++' unsigned 8-byte Integer (64-bits, long long), to/from a +UInt64+ object.
+    * `++f++' a float (native size).
+    * `++d++' a double (native size).
+    * `++s++' a zero-terminated string.
+    * `++c++__n__' a sequence of exactly 'n' chars corresponding to a single Lua string. An absent 'n'
       means 1. When packing, the given string must have at least 'n' characters (extra
       characters are discarded).
-    * "`c0`" this is like "`c`n", except that the 'n' is given by other means: When packing, 'n' is
+    * `++c0++' this is like `++c++__n__', except that the 'n' is given by other means: When packing, 'n' is
       the length of the given string; when unpacking, 'n' is the value of the previous unpacked
       value (which must be a number). In that case, this previous value is not returned.
-    * "`x`n" pad to 'n' number of bytes, default 1.
-    * "`X`n" pad to 'n' alignment, default MAXALIGN.
-    * "`(`" to stop assigning items, and "`)`" start assigning (padding when packing).
-    * "`=`" to return the current position / offset.
+    * `++x++__n__' pad to 'n' number of bytes, default 1.
+    * `++X++__n__' pad to 'n' alignment, default MAXALIGN.
+    * `++(++' to stop assigning items, and `++)++' start assigning (padding when packing).
+    * `++=++' to return the current position / offset.
 
   @note Using `i`, `I`, `h`, `H`, `l`, `L`, `f`, and `T` is strongly discouraged, as those sizes
     are system-dependent. Use the explicitly sized variants instead, such as `i4` or `E`.
@@ -156,6 +155,7 @@
     so unpacking a 64-bit field (`i8`/`I8`) will lose precision.
     Use `e`/`E` to unpack into a Wireshark `Int64`/`UInt64` object instead.
 
+  @since 1.11.3
  */
 
 
@@ -176,10 +176,10 @@ typedef STRUCT_INT Inttype;
 typedef unsigned STRUCT_INT Uinttype;
 
 /* maximum size (in bytes) for integral types */
-#define MAXINTSIZE	32
+#define MAXINTSIZE  32
 
 /* is 'x' a power of 2? */
-#define isp2(x)		((x) > 0 && ((x) & ((x) - 1)) == 0)
+#define isp2(x)  ((x) > 0 && ((x) & ((x) - 1)) == 0)
 
 /* dummy structure to get padding/alignment requirements */
 struct cD {
@@ -188,13 +188,13 @@ struct cD {
 };
 
 
-#define PADDING		(sizeof(struct cD) - sizeof(gdouble))
-#define MAXALIGN  	(PADDING > sizeof(int) ? PADDING : sizeof(int))
+#define PADDING         (sizeof(struct cD) - sizeof(gdouble))
+#define MAXALIGN        (PADDING > sizeof(int) ? PADDING : sizeof(int))
 
 
 /* endian options */
-#define BIG	0
-#define LITTLE	1
+#define BIG     0
+#define LITTLE  1
 
 /* trick to determine native endianness of system */
 static union {
@@ -223,7 +223,7 @@ static int getnum (const gchar **fmt, int df) {
 }
 
 
-#define defaultoptions(h)	((h)->endian = native.endian, (h)->align = 1, (h)->noassign = FALSE)
+#define defaultoptions(h)    ((h)->endian = native.endian, (h)->align = 1, (h)->noassign = FALSE)
 
 
 /* gets size (number of bytes) for a given type */
@@ -621,11 +621,6 @@ WSLUA_CONSTRUCTOR Struct_tohex (lua_State *L) {
      just not fromhex. In fact, we should accept/coerce a Int64/UInt64 here too someday. */
   s = luaL_checklstring(L, WSLUA_ARG_Struct_tohex_BYTESTRING, &len);
 
-  if (!s) {
-    WSLUA_ARG_ERROR(Struct_tohex,BYTESTRING,"must be a Lua string");
-    return 0;
-  }
-
   lowercase = wslua_optbool(L,WSLUA_OPTARG_Struct_tohex_LOWERCASE,FALSE);
   sep = luaL_optstring(L,WSLUA_OPTARG_Struct_tohex_SEPARATOR,NULL);
 
@@ -643,11 +638,6 @@ WSLUA_CONSTRUCTOR Struct_fromhex (lua_State *L) {
 
   /* luaL_checklstring coerces the argument to a string, and we don't want to do that */
   s = wslua_checklstring_only(L, WSLUA_ARG_Struct_fromhex_HEXBYTES, &len);
-
-  if (!s) {
-    WSLUA_ARG_ERROR(Struct_fromhex,HEXBYTES,"must be a Lua string");
-    return 0;
-  }
 
   sep = luaL_optstring(L,WSLUA_OPTARG_Struct_fromhex_SEPARATOR,NULL);
 
@@ -677,6 +667,19 @@ WSLUA_META Struct_meta[] = {
 };
 
 LUALIB_API int Struct_register(lua_State* L) {
-    WSLUA_REGISTER_CLASS(Struct);
-    return 0;
+  WSLUA_REGISTER_CLASS(Struct);
+  return 0;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

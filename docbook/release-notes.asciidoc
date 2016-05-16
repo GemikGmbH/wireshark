@@ -1,4 +1,5 @@
 = Wireshark wireshark-version:[] Release Notes
+// AsciiDoc quick reference: http://powerman.name/doc/asciidoc
 
 == What is Wireshark?
 
@@ -9,211 +10,266 @@ used for troubleshooting, analysis, development and education.
 
 === Bug Fixes
 
-// Link templates: ws-buglink:5000[]  ws-buglink:6000[Wireshark bug]  cve-idlink:2013-2486[]
+The following vulnerabilities have been fixed:
 
-The following vulnerabilities have been fixed.
-
-* ws-salink:2015-01[]
+* ws-salink:2016-19[]
 +
-The WCCP dissector could crash.
-// Fixed in master: ga442a1c, ge843c67
-// Fixed in master-1.12: gdea8d02, gadce5fa
-(ws-buglink:10720[], ws-buglink:10806[])
-cve-idlink:2015-0559[], cve-idlink:2015-0560[]
+The NCP dissector could crash.
+(ws-buglink:11591[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: ea8e695
+// Fixed in master-2.0: a48b776
+// Fixed in master-1.12: N/A
 
-* ws-salink:2015-02[]
+* ws-salink:2016-20[]
 +
-The LPP dissector could crash.
-// Fixed in master: g8e96830
-// Fixed in master-1.12: gedc1a29
-(ws-buglink:10773[])
-cve-idlink:2015-0561[]
+TShark could crash due to a packet reassembly bug.
+(ws-buglink:11799[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: c5b2c1e
+// Fixed in master-2.0: ca2c9c8
+// Fixed in master-1.12: N/A
 
-* ws-salink:2015-03[]
+* ws-salink:2016-21[]
 +
-The DEC DNA Routing Protocol dissector could crash.
-// Fixed in master: ga559f2a
-// Fixed in master-1.12: g8ae9b53
-// Fixed in master-1.10: g336ccc1
-(ws-buglink:10724[])
-cve-idlink:2015-0562[]
+The IEEE 802.11 dissector could crash.
+(ws-buglink:11824[], ws-buglink:12187[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: e2745d7
+// Fixed in master-2.0: 6c9fc36
+// Fixed in master-1.12: N/A
 
-* ws-salink:2015-04[]
+* ws-salink:2016-22[]
 +
-The SMTP dissector could crash.
-// Fixed in master: g8541578, g611cfd0
-// Fixed in master-1.12: ge3c0c98, gde70b34
-// Fixed in master-1.10: g2d23bcd, gda8282d
-(ws-buglink:10823[])
-cve-idlink:2015-0563[]
+The PKTC dissector could crash.
+(ws-buglink:12206[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: 4cdc9ee
+// Fixed in master-2.0: 99d549f
+// Fixed in master-1.12: 4446971
 
-* ws-salink:2015-05[]
+* ws-salink:2016-23[]
 +
-Wireshark could crash while decypting TLS/SSL sessions. Discovered by Noam Rathaus.
-// Fixed in master: gd3581ae
-// Fixed in master-1.12: gf5e435a
-// Fixed in master-1.10: g7fc3a06
-//(ws-buglink:10823[])
-cve-idlink:2015-0564[]
+The PKTC dissector could crash.
+(ws-buglink:12242[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: ad09738
+// Fixed in master-2.0: a7fcd61
+// Fixed in master-1.12: df3d07b
+
+* ws-salink:2016-24[]
++
+The IAX2 dissector could go into an infinite loop.
+(ws-buglink:12260[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: 42f299b
+// Fixed in master-2.0: fedd01d
+// Fixed in master-1.12: 73dbc54
+
+* ws-salink:2016-25[]
++
+Wireshark and TShark could exhaust the stack.
+(ws-buglink:12268[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: 8dc9551
+// Fixed in master-2.0: fcff256
+// Fixed in master-1.12: c5a9678
+
+* ws-salink:2016-26[]
++
+The GSM CBCH dissector could crash.
+(ws-buglink:12278[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: 0fe522d
+// Fixed in master-2.0: 363dc72
+// Fixed in master-1.12: edf4950
+
+* ws-salink:2016-27[]
++
+MS-WSP dissector crash.
+(ws-buglink:12341[])
+//cve-idlink:2015-XXXX[]
+// Fixed in master: 66417b1
+// Fixed in master-2.0: 15d6b59e8
+// Fixed in master-1.12: N/A
+
 
 The following bugs have been fixed:
 
-//* Wireshark always manages to score tickets for Burning Man, Coachella, and
-//  SXSW while you end up working double shifts. (ws-buglink:0000[])
-// for bugnumber in `git log --stat v1.12.4rc0..| grep ' Bug:' | cut -f2 -d: | sort -n -u ` ; do gen-bugnote $bugnumber; pbpaste >> /tmp/buglist.txt; done
+//* ws-buglink:5000[]
+//* ws-buglink:6000[Wireshark bug]
+//* cve-idlink:2016-7000[]
+//* Wireshark insists on calling you on your land line which is keeping you from abandoning it for cellular. (ws-buglink:0000[])
+// cp /dev/null /tmp/buglist.txt ; for bugnumber in `git log --stat v2.0.3rc0..| grep ' Bug:' | cut -f2 -d: | sort -n -u ` ; do gen-bugnote $bugnumber; pbpaste >> /tmp/buglist.txt; done
 
-* WebSocket dissector: empty payload causes DISSECTOR_ASSERT_NOT_REACHED. (ws-buglink:9332[])
+* Protocol Hierarchy Statistics shows LDAP lines recursively. (ws-buglink:1734[])
 
-* Wireshark crashes if Lua heuristic dissector returns true. (ws-buglink:10233[])
+* UTF-8 replacement characters in FT_STRINGs are escaped for presentation. (ws-buglink:10681[])
 
-* Display MEP ID in decimal in OAM Y.1731 Synthetic Loss Message and Reply PDU. (ws-buglink:10500[])
+* DTLS : reassembly error, protocol DTLS: New fragment overlaps old data. (ws-buglink:11477[])
 
-* TCP Window Size incorrectly reported in Packet List. (ws-buglink:10514[])
+* Packet byte pane in Qt version of packet window isn't being displayed. (ws-buglink:11760[])
 
-* Status bar "creeps" to the left a few pixels every time Wireshark is opened. (ws-buglink:10518[])
+* "wireshark -i usbmon2 -k" results in "No interfaces selected" when restarting a capture. (ws-buglink:11939[])
 
-* E-LMI Message type. (ws-buglink:10531[])
+* Crash when changing the "which packets to print" radio button in the Print dialog. (ws-buglink:12040[])
 
-* SMTP decoder can dump binary data to terminal in TShark. (ws-buglink:10536[])
+* Selecting packets causes memory leak. (ws-buglink:12044[])
 
-* PTPoE dissector gets confused by packets that include an FCS. (ws-buglink:10611[])
+* Client Hello not dissected when failed SSL handshake fully captured. (ws-buglink:12132[])
 
-* IPv6 Vendor Specific Mobility Option includes the next mobility option type. (ws-buglink:10618[])
+* TCP graphs - wrong stream graphed if stream index > 99. (ws-buglink:12163[])
 
-* Save PCAP to PCAPng with commentary fails. (ws-buglink:10656[])
+* Typo in packet-gsm_a_dtap.c. (ws-buglink:12186[])
 
-* Display filter "frame contains bytes [2342]" causes a crash. (ws-buglink:10690[])
+* Lua dot file error. (ws-buglink:12196[])
 
-* Multipath TCP: checksum displayed when it's not there. (ws-buglink:10692[])
+* "All Files" does not allow selecting files without period. (ws-buglink:12203[])
 
-* LTE APN-AMBR is decoded incorrectly. (ws-buglink:10699[])
+* wlan, wlan_mgt, Length error shown for IE BSS AC Access Delay/WAPI Parameter Set (68). (ws-buglink:12223[])
 
-* DNS NAPTR RR Replacement Length is incorrect. (ws-buglink:10700[])
+* Qt GUI very slow when expanding packet details with a lot of items. (ws-buglink:12228[])
 
-* IPv6 Experimental mobility header data is interpreted as options. (ws-buglink:10703[])
+* Comparing a boolean field against 1 always succeeds on big-endian machines. (ws-buglink:12236[])
 
-* Dissector bug, protocol SPDY: tvbuff.c:610: failed assertion "tvb && tvb->initialized". (ws-buglink:10704[])
+* FIN flag not always correctly passed to subdissectors. (ws-buglink:12238[])
 
-* BGP: Incorrect decoding AS numbers when mixed AS size. (ws-buglink:10742[])
+* Interpretation of BGP NLRI for default route cause malformed packet. (ws-buglink:12240[])
 
-* BGP update community - incorrect decoding. (ws-buglink:10746[])
+* Capture Interfaces dialog crashes after clicking the bookmark menu. (ws-buglink:12241[])
 
-* Setting a 6LoWPAN context generates a Wireshark crash. (ws-buglink:10747[])
+* Wireshark crashes right after a capture filter is selected. (ws-buglink:12245[])
 
-* FC is not dissected (protocol UNKNOWN). (ws-buglink:10751[])
+* GSM GMM Identity Response dissection error. (ws-buglink:12246[])
 
-* Crash when displaying several times INFO column. (ws-buglink:10755[])
+* Crash reloading "dissector.lua" from the Wireshark website. (ws-buglink:12251[])
 
-* Decoding of longitude value in LCSAP (3GPP TS 29.171) is incorrect. (ws-buglink:10767[])
+* VoIP calls does not show IAX2 calls. (ws-buglink:12254[])
 
-* Crash when enabling FCoIB manual settings without filling address field. (ws-buglink:10796[])
+* Wireshark CPU usage has dramatically increased. (ws-buglink:12258[])
 
-* RSVP RECORD_ROUTE IPv4 Subobject Flags field incorrect decoding. (ws-buglink:10799[])
+* RPC/NFS incorrectly decodes as ACAP. (ws-buglink:12265[])
 
-* Wireshark Lua engine can't access protocol field type. (ws-buglink:10801[])
+* Wireshark mistakenly flags CF-End packets as being Malformed. (ws-buglink:12266[])
 
-* Field Analysis of OpenFlow v1.4 OFPT_SET_ASYNC. (ws-buglink:10808[])
+* ASTERIX Category 48 Reserved Expansion Field. (ws-buglink:12267[])
 
-* Lua: getting fieldinfo.value for FT_NONE causes assert. (ws-buglink:10815[])
+* It is not possible to enter characters requiring "Alt Gr" in the display filter box such as "[" on a Swedish keyboard. (ws-buglink:12270[])
+
+* tshark crashes when trying to export to pdml. (ws-buglink:12276[])
+
+* Build fails on Centos 6.5 with gtk2 in ui/gtk/rtp_player.c rtp_channel_info_r has no no member start_time. (ws-buglink:12277[])
+
+* TCP Dissector - spurious retransmissions not always recognized. (ws-buglink:12282[])
+
+* PRA Identifier of the IE PRA Action should use 3 octets (6 to 8) and not 2 in GTPv2. (ws-buglink:12284[])
+
+* Dissector bug, failed assertion, proto_desegment pinfo->can_desegment. (ws-buglink:12285[])
+
+* Colorize with filter, new coloring rule, is labeled as new conversation rule. (ws-buglink:12289[])
+
+* Qt Multicast Stream Dialog error in input field Burst alarm threshold and Buffer alarm. (ws-buglink:12309[])
+
+* 6LoWPAN reassembly incorrect if extension header padding was elided. (ws-buglink:12310[])
+
+* USBPcap prevents keyboard from working. (ws-buglink:12316[])
+
+* Crash when reloading Lua script when Field is gone. (ws-buglink:12328[])
+
+* Wrong display of USSD strings in the GSM 7-bit alphabet for non-ASCII characters in Wireshark 2.0.x. (ws-buglink:12337[])
+
+* Malformed Packet: RTP. (ws-buglink:12339[])
+
+* Incorrect error on MPA pdu length on iWARP packets. (ws-buglink:12348[])
+
+* Endpoints window doesn't show name resolution. (ws-buglink:12353[])
+
+
+Windows installers and PortableApps(R) packages are dual signed using SHA-1 and SHA-256
+in order to comply with
+http://social.technet.microsoft.com/wiki/contents/articles/32288.windows-enforcement-of-authenticode-code-signing-and-timestamping.aspx[Microsoft Authenticode policy].
+Windows 7 and Windows Server 2008 R2 users should ensure that
+https://support.microsoft.com/en-us/kb/3123479[update 3123479] is installed.
+Windows Vista and Windows Server 2008 users should ensure that
+https://support.microsoft.com/en-us/kb/2763674[hotfix 2763674] is installed.
 
 === New and Updated Features
 
 There are no new features in this release.
 
+//=== Removed Dissectors
+
+=== New File Format Decoding Support
+
+There are no new file formats in this release.
+
 === New Protocol Support
 
 There are no new protocols in this release.
+
 
 === Updated Protocol Support
 
 --sort-and-group--
 6LoWPAN
-ADwin
-AllJoyn
-Art-Net
+ACAP
 Asterix
 BGP
-Bitcoin
-Bluetooth OBEX
-Bluetooth SDP
-CFM
-CIP
-DCERPC PN-IO
-DCERPC SPOOLSS
-DEC DNA
-DECT
-DHCPv6
+DMP
 DNS
-DTN
-E-LMI
-ENIP
-Ethernet
-Extreme
-Fibre Channel
-FCoIB
-GED125
-GTP
-H.248
-H.264
-HiSLIP
-IDRP
+DTLS
+EAP
+FMTP
+GPRS LLC
+GSM A
+GSM A GM
+GSM CBCH
+GSM MAP
+GTPv2
+IAX2
 IEEE 802.11
-IEEE P1722.1
-Infiniband
-IrDA
-iSCSI
-ISUP
-LBMR
-LCSAP
-LPP
-MAC LTE
-MAUSB
-MBIM
-MIM
-MIP
-MIPv6
-MP2T
-MPEG-1
-NAS EPS
-NAT-PMP
+iWARP MPA
+HTTP
+MS-WSP
+MySQL
 NCP
-NXP PN532
-OpcUa
-OpenFlow
-PTP
-RDM
-RPKI-RTR
-RSVP
-RTnet
-RTSP
-SCTP
-SMPP
-SMTP
-SPDY
-Spice
+NFS
+PKTC
+QUIC
+R3
+RTP
+SMB
+SPRT
 TCP
-WCCP
-Wi-Fi P2P
-WiMAX
+ZEP
+ZigBee
+ZigBee NWK
+ZigBee ZCL SE
+ZVT
 --sort-and-group--
 
 === New and Updated Capture File Support
 
+//There is no new or updated capture file support in this release.
 --sort-and-group--
-K12
+Gammu DCT3
 --sort-and-group--
+
+=== New and Updated Capture Interfaces support
+
+There are no new or updated capture interfaces supported in this release.
 
 == Getting Wireshark
 
 Wireshark source code and installation packages are available from
-http://www.wireshark.org/download.html.
+https://www.wireshark.org/download.html.
 
 === Vendor-supplied Packages
 
 Most Linux and Unix vendors supply their own Wireshark packages. You can
 usually install or upgrade Wireshark using the package management system
 specific to that platform. A list of third-party packages can be found
-on the http://www.wireshark.org/download.html#thirdparty[download page]
+on the https://www.wireshark.org/download.html#thirdparty[download page]
 on the Wireshark web site.
 
 == File Locations
@@ -237,9 +293,6 @@ Capture filters aren't applied when capturing from named pipes.
 Filtering tshark captures with read filters (-R) no longer works.
 (ws-buglink:2234[])
 
-The 64-bit Windows installer does not support Kerberos decryption.
-(http://wiki.wireshark.org/Development/Win64[Win64 development page])
-
 Resolving (ws-buglink:9044[]) reopens (ws-buglink:3528[]) so that Wireshark
 no longer automatically decodes gzip data when following a TCP stream.
 
@@ -255,12 +308,20 @@ Packet list rows are oversized.
 Wireshark and TShark will display incorrect delta times in some cases.
 (ws-buglink:4985[])
 
+The 64-bit version of Wireshark will leak memory on Windows when the display
+depth is set to 16 bits (ws-buglink:9914[])
+
+Wireshark should let you work with multiple capture files. (ws-buglink:10488[])
+
+Dell Backup and Recovery (DBAR) makes many Windows applications crash,
+including Wireshark. (ws-buglink:12036[])
+
 == Getting Help
 
-Community support is available on http://ask.wireshark.org/[Wireshark's
+Community support is available on https://ask.wireshark.org/[Wireshark's
 Q&A site] and on the wireshark-users mailing list. Subscription
 information and archives for all of Wireshark's mailing lists can be
-found on http://www.wireshark.org/lists/[the web site].
+found on https://www.wireshark.org/lists/[the web site].
 
 Official Wireshark training and certification are available from
 http://www.wiresharktraining.com/[Wireshark University].
@@ -268,4 +329,4 @@ http://www.wiresharktraining.com/[Wireshark University].
 == Frequently Asked Questions
 
 A complete FAQ is available on the
-http://www.wireshark.org/faq.html[Wireshark web site].
+https://www.wireshark.org/faq.html[Wireshark web site].

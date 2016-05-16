@@ -25,6 +25,10 @@
 #ifndef __UI_UTIL_H__
 #define __UI_UTIL_H__
 
+#include <stdint.h>
+
+#include <wsutil/processes.h>
+
 #include "epan/packet_info.h"
 #include "epan/column-utils.h"
 
@@ -56,7 +60,7 @@ extern void main_window_quit(void);
 /* read from a pipe (callback) */
 typedef gboolean (*pipe_input_cb_t) (gint source, gpointer user_data);
 /* install callback function, called if pipe input is available */
-extern void pipe_input_set_handler(gint source, gpointer user_data, int *child_process, pipe_input_cb_t input_cb);
+extern void pipe_input_set_handler(gint source, gpointer user_data, ws_process_id *child_process, pipe_input_cb_t input_cb);
 
 /* packet_list.c */
 
@@ -67,14 +71,14 @@ void packet_list_thaw(void);
 void packet_list_next(void);
 void packet_list_prev(void);
 guint packet_list_append(column_info *cinfo, frame_data *fdata);
-frame_data * packet_list_get_row_data(gint row);
+frame_data *packet_list_get_row_data(gint row);
 void packet_list_set_selected_row(gint row);
 void packet_list_enable_color(gboolean enable);
 void packet_list_queue_draw(void);
 void packet_list_select_first_row(void);
 void packet_list_select_last_row(void);
 void packet_list_moveto_end(void);
-gboolean packet_list_check_end(void);
+gboolean packet_list_check_end(void); /* GTK+ only */
 gboolean packet_list_select_row_from_data(frame_data *fdata_needle);
 void packet_list_resize_column(gint col);
 

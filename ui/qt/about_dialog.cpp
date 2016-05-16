@@ -22,7 +22,7 @@
 #include "config.h"
 
 #include "about_dialog.h"
-#include "ui_about_dialog.h"
+#include <ui_about_dialog.h>
 
 #include "wireshark_application.h"
 #include <wsutil/filesystem.h>
@@ -38,26 +38,28 @@
 #endif
 
 #include "../log.h"
-#include "../version_info.h"
 #include "../register.h"
 
-#include "ui/text_import_scanner.h"
-#include "ui/last_open_dir.h"
 #include "ui/alert_box.h"
+#include "ui/last_open_dir.h"
 #include "ui/help_url.h"
+#include "ui/text_import_scanner.h"
+#include <wsutil/utf8_entities.h>
 
 #include "file.h"
 #include "wsutil/file_util.h"
 #include "wsutil/tempfile.h"
 #include "wsutil/plugins.h"
+#include "wsutil/copyright_info.h"
+#include "wsutil/ws_version_info.h"
 
 #include "qt_ui_utils.h"
 
 #include <QFontMetrics>
+#include <QKeySequence>
 #include <QTextStream>
 #include <QUrl>
 
-#include "wireshark_application.h"
 
 // To do:
 // - Tweak and enhance ui...
@@ -116,26 +118,28 @@ const QString AboutDialog::plugins_scan()
 }
 
 AboutDialog::AboutDialog(QWidget *parent) :
-    QDialog(parent),
+    QDialog(NULL),
     ui(new Ui::AboutDialog)
 {
     ui->setupUi(this);
+    setAttribute(Qt::WA_DeleteOnClose, true);
     QFile f_authors;
     QFile f_license;
     const char *constpath;
     QString message;
-#if defined (HAVE_LIBSMI) || defined (HAVE_GEOIP)
+#if defined(HAVE_LIBSMI) || defined(HAVE_GEOIP) || defined(HAVE_EXTCAP)
+#if defined(HAVE_LIBSMI) || defined(HAVE_GEOIP)
     char *path = NULL;
+#endif
     gint i;
     gchar **resultArray;
 #endif
-
 
     /* Wireshark tab */
 
     /* Construct the message string */
     message = QString(
-        "Version " VERSION "%1\n"
+        "Version %1\n"
         "\n"
         "%2"
         "\n"
@@ -146,7 +150,7 @@ AboutDialog::AboutDialog(QWidget *parent) :
         "Wireshark is Open Source Software released under the GNU General Public License.\n"
         "\n"
         "Check the man page and http://www.wireshark.org for more information.")
-        .arg(wireshark_gitversion).arg(get_copyright_info()).arg(comp_info_str->str)
+        .arg(get_ws_vcs_version_info()).arg(get_copyright_info()).arg(comp_info_str->str)
         .arg(runtime_info_str->str);
 
     ui->label_wireshark->setTextInteractionFlags(Qt::TextSelectableByMouse);
@@ -186,13 +190,13 @@ AboutDialog::AboutDialog(QWidget *parent) :
     /* pers conf */
     message += about_folders_row("Personal configuration",
                                  gchar_free_to_qstring(get_persconffile_path("", FALSE)),
-                                 "<i>dfilters</i>, <i>preferences</i>, <i>ethers</i>, ...");
+                                 "<i>dfilters</i>, <i>preferences</i>, <i>ethers</i>, " UTF8_HORIZONTAL_ELLIPSIS);
 
     /* global conf */
     constpath = get_datafile_dir();
     if (constpath != NULL) {
         message += about_folders_row("Global configuration", constpath,
-                                     "<i>dfilters</i>, <i>preferences</i>, <i>manuf</i>, ...");
+                                     "<i>dfilters</i>, <i>preferences</i>, <i>manuf</i>, " UTF8_HORIZONTAL_ELLIPSIS);
     }
 
     /* system */
@@ -208,11 +212,6 @@ AboutDialog::AboutDialog(QWidget *parent) :
 
     /* global plugins */
     message += about_folders_row("Global Plugins", get_plugin_dir(), "dissector plugins");
-#endif
-
-#ifdef HAVE_PYTHON
-    /* global python bindings */
-    message += about_folders_row("Python Bindings", get_wspython_dir(), "python bindings");
 #endif
 
 #ifdef HAVE_GEOIP
@@ -243,6 +242,19 @@ AboutDialog::AboutDialog(QWidget *parent) :
     g_free(path);
 #endif
 
+#ifdef HAVE_EXTCAP
+    /* Extcap */
+    constpath = get_extcap_dir();
+
+    resultArray = g_strsplit(constpath, G_SEARCHPATH_SEPARATOR_S, 10);
+
+    for(i = 0; resultArray[i]; i++) {
+        message += about_folders_row("Extcap path", g_strstrip(resultArray[i]),
+                                     "Extcap Plugins search path");
+    }
+    g_strfreev(resultArray);
+#endif
+
     message += "</table>";
     ui->label_folders->setText(message);
 
@@ -255,7 +267,46 @@ AboutDialog::AboutDialog(QWidget *parent) :
     message += plugins_scan();
 
     message += "</table>";
-    ui->label_plugins->setText(message);
+    ui->te_plugins->setHtml(message);
+
+    /* Shortcuts */
+    bool have_shortcuts = false;
+
+    if (parent) {
+        message = "<h3>Main Window Keyboard Shortcuts</h3>\n";
+        message += QString("<table cellpadding=\"%1\">\n").arg(one_em / 4);
+        message += "<tr><th align=\"left\">Shortcut</th><th align=\"left\">Name</th><th align=\"left\">Description</th></tr>\n";
+
+        QMap<QString, QPair<QString, QString> > shortcuts; // name -> (shortcut, description)
+        foreach (const QWidget *child, parent->findChildren<QWidget *>()) {
+            // Recent items look funny here.
+            if (child->objectName().compare("menuOpenRecentCaptureFile") == 0) continue;
+            foreach (const QAction *action, child->actions()) {
+
+                if (!action->shortcut().isEmpty()) {
+                    QString name = action->text();
+                    name.replace('&', "");
+                    shortcuts[name] = QPair<QString, QString>(action->shortcut().toString(QKeySequence::NativeText), action->toolTip());
+                }
+            }
+        }
+
+        QStringList names = shortcuts.keys();
+        names.sort();
+        foreach (const QString &name, names) {
+            message += QString("<tr><td>%1</td><td>%2</td><td>%3</td></tr>\n")
+                    .arg(shortcuts[name].first)
+                    .arg(name)
+                    .arg(shortcuts[name].second);
+            have_shortcuts = true;
+        }
+
+        message += "</table>";
+        ui->te_shortcuts->setHtml(message);
+
+    }
+
+    ui->te_shortcuts->setVisible(have_shortcuts);
 
     /* License */
 

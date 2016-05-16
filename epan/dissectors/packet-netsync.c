@@ -26,8 +26,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include "dwarf.h"
@@ -312,7 +310,7 @@ static gint dissect_netsync_cmd_send_data(tvbuff_t *tvb,  gint offset, proto_tre
 {
 	proto_tree_add_item(tree, hf_netsync_cmd_send_data_type, tvb,
 					offset, 1, ENC_BIG_ENDIAN );
-        offset += 1;
+	offset += 1;
 
 	proto_tree_add_item(tree, hf_netsync_cmd_send_data_id, tvb,
 				offset, NETSNYC_MERKLE_HASH_LENGTH, ENC_NA );
@@ -326,7 +324,7 @@ static gint dissect_netsync_cmd_send_delta(tvbuff_t *tvb,  gint offset, proto_tr
 {
 	proto_tree_add_item(tree, hf_netsync_cmd_send_delta_type, tvb,
 					offset, 1, ENC_BIG_ENDIAN );
-        offset += 1;
+	offset += 1;
 
 	proto_tree_add_item(tree, hf_netsync_cmd_send_delta_base_id, tvb,
 				offset, NETSNYC_MERKLE_HASH_LENGTH, ENC_NA );
@@ -411,7 +409,7 @@ static gint dissect_netsync_cmd_nonexistent(tvbuff_t *tvb,  gint offset, proto_t
 }
 
 static guint
-get_netsync_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_netsync_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
 	guint64 size = 0;
 	guint   size_bytes;
@@ -442,7 +440,7 @@ dissect_netsync_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "Netsync");
 
 	if (tree == NULL)
-		return tvb_length(tvb);
+		return tvb_captured_length(tvb);
 
 	while (tvb_reported_length_remaining(tvb, offset)  > 0) {
 		ti = proto_tree_add_item(tree, proto_netsync, tvb, offset, -1, ENC_NA);
@@ -473,7 +471,7 @@ dissect_netsync_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
 
 
 		proto_tree_add_uint(netsync_tree, hf_netsync_size, tvb,
-                                        offset, size_bytes, size );
+				    offset, size_bytes, size );
 		offset += size_bytes;
 
 		switch (cmd) {
@@ -548,7 +546,7 @@ dissect_netsync_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
 		proto_item_set_len(netsync_tree, 1+1+size_bytes+size+4);
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 static int
@@ -556,7 +554,7 @@ dissect_netsync(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
 	tcp_dissect_pdus(tvb, pinfo, tree, netsync_desegment, 7, get_netsync_pdu_len,
 					dissect_netsync_pdu, data);
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -762,3 +760,15 @@ proto_reg_handoff_netsync(void)
 	dissector_add_uint("tcp.port", global_tcp_port_netsync, netsync_handle);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

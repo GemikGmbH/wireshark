@@ -22,8 +22,6 @@
 
 #include "config.h"
 
-
-
 #include "packet-rpc.h"
 #include "packet-yppasswd.h"
 
@@ -47,10 +45,11 @@ static gint ett_yppasswd = -1;
 static gint ett_yppasswd_newpw = -1;
 
 static int
-dissect_yppasswd_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
+dissect_yppasswd_call(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
 	proto_item *lock_item = NULL;
 	proto_tree *lock_tree = NULL;
+	int offset = 0;
 
 	offset = dissect_rpc_string(tvb, tree, hf_yppasswd_oldpass,
 			offset, NULL);
@@ -79,18 +78,15 @@ dissect_yppasswd_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_t
 }
 
 static int
-dissect_yppasswd_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
+dissect_yppasswd_reply(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_uint32(tvb, tree, hf_yppasswd_status, offset);
-
-	return offset;
+	return dissect_rpc_uint32(tvb, tree, hf_yppasswd_status, 0);
 }
 
 /* proc number, "proc name", dissect_request, dissect_reply */
-/* NULL as function pointer means: type of arguments is "void". */
 static const vsff yppasswd1_proc[] = {
 	{ YPPASSWDPROC_NULL,	"NULL",
-		NULL,		NULL },
+		dissect_rpc_void,	dissect_rpc_void },
 	{ YPPASSWDPROC_UPDATE,	"UPDATE",
 		dissect_yppasswd_call,	dissect_yppasswd_reply },
 	{ 0,	NULL,		NULL,				NULL }
@@ -99,6 +95,10 @@ static const value_string yppasswd1_proc_vals[] = {
 	{ YPPASSWDPROC_NULL,	"NULL" },
 	{ YPPASSWDPROC_UPDATE,	"UPDATE" },
 	{ 0,	NULL }
+};
+
+static const rpc_prog_vers_info yppasswd_vers_info[] = {
+	{ 1, yppasswd1_proc, &hf_yppasswd_procedure_v1 },
 };
 
 void
@@ -165,8 +165,19 @@ void
 proto_reg_handoff_yppasswd(void)
 {
 	/* Register the protocol as RPC */
-	rpc_init_prog(proto_yppasswd, YPPASSWD_PROGRAM, ett_yppasswd);
-	/* Register the procedure tables */
-	rpc_init_proc_table(YPPASSWD_PROGRAM, 1, yppasswd1_proc, hf_yppasswd_procedure_v1);
+	rpc_init_prog(proto_yppasswd, YPPASSWD_PROGRAM, ett_yppasswd,
+	    G_N_ELEMENTS(yppasswd_vers_info), yppasswd_vers_info);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

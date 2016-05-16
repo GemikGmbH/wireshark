@@ -65,7 +65,6 @@
 #include <errno.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <epan/emem.h>
 #include <epan/value_string.h>
 #include <epan/packet.h>	/* array_length */
 #include <wsutil/file_util.h>
@@ -474,7 +473,7 @@ static void wimaxasncp_dict_debug(const gchar *fmt, ...) {
 
 static guint wimaxasncp_bits(guint bits, char *n)
 {
-	return 1 << ((bits - 1) - (strtoul(n, NULL, 10)));
+	return 1u << ((bits - 1) - (strtoul(n, NULL, 10)));
 }
 
 static const value_string wimaxasncp_decode_type_vals[] =
@@ -673,8 +672,7 @@ wimaxasncp_dict_t *wimaxasncp_dict_scan(
 
 	if (dict_error->len > 0)
 	{
-		*error = dict_error->str;
-		g_string_free(dict_error, FALSE);
+		*error = g_string_free(dict_error, FALSE);
 	}
 	else
 	{

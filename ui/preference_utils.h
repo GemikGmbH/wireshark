@@ -70,7 +70,7 @@ extern void reset_stashed_pref(pref_t *pref);
 
 /** If autoscroll in live captures is active or not
  */
-extern gboolean auto_scroll_live;
+extern gboolean auto_scroll_live; /* GTK+ only. */
 
 /** Fill in capture options with values from the preferences
  */
@@ -80,16 +80,28 @@ extern void prefs_to_capture_opts(void);
  */
 extern void prefs_main_write(void);
 
+/** Convenient function for plugin_if
+ *
+ * @param module the module for the preference
+ * @param key the key for the preference
+ * @param value the new value as string for the preference
+ *
+ * @return true if the value has been stored successfully
+ */
+extern gboolean prefs_store_ext(const char * module, const char * key, const char * value);
+
 /** Add a custom column.
  *
  * @param fmt column format
  * @param title column title
  * @param custom_field column custom field
  * @param custom_occurrence custom occurrence
+ *
+ * @return The index of the inserted column
  */
-void column_prefs_add_custom(gint fmt, const gchar *title,
-			     const gchar *custom_field,
-			     gint custom_occurrence);
+gint column_prefs_add_custom(gint fmt, const gchar *title,
+                             const gchar *custom_field,
+                             gint custom_occurrence);
 
 /** Remove a column.
  *
@@ -109,3 +121,16 @@ void column_prefs_remove_nth(gint col);
 #endif /* __cplusplus */
 
 #endif /* __PREFRENCE_UTILS_H__ */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

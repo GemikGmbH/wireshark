@@ -19,6 +19,11 @@
 # Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 #
 
+include(WiresharkPlugin)
+
+# XXX No moduleinfo.nmake
+# set_plugin_properties(tpg ...)
+
 set(PLUGIN_FILES
 	http-parser.c
 	packet-http.c
@@ -67,18 +72,10 @@ ADD_CUSTOM_COMMAND(
       ${CMAKE_CURRENT_SOURCE_DIR}/http.tpg
 )
 
-add_library(tpg ${LINK_MODE_MODULE}
-	${PLUGIN_FILES}
-)
-set_target_properties(tpg PROPERTIES PREFIX "")
-set_target_properties(tpg PROPERTIES LINK_FLAGS ${WS_LINK_FLAGS})
-set_target_properties(tpg PROPERTIES FOLDER "Plugins")
-
-target_link_libraries(tpg epan)
+add_plugin_library(tpg)
 
 install(TARGETS tpg
-	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/@CPACK_PACKAGE_NAME@/plugins/${CPACK_PACKAGE_VERSION} NAMELINK_SKIP
-	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/@CPACK_PACKAGE_NAME@/plugins/${CPACK_PACKAGE_VERSION}
-	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/@CPACK_PACKAGE_NAME@/plugins/${CPACK_PACKAGE_VERSION}
+	LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/plugins/${CPACK_PACKAGE_VERSION} NAMELINK_SKIP
+	RUNTIME DESTINATION ${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/plugins/${CPACK_PACKAGE_VERSION}
+	ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}/${CPACK_PACKAGE_NAME}/plugins/${CPACK_PACKAGE_VERSION}
 )
-

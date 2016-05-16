@@ -29,17 +29,14 @@
 #include <epan/proto.h>
 #include <epan/prefs.h>
 
-#include <color.h>
 
 #include <ui/recent.h>
 #include <ui/simple_dialog.h>
 
+#include "ui/gtk/old-gtk-compat.h"
 #include "color_utils.h"
 #include "follow_tcp.h"
 #include "font_utils.h"
-#include "gui_utils.h"
-#include "keys.h"
-#include "old-gtk-compat.h"
 #include "packet_panes.h"
 #include "prefs_font_color.h"
 
@@ -510,9 +507,8 @@ font_color_prefs_apply(GtkWidget *w _U_, gboolean redissect)
     case FA_SUCCESS:
       break;
 
-    case FA_FONT_NOT_RESIZEABLE:
-      /* "user_font_apply()" popped up an alert box. */
-      /* turn off zooming - font can't be resized */
+    case FA_ZOOMED_TOO_FAR:
+      /* zoomed too far - turn off zooming */
       recent.gui_zoom_level = 0;
       break;
 

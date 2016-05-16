@@ -17,8 +17,8 @@
 # It is also recommended to run checkhf.pl and checkAPIs.pl after "Pass 2" is completed.
 #
 # Delimited file field format:
-# <convert proto_tree_add_text_call[0|1|10-13]><add hf or ei variable[0|1|2]><proto_tree var><hf var><tvb var><offset><length><encoding>
-# <[FIELDNAME]><[FIELDTYPE]><[FIELDABBREV]><[FIELDDISPLAY]><[FIELDCONVERT]><[BITMASK]>
+# <convert proto_tree_add_text_call[0|1|10-13]><add hf or ei variable[0|1|2]><proto_tree var><hf var><tvb var><offset><length><encoding|[EXPERT_GROUPS]>
+# <[FIELDNAME]><[FIELDTYPE]|[EXPERT_SEVERITY]><[FIELDABBREV]><[FIELDDISPLAY]><[FIELDCONVERT]><[BITMASK]>
 #
 # convert proto_tree_add_text_call enumerations:
 # 0  - no conversions
@@ -63,6 +63,7 @@ my %DISPLAY_BASE = ('BASE_NONE' => "BASE_NONE",
 					   'BASE_DEC_HEX' => "BASE_DEC_HEX",
 					   'BASE_HEX_DEC' => "BASE_HEX_DEC",
 					   'BASE_EXT_STRING' => "BASE_EXT_STRING",
+					   'BASE_RANGE_STRING' => "BASE_RANGE_STRING",
 					   'ABSOLUTE_TIME_LOCAL' => "ABSOLUTE_TIME_LOCAL",
 					   'ABSOLUTE_TIME_UTC' => "ABSOLUTE_TIME_UTC",
 					   'ABSOLUTE_TIME_DOY_UTC' => "ABSOLUTE_TIME_DOY_UTC",
@@ -243,7 +244,6 @@ while (my $fileName = $ARGV[0]) {
 	if ($action eq "find-all") {
 		# Find all proto_tree_add_text() statements eligible for conversion
 		$found_total += find_all(\$fileContents, $fileName);
-		print "Found $found_total proto_tree_add_text calls eligible for conversion.\n";
 	}
 
 } # while
@@ -296,6 +296,21 @@ sub verify_line {
 			if ((!exists($DISPLAY_BASE{$_})) &&
 				(!($proto_tree_item[11] =~ /\d+/))) {
 				print "$line_number: Display base '$proto_tree_item[11]' unknown!\n";
+				$errors++;
+			}
+		}
+		if (($proto_tree_item[9] eq "FT_UINT8") ||
+			($proto_tree_item[9] eq "FT_UINT16") ||
+			($proto_tree_item[9] eq "FT_UINT24") ||
+			($proto_tree_item[9] eq "FT_UINT32") ||
+			($proto_tree_item[9] eq "FT_UINT64") ||
+			($proto_tree_item[9] eq "FT_INT8") ||
+			($proto_tree_item[9] eq "FT_INT16") ||
+			($proto_tree_item[9] eq "FT_INT24") ||
+			($proto_tree_item[9] eq "FT_INT32") ||
+			($proto_tree_item[9] eq "FT_INT64")) {
+			if ($proto_tree_item[11] eq "BASE_NONE") {
+				print "$line_number: Interger type should not be BASE_NONE!\n";
 				$errors++;
 			}
 		}
@@ -375,8 +390,7 @@ sub generate_hfs {
 			if (($proto_tree_item[6] eq "1") ||
 				($args[5] =~ /tvb_get_guint8/) ||
 				($args[5] =~ /tvb_bytes_to_str/) ||
-				($args[5] =~ /tvb_ether_to_str/) ||
-				($args[5] =~ /tvb_vines_addr_to_str/))  {
+				($args[5] =~ /tvb_ether_to_str/))  {
 				$proto_tree_item[7] = "ENC_NA";
 			} elsif ($args[5] =~ /tvb_get_ntoh/) {
 				$proto_tree_item[7] = "ENC_BIG_ENDIAN";
@@ -430,31 +444,31 @@ sub generate_hfs {
 		#field type
 		if (scalar @args > 5) {
 			if ($args[5] =~ /tvb_get_guint8/) {
-				if ($args[4] =~ /%[0-9]*[di]/) {
+				if ($args[4] =~ /%[0-9]*[i]/) {
 					$proto_tree_item[9] = "FT_INT8";
 				} else {
 					$proto_tree_item[9] = "FT_UINT8";
 				}
 			} elsif ($args[5] =~ /tvb_get_(n|"le")tohs/) {
-				if ($args[4] =~ /%[0-9]*[di]/) {
+				if ($args[4] =~ /%[0-9]*[i]/) {
 					$proto_tree_item[9] = "FT_INT16";
 				} else {
 					$proto_tree_item[9] = "FT_UINT16";
 				}
 			} elsif ($args[5] =~ /tvb_get_(n|"le")toh24/) {
-				if ($args[4] =~ /%[0-9]*[di]/) {
+				if ($args[4] =~ /%[0-9]*[i]/) {
 					$proto_tree_item[9] = "FT_INT24";
 				} else {
 					$proto_tree_item[9] = "FT_UINT24";
 				}
 			} elsif ($args[5] =~ /tvb_get_(n|"le")tohl/) {
-				if ($args[4] =~ /%[0-9]*[di]/) {
+				if ($args[4] =~ /%[0-9]*[i]/) {
 					$proto_tree_item[9] = "FT_INT32";
 				} else {
 					$proto_tree_item[9] = "FT_UINT32";
 				}
 			} elsif ($args[5] =~ /tvb_get_(n|"le")toh("40"|"48"|"56"|"64")/) {
-				if ($args[4] =~ /%[0-9]*[di]/) {
+				if ($args[4] =~ /%[0-9]*[i]/) {
 					$proto_tree_item[9] = "FT_INT64";
 				} else {
 					$proto_tree_item[9] = "FT_UINT64";
@@ -477,13 +491,28 @@ sub generate_hfs {
 			} elsif (($args[5] =~ /tvb_get_ephemeral_string/) || 
 					 ($args[5] =~ /tvb_format_text/)){
 				$proto_tree_item[9] = "FT_STRING";
-			} elsif ($args[5] =~ /tvb_bytes_to_str/) {
+			} elsif (($args[5] =~ /tvb_bytes_to_str/)) {
 				$proto_tree_item[9] = "FT_BYTES";
 			} elsif ($args[5] =~ /tvb_ether_to_str/) {
 				$proto_tree_item[9] = "FT_ETHER";
-			} elsif ($args[5] =~ /tvb_vines_addr_to_str/) {
-				$proto_tree_item[9] = "FT_VINES";
-			}			
+			}
+
+			#if we still can't determine type, assume a constant length
+			#value means we have an unsigned value
+			if ($proto_tree_item[9] eq "fieldtype") {
+				my $len_str = trim($args[3]);
+				if ($len_str eq "1") {
+					$proto_tree_item[9] = "FT_UINT8";
+				} elsif ($len_str eq "2") {
+					$proto_tree_item[9] = "FT_UINT16";
+				} elsif ($len_str eq "3") {
+					$proto_tree_item[9] = "FT_UINT24";
+				} elsif ($len_str eq "4") {
+					$proto_tree_item[9] = "FT_UINT32";
+				} elsif ($len_str eq "8") {
+					$proto_tree_item[9] = "FT_UINT64";
+				}
+			}
 		}
 
 		#display base
@@ -496,6 +525,10 @@ sub generate_hfs {
 		}
 		if ($str =~ /val_to_str_ext(_const)?\([^\,]*\,([^\,]*)\,/) {
 			$proto_tree_item[11] .= "|BASE_EXT_STRING";
+		}
+
+		if (($proto_tree_item[7] eq "encoding") && ($proto_tree_item[9] eq "FT_BYTES")) {
+			$proto_tree_item[7] = "ENC_NA";
 		}
 
 		push(@proto_tree_list, \@proto_tree_item);
@@ -596,21 +629,18 @@ sub output_hf {
 	my $index;
 	my $key;
 
-	#add hfs to hash table to prevent against (accidental) duplicates
-	for ($index=0;$index<@proto_tree_list;$index++) {
-		if ($proto_tree_list[$index][1] eq "1") {
-			$hfs{$proto_tree_list[$index][3]} = $proto_tree_list[$index][3];
-		} elsif ($proto_tree_list[$index][1] eq "2") {
-			$eis{$proto_tree_list[$index][3]} = $proto_tree_list[$index][3];
-		}
-	}
-
 	open(FCO, ">", $fileName . ".hf");
 
 	print FCO "/* Generated from convert_proto_tree_add_text.pl */\n";
 
-	foreach $key (keys %hfs) {
-		print FCO "static int $key = -1;\n";
+	#add hfs to hash table to prevent against (accidental) duplicates
+	for ($index=0;$index<@proto_tree_list;$index++) {
+		if ($proto_tree_list[$index][1] eq "1") {
+			$hfs{$proto_tree_list[$index][3]} = $proto_tree_list[$index][3];
+			print FCO "static int $proto_tree_list[$index][3] = -1;\n";
+		} elsif ($proto_tree_list[$index][1] eq "2") {
+			$eis{$proto_tree_list[$index][3]} = $proto_tree_list[$index][3];
+		}
 	}
 
 	if (scalar keys %hfs > 0) {
@@ -679,7 +709,9 @@ sub find_all {
 	my( $fileContentsRef, $fileName) = @_;
 
 	my $found = 0;
+	my $tvb_found = 0;
 	my $pat;
+	my $tvb_percent;
 
 	if ($expert ne "") {
 		$pat = qr /
@@ -703,12 +735,34 @@ sub find_all {
 
 	while ($$fileContentsRef =~ / $pat /xgso) {
 		my $str = "${1}\n";
+		my @args = split(/,/, ${1});
+
+		#cleanup whitespace to show proto_tree_add_text in single line (easier for seeing grep results)
 		$str =~ tr/\t\n\r/ /d;
 		$str =~ s/ \s+ / /xg;
 		#print "$fileName: $str\n";
 
+		#find all instances where proto_tree_add_text has a tvb_get (or similar) call, because
+		#convert_proto_tree_add_text.pl has an easier time determining hf_ field values with it
+		if (scalar @args > 5) {
+			my $tvb = trim($args[5]);
+			if ($tvb =~ /^tvb_/) {
+				$tvb_found += 1;
+			}
+		}
+
 		$found += 1;
 	}
 
+	if ($found > 0) {
+		if ($tvb_found > 0) {
+			$tvb_percent = 100*$tvb_found/$found;
+
+			printf "%s: Found %d proto_tree_add_text calls eligible for conversion, %d contain a \"tvb get\" call (%.2f%%).\n",
+				$fileName, $found, $tvb_found, $tvb_percent;
+		} else {
+			print "$fileName: Found $found proto_tree_add_text calls eligible for conversion, 0 \"tvb get\" calls.\n";
+		}
+	}
 	return $found;
 }

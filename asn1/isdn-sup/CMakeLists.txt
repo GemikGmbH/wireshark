@@ -42,6 +42,7 @@ set( ASN_FILE_LIST
 	MCID-Operations.asn
 	User-To-User-Signalling-Operations.asn
 	Freephone-Operations.asn
+	MLPP-Operations-And-Errors.asn
 )
 
 set( EXTRA_DIST
@@ -55,7 +56,7 @@ set( SRC_FILES
 	${EXT_ASN_FILE_LIST}
 )
 
-set( A2W_FLAGS -b -k )
+set( A2W_FLAGS -b )
 
 ASN2WRS()
 

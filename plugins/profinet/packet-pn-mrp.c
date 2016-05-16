@@ -23,11 +23,10 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/dissectors/packet-dcerpc.h>
 #include <epan/oui.h>
 #include <epan/etypes.h>
+#include <epan/dissectors/packet-dcerpc.h>
 
 #include "packet-pn.h"
 
@@ -121,7 +120,7 @@ dissect_PNMRP_Common(tvbuff_t *tvb, int offset,
     packet_info *pinfo, proto_tree *tree, proto_item *item _U_)
 {
     guint16  sequence_id;
-    e_uuid_t uuid;
+    e_guid_t uuid;
 
 
     /* MRP_SequenceID */
@@ -357,7 +356,7 @@ dissect_PNMRP_PDU(tvbuff_t *tvb, int offset,
     new_tvb = tvb_new_subset_remaining(tvb, offset);
     offset = 0;
 
-    for(i=0; tvb_length_remaining(tvb, offset) > 0; i++) {
+    for(i=0; tvb_reported_length_remaining(tvb, offset) > 0; i++) {
         /* MRP_TLVHeader.Type */
         offset = dissect_pn_uint8(new_tvb, offset, pinfo, tree, hf_pn_mrp_type, &type);
 
@@ -530,3 +529,16 @@ proto_reg_handoff_pn_mrp (void)
     dissector_add_uint("ethertype", ETHERTYPE_MRP, mrp_handle);
 
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

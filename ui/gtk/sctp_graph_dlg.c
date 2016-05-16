@@ -23,26 +23,19 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
 
 #include <gtk/gtk.h>
 
-#include "wsutil/filesystem.h"
-#include <epan/strutil.h>
 
-#include "../globals.h"
-#include "ui/ui_util.h"
 #include "ui/simple_dialog.h"
 
 #include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/main.h"
-#include "ui/tap-sctp-analysis.h"
 #include "ui/gtk/sctp_stat_gtk.h"
 #include "ui/gtk/gui_utils.h"
-#include "ui/gtk/old-gtk-compat.h"
 #include "ui/gtk/stock_icons.h"
 
 #define DEFAULT_PIXELS_PER_TICK 2
@@ -576,7 +569,7 @@ draw_tsn_graph(struct sctp_udata *u_data)
 		while (tlist)
 		{
 			type = ((struct chunk_header *)tlist->data)->type;
-			if (type == SCTP_DATA_CHUNK_ID || type == SCTP_FORWARD_TSN_CHUNK_ID)
+			if (type == SCTP_DATA_CHUNK_ID || type == SCTP_I_DATA_CHUNK_ID || type == SCTP_FORWARD_TSN_CHUNK_ID)
 				tsnumber = g_ntohl(((struct data_chunk_header *)tlist->data)->tsn);
 			if (tsnumber >= min_tsn && tsnumber <= max_tsn && tsn->secs >= min_secs)
 			{
@@ -596,7 +589,7 @@ draw_tsn_graph(struct sctp_udata *u_data)
 #else
 					cr = gdk_cairo_create (u_data->io->pixmap);
 #endif
-					if (type == SCTP_DATA_CHUNK_ID)
+					if ((type == SCTP_DATA_CHUNK_ID) || (type == SCTP_I_DATA_CHUNK_ID))
 						gdk_cairo_set_source_rgba (cr, &black_color);
 					else
 						gdk_cairo_set_source_rgba (cr, &pink_color);
@@ -1877,3 +1870,16 @@ rint (double x)
 	return(i);
 }
 #endif
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -23,12 +23,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/to_str.h>
-#include <epan/wmem/wmem.h>
-
 void proto_register_babel(void);
 void proto_reg_handoff_babel(void);
 
@@ -108,12 +104,26 @@ static const unsigned char v4prefix[16] =
 static const char *
 format_address(const unsigned char *prefix)
 {
+    address addr;
+
     if (prefix == NULL)
         return "corrupt";
     else if (memcmp(prefix, v4prefix, 12) == 0)
-        return ip_to_str(prefix + 12);
+    {
+        addr.type = AT_IPv4;
+        addr.len  = 4;
+        addr.data = prefix + 12;
+
+        return address_to_str(wmem_packet_scope(), &addr);
+    }
     else
-        return ip6_to_str((const struct e_in6_addr*)prefix);
+    {
+        addr.type = AT_IPv6;
+        addr.len  = 16;
+        addr.data = prefix;
+
+        return address_to_str(wmem_packet_scope(), &addr);
+    }
 }
 
 static const char *
@@ -124,7 +134,7 @@ format_prefix(const unsigned char *prefix, unsigned char plen)
 
 static int
 network_prefix(int ae, int plen, unsigned int omitted,
-               const unsigned char *p, const unsigned char *dp,
+               tvbuff_t *tvb, int offset, const unsigned char *dp,
                unsigned int len, unsigned char *p_r)
 {
     guint      pb;
@@ -152,7 +162,8 @@ network_prefix(int ae, int plen, unsigned int omitted,
             if (dp == NULL) return -1;
             memcpy(prefix, dp, 12 + omitted);
         }
-        if (pb > omitted) memcpy(prefix + 12 + omitted, p, pb - omitted);
+        if (pb > omitted)
+            tvb_memcpy(tvb, prefix + 12 + omitted, offset, pb - omitted);
         break;
     case 2:
         if (omitted > 16 || (pb > omitted && len < pb - omitted))
@@ -161,13 +172,15 @@ network_prefix(int ae, int plen, unsigned int omitted,
             if (dp == NULL) return -1;
             memcpy(prefix, dp, omitted);
         }
-        if (pb > omitted) memcpy(prefix + omitted, p, pb - omitted);
+        if (pb > omitted)
+            tvb_memcpy(tvb, prefix + omitted, offset, pb - omitted);
         break;
     case 3:
         if (pb > 8 && len < pb - 8) return -1;
         prefix[0] = 0xfe;
         prefix[1] = 0x80;
-        if (pb > 8) memcpy(prefix + 8, p, pb - 8);
+        if (pb > 8)
+            tvb_memcpy(tvb, prefix + 8, offset, pb - 8);
         break;
     default:
         return -1;
@@ -178,10 +191,10 @@ network_prefix(int ae, int plen, unsigned int omitted,
 }
 
 static int
-network_address(int ae, const unsigned char *a, unsigned int len,
+network_address(int ae, tvbuff_t *tvb, int offset, unsigned int len,
                 unsigned char *a_r)
 {
-    return network_prefix(ae, -1, 0, a, NULL, len, a_r);
+    return network_prefix(ae, -1, 0, tvb, offset, NULL, len, a_r);
 }
 
 static int
@@ -194,7 +207,7 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
     guint8         version;
     guint16        bodylen;
 
-    if (tvb_length(tvb) < 4)
+    if (tvb_captured_length(tvb) < 4)
         return 0;
 
     if (tvb_get_guint8(tvb, 0) != 42)
@@ -213,8 +226,8 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
         ti = proto_tree_add_item(tree, proto_babel, tvb, 0, -1, ENC_NA);
         babel_tree = proto_item_add_subtree(ti, ett_babel);
 
-        proto_tree_add_item(babel_tree, hf_babel_magic, tvb, 0, 1, ENC_NA);
-        proto_tree_add_item(babel_tree, hf_babel_version, tvb, 1, 1, ENC_NA);
+        proto_tree_add_item(babel_tree, hf_babel_magic, tvb, 0, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(babel_tree, hf_babel_version, tvb, 1, 1, ENC_BIG_ENDIAN);
         proto_tree_add_item(babel_tree, hf_babel_bodylen,
                             tvb, 2, 2, ENC_BIG_ENDIAN);
     }
@@ -247,7 +260,7 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
         if (tree) {
             message_tree = proto_item_add_subtree(ti, ett_message);
             proto_tree_add_item(message_tree, hf_babel_message_type,
-                                tvb, message, 1, ENC_NA);
+                                tvb, message, 1, ENC_BIG_ENDIAN);
         }
 
         if (type == MESSAGE_PAD1) {
@@ -278,21 +291,18 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 unsigned char  addr_str[16];
                 int rc =
                     network_address(tvb_get_guint8(tvb, message + 2),
-                                    tvb_get_ptr(tvb, message + 8, len - 6),
-                                    len - 6,
-                                    addr_str);
+                                    tvb, message + 8, len - 6, addr_str);
                 proto_tree_add_item(message_tree, hf_babel_message_rxcost,
                                     tvb, message + 4, 2, ENC_BIG_ENDIAN);
                 proto_tree_add_item(message_tree, hf_babel_message_interval,
                                     tvb, message + 6, 2, ENC_BIG_ENDIAN);
-                ti = proto_tree_add_text(message_tree,
+                subtree = proto_tree_add_subtree_format(message_tree,
                                          tvb, message + 4, len - 2,
-                                         "Address: %s",
+                                         ett_subtree, NULL, "Address: %s",
                                          format_address(rc < 0 ?
                                                         NULL : addr_str));
-                subtree = proto_item_add_subtree(ti, ett_subtree);
                 proto_tree_add_item(subtree, hf_babel_message_ae,
-                                    tvb, message + 2, 1, ENC_NA);
+                                    tvb, message + 2, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_prefix,
                                     tvb, message + 4, len - 2, ENC_NA);
             } else if (type == MESSAGE_ROUTER_ID) {
@@ -303,16 +313,14 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 unsigned char  nh[16];
                 int rc =
                     network_address(tvb_get_guint8(tvb, message + 2),
-                                    tvb_get_ptr(tvb, message + 4, len - 2),
-                                    len - 2,
-                                    nh);
-                ti = proto_tree_add_text(message_tree,
+                                    tvb, message + 4, len - 2, nh);
+                subtree = proto_tree_add_subtree_format(message_tree,
                                          tvb, message + 4, len - 2,
+                                         ett_subtree, NULL,
                                          "NH: %s",
                                          format_address(rc < 0 ? NULL : nh));
-                subtree = proto_item_add_subtree(ti, ett_subtree);
                 proto_tree_add_item(subtree, hf_babel_message_ae,
-                                    tvb, message + 2, 1, ENC_NA);
+                                    tvb, message + 2, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_prefix,
                                     tvb, message + 4, len - 2, ENC_NA);
             } else if (type == MESSAGE_UPDATE) {
@@ -325,7 +333,7 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 int rc =
                     network_prefix(ae, plen,
                                    tvb_get_guint8(tvb, message + 5),
-                                   tvb_get_ptr(tvb, message + 12, len - 10),
+                                   tvb, message + 12,
                                    ae == 1 ? v4_prefix : v6_prefix,
                                    len - 10, p);
                 if (rc >= 0 && (flags & 0x80)) {
@@ -336,25 +344,25 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 }
 
                 proto_tree_add_item(message_tree, hf_babel_message_flags,
-                                    tvb, message + 3, 1, ENC_NA);
+                                    tvb, message + 3, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(message_tree, hf_babel_message_interval,
                                     tvb, message + 6, 2, ENC_BIG_ENDIAN);
                 proto_tree_add_item(message_tree, hf_babel_message_seqno,
                                     tvb, message + 8, 2, ENC_BIG_ENDIAN);
                 proto_tree_add_item(message_tree, hf_babel_message_metric,
                                     tvb, message + 10, 2, ENC_BIG_ENDIAN);
-                ti = proto_tree_add_text(message_tree,
+                subtree = proto_tree_add_subtree_format(message_tree,
                                          tvb, message + 12, len - 10,
+                                         ett_subtree, NULL,
                                          "Prefix: %s",
                                          format_prefix(rc < 0 ? NULL : p,
                                                        plen));
-                subtree = proto_item_add_subtree(ti, ett_subtree);
                 proto_tree_add_item(subtree, hf_babel_message_ae,
-                                    tvb, message + 2, 1, ENC_NA);
+                                    tvb, message + 2, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_plen,
-                                    tvb, message + 4, 1, ENC_NA);
+                                    tvb, message + 4, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_omitted,
-                                    tvb, message + 5, 1, ENC_NA);
+                                    tvb, message + 5, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_prefix,
                                     tvb, message + 12, len - 10, ENC_NA);
             } else if (type == MESSAGE_REQUEST) {
@@ -363,20 +371,18 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 guint8         plen = tvb_get_guint8(tvb, message + 3);
                 int rc =
                     network_prefix(tvb_get_guint8(tvb, message + 2), plen,
-                                   0,
-                                   tvb_get_ptr(tvb, message + 4, len - 2),
-                                   NULL,
+                                   0, tvb, message + 4, NULL,
                                    len - 2, p);
-                ti = proto_tree_add_text(message_tree,
+                subtree = proto_tree_add_subtree_format(message_tree,
                                          tvb, message + 4, len - 2,
+                                         ett_subtree, NULL,
                                          "Prefix: %s",
                                          format_prefix(rc < 0 ? NULL : p,
                                                        plen));
-                subtree = proto_item_add_subtree(ti, ett_subtree);
                 proto_tree_add_item(subtree, hf_babel_message_ae,
-                                    tvb, message + 2, 1, ENC_NA);
+                                    tvb, message + 2, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_plen,
-                                    tvb, message + 3, 1, ENC_NA);
+                                    tvb, message + 3, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_prefix,
                                     tvb, message + 4, len - 2, ENC_NA);
             } else if (type == MESSAGE_MH_REQUEST) {
@@ -385,26 +391,24 @@ dissect_babel(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
                 guint8         plen = tvb_get_guint8(tvb, message + 3);
                 int rc =
                     network_prefix(tvb_get_guint8(tvb, message + 2), plen,
-                                   0,
-                                   tvb_get_ptr(tvb, message + 16, len - 14),
-                                   NULL,
+                                   0, tvb, message + 16, NULL,
                                    len - 14, p);
                 proto_tree_add_item(message_tree, hf_babel_message_seqno,
                                     tvb, message + 4, 2, ENC_BIG_ENDIAN);
                 proto_tree_add_item(message_tree, hf_babel_message_hopcount,
-                                    tvb, message + 6, 1, ENC_NA);
+                                    tvb, message + 6, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(message_tree, hf_babel_message_routerid,
                                     tvb, message + 8, 8, ENC_NA);
-                ti = proto_tree_add_text(message_tree,
+                subtree = proto_tree_add_subtree_format(message_tree,
                                          tvb, message + 16, len - 14,
+                                         ett_subtree, NULL,
                                          "Prefix: %s",
                                          format_prefix(rc < 0 ? NULL : p,
                                                        plen));
-                subtree = proto_item_add_subtree(ti, ett_subtree);
                 proto_tree_add_item(subtree, hf_babel_message_ae,
-                                    tvb, message + 2, 1, ENC_NA);
+                                    tvb, message + 2, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_plen,
-                                    tvb, message + 3, 1, ENC_NA);
+                                    tvb, message + 3, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_babel_message_prefix,
                                     tvb, message + 16, len - 14, ENC_NA);
             }
@@ -514,3 +518,16 @@ proto_reg_handoff_babel(void)
     dissector_add_uint("udp.port", UDP_PORT_BABEL, babel_handle);
     dissector_add_uint("udp.port", UDP_PORT_BABEL_OLD, babel_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

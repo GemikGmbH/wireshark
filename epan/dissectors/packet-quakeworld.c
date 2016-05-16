@@ -27,15 +27,9 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <stdlib.h>
-#include <string.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include <epan/strutil.h>
-#include <epan/wmem/wmem.h>
-
 void proto_register_quakeworld(void);
 
 static int proto_quakeworld = -1;
@@ -78,10 +72,10 @@ static gint ett_quakeworld_game_svc = -1;
 static dissector_handle_t data_handle;
 
 /*
-   helper functions, they may ave to go somewhere else
-   they are mostly copied without change from
-	quakeworldsource/client/cmd.c
-	quakeworldsource/client/common.c
+	helper functions, they may ave to go somewhere else
+	they are mostly copied without change from
+	  quakeworldsource/client/cmd.c
+	  quakeworldsource/client/common.c
 */
 
 #define MAX_TEXT_SIZE	2048
@@ -118,9 +112,10 @@ skipwhite:
 
 	/* skip // comments */
 	if ((c=='/') && (data[1]=='/')) {
-		while (*data && *data != '\n')
+		while (*data && *data != '\n'){
 			data++;
 			com_token_start++;
+		}
 		goto skipwhite;
 	}
 
@@ -347,7 +342,7 @@ static void
 dissect_quakeworld_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree, int direction)
 {
-	proto_tree	*cl_tree   = NULL;
+	proto_tree	*cl_tree;
 	proto_tree	*text_tree = NULL;
 	guint8		*text;
 	int		len;
@@ -358,27 +353,23 @@ dissect_quakeworld_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo,
 	gboolean	command_finished = FALSE;
 
 	marker = tvb_get_ntohl(tvb, 0);
-	if (tree) {
-		proto_item *cl_item;
-		cl_item = proto_tree_add_text(tree, tvb, 0, -1, "Connectionless");
-		cl_tree = proto_item_add_subtree(cl_item, ett_quakeworld_connectionless);
+	cl_tree = proto_tree_add_subtree(tree, tvb, 0, -1, ett_quakeworld_connectionless, NULL, "Connectionless");
 
-		proto_tree_add_uint(cl_tree, hf_quakeworld_connectionless_marker,
+	proto_tree_add_uint(cl_tree, hf_quakeworld_connectionless_marker,
 				tvb, 0, 4, marker);
-	}
 
 	/* all the rest of the packet is just text */
-        offset = 4;
+	offset = 4;
 
 	text = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &len, ENC_ASCII|ENC_NA);
 	/* actually, we should look for a eol char and stop already there */
 
-        if (cl_tree) {
+	if (cl_tree) {
 		proto_item *text_item;
-                text_item = proto_tree_add_string(cl_tree, hf_quakeworld_connectionless_text,
+		text_item = proto_tree_add_string(cl_tree, hf_quakeworld_connectionless_text,
 						  tvb, offset, len, text);
 		text_tree = proto_item_add_subtree(text_item, ett_quakeworld_connectionless_text);
-        }
+	}
 
 	if (direction == DIR_C2S) {
 		/* client to server commands */
@@ -568,9 +559,9 @@ dissect_quakeworld_server_commands(tvbuff_t *tvb, packet_info *pinfo,
 
 
 static const value_string names_reliable[] = {
-        { 0, "Non Reliable" },
-        { 1, "Reliable" },
-        { 0, NULL }
+	{ 0, "Non Reliable" },
+	{ 1, "Reliable" },
+	{ 0, NULL }
 };
 
 
@@ -589,11 +580,7 @@ dissect_quakeworld_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	direction = (pinfo->destport == gbl_quakeworldServerPort) ?
 			DIR_C2S : DIR_S2C;
 
-	if (tree) {
-		proto_item	*game_item;
-		game_item = proto_tree_add_text(tree, tvb, 0, -1, "Game");
-		game_tree = proto_item_add_subtree(game_item, ett_quakeworld_game);
-	}
+	game_tree = proto_tree_add_subtree(tree, tvb, 0, -1, ett_quakeworld_game, NULL, "Game");
 
 	offset = 0;
 
@@ -601,11 +588,9 @@ dissect_quakeworld_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	rel1 = seq1 & 0x80000000 ? 1 : 0;
 	seq1 &= ~0x80000000;
 	if (game_tree) {
-		proto_item *seq1_item = proto_tree_add_text(game_tree,
-							    tvb, offset, 4, "Current Sequence: %u (%s)",
+		proto_tree *seq1_tree = proto_tree_add_subtree_format(game_tree,
+							    tvb, offset, 4, ett_quakeworld_game_seq1, NULL, "Current Sequence: %u (%s)",
 							    seq1, val_to_str(rel1,names_reliable,"%u"));
-		proto_tree *seq1_tree = proto_item_add_subtree(
-			seq1_item, ett_quakeworld_game_seq1);
 		proto_tree_add_uint(seq1_tree, hf_quakeworld_game_seq1,
 				    tvb, offset, 4, seq1);
 		proto_tree_add_boolean(seq1_tree, hf_quakeworld_game_rel1,
@@ -617,10 +602,9 @@ dissect_quakeworld_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	rel2 = seq2 & 0x80000000 ? 1 : 0;
 	seq2 &= ~0x80000000;
 	if (game_tree) {
-		proto_item *seq2_item = proto_tree_add_text(game_tree,
-							    tvb, offset, 4, "Acknowledge Sequence: %u (%s)",
+		proto_tree *seq2_tree = proto_tree_add_subtree_format(game_tree,
+							    tvb, offset, 4, ett_quakeworld_game_seq2, NULL, "Acknowledge Sequence: %u (%s)",
 							    seq2, val_to_str(rel2,names_reliable,"%u"));
-		proto_tree *seq2_tree = proto_item_add_subtree(seq2_item, ett_quakeworld_game_seq2);
 		proto_tree_add_uint(seq2_tree, hf_quakeworld_game_seq2, tvb, offset, 4, seq2);
 		proto_tree_add_boolean(seq2_tree, hf_quakeworld_game_rel2, tvb, offset+3, 1, rel2);
 	}
@@ -638,27 +622,18 @@ dissect_quakeworld_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	/* all the rest is pure game data */
 	rest_length = tvb_reported_length(tvb) - offset;
 	if (rest_length) {
-		tvbuff_t *next_tvb =
-		tvb_new_subset(tvb, offset, rest_length , rest_length);
+		tvbuff_t *next_tvb = tvb_new_subset_remaining(tvb, offset);
+		proto_tree *c_tree;
 
 		if (direction == DIR_C2S) {
-			proto_tree *c_tree = NULL;
-			if (tree) {
-				proto_item *c_item;
-				c_item = proto_tree_add_text(game_tree, next_tvb,
-							     0, -1, "Client Commands");
-				c_tree = proto_item_add_subtree(c_item, ett_quakeworld_game_clc);
-			}
+			c_tree = proto_tree_add_subtree(game_tree, next_tvb,
+							     0, -1, ett_quakeworld_game_clc, NULL, "Client Commands");
 			dissect_quakeworld_client_commands(next_tvb, pinfo, c_tree);
 		}
 		else {
-			proto_tree *c_tree = NULL;
-			if (tree) {
-				proto_item *c_item;
-				c_item = proto_tree_add_text(game_tree, next_tvb,
-							     0, -1, "Server Commands");
-				c_tree = proto_item_add_subtree(c_item, ett_quakeworld_game_svc);
-			}
+			c_tree = proto_tree_add_subtree(game_tree, next_tvb,
+							     0, -1, ett_quakeworld_game_svc, NULL, "Server Commands");
+
 			dissect_quakeworld_server_commands(next_tvb, pinfo, c_tree);
 		}
 	}
@@ -853,9 +828,21 @@ proto_reg_handoff_quakeworld(void)
 		dissector_delete_uint("udp.port", ServerPort, quakeworld_handle);
 	}
 
-        /* set port for future deletes */
-        ServerPort=gbl_quakeworldServerPort;
+	/* set port for future deletes */
+	ServerPort=gbl_quakeworldServerPort;
 
 	dissector_add_uint("udp.port", gbl_quakeworldServerPort, quakeworld_handle);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

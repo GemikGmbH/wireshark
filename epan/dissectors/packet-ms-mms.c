@@ -36,12 +36,9 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <stdio.h>
-#include <string.h>
 
 #include <epan/packet.h>
-#include <epan/exceptions.h>
 #include <epan/conversation.h>
 #include <epan/strutil.h>
 
@@ -323,11 +320,9 @@ static gint dissect_msmms_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     /* Work out what type of packet this is and dissect it as such */
 
     /* Just don't dissect if can't even read command signature */
-    if (tvb_length(tvb) < 8)
-    {
+    if (tvb_captured_length(tvb) < 8) {
         return 0;
     }
-
 
     /* Command */
     if (tvb_get_letohl(tvb, 4) == 0xb00bface)
@@ -360,9 +355,9 @@ static gint dissect_msmms_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 static gint dissect_msmms_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
     gint        offset                    = 0;
-    proto_item *ti                        = NULL;
-    proto_tree *msmms_tree                = NULL;
-    proto_tree *msmms_common_command_tree = NULL;
+    proto_item *ti;
+    proto_tree *msmms_tree;
+    proto_tree *msmms_common_command_tree;
     guint32     sequence_number;
     guint16     command_id;
     guint16     command_dir;
@@ -377,7 +372,7 @@ static gint dissect_msmms_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     {
         pinfo->desegment_offset = 0;  /* Start at beginning next time */
         pinfo->desegment_len = DESEGMENT_ONE_MORE_SEGMENT;     /* Need one more byte to try again */
-        return 0;
+        return -1;
     }
 
     /* Read length field and see if we're short */
@@ -386,7 +381,7 @@ static gint dissect_msmms_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     {
         pinfo->desegment_offset = 0; /* Start at beginning next time */
         pinfo->desegment_len = DESEGMENT_ONE_MORE_SEGMENT;   /* Need one more byte to try again */
-        return 0;
+        return -1;
     }
 
 
@@ -399,11 +394,8 @@ static gint dissect_msmms_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     PROTO_ITEM_SET_HIDDEN(ti);
 
     /* Create MSMMS control protocol tree */
-    if (tree)
-    {
-        ti = proto_tree_add_item(tree, proto_msmms, tvb, offset, -1, ENC_NA);
-        msmms_tree = proto_item_add_subtree(ti, ett_msmms_command);
-    }
+    ti = proto_tree_add_item(tree, proto_msmms, tvb, offset, -1, ENC_NA);
+    msmms_tree = proto_item_add_subtree(ti, ett_msmms_command);
 
 
     /* Read command ID and direction now so can give common command header a
@@ -416,17 +408,14 @@ static gint dissect_msmms_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     /* Common command header */
 
     /* Add a tree for common header */
-    if (tree)
-    {
-        ti =  proto_tree_add_string_format(msmms_tree, hf_msmms_command_common_header, tvb, offset, -1,
-                                           "",
-                                           "%s (to %s)",
-                                           (command_dir == TO_SERVER) ?
-                                                val_to_str_const(command_id, to_server_command_vals, "Unknown") :
-                                                val_to_str_const(command_id, to_client_command_vals, "Unknown"),
-                                           (command_dir == TO_SERVER) ? "server" : "client");
-        msmms_common_command_tree = proto_item_add_subtree(ti, ett_msmms_command_common_header);
-    }
+    ti =  proto_tree_add_string_format(msmms_tree, hf_msmms_command_common_header, tvb, offset, -1,
+            "",
+            "%s (to %s)",
+            (command_dir == TO_SERVER) ?
+            val_to_str_const(command_id, to_server_command_vals, "Unknown") :
+            val_to_str_const(command_id, to_client_command_vals, "Unknown"),
+            (command_dir == TO_SERVER) ? "server" : "client");
+    msmms_common_command_tree = proto_item_add_subtree(ti, ett_msmms_command_common_header);
 
     /* Format of 1st 4 bytes unknown.  May be version... */
     offset += 4;
@@ -440,7 +429,7 @@ static gint dissect_msmms_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
     offset += 4;
 
     /* Protocol name.  Must be "MMS"... */
-    if (strncmp((char*)tvb_get_string(wmem_packet_scope(), tvb, offset, 3), "MMS", 3) != 0)
+    if (strncmp((char*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 3, ENC_ASCII), "MMS", 3) != 0)
     {
         return 0;
     }
@@ -573,19 +562,16 @@ static gint dissect_msmms_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree 
 /* Parse the only known UDP command (0x01) */
 static gint dissect_msmms_data_udp_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_item *ti         = NULL;
-    proto_tree *msmms_tree = NULL;
+    proto_item *ti;
+    proto_tree *msmms_tree;
     gint        offset     = 0;
 
     /* Set protocol column */
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "MSMMS");
 
     /* Create MSMMS data protocol tree */
-    if (tree)
-    {
-        ti = proto_tree_add_item(tree, proto_msmms, tvb, offset, -1, ENC_NA);
-        msmms_tree = proto_item_add_subtree(ti, ett_msmms_data);
-    }
+    ti = proto_tree_add_item(tree, proto_msmms, tvb, offset, -1, ENC_NA);
+    msmms_tree = proto_item_add_subtree(ti, ett_msmms_data);
 
     /* Header ID */
     proto_tree_add_item(msmms_tree, hf_msmms_data_header_id, tvb, offset, 4, ENC_LITTLE_ENDIAN);
@@ -620,8 +606,8 @@ static gint dissect_msmms_data_udp_command(tvbuff_t *tvb, packet_info *pinfo, pr
 static gint dissect_msmms_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
     gint        offset = 0;
-    proto_item  *ti = NULL;
-    proto_tree  *msmms_tree = NULL;
+    proto_item  *ti;
+    proto_tree  *msmms_tree;
     proto_tree  *msmms_data_timing_pair = NULL;
     guint32     sequence_number;
     guint16     packet_length;
@@ -645,7 +631,7 @@ static gint dissect_msmms_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     {
         pinfo->desegment_offset = 0;  /* Start from beginning again next time */
         pinfo->desegment_len = DESEGMENT_ONE_MORE_SEGMENT;     /* Try again with even one more byte */
-        return 0;
+        return -1;
     }
 
 
@@ -653,7 +639,7 @@ static gint dissect_msmms_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     if (pinfo->ptype == PT_TCP)
     {
         /* Flag value is in 5th byte */
-        value = tvb_get_letohs(tvb, 4) & 0xff00;
+        value = tvb_get_guint8(tvb, 5);
         /* Reject packet if not a recognised packet type */
         if (try_val_to_str(value, tcp_flags_vals) == NULL)
         {
@@ -664,15 +650,12 @@ static gint dissect_msmms_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "MSMMS");
 
     /* Add hidden filter for "msmms.data" */
-    proto_tree_add_item(tree, hf_msmms_data, tvb, 0, 0, ENC_NA);
+    ti = proto_tree_add_item(tree, hf_msmms_data, tvb, 0, 0, ENC_NA);
     PROTO_ITEM_SET_HIDDEN(ti);
 
     /* Create MSMMS data protocol tree */
-    if (tree)
-    {
-        ti = proto_tree_add_item(tree, proto_msmms, tvb, offset, -1, ENC_NA);
-        msmms_tree = proto_item_add_subtree(ti, ett_msmms_data);
-    }
+    ti = proto_tree_add_item(tree, proto_msmms, tvb, offset, -1, ENC_NA);
+    msmms_tree = proto_item_add_subtree(ti, ett_msmms_data);
 
     /* Sequence number */
     sequence_number = tvb_get_letohl(tvb, offset);
@@ -706,11 +689,8 @@ static gint dissect_msmms_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     /* Parse UDP Timing packet pair headers if present */
     if (value == 0x01)
     {
-        if (msmms_tree)
-        {
-            ti =  proto_tree_add_string(msmms_tree, hf_msmms_data_timing_pair, tvb, offset, 8, "");
-            msmms_data_timing_pair = proto_item_add_subtree(ti, ett_msmms_data_timing_packet_pair);
-        }
+        ti =  proto_tree_add_string(msmms_tree, hf_msmms_data_timing_pair, tvb, offset, 8, "");
+        msmms_data_timing_pair = proto_item_add_subtree(ti, ett_msmms_data_timing_packet_pair);
 
         proto_tree_add_item(msmms_data_timing_pair, hf_msmms_data_timing_pair_seqno, tvb, offset, 1, ENC_LITTLE_ENDIAN);
         offset++;
@@ -859,17 +839,7 @@ static void dissect_server_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     proto_tree_add_item(tree, hf_msmms_command_password_type_length, tvb, offset, 4, ENC_LITTLE_ENDIAN);
     offset += 4;
 
-    /* Server version string.
-       The string length is in units of 2-octet values; make sure it won't
-       overflow if we double it to count octets, by making sure the top
-       bit isn't set (as that could make it be treated as negative) and
-       the bit below that isn't set (as that would mean that, when we
-       double it, it could be treated as negative).
-
-       Throw a ReportedBoundsError if it's too big, as that probably
-       means it's bogus and runs past the end of the packet. */
-    if (server_version_length & 0xC0000000)
-        THROW(ReportedBoundsError);
+    /* Server version string. */
     if (server_version_length > 1)
     {
         server_version = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, server_version_length*2, ENC_UTF_16|ENC_LITTLE_ENDIAN);
@@ -885,10 +855,7 @@ static void dissect_server_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     offset += (server_version_length*2);
 
 
-    /* Tool version string.  Do the same check as we did for the
-       server version string. */
-    if (tool_version_length & 0xC0000000)
-        THROW(ReportedBoundsError);
+    /* Tool version string. */
     if (tool_version_length > 1)
     {
         proto_tree_add_item(tree, hf_msmms_command_tool_version, tvb,
@@ -897,10 +864,7 @@ static void dissect_server_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     }
     offset += (tool_version_length*2);
 
-    /* Download update player url string.  Do the same check as we
-       did for the server version string. */
-    if (download_update_player_length & 0xC0000000)
-        THROW(ReportedBoundsError);
+    /* Download update player url string. */
     if (download_update_player_length > 1)
     {
         proto_tree_add_item(tree, hf_msmms_command_update_url, tvb,
@@ -909,10 +873,7 @@ static void dissect_server_info(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     }
     offset += (download_update_player_length*2);
 
-    /* Password encryption type string.  Do the same check as we
-       did for the server version string. */
-    if (password_encryption_type_length & 0xC0000000)
-        THROW(ReportedBoundsError);
+    /* Password encryption type string. */
     if (password_encryption_type_length > 1)
     {
         proto_tree_add_item(tree, hf_msmms_command_password_type, tvb,
@@ -1930,3 +1891,15 @@ void proto_reg_handoff_msmms_command(void)
     dissector_add_uint("udp.port", MSMMS_PORT, msmms_handle);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

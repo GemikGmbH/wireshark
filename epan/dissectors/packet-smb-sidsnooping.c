@@ -24,17 +24,14 @@
 #include "config.h"
 
 #include <stdio.h>
-#include <string.h>
-#include <epan/packet_info.h>
+
+#include <epan/packet.h>
 #include <epan/epan_dissect.h>
-#include <epan/proto.h>
 #include <epan/tap.h>
-#include <epan/emem.h>
-#include <epan/strutil.h>
+#include <wsutil/report_err.h>
 #include "packet-dcerpc.h"
 #include "packet-dcerpc-nt.h"
-#include "register.h"
-#include <epan/dissectors/packet-smb.h>
+#include "packet-smb.h"
 #include "packet-smb-sidsnooping.h"
 
 void proto_register_smb_sidsnooping(void);
@@ -66,7 +63,7 @@ char *
 find_sid_name(const char *sid)
 {
 	sid_name *sn;
-	sid_name old_sn;
+	sid_name  old_sn;
 
 	old_sn.sid=(char*)sid;
 	sn=(sid_name *)g_hash_table_lookup(sid_name_table, &old_sn);
@@ -80,7 +77,7 @@ static void
 add_sid_name_mapping(char *sid, char *name)
 {
 	sid_name *sn;
-	sid_name old_sn;
+	sid_name  old_sn;
 
 	old_sn.sid=sid;
 	sn=(sid_name *)g_hash_table_lookup(sid_name_table, &old_sn);
@@ -262,20 +259,13 @@ lsa_policy_information(void *dummy _U_, packet_info *pinfo _U_, epan_dissect_t *
 	return 0;
 }
 
-static gboolean
-free_all_sid_names(gpointer key_arg, gpointer value _U_, gpointer user_data _U_)
+static void
+sid_name_key_destroy(gpointer key_arg)
 {
 	sid_name *sn = (sid_name *)key_arg;
 
-	if(sn->sid){
-		g_free((gpointer)sn->sid);
-		sn->sid=NULL;
-	}
-	if(sn->name){
-		g_free((gpointer)sn->name);
-		sn->name=NULL;
-	}
-	return TRUE;
+	g_free((gpointer)sn->sid);
+	g_free((gpointer)sn->name);
 }
 
 static gint
@@ -301,11 +291,6 @@ sid_name_hash(gconstpointer k)
 }
 
 
-static gboolean
-free_all_ctx_handle(gpointer key_arg _U_, gpointer value _U_, gpointer user_data _U_)
-{
-	return TRUE;
-}
 static gint
 ctx_handle_equal(gconstpointer k1, gconstpointer k2)
 {
@@ -338,30 +323,19 @@ sid_snooping_init(void)
 		samr_query_dispinfo_tap_installed=FALSE;
 	}
 
-	if(sid_name_table){
-		g_hash_table_foreach_remove(sid_name_table, free_all_sid_names, NULL);
-		sid_name_table=NULL;
-	}
-	if(ctx_handle_table){
-		g_hash_table_foreach_remove(ctx_handle_table, free_all_ctx_handle, NULL);
-		ctx_handle_table=NULL;
-	}
-
-
-/* this code needs to be rewritten from scratch
-   disabling it now so that it wont cause wireshark to abort due to
+	sid_name_table = g_hash_table_new_full(sid_name_hash, sid_name_equal,
+		sid_name_key_destroy, NULL);
+	ctx_handle_table = g_hash_table_new(ctx_handle_hash, ctx_handle_equal);
+/* TODO this code needs to be rewritten from scratch
+   disabling it now so that it won't cause wireshark to abort due to
    unknown hf fields
  */
-sid_name_snooping=0;
+sid_name_snooping=FALSE;
 
 	if(!sid_name_snooping){
 		return;
 	}
 
-	sid_name_table=g_hash_table_new(sid_name_hash, sid_name_equal);
-
-
-	ctx_handle_table=g_hash_table_new(ctx_handle_hash, ctx_handle_equal);
 
 
 #if 0
@@ -384,7 +358,7 @@ sid_name_snooping=0;
 	if(error_string){
 		/* error, we failed to attach to the tap. clean up */
 
-		fprintf(stderr, "tshark: Couldn't register proto_reg_handoff_smb_sidsnooping()/lsa_policy_information tap: %s\n",
+		report_failure( "Couldn't register proto_reg_handoff_smb_sidsnooping()/lsa_policy_information tap: %s\n",
 		    error_string->str);
 		g_string_free(error_string, TRUE);
 		return;
@@ -398,7 +372,7 @@ sid_name_snooping=0;
 	if(error_string){
 		/* error, we failed to attach to the tap. clean up */
 
-		fprintf(stderr, "tshark: Couldn't register proto_reg_handoff_smb_sidsnooping()/samr_query_dispinfo tap: %s\n",
+		report_failure( "Couldn't register proto_reg_handoff_smb_sidsnooping()/samr_query_dispinfo tap: %s\n",
 		    error_string->str);
 		g_string_free(error_string, TRUE);
 		return;
@@ -406,8 +380,29 @@ sid_name_snooping=0;
 	samr_query_dispinfo_tap_installed=TRUE;
 }
 
+static void
+sid_snooping_cleanup(void)
+{
+	g_hash_table_destroy(sid_name_table);
+	g_hash_table_destroy(ctx_handle_table);
+}
+
 void
 proto_register_smb_sidsnooping(void)
 {
-  	register_init_routine(sid_snooping_init);
+	register_init_routine(sid_snooping_init);
+	register_cleanup_routine(sid_snooping_cleanup);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

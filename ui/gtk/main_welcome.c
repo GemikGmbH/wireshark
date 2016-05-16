@@ -21,30 +21,28 @@
 
 #include "config.h"
 
-#include <time.h>
 
 #include <gtk/gtk.h>
 
 #include <epan/prefs.h>
 
-#include "../color.h"
 #ifdef HAVE_LIBPCAP
-#include "capture.h"
-#include "capture-pcap-util.h"
+#include "ui/capture.h"
 #include "capture_opts.h"
-#include "capture_ui_utils.h"
 #endif
 
 #include <wsutil/file_util.h>
 #include <wsutil/str_util.h>
+#include <wsutil/ws_version_info.h>
 
 #ifdef HAVE_LIBPCAP
+#include "ui/capture_ui_utils.h"
 #include "ui/iface_lists.h"
 #include "ui/capture_globals.h"
 #endif
 #include "ui/recent.h"
 #include "ui/simple_dialog.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 #include "ui/ui_util.h"
 
 #include "ui/gtk/gui_utils.h"
@@ -53,6 +51,7 @@
 #include "ui/gtk/main.h"
 #include "ui/gtk/menus.h"
 #include "ui/gtk/main_welcome.h"
+#include "ui/gtk/main_welcome_private.h"
 #include "ui/gtk/main_toolbar.h"
 #include "ui/gtk/help_dlg.h"
 #include "ui/gtk/capture_file_dlg.h"
@@ -65,7 +64,6 @@
 #include "ui/gtk/webbrowser.h"
 #endif
 #endif /* HAVE_LIBPCAP */
-#include "../version_info.h"
 
 #ifdef _WIN32
 #include <tchar.h>
@@ -73,8 +71,8 @@
 #endif
 
 #ifdef HAVE_AIRPCAP
-#include "airpcap.h"
-#include "airpcap_loader.h"
+#include <caputils/airpcap.h>
+#include <caputils/airpcap_loader.h>
 #include "airpcap_gui_utils.h"
 #endif
 #if defined(HAVE_PCAP_REMOTE)
@@ -136,6 +134,11 @@ static gboolean activate_link_cb(GtkLabel *label _U_, gchar *uri, gpointer user_
 #define CAPTURE_HB_BOX_CAPTURE        "CaptureHorizontalBoxCapture"
 #define CAPTURE_HB_BOX_REFRESH        "CaptureHorizontalBoxRefresh"
 
+#ifdef HAVE_LIBPCAP
+static void
+welcome_header_push_msg(const gchar *msg_format, ...)
+    G_GNUC_PRINTF(1, 2);
+#endif
 
 static GtkWidget *
 scroll_box_dynamic_new(GtkWidget *child_box, guint max_childs, guint scrollw_y_size) {
@@ -335,8 +338,8 @@ welcome_header_set_message(gchar *msg) {
 
         if ((prefs.gui_version_placement == version_welcome_only) ||
             (prefs.gui_version_placement == version_both)) {
-            g_string_append_printf(message, "</span>\n<span size=\"large\" foreground=\"white\">Version " VERSION "%s",
-                                   wireshark_gitversion);
+            g_string_append_printf(message, "</span>\n<span size=\"large\" foreground=\"white\">Version %s",
+                                   get_ws_vcs_version_info());
         }
     }
 
@@ -383,20 +386,26 @@ welcome_header_new(void)
     return eb;
 }
 
+#ifdef HAVE_LIBPCAP
+static void
+welcome_header_push_msg(const gchar *msg_format, ...) {
+    va_list ap;
+    gchar *msg;
 
-void
-welcome_header_push_msg(const gchar *msg) {
-    gchar *msg_copy = g_strdup(msg);
+    va_start(ap, msg_format);
+    msg = g_strdup_vprintf(msg_format, ap);
+    va_end(ap);
 
-    status_messages = g_slist_append(status_messages, msg_copy);
+    status_messages = g_slist_append(status_messages, msg);
 
-    welcome_header_set_message(msg_copy);
+    welcome_header_set_message(msg);
 
     gtk_widget_hide(welcome_hb);
 }
+#endif
 
 
-void
+static void
 welcome_header_pop_msg(void) {
     gchar *msg = NULL;
 
@@ -498,7 +507,7 @@ typedef struct _recent_item_status {
 /*
  * Fetch the status of a file.
  * This function might be called as a thread. We can't use any drawing
- * routines here: http://developer.gnome.org/gdk/2.24/gdk-Threads.html
+ * routines here: https://developer.gnome.org/gdk3/stable/gdk3-Threads.html
  */
 static void *
 get_recent_item_status(void *data)
@@ -1068,16 +1077,23 @@ fill_capture_box(void)
         }
 #endif /* _WIN32 */
     } else {
-       if (if_view) {
-           clear_capture_box();
-       }
+        if (if_view) {
+            clear_capture_box();
+        }
 
-       /* run capture_interface_list(), not to get the interfaces, but to detect
-        * any errors, if there is an error, display an appropriate message in the gui */
-       capture_interface_list(&error, &err_str,main_window_update);
-       switch (error) {
+        /* run capture_interface_list(), not to get the interfaces, but to detect
+         * any errors, if there is an error, display an appropriate message in the gui */
+        capture_interface_list(&error, &err_str,main_window_update);
+        switch (error) {
 
-       case CANT_GET_INTERFACE_LIST:
+        case 0:
+            label_text = g_strdup("No interface can be used for capturing in "
+                                  "this system with the current configuration.\n"
+                                  "\n"
+                                  "See Capture Help below for details.");
+            break;
+
+        case CANT_GET_INTERFACE_LIST:
             label_text = g_strdup_printf("No interface can be used for capturing in "
                                          "this system with the current configuration.\n\n"
                                          "(%s)\n"
@@ -1086,38 +1102,15 @@ fill_capture_box(void)
                                          err_str);
             break;
 
-       case NO_INTERFACES_FOUND:
-            label_text = g_strdup("No interface can be used for capturing in "
-                                  "this system with the current configuration.\n"
-                                  "\n"
-                                  "See Capture Help below for details.");
-            break;
-
-       case DONT_HAVE_PCAP:
+        case DONT_HAVE_PCAP:
             label_text = g_strdup("WinPcap doesn't appear to be installed.  "
                                   "In order to capture packets, WinPcap "
                                   "must be installed; see\n"
                                   "\n"
 #if GTK_CHECK_VERSION(2,18,0)
-                                  "        <a href=\"http://www.winpcap.org/\">http://www.winpcap.org/</a>\n"
+                                  "        <a href=\"https://www.winpcap.org/\">https://www.winpcap.org/</a>\n"
 #else
-                                  "        http://www.winpcap.org/\n"
-#endif
-                                  "\n"
-                                  "or the mirror at\n"
-                                  "\n"
-#if GTK_CHECK_VERSION(2,18,0)
-                                  "        <a href=\"http://www.mirrors.wiretapped.net/security/packet-capture/winpcap/\">http://www.mirrors.wiretapped.net/security/packet-capture/winpcap/</a>\n"
-#else
-                                  "        http://www.mirrors.wiretapped.net/security/packet-capture/winpcap/\n"
-#endif
-                                  "\n"
-                                  "or the mirror at\n"
-                                  "\n"
-#if GTK_CHECK_VERSION(2,18,0)
-                                  "        <a href=\"http://winpcap.cs.pu.edu.tw/\">http://winpcap.cs.pu.edu.tw/</a>\n"
-#else
-                                  "        http://winpcap.cs.pu.edu.tw/\n"
+                                  "        https://www.winpcap.org/\n"
 #endif
                                   "\n"
                                   "for a downloadable version of WinPcap "
@@ -1130,7 +1123,7 @@ fill_capture_box(void)
             break;
         }
         if (err_str != NULL)
-          g_free(err_str);
+            g_free(err_str);
         w = gtk_label_new(label_text);
         gtk_label_set_markup(GTK_LABEL(w), label_text);
         gtk_label_set_line_wrap(GTK_LABEL(w), TRUE);
@@ -1141,14 +1134,14 @@ fill_capture_box(void)
         g_signal_connect(w, "activate-link", G_CALLBACK(activate_link_cb), NULL);
 #endif
         g_object_set_data(G_OBJECT(welcome_hb), CAPTURE_LABEL, w);
-        if (error == CANT_GET_INTERFACE_LIST || error == NO_INTERFACES_FOUND) {
-          item_hb_refresh = welcome_button(GTK_STOCK_REFRESH,
-                                           "Refresh Interfaces",
-                                           "Get a new list of the local interfaces.",
-                                           "Click the title to get a new list of interfaces",
-                                           welcome_button_callback_helper, refresh_interfaces_cb);
-          gtk_box_pack_start(GTK_BOX(box_to_fill), item_hb_refresh, FALSE, FALSE, 5);
-          g_object_set_data(G_OBJECT(welcome_hb), CAPTURE_HB_BOX_REFRESH, item_hb_refresh);
+        if (error == CANT_GET_INTERFACE_LIST || error == 0) {
+            item_hb_refresh = welcome_button(GTK_STOCK_REFRESH,
+                                             "Refresh Interfaces",
+                                             "Get a new list of the local interfaces.",
+                                             "Click the title to get a new list of interfaces",
+                                             welcome_button_callback_helper, refresh_interfaces_cb);
+            gtk_box_pack_start(GTK_BOX(box_to_fill), item_hb_refresh, FALSE, FALSE, 5);
+            g_object_set_data(G_OBJECT(welcome_hb), CAPTURE_HB_BOX_REFRESH, item_hb_refresh);
         }
     }
 }
@@ -1202,7 +1195,7 @@ capture_if_start(GtkWidget *w _U_, gpointer data _U_)
 #ifdef HAVE_AIRPCAP  /* TODO: don't let it depend on interface_opts */
     for (i = 0; i < global_capture_opts.all_ifaces->len; i++) {
         device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
-        airpcap_if_active = get_airpcap_if_from_name(airpcap_if_list, device.name);
+        airpcap_if_active = get_airpcap_if_from_name(g_airpcap_if_list, device.name);
         airpcap_if_selected = airpcap_if_active;
         if (airpcap_if_selected) {
             break;
@@ -1453,3 +1446,155 @@ get_welcome_window(void)
 {
     return welcome_hb;
 }
+
+static void
+welcome_cf_file_closing_cb(capture_file *cf _U_)
+{
+    welcome_header_pop_msg();
+}
+
+void
+welcome_cf_callback(gint event, gpointer data, gpointer user_data _U_)
+{
+    switch(event) {
+    case(cf_cb_file_opened):
+        break;
+    case(cf_cb_file_closing):
+        welcome_cf_file_closing_cb((capture_file *)data);
+        break;
+    case(cf_cb_file_closed):
+        break;
+    case(cf_cb_file_read_started):
+        break;
+    case(cf_cb_file_read_finished):
+        break;
+    case(cf_cb_file_reload_started):
+        break;
+    case(cf_cb_file_reload_finished):
+        break;
+    case(cf_cb_file_rescan_started):
+        break;
+    case(cf_cb_file_rescan_finished):
+        break;
+    case(cf_cb_file_retap_started):
+        break;
+    case(cf_cb_file_retap_finished):
+        break;
+    case(cf_cb_file_fast_save_finished):
+        break;
+    case(cf_cb_packet_selected):
+        break;
+    case(cf_cb_packet_unselected):
+        break;
+    case(cf_cb_field_unselected):
+        break;
+    case(cf_cb_file_save_started):
+        break;
+    case(cf_cb_file_save_finished):
+        break;
+    case(cf_cb_file_save_failed):
+        break;
+    case(cf_cb_file_save_stopped):
+        break;
+    case(cf_cb_file_export_specified_packets_started):
+        break;
+    case(cf_cb_file_export_specified_packets_finished):
+        break;
+    case(cf_cb_file_export_specified_packets_failed):
+        break;
+    case(cf_cb_file_export_specified_packets_stopped):
+        break;
+    default:
+        g_warning("welcome_cf_callback: event %u unknown", event);
+        g_assert_not_reached();
+    }
+}
+
+#ifdef HAVE_LIBPCAP
+static void
+welcome_capture_update_started_cb(capture_session *cap_session _U_)
+{
+    welcome_header_pop_msg();
+}
+
+static void
+welcome_capture_fixed_started_cb(capture_session *cap_session)
+{
+    capture_options *capture_opts = cap_session->capture_opts;
+    GString *interface_names;
+
+    welcome_header_pop_msg();
+
+    interface_names = get_iface_list_string(capture_opts, 0);
+    welcome_header_push_msg("Capturing on %s", interface_names->str);
+    g_string_free(interface_names, TRUE);
+}
+
+static void
+welcome_capture_fixed_finished_cb(capture_session *cap_session _U_)
+{
+    welcome_header_pop_msg();
+}
+
+static void
+welcome_capture_prepared_cb(capture_session *cap_session _U_)
+{
+    static const gchar msg[] = " Waiting for capture input data ...";
+    welcome_header_push_msg(msg);
+}
+
+static void
+welcome_capture_failed_cb(capture_session *cap_session _U_)
+{
+    welcome_header_pop_msg();
+}
+
+void
+welcome_capture_callback(gint event, capture_session *cap_session,
+                           gpointer user_data _U_)
+{
+    switch(event) {
+    case(capture_cb_capture_prepared):
+        welcome_capture_prepared_cb(cap_session);
+        break;
+    case(capture_cb_capture_update_started):
+        welcome_capture_update_started_cb(cap_session);
+        break;
+    case(capture_cb_capture_update_continue):
+        break;
+    case(capture_cb_capture_update_finished):
+        break;
+    case(capture_cb_capture_fixed_started):
+        welcome_capture_fixed_started_cb(cap_session);
+        break;
+    case(capture_cb_capture_fixed_continue):
+        break;
+    case(capture_cb_capture_fixed_finished):
+        welcome_capture_fixed_finished_cb(cap_session);
+        break;
+    case(capture_cb_capture_stopping):
+        /* Beware: this state won't be called, if the capture child
+         * closes the capturing on its own! */
+        break;
+    case(capture_cb_capture_failed):
+        welcome_capture_failed_cb(cap_session);
+        break;
+    default:
+        g_warning("welcome_capture_callback: event %u unknown", event);
+        g_assert_not_reached();
+    }
+}
+#endif /* HAVE_LIBPCAP */
+
+/*
+ * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

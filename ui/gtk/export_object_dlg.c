@@ -30,7 +30,6 @@
 #include <epan/prefs.h>
 #include <epan/tap.h>
 
-#include <wsutil/file_util.h>
 #include <wsutil/str_util.h>
 
 #include <ui/export_object.h>
@@ -130,26 +129,6 @@ eo_win_destroy_cb(GtkWindow *win _U_, gpointer data)
 	if (eo_protocoldata_reset != NULL) eo_protocoldata_reset();
 }
 
-static gchar *eo_saveable_pathname(gchar *filename) {
-gchar	**splitted_pathname;
-gchar 	*auxstring, *saveable_pathname;
-guint	nparts,i;
-
-	saveable_pathname = NULL;
-	splitted_pathname = g_strsplit_set(filename,"\\",-1);
-	nparts = g_strv_length(splitted_pathname);
-	if (nparts>0) {
-		saveable_pathname=g_strdup(splitted_pathname[0]);
-	}
-	for (i=1;i<nparts;i++) {
-		auxstring = g_strconcat(saveable_pathname,"__",splitted_pathname[i],NULL);
-		g_free(saveable_pathname);
-		saveable_pathname = auxstring;
-	}
-
-	return saveable_pathname;
-}
-
 static char *
 gtk_eo_save_object_as_file(export_object_list_t *object_list, char *auxfilename)
 {
@@ -179,7 +158,7 @@ eo_save_clicked_cb(GtkWidget *widget _U_, gpointer arg)
 {
 	export_object_list_t *object_list = (export_object_list_t *)arg;
 	export_object_entry_t *entry;
-	gchar *auxfilename = NULL;
+	GString *safe_filename = NULL;
 	char *pathname;
 
 	entry =(export_object_entry_t *) g_slist_nth_data(object_list->entries,
@@ -190,13 +169,13 @@ eo_save_clicked_cb(GtkWidget *widget _U_, gpointer arg)
 		return;
 	}
 
-	auxfilename = eo_saveable_pathname(entry->filename);
+	safe_filename = eo_massage_str(entry->filename, 256, 0);
 
 	/*
 	 * Loop until the user either selects a file or gives up.
 	 */
 	for (;;) {
-		pathname = gtk_eo_save_object_as_file(object_list, auxfilename);
+		pathname = gtk_eo_save_object_as_file(object_list, safe_filename->str);
 		if (pathname == NULL) {
 			/* User gave up. */
 			break;
@@ -211,7 +190,7 @@ eo_save_clicked_cb(GtkWidget *widget _U_, gpointer arg)
 		g_free(pathname);
 	}
 
-	g_free(auxfilename);
+	g_string_free(safe_filename, TRUE);
 }
 
 #define MAXFILELEN		255
@@ -226,7 +205,6 @@ eo_save_all_clicked_cb(GtkWidget *widget _U_, gpointer arg)
 	gboolean all_saved = TRUE;
 	gchar *save_in_path;
 	GString *safe_filename;
-	gchar *auxfilename = NULL;
 	int count = 0;
 
 	save_in_w = file_selection_new("Wireshark: Save All Objects In ...",
@@ -242,12 +220,10 @@ eo_save_all_clicked_cb(GtkWidget *widget _U_, gpointer arg)
 				do {
 					g_free(save_as_fullpath);
 					if (entry->filename) {
-						auxfilename = eo_saveable_pathname(entry->filename);
-						safe_filename = eo_massage_str(auxfilename,
+						safe_filename = eo_massage_str(entry->filename,
 							MAXFILELEN - strlen(save_in_path), count);
-						g_free(auxfilename);
 					} else {
-						char generic_name[256];
+						char generic_name[MAXFILELEN+1];
 						const char *ext;
 						ext = ct2ext(entry->content_type);
 						g_snprintf(generic_name, sizeof(generic_name),
@@ -478,7 +454,7 @@ export_object_window(const gchar *tapname, const gchar *name, tap_packet_cb tap_
 	gtk_widget_show(bbox);
 
 	/* Setup cancel/delete/destroy signal handlers */
-        g_signal_connect(object_list->dlg, "delete_event", G_CALLBACK(window_delete_event_cb), NULL);
+	g_signal_connect(object_list->dlg, "delete_event", G_CALLBACK(window_delete_event_cb), NULL);
 	g_signal_connect(object_list->dlg, "destroy",
 		       G_CALLBACK(eo_win_destroy_cb), object_list);
 	window_set_cancel_button(object_list->dlg, cancel_bt,
@@ -509,3 +485,23 @@ eo_smb_cb(GtkWidget *widget _U_, gpointer data _U_)
 	/* Call the export_object window */
 	export_object_window("smb_eo", "SMB", eo_smb_packet, eo_smb_cleanup);
 }
+
+void
+eo_tftp_cb(GtkWidget *widget _U_, gpointer data _U_)
+{
+	/* Call the export_object window */
+	export_object_window("tftp_eo", "TFTP", eo_tftp_packet, eo_tftp_cleanup);
+}
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

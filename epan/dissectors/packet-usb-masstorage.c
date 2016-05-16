@@ -21,10 +21,7 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
-#include <epan/conversation.h>
 #include "packet-usb.h"
 #include "packet-scsi.h"
 
@@ -37,6 +34,7 @@ static int hf_usb_ms_dCBWSignature = -1;
 static int hf_usb_ms_dCBWTag = -1;
 static int hf_usb_ms_dCBWDataTransferLength = -1;
 static int hf_usb_ms_dCBWFlags = -1;
+static int hf_usb_ms_dCBWTarget = -1;
 static int hf_usb_ms_dCBWLUN = -1;
 static int hf_usb_ms_dCBWCBLength = -1;
 static int hf_usb_ms_dCSWSignature = -1;
@@ -53,15 +51,15 @@ static gint ett_usb_ms = -1;
 
 /* there is one such structure for each masstorage conversation */
 typedef struct _usb_ms_conv_info_t {
-    wmem_tree_t *itl;		/* indexed by LUN */
-    wmem_tree_t *itlq;		/* pinfo->fd->num */
+    wmem_tree_t *itl;           /* indexed by LUN */
+    wmem_tree_t *itlq;          /* pinfo->fd->num */
 } usb_ms_conv_info_t;
 
 
 static const value_string status_vals[] = {
-    {0x00,	"Command Passed"},
-    {0x01,	"Command Failed"},
-    {0x02,	"Phase Error"},
+    {0x00,      "Command Passed"},
+    {0x01,      "Command Failed"},
+    {0x02,      "Phase Error"},
     {0, NULL}
 };
 
@@ -124,7 +122,7 @@ static const value_string setup_request_names_vals[] = {
 };
 
 /* Dissector for mass storage control .
- * Returns tvb_length(tvb) if a class specific dissector was found
+ * Returns tvb_captured_length(tvb) if a class specific dissector was found
  * and 0 othervise.
  */
 static gint
@@ -171,7 +169,7 @@ dissect_usb_ms_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
     }
 
     dissector(pinfo, tree, tvb, offset, is_request, usb_trans_info, usb_conv_info);
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 
@@ -181,7 +179,8 @@ dissect_usb_ms_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
 {
     usb_conv_info_t *usb_conv_info;
     usb_ms_conv_info_t *usb_ms_conv_info;
-    proto_tree *tree=NULL;
+    proto_tree *tree;
+    proto_item *ti;
     guint32 signature=0;
     int offset=0;
     gboolean is_request;
@@ -210,12 +209,8 @@ dissect_usb_ms_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
     col_clear(pinfo->cinfo, COL_INFO);
 
 
-    if(parent_tree){
-        proto_item *ti = NULL;
-        ti = proto_tree_add_protocol_format(parent_tree, proto_usb_ms, tvb, 0, -1, "USB Mass Storage");
-
-        tree = proto_item_add_subtree(ti, ett_usb_ms);
-    }
+    ti = proto_tree_add_protocol_format(parent_tree, proto_usb_ms, tvb, 0, -1, "USB Mass Storage");
+    tree = proto_item_add_subtree(ti, ett_usb_ms);
 
     signature=tvb_get_letohl(tvb, offset);
 
@@ -223,7 +218,7 @@ dissect_usb_ms_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
     /*
      * SCSI CDB inside CBW
      */
-    if(is_request&&(signature==0x43425355)&&(tvb_length(tvb)==31)){
+    if(is_request&&(signature==0x43425355)&&(tvb_reported_length(tvb)==31)){
         tvbuff_t *cdb_tvb;
         int cdbrlen, cdblen;
         guint8 lun, flags;
@@ -248,6 +243,7 @@ dissect_usb_ms_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
         offset+=1;
 
         /* dCBWLUN */
+        proto_tree_add_item(tree, hf_usb_ms_dCBWTarget, tvb, offset, 1, ENC_LITTLE_ENDIAN);
         proto_tree_add_item(tree, hf_usb_ms_dCBWLUN, tvb, offset, 1, ENC_LITTLE_ENDIAN);
         lun=tvb_get_guint8(tvb, offset)&0x0f;
         offset+=1;
@@ -292,21 +288,21 @@ dissect_usb_ms_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
         offset+=1;
 
         cdblen=cdbrlen;
-        if(cdblen>tvb_length_remaining(tvb, offset)){
-            cdblen=tvb_length_remaining(tvb, offset);
+        if(cdblen>tvb_captured_length_remaining(tvb, offset)){
+            cdblen=tvb_captured_length_remaining(tvb, offset);
         }
         if(cdblen){
             cdb_tvb=tvb_new_subset(tvb, offset, cdblen, cdbrlen);
             dissect_scsi_cdb(cdb_tvb, pinfo, parent_tree, SCSI_DEV_UNKNOWN, itlq, itl);
         }
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
 
 
     /*
      * SCSI RESPONSE inside CSW
      */
-    if((!is_request)&&(signature==0x53425355)&&(tvb_length(tvb)==13)){
+    if((!is_request)&&(signature==0x53425355)&&(tvb_reported_length(tvb)==13)){
         guint8 status;
 
         /* dCSWSignature */
@@ -328,13 +324,13 @@ dissect_usb_ms_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
 
         itlq=(itlq_nexus_t *)wmem_tree_lookup32_le(usb_ms_conv_info->itlq, pinfo->fd->num);
         if(!itlq){
-            return tvb_length(tvb);
+            return tvb_captured_length(tvb);
         }
         itlq->last_exchange_frame=pinfo->fd->num;
 
         itl=(itl_nexus_t *)wmem_tree_lookup32(usb_ms_conv_info->itl, itlq->lun);
         if(!itl){
-            return tvb_length(tvb);
+            return tvb_captured_length(tvb);
         }
 
         if(!status){
@@ -343,7 +339,7 @@ dissect_usb_ms_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
             /* just send "check condition" */
             dissect_scsi_rsp(tvb, pinfo, parent_tree, itlq, itl, 0x02);
         }
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
 
     /*
@@ -351,16 +347,16 @@ dissect_usb_ms_bulk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, 
      */
     itlq=(itlq_nexus_t *)wmem_tree_lookup32_le(usb_ms_conv_info->itlq, pinfo->fd->num);
     if(!itlq){
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
 
     itl=(itl_nexus_t *)wmem_tree_lookup32(usb_ms_conv_info->itl, itlq->lun);
     if(!itl){
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
 
     dissect_scsi_payload(tvb, pinfo, parent_tree, is_request, itlq, itl, 0);
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 static gboolean
@@ -399,6 +395,10 @@ proto_register_usb_ms(void)
         { &hf_usb_ms_dCBWFlags,
         { "Flags", "usbms.dCBWFlags", FT_UINT8, BASE_HEX,
           NULL, 0x0, NULL, HFILL }},
+
+        { &hf_usb_ms_dCBWTarget,
+        { "Target", "usbms.dCBWTarget", FT_UINT8, BASE_HEX_DEC,
+          NULL, 0x70, "Target Number when enabling multi-target mode", HFILL }},
 
         { &hf_usb_ms_dCBWLUN,
         { "LUN", "usbms.dCBWLUN", FT_UINT8, BASE_HEX,
@@ -466,5 +466,18 @@ proto_reg_handoff_usb_ms(void)
     usb_ms_control_handle = new_create_dissector_handle(dissect_usb_ms_control, proto_usb_ms);
     dissector_add_uint("usb.control", IF_CLASS_MASS_STORAGE, usb_ms_control_handle);
 
-    heur_dissector_add("usb.bulk", dissect_usb_ms_bulk_heur, proto_usb_ms);
+    heur_dissector_add("usb.bulk", dissect_usb_ms_bulk_heur, "Mass Storage USB bulk endpoint", "ms_usb_bulk", proto_usb_ms, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

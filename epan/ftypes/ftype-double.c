@@ -28,6 +28,8 @@
 
 #include "strutil.h"
 
+#define DOUBLE_REPR_LENGTH  27
+
 static void
 double_fvalue_new(fvalue_t *fv)
 {
@@ -47,7 +49,7 @@ value_get_floating(fvalue_t *fv)
 }
 
 static gboolean
-val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, LogFunc logfunc)
+val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, gchar **err_msg)
 {
 	char    *endptr = NULL;
 
@@ -55,19 +57,23 @@ val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_,
 
 	if (endptr == s || *endptr != '\0') {
 		/* This isn't a valid number. */
-		logfunc("\"%s\" is not a valid number.", s);
+		if (err_msg != NULL)
+			*err_msg = g_strdup_printf("\"%s\" is not a valid number.", s);
 		return FALSE;
 	}
 	if (errno == ERANGE) {
 		if (fv->value.floating == 0) {
-			logfunc("\"%s\" causes floating-point underflow.", s);
+			if (err_msg != NULL)
+				*err_msg = g_strdup_printf("\"%s\" causes floating-point underflow.", s);
 		}
 		else if (fv->value.floating == HUGE_VAL) {
-			logfunc("\"%s\" causes floating-point overflow.", s);
+			if (err_msg != NULL)
+				*err_msg = g_strdup_printf("\"%s\" causes floating-point overflow.", s);
 		}
 		else {
-			logfunc("\"%s\" is not a valid floating-point number.",
-			    s);
+			if (err_msg != NULL)
+				*err_msg = g_strdup_printf("\"%s\" is not a valid floating-point number.",
+				    s);
 		}
 		return FALSE;
 	}
@@ -76,7 +82,7 @@ val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_,
 }
 
 static int
-float_val_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_)
+float_val_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_, int field_display _U_)
 {
 	/*
 	 * 1 character for a sign.
@@ -85,17 +91,17 @@ float_val_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_)
 	 * XXX - smaller for float than for double?
 	 * XXX - can we compute it from FLT_DIG and the like?
 	 */
-	return 1 + 26;
+	return DOUBLE_REPR_LENGTH;
 }
 
 static void
-float_val_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, char *buf)
+float_val_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, int field_display _U_, char *buf)
 {
-	sprintf(buf, "%." G_STRINGIFY(FLT_DIG) "g", fv->value.floating);
+	g_snprintf(buf, DOUBLE_REPR_LENGTH, "%." G_STRINGIFY(FLT_DIG) "g", fv->value.floating);
 }
 
 static int
-double_val_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_)
+double_val_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_, int field_display _U_)
 {
 	/*
 	 * 1 character for a sign.
@@ -103,13 +109,13 @@ double_val_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_)
 	 * XXX - is that platform-dependent?
 	 * XXX - can we compute it from DBL_DIG and the like?
 	 */
-	return 1 + 26;
+	return DOUBLE_REPR_LENGTH;
 }
 
 static void
-double_val_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, char *buf)
+double_val_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, int field_display _U_, char *buf)
 {
-	sprintf(buf, "%." G_STRINGIFY(DBL_DIG) "g", fv->value.floating);
+	g_snprintf(buf, DOUBLE_REPR_LENGTH, "%." G_STRINGIFY(DBL_DIG) "g", fv->value.floating);
 }
 
 static gboolean
@@ -171,14 +177,16 @@ ftype_register_double(void)
 		NULL,				/* set_value_string */
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
-		NULL,				/* set_value_snteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_sinteger */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		double_fvalue_set_floating,	/* set_value_floating */
 
 		NULL,				/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		value_get_floating,		/* get_value_floating */
 
 		cmp_eq,
@@ -215,13 +223,15 @@ ftype_register_double(void)
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		double_fvalue_set_floating,	/* set_value_floating */
 
 		NULL,				/* get_value */
 		NULL,				/* get_value_uinteger */
-		NULL,				/* get_value_snteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_sinteger */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		value_get_floating,		/* get_value_floating */
 
 		cmp_eq,

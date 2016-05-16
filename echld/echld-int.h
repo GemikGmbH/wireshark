@@ -24,7 +24,7 @@
 #ifndef __ECHLD_HDR_INT_
 #define __ECHLD_HDR_INT_
 
-#include "config.h"
+#include <config.h>
 
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
@@ -61,19 +61,20 @@
 
 
 #include "capture_opts.h"
-#include "capture_session.h"
-#include "capture_ifinfo.h"
-#include "capture_sync.h"
-#include "version_info.h"
+#include <capchild/capture_session.h>
+#include <caputils/capture_ifinfo.h>
+#include <capchild/capture_sync.h>
 #include "cfile.h"
 #include "wsutil/crash_info.h"
 #include "wsutil/privileges.h"
 #include "wsutil/filesystem.h"
+#include "wsutil/copyright_info.h"
+#include "wsutil/ws_version_info.h"
+#include "epan/addr_resolv.h"
 #include "epan/epan.h"
 #include "epan/prefs.h"
 #include "epan/ex-opt.h"
 #include "epan/funnel.h"
-#include "epan/prefs.h"
 #include "epan/timestamp.h"
 #include "epan/disabled_protos.h"
 #include "echld.h"
@@ -214,11 +215,11 @@ typedef struct _child_out {
 	enc_msg_t* (*error)		(int , const char*);
 	enc_msg_t* (*child_dead)	(const char*);
 	enc_msg_t* (*param)		(const char*, const char*);
-	enc_msg_t* (*notify)		(const char*); // pre-encoded
-	enc_msg_t* (*packet_sum)	(int, const char*); // framenum, sum(pre-encoded)
-	enc_msg_t* (*tree)		(int, const char*); // framenum, tree(pre-encoded)
-	enc_msg_t* (*buffer)		(int , const char*, const char*, const char*); // totlen,name,range,data
-	enc_msg_t* (*packet_list)	(const char*, const char*, const char*); // name, filter, range
+	enc_msg_t* (*notify)		(const char*); /* pre-encoded */
+	enc_msg_t* (*packet_sum)	(int, const char*); /* framenum, sum(pre-encoded) */
+	enc_msg_t* (*tree)		(int, const char*); /* framenum, tree(pre-encoded) */
+	enc_msg_t* (*buffer)		(int , const char*, const char*, const char*); /* totlen,name,range,data */
+	enc_msg_t* (*packet_list)	(const char*, const char*, const char*); /* name, filter, range */
 } child_encoder_t;
 
 
@@ -226,11 +227,11 @@ typedef struct _parent_in {
 	echld_bool_t (*error)		(enc_msg_t*, int* , char**);
 	echld_bool_t (*child_dead)	(enc_msg_t*, char**);
 	echld_bool_t (*param)		(enc_msg_t*, char**, char**);
-	echld_bool_t (*notify)		(enc_msg_t*, char**); // pre-encoded
-	echld_bool_t (*packet_sum)	(enc_msg_t*, int*, char**); // framenum, sum(pre-encoded)
-	echld_bool_t (*packet)		(enc_msg_t*, int*, char**); // framenum, tree(pre-encoded)
-	echld_bool_t (*buffer)		(enc_msg_t*, int*, char**, char**, char**); // totlen,name,range,data
-	echld_bool_t (*packet_list) (enc_msg_t*, char**, char**, char**); // name, filter, range
+	echld_bool_t (*notify)		(enc_msg_t*, char**); /* pre-encoded */
+	echld_bool_t (*packet_sum)	(enc_msg_t*, int*, char**); /* framenum, sum(pre-encoded) */
+	echld_bool_t (*packet)		(enc_msg_t*, int*, char**); /* framenum, tree(pre-encoded) */
+	echld_bool_t (*buffer)		(enc_msg_t*, int*, char**, char**, char**); /* totlen,name,range,data */
+	echld_bool_t (*packet_list) (enc_msg_t*, char**, char**, char**); /* name, filter, range */
 } parent_decoder_t;
 
 extern void echld_get_all_codecs(child_encoder_t**, child_decoder_t**, echld_parent_encoder_t**, parent_decoder_t**);

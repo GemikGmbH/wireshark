@@ -30,15 +30,17 @@
 #include "capture_filter_combo.h"
 #include "wireshark_application.h"
 
-#include <QCompleter>
-
-CaptureFilterCombo::CaptureFilterCombo(QWidget *parent) :
+CaptureFilterCombo::CaptureFilterCombo(QWidget *parent, bool plain) :
     QComboBox(parent),
     cf_edit_(NULL)
 {
-    cf_edit_ = new CaptureFilterEdit();
+    cf_edit_ = new CaptureFilterEdit(this, plain);
 
     setEditable(true);
+    // Enabling autocompletion here gives us two simultaneous completions:
+    // Inline (highlighted text) for entire filters, handled here and popup
+    // completion for fields handled by CaptureFilterEdit.
+    setAutoCompletion(false);
     setLineEdit(cf_edit_);
     setSizePolicy(QSizePolicy::MinimumExpanding, QSizePolicy::Fixed);
     setInsertPolicy(QComboBox::NoInsert);
@@ -64,7 +66,7 @@ CaptureFilterCombo::CaptureFilterCombo(QWidget *parent) :
             " }"
 
             "QComboBox::down-arrow {"
-            "  image: url(:/dfilter/dfilter_dropdown.png);"
+            "  image: url(:/icons/toolbar/14x14/x-filter-dropdown.png);"
             " }"
 
             "QComboBox::down-arrow:on { /* shift the arrow when popup is open */"
@@ -72,11 +74,10 @@ CaptureFilterCombo::CaptureFilterCombo(QWidget *parent) :
             "  left: 1px;"
             "}"
             );
-    completer()->setCompletionMode(QCompleter::PopupCompletion);
 
     connect(this, SIGNAL(interfacesChanged()), cf_edit_, SLOT(checkFilter()));
-    connect(cf_edit_, SIGNAL(pushFilterSyntaxStatus(QString&)),
-            this, SIGNAL(pushFilterSyntaxStatus(QString&)));
+    connect(cf_edit_, SIGNAL(pushFilterSyntaxStatus(const QString&)),
+            this, SIGNAL(pushFilterSyntaxStatus(const QString&)));
     connect(cf_edit_, SIGNAL(popFilterSyntaxStatus()),
             this, SIGNAL(popFilterSyntaxStatus()));
     connect(cf_edit_, SIGNAL(captureFilterSyntaxChanged(bool)),
@@ -110,11 +111,13 @@ void CaptureFilterCombo::rebuildFilterList(bool insert_edit_text)
         recent_add_cfilter(NULL, currentText().toUtf8().constData());
     }
 
+    lineEdit()->blockSignals(true);
     clear();
     for (GList *li = g_list_first(cfilter_list); li != NULL; li = g_list_next(li)) {
         insertItem(0, (const gchar *) li->data);
     }
-    setEditText(cur_filter);
+    lineEdit()->setText(cur_filter);
+    lineEdit()->blockSignals(false);
 }
 
 /*

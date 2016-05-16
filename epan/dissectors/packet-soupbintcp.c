@@ -56,11 +56,8 @@
 
 #include <stdlib.h>
 
-#include <epan/conversation.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include <epan/wmem/wmem.h>
-
 /* For tcp_dissect_pdus() */
 #include "packet-tcp.h"
 
@@ -145,10 +142,12 @@ format_packet_type(
     gchar   *buf,
     guint32  value)
 {
+    gchar* tmp_str;
+
+    tmp_str = val_to_str_wmem(NULL, value, pkt_type_val, "Unknown packet");
     g_snprintf(buf, ITEM_LABEL_LENGTH,
-               "%s (%c)",
-               val_to_str(value, pkt_type_val, "Unknown packet"),
-               (char)(value & 0xff));
+               "%s (%c)", tmp_str, (char)(value & 0xff));
+    wmem_free(NULL, tmp_str);
 }
 
 
@@ -163,10 +162,12 @@ format_reject_code(
     gchar   *buf,
     guint32  value)
 {
+    gchar* tmp_str;
+
+    tmp_str = val_to_str_wmem(NULL, value, reject_code_val, "Unknown reject code");
     g_snprintf(buf, ITEM_LABEL_LENGTH,
-               "%s (%c)",
-               val_to_str(value, reject_code_val, "Unknown reject code"),
-               (char)(value & 0xff));
+               "%s (%c)", tmp_str, (char)(value & 0xff));
+    wmem_free(NULL, tmp_str);
 }
 
 
@@ -187,8 +188,11 @@ dissect_soupbintcp_common(
     guint16           expected_len;
     guint8            pkt_type;
     gint              offset          = 0;
-    guint             this_seq        = 0, next_seq;
+    guint             this_seq        = 0, next_seq, key;
     heur_dtbl_entry_t *hdtbl_entry;
+
+    /* Record the start of the packet to use as a sequence number key */
+    key = (guint)tvb_raw_offset(tvb);
 
     /* Get the 16-bit big-endian SOUP packet length */
     expected_len = tvb_get_ntohs(tvb, 0);
@@ -234,7 +238,7 @@ dissect_soupbintcp_common(
 
     /* If first dissection of Login Accept, save sequence number */
     if (pkt_type == 'A' && !PINFO_FD_VISITED(pinfo)) {
-        tmp_buf = tvb_get_string(wmem_packet_scope(), tvb, 13, 20);
+        tmp_buf = tvb_get_string_enc(wmem_packet_scope(), tvb, 13, 20, ENC_ASCII);
         next_seq = atoi(tmp_buf);
 
         /* Create new conversation for this session */
@@ -278,10 +282,10 @@ dissect_soupbintcp_common(
                     wmem_file_scope(),
                     sizeof(struct pdu_data));
                 pdu_data->seq_num = this_seq;
-                p_add_proto_data(wmem_file_scope(), pinfo, proto_soupbintcp, 0, pdu_data);
+                p_add_proto_data(wmem_file_scope(), pinfo, proto_soupbintcp, key, pdu_data);
             }
         } else {
-            pdu_data = (struct pdu_data *)p_get_proto_data(wmem_file_scope(), pinfo, proto_soupbintcp, 0);
+            pdu_data = (struct pdu_data *)p_get_proto_data(wmem_file_scope(), pinfo, proto_soupbintcp, key);
             if (pdu_data) {
                 this_seq = pdu_data->seq_num;
             } else {
@@ -328,7 +332,7 @@ dissect_soupbintcp_common(
                                 tvb, offset, 10, ENC_ASCII|ENC_NA);
             offset += 10;
 
-            tmp_buf = tvb_get_string(wmem_packet_scope(), tvb, offset, 20);
+            tmp_buf = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 20, ENC_ASCII);
             proto_tree_add_string_format_value(soupbintcp_tree,
                                                hf_soupbintcp_next_seq_num,
                                                tvb, offset, 20,
@@ -373,7 +377,7 @@ dissect_soupbintcp_common(
                                 tvb, offset, 10, ENC_ASCII|ENC_NA);
             offset += 10;
 
-            tmp_buf = tvb_get_string(wmem_packet_scope(), tvb, offset, 20);
+            tmp_buf = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 20, ENC_ASCII);
             proto_tree_add_string_format_value(soupbintcp_tree,
                                                hf_soupbintcp_req_seq_num,
                                                tvb, offset, 20,
@@ -396,7 +400,7 @@ dissect_soupbintcp_common(
             /* Unknown */
             proto_tree_add_item(tree,
                                 hf_soupbintcp_message,
-                                tvb, offset, -1, ENC_ASCII|ENC_NA);
+                                tvb, offset, -1, ENC_NA);
             break;
         }
     }
@@ -439,7 +443,7 @@ dissect_soupbintcp_common(
             proto_tree_add_item(soupbintcp_tree,
                                 hf_soupbintcp_message,
                                 sub_tvb, 0, -1,
-                                ENC_ASCII|ENC_NA);
+                                ENC_NA);
         }
     }
 }
@@ -450,7 +454,8 @@ static guint
 get_soupbintcp_pdu_len(
     packet_info *pinfo _U_,
     tvbuff_t    *tvb,
-    int          offset)
+    int          offset,
+    void        *data _U_)
 {
     /* Determine the length of the PDU using the SOUP header's 16-bit
        big-endian length (at offset zero).  We're guaranteed to get at
@@ -470,7 +475,7 @@ dissect_soupbintcp_tcp_pdu(
     void        *data _U_)
 {
     dissect_soupbintcp_common(tvb, pinfo, tree);
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 
@@ -486,7 +491,7 @@ dissect_soupbintcp_tcp(
                      soupbintcp_desegment, 2,
                      get_soupbintcp_pdu_len,
                      dissect_soupbintcp_tcp_pdu, data);
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 static void
@@ -512,13 +517,13 @@ proto_register_soupbintcp(void)
 
         { &hf_soupbintcp_packet_type,
           { "Packet Type", "soupbintcp.packet_type",
-            FT_UINT8, BASE_CUSTOM, format_packet_type, 0x0,
+            FT_UINT8, BASE_CUSTOM, CF_FUNC(format_packet_type), 0x0,
             "Message type code",
             HFILL }},
 
         { &hf_soupbintcp_reject_code,
           { "Login Reject Code", "soupbintcp.reject_code",
-            FT_UINT8, BASE_CUSTOM, format_reject_code, 0x0,
+            FT_UINT8, BASE_CUSTOM, CF_FUNC(format_reject_code), 0x0,
             "Login reject reason code",
             HFILL }},
 
@@ -608,7 +613,7 @@ proto_register_soupbintcp(void)
 
     soupbintcp_range = range_empty();
 
-    register_heur_dissector_list("soupbintcp", &heur_subdissector_list);
+    heur_subdissector_list = register_heur_dissector_list("soupbintcp");
 }
 
 
@@ -619,7 +624,7 @@ proto_reg_handoff_soupbintcp(void)
                                                 proto_soupbintcp);
 
     /* For "decode-as" */
-    dissector_add_handle("tcp.port", soupbintcp_handle);
+    dissector_add_for_decode_as("tcp.port", soupbintcp_handle);
 }
 
 

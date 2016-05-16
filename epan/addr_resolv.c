@@ -50,12 +50,19 @@
  * code in tcpdump, to avoid those sorts of problems, and that was
  * picked up by tcpdump.org tcpdump.
  *
- * So, for now, we do not define AVOID_DNS_TIMEOUT.  If we get a
- * significantly more complaints about lookups taking a long time,
- * we can reconsider that decision.  (Note that tcpdump originally
- * added that for the benefit of systems using NIS to look up host
- * names; that might now be fixed in NIS implementations, for those
- * sites still using NIS rather than DNS for that....)
+ * So, for now, we do not use alarm() and SIGALRM to time out host name
+ * lookups.  If we get a lot of complaints about lookups taking a long time,
+ * we can reconsider that decision.  (Note that tcpdump originally added
+ * such a timeout mechanism that for the benefit of systems using NIS to
+ * look up host names; that might now be fixed in NIS implementations, for
+ * those sites still using NIS rather than DNS for that....  tcpdump no
+ * longer does that, for the same reasons that we don't.)
+ *
+ * If we're using an asynchronous DNS resolver, that shouldn't be an issue.
+ * If we're using a synchronous name lookup mechanism (which we'd do mainly
+ * to support resolving addresses and host names using more mechanisms than
+ * just DNS, such as NIS, NBNS, or Mr. Hosts File), we could do that in
+ * a separate thread, making it, in effect, asynchronous.
  */
 
 #ifdef HAVE_UNISTD_H
@@ -74,8 +81,6 @@
 #include <arpa/inet.h>
 #endif
 
-#include <signal.h>
-
 #ifdef HAVE_SYS_SOCKET_H
 #include <sys/socket.h>     /* needed to define AF_ values on UNIX */
 #endif
@@ -84,7 +89,7 @@
 #include <winsock2.h>       /* needed to define AF_ values on Windows */
 #endif
 
-#ifndef HAVE_INET_ATON_H
+#ifndef HAVE_INET_ATON
 # include "wsutil/inet_aton.h"
 #endif
 
@@ -128,7 +133,6 @@
 #include <epan/strutil.h>
 #include <epan/to_str-int.h>
 #include <epan/prefs.h>
-#include <epan/emem.h>
 
 #define ENAME_HOSTS     "hosts"
 #define ENAME_SUBNETS   "subnets"
@@ -188,17 +192,21 @@ typedef struct hashipxnet {
 #define HASHETHER_STATUS_RESOLVED_DUMMY 2
 #define HASHETHER_STATUS_RESOLVED_NAME  3
 
-#if 0
-typedef struct hashether {
-    struct hashether *next;
+struct hashether {
     guint             status;  /* (See above) */
     guint8            addr[6];
     char              hexaddr[6*3];
     char              resolved_name[MAXNAMELEN];
-} hashether_t;
-#endif
-/* internal ethernet type */
+};
 
+struct hashmanuf {
+    guint             status;  /* (See above) */
+    guint8            addr[3];
+    char              hexaddr[3*3];
+    char              resolved_name[MAXNAMELEN];
+};
+
+/* internal ethernet type */
 typedef struct _ether
 {
     guint8            addr[6];
@@ -206,7 +214,6 @@ typedef struct _ether
 } ether_t;
 
 /* internal ipxnet type */
-
 typedef struct _ipxnet
 {
     guint             addr;
@@ -282,7 +289,7 @@ static gboolean
 ipv6_equal(gconstpointer v1, gconstpointer v2)
 {
 
-    if( memcmp(v1, v2, sizeof (struct e_in6_addr)) == 0 ) {
+    if (memcmp(v1, v2, sizeof (struct e_in6_addr)) == 0) {
         return TRUE;
     }
 
@@ -292,7 +299,15 @@ ipv6_equal(gconstpointer v1, gconstpointer v2)
 /*
  * Flag controlling what names to resolve.
  */
-e_addr_resolve gbl_resolv_flags = {TRUE, FALSE, FALSE, TRUE, TRUE, FALSE};
+e_addr_resolve gbl_resolv_flags = {
+    TRUE,   /* mac_name */
+    FALSE,  /* network_name */
+    FALSE,  /* transport_name */
+    TRUE,   /* concurrent_dns */
+    TRUE,   /* dns_pkt_addr_resolution */
+    TRUE,   /* use_external_net_name_resolver */
+    FALSE   /* load_hosts_file_from_profile_only */
+};
 #if defined(HAVE_C_ARES) || defined(HAVE_GNU_ADNS)
 static guint name_resolve_concurrency = 500;
 #endif
@@ -469,7 +484,7 @@ add_service_name(port_type proto, const guint port, const char *service_name)
         g_free(key);
     }
 
-    switch(proto){
+    switch(proto) {
         case PT_TCP:
             g_free(serv_port_table->tcp_name);
             serv_port_table->tcp_name = g_strdup(service_name);
@@ -531,26 +546,26 @@ parse_service_line (char *line)
         return;
 
     /* seems we got all interesting things from the file */
-    if(strcmp(cp, "tcp") == 0) {
+    if (strcmp(cp, "tcp") == 0) {
         max_port = MAX_TCP_PORT;
         proto = PT_TCP;
     }
-    else if(strcmp(cp, "udp") == 0) {
+    else if (strcmp(cp, "udp") == 0) {
         max_port = MAX_UDP_PORT;
         proto = PT_UDP;
     }
-    else if(strcmp(cp, "sctp") == 0) {
+    else if (strcmp(cp, "sctp") == 0) {
         max_port = MAX_SCTP_PORT;
         proto = PT_SCTP;
     }
-    else if(strcmp(cp, "dccp") == 0) {
+    else if (strcmp(cp, "dccp") == 0) {
         max_port = MAX_DCCP_PORT;
         proto = PT_DCCP;
     } else {
         return;
     }
 
-    if(CVT_NO_ERROR != range_convert_str(&port_rng, port, max_port) ) {
+    if (CVT_NO_ERROR != range_convert_str(&port_rng, port, max_port)) {
         /* some assertion here? */
         return;
     }
@@ -596,9 +611,9 @@ parse_services_file(const char * path)
  * unsigned integer to ascii
  */
 static gchar *
-ep_utoa(guint port)
+wmem_utoa(wmem_allocator_t *allocator, guint port)
 {
-    gchar *bp = (gchar *)ep_alloc(MAXNAMELEN);
+    gchar *bp = (gchar *)wmem_alloc(allocator, MAXNAMELEN);
 
     /* XXX, guint32_to_str() ? */
     guint32_to_str_buf(port, bp, MAXNAMELEN);
@@ -606,34 +621,34 @@ ep_utoa(guint port)
 }
 
 
-static gchar
-*serv_name_lookup(const guint port, const port_type proto)
+static const gchar *
+serv_name_lookup(const guint port, const port_type proto)
 {
     serv_port_t *serv_port_table;
     gchar *name;
 
     serv_port_table = (serv_port_t *)g_hash_table_lookup(serv_port_hashtable, &port);
 
-    if(serv_port_table){
+    if (serv_port_table) {
         /* Set which table we should look up port in */
         switch(proto) {
             case PT_UDP:
-                if(serv_port_table->udp_name){
+                if (serv_port_table->udp_name) {
                     return serv_port_table->udp_name;
                 }
                 break;
             case PT_TCP:
-                if(serv_port_table->tcp_name){
+                if (serv_port_table->tcp_name) {
                     return serv_port_table->tcp_name;
                 }
                 break;
             case PT_SCTP:
-                if(serv_port_table->sctp_name){
+                if (serv_port_table->sctp_name) {
                     return serv_port_table->sctp_name;
                 }
                 break;
             case PT_DCCP:
-                if(serv_port_table->dccp_name){
+                if (serv_port_table->dccp_name) {
                     return serv_port_table->dccp_name;
                 }
                 break;
@@ -644,14 +659,11 @@ static gchar
         } /* proto */
     }
 
-    /* getservbyport() was used here but it was to expensive, if the functionality is desired
-     * it would be better to pre parse etc/services or C:\Windows\System32\drivers\etc at
-     * startup
-     */
+    /* Use numerical port string */
     name = (gchar*)g_malloc(16);
     guint32_to_str_buf(port, name, 16);
 
-    if(serv_port_table == NULL){
+    if (serv_port_table == NULL) {
         int *key;
 
         key = (int *)g_new(int, 1);
@@ -741,7 +753,7 @@ initialize_services(void)
 static void
 service_name_lookup_cleanup(void)
 {
-    if(serv_port_hashtable){
+    if (serv_port_hashtable) {
         g_hash_table_destroy(serv_port_hashtable);
         serv_port_hashtable = NULL;
     }
@@ -755,14 +767,14 @@ fill_dummy_ip4(const guint addr, hashipv4_t* volatile tp)
 {
     subnet_entry_t subnet_entry;
 
-    if ((tp->flags & DUMMY_ADDRESS_ENTRY) == DUMMY_ADDRESS_ENTRY)
+    if (tp->flags & DUMMY_ADDRESS_ENTRY)
         return; /* already done */
 
-    tp->flags = tp->flags | DUMMY_ADDRESS_ENTRY; /* Overwrite if we get async DNS reply */
+    tp->flags |= DUMMY_ADDRESS_ENTRY; /* Overwrite if we get async DNS reply */
 
     /* Do we have a subnet for this address? */
     subnet_entry = subnet_lookup(addr);
-    if(0 != subnet_entry.mask) {
+    if (0 != subnet_entry.mask) {
         /* Print name, then '.' then IP address after subnet mask */
         guint32 host_addr;
         gchar buffer[MAX_IP_STR_LEN];
@@ -780,7 +792,7 @@ fill_dummy_ip4(const guint addr, hashipv4_t* volatile tp)
          */
         i = subnet_entry.mask_length / 8;
         while(*(paddr) != '\0' && i > 0) {
-            if(*(++paddr) == '.') {
+            if (*(++paddr) == '.') {
                 --i;
             }
         }
@@ -842,6 +854,7 @@ new_ipv4(const guint addr)
     hashipv4_t *tp = g_new(hashipv4_t, 1);
     tp->addr = addr;
     tp->flags = 0;
+    tp->name[0] = '\0';
     ip_to_str_buf((const guint8 *)&addr, tp->ip, sizeof(tp->ip));
     return tp;
 }
@@ -854,14 +867,14 @@ host_lookup(const guint addr, gboolean *found)
     *found = TRUE;
 
     tp = (hashipv4_t *)g_hash_table_lookup(ipv4_hash_table, GUINT_TO_POINTER(addr));
-    if(tp == NULL){
+    if (tp == NULL) {
         tp = new_ipv4(addr);
         g_hash_table_insert(ipv4_hash_table, GUINT_TO_POINTER(addr), tp);
-    }else{
-        if ((tp->flags & DUMMY_AND_RESOLVE_FLGS) ==  DUMMY_ADDRESS_ENTRY){
+    } else {
+        if ((tp->flags & DUMMY_AND_RESOLVE_FLGS) ==  DUMMY_ADDRESS_ENTRY) {
             goto try_resolv;
         }
-        if ((tp->flags & DUMMY_ADDRESS_ENTRY) == DUMMY_ADDRESS_ENTRY){
+        if (tp->flags & DUMMY_ADDRESS_ENTRY) {
             *found = FALSE;
         }
         return tp;
@@ -869,7 +882,7 @@ host_lookup(const guint addr, gboolean *found)
 
 try_resolv:
     if (gbl_resolv_flags.network_name && gbl_resolv_flags.use_external_net_name_resolver) {
-        tp->flags = tp->flags|TRIED_RESOLVE_ADDRESS;
+        tp->flags |= TRIED_RESOLVE_ADDRESS;
 
 #ifdef ASYNC_DNS
         if (gbl_resolv_flags.concurrent_dns &&
@@ -882,14 +895,46 @@ try_resolv:
             fill_dummy_ip4(addr, tp);
             return tp;
         }
-#endif /* ASYNC_DNS */
+
+        /*
+         * The Windows "gethostbyaddr()" insists on translating 0.0.0.0 to
+         * the name of the host on which it's running; to work around that
+         * botch, we don't try to translate an all-zero IP address to a host
+         * name.
+         *
+         * Presumably getaddrinfo() behaves the same way.  Anyway, we should
+         * never get to this code on Windows since those builds include c-ares.
+         */
+#elif defined(HAVE_GETADDRINFO)
+        if (addr != 0) {
+            struct sockaddr_in sin;
+
+            memset(&sin, 0, sizeof(sin));
+            sin.sin_family      = AF_INET;
+            sin.sin_addr.s_addr = addr;
+            if (getnameinfo((struct sockaddr *)&sin, sizeof(sin),
+                            tp->name, sizeof(tp->name),
+                            NULL, 0, NI_NAMEREQD) == 0) {
+                return tp;
+            }
+        }
+#elif defined(HAVE_GETHOSTBYNAME)
+        if (addr != 0) {
+            struct hostent *hostp;
+
+            hostp = gethostbyaddr((const char *)&addr, 4, AF_INET);
+
+            if (hostp != NULL && hostp->h_name[0] != '\0') {
+                g_strlcpy(tp->name, hostp->h_name, MAXNAMELEN);
+                return tp;
+            }
+        }
+#endif
 
         /* unknown host or DNS timeout */
-
     }
 
     *found = FALSE;
-
     fill_dummy_ip4(addr, tp);
     return tp;
 
@@ -902,6 +947,7 @@ new_ipv6(const struct e_in6_addr *addr)
     hashipv6_t *tp = g_new(hashipv6_t,1);
     tp->addr = *addr;
     tp->flags = 0;
+    tp->name[0] = '\0';
     ip6_to_str_buf(addr, tp->ip6);
     return tp;
 }
@@ -914,24 +960,28 @@ host_lookup6(const struct e_in6_addr *addr, gboolean *found)
 #ifdef INET6
 #ifdef HAVE_C_ARES
     async_dns_queue_msg_t *caqm;
-#endif /* HAVE_C_ARES */
+#elif defined(HAVE_GETADDRINFO)
+    struct sockaddr_in6 sin6;
+#elif defined(HAVE_GETHOSTBYNAME)
+    struct hostent *hostp;
+#endif
 #endif /* INET6 */
 
     *found = TRUE;
 
     tp = (hashipv6_t *)g_hash_table_lookup(ipv6_hash_table, addr);
-    if(tp == NULL){
+    if (tp == NULL) {
         struct e_in6_addr *addr_key;
 
         addr_key = g_new(struct e_in6_addr,1);
         tp = new_ipv6(addr);
         memcpy(addr_key, addr, 16);
         g_hash_table_insert(ipv6_hash_table, addr_key, tp);
-    }else{
-        if ((tp->flags & DUMMY_AND_RESOLVE_FLGS) ==  DUMMY_ADDRESS_ENTRY){
+    } else {
+        if ((tp->flags & DUMMY_AND_RESOLVE_FLGS) ==  DUMMY_ADDRESS_ENTRY) {
             goto try_resolv;
         }
-        if ((tp->flags & DUMMY_ADDRESS_ENTRY) == DUMMY_ADDRESS_ENTRY){
+        if (tp->flags & DUMMY_ADDRESS_ENTRY) {
             *found = FALSE;
         }
         return tp;
@@ -940,9 +990,8 @@ host_lookup6(const struct e_in6_addr *addr, gboolean *found)
 try_resolv:
     if (gbl_resolv_flags.network_name &&
             gbl_resolv_flags.use_external_net_name_resolver) {
-        tp->flags = tp->flags|TRIED_RESOLVE_ADDRESS;
+        tp->flags |= TRIED_RESOLVE_ADDRESS;
 #ifdef INET6
-
 #ifdef HAVE_C_ARES
         if ((gbl_resolv_flags.concurrent_dns) &&
                 name_resolve_concurrency > 0 &&
@@ -955,55 +1004,43 @@ try_resolv:
             /* XXX found is set to TRUE, which seems a bit odd, but I'm not
              * going to risk changing the semantics.
              */
-            if ((tp->flags & DUMMY_ADDRESS_ENTRY) == 0){
+            if ((tp->flags & DUMMY_ADDRESS_ENTRY) == 0) {
                 g_strlcpy(tp->name, tp->ip6, MAXNAMELEN);
                 ip6_to_str_buf(addr, tp->name);
-                tp->flags = tp->flags | DUMMY_ADDRESS_ENTRY;
+                tp->flags |= DUMMY_ADDRESS_ENTRY;
             }
             return tp;
         }
-#endif /* HAVE_C_ARES */
+#elif defined(HAVE_GETADDRINFO)
+        memset(&sin6, 0, sizeof(sin6));
+        sin6.sin6_family      = AF_INET6;
+        memcpy(sin6.sin6_addr.s6_addr, addr, sizeof(*addr));
+        if (getnameinfo((struct sockaddr *)&sin6, sizeof(sin6),
+                        tp->name, sizeof(tp->name),
+                        NULL, 0, NI_NAMEREQD) == 0) {
+            return tp;
+        }
+#elif defined(HAVE_GETHOSTBYNAME)
+        /* Quick hack to avoid DNS/YP timeout */
+        hostp = gethostbyaddr((const char *)addr, sizeof(*addr), AF_INET6);
 
+        if (hostp != NULL && hostp->h_name[0] != '\0') {
+            g_strlcpy(tp->name, hostp->h_name, MAXNAMELEN);
+            return tp;
+        }
+#endif
 #endif /* INET6 */
     }
 
     /* unknown host or DNS timeout */
     if ((tp->flags & DUMMY_ADDRESS_ENTRY) == 0) {
-        tp->flags = tp->flags | DUMMY_ADDRESS_ENTRY;
+        tp->flags |= DUMMY_ADDRESS_ENTRY;
         g_strlcpy(tp->name, tp->ip6, MAXNAMELEN);
     }
     *found = FALSE;
     return tp;
 
 } /* host_lookup6 */
-
-static const gchar *
-solve_address_to_name(const address *addr)
-{
-    switch (addr->type) {
-
-        case AT_ETHER:
-            return get_ether_name((const guint8 *)addr->data);
-
-        case AT_IPv4: {
-                          guint32 ip4_addr;
-                          memcpy(&ip4_addr, addr->data, sizeof ip4_addr);
-                          return get_hostname(ip4_addr);
-                      }
-
-        case AT_IPv6: {
-                          struct e_in6_addr ip6_addr;
-                          memcpy(&ip6_addr.bytes, addr->data, sizeof ip6_addr.bytes);
-                          return get_hostname6(&ip6_addr);
-                      }
-
-        case AT_STRINGZ:
-                      return (const gchar *)addr->data;
-
-        default:
-                      return NULL;
-    }
-}
 
 /*
  * Ethernet / manufacturer resolution
@@ -1257,12 +1294,39 @@ get_ethbyaddr(const guint8 *addr)
 
 } /* get_ethbyaddr */
 
+static hashmanuf_t *manuf_hash_new_entry(const guint8 *addr, char* name)
+{
+    int    *manuf_key;
+    hashmanuf_t *manuf_value;
+    char *endp;
+
+    /* manuf needs only the 3 most significant octets of the ethernet address */
+    manuf_key = (int *)g_new(int, 1);
+    *manuf_key = (int)((addr[0] << 16) + (addr[1] << 8) + addr[2]);
+    manuf_value = g_new(hashmanuf_t, 1);
+
+    memcpy(manuf_value->addr, addr, 3);
+    manuf_value->status = (name != NULL) ? HASHETHER_STATUS_RESOLVED_NAME : HASHETHER_STATUS_UNRESOLVED;
+    if (name != NULL) {
+        g_strlcpy(manuf_value->resolved_name, name, MAXNAMELEN);
+        manuf_value->status = HASHETHER_STATUS_RESOLVED_NAME;
+    }
+    else {
+        manuf_value->status = HASHETHER_STATUS_UNRESOLVED;
+        manuf_value->resolved_name[0] = '\0';
+    }
+    /* Values returned by bytes_to_hexstr_punct() are *not* null-terminated */
+    endp = bytes_to_hexstr_punct(manuf_value->hexaddr, addr, sizeof(manuf_value->addr), ':');
+    *endp = '\0';
+
+    g_hash_table_insert(manuf_hashtable, manuf_key, manuf_value);
+    return manuf_value;
+}
 
 static void
 add_manuf_name(const guint8 *addr, unsigned int mask, gchar *name)
 {
     guint8 *wka_key;
-    int    *manuf_key;
 
     /*
      * XXX - can we use Standard Annotation Language annotations to
@@ -1279,12 +1343,7 @@ add_manuf_name(const guint8 *addr, unsigned int mask, gchar *name)
 
     if (mask == 0) {
         /* This is a manufacturer ID; add it to the manufacturer ID hash table */
-
-        /* manuf needs only the 3 most significant octets of the ethernet address */
-        manuf_key = (int *)g_new(int, 1);
-        *manuf_key = (int)((addr[0] << 16) + (addr[1] << 8) + addr[2]);
-
-        g_hash_table_insert(manuf_hashtable, manuf_key, g_strdup(name));
+        manuf_hash_new_entry(addr, name);
         return;
     } /* mask == 0 */
 
@@ -1298,12 +1357,12 @@ add_manuf_name(const guint8 *addr, unsigned int mask, gchar *name)
 
 } /* add_manuf_name */
 
-static gchar *
+static hashmanuf_t *
 manuf_name_lookup(const guint8 *addr)
 {
     gint32       manuf_key = 0;
     guint8       oct;
-    gchar        *name;
+    hashmanuf_t  *manuf_value;
 
     /* manuf needs only the 3 most significant octets of the ethernet address */
     manuf_key = addr[0];
@@ -1316,9 +1375,9 @@ manuf_name_lookup(const guint8 *addr)
 
 
     /* first try to find a "perfect match" */
-    name = (gchar *)g_hash_table_lookup(manuf_hashtable, &manuf_key);
-    if(name != NULL){
-        return name;
+    manuf_value = (hashmanuf_t*)g_hash_table_lookup(manuf_hashtable, &manuf_key);
+    if (manuf_value != NULL) {
+        return manuf_value;
     }
 
     /* Mask out the broadcast/multicast flag but not the locally
@@ -1326,15 +1385,16 @@ manuf_name_lookup(const guint8 *addr)
      * by the IEEE but the local administrator instead.
      * 0x01 multicast / broadcast bit
      * 0x02 locally administered bit */
-    if((manuf_key & 0x00010000) != 0){
+    if ((manuf_key & 0x00010000) != 0) {
         manuf_key &= 0x00FEFFFF;
-        name = (gchar *)g_hash_table_lookup(manuf_hashtable, &manuf_key);
-        if(name != NULL){
-            return name;
+        manuf_value = (hashmanuf_t*)g_hash_table_lookup(manuf_hashtable, &manuf_key);
+        if (manuf_value != NULL) {
+            return manuf_value;
         }
     }
 
-    return NULL;
+    /* Add the address as a hex string */
+    return manuf_hash_new_entry(addr, NULL);
 
 } /* manuf_name_lookup */
 
@@ -1346,7 +1406,7 @@ wka_name_lookup(const guint8 *addr, const unsigned int mask)
     gint       i;
     gchar     *name;
 
-    if(wka_hashtable == NULL){
+    if (wka_hashtable == NULL) {
         return NULL;
     }
     /* Get the part of the address covered by the mask. */
@@ -1365,6 +1425,22 @@ wka_name_lookup(const guint8 *addr, const unsigned int mask)
 
 } /* wka_name_lookup */
 
+
+guint get_hash_ether_status(hashether_t* ether)
+{
+    return ether->status;
+}
+
+char* get_hash_ether_hexaddr(hashether_t* ether)
+{
+    return ether->hexaddr;
+}
+
+char* get_hash_ether_resolved_name(hashether_t* ether)
+{
+    return ether->resolved_name;
+}
+
 static guint
 eth_addr_hash(gconstpointer key)
 {
@@ -1382,7 +1458,7 @@ initialize_ethers(void)
 {
     ether_t *eth;
     char    *manuf_path;
-    guint    mask;
+    guint    mask = 0;
 
     /* hash table initialization */
     wka_hashtable   = g_hash_table_new_full(eth_addr_hash, eth_addr_cmp, g_free, g_free);
@@ -1422,16 +1498,16 @@ static void
 eth_name_lookup_cleanup(void)
 {
 
-    if(manuf_hashtable) {
+    if (manuf_hashtable) {
         g_hash_table_destroy(manuf_hashtable);
         manuf_hashtable = NULL;
     }
-    if(wka_hashtable) {
+    if (wka_hashtable) {
         g_hash_table_destroy(wka_hashtable);
         wka_hashtable = NULL;
     }
 
-    if(eth_hashtable) {
+    if (eth_hashtable) {
         g_hash_table_destroy(eth_hashtable);
         eth_hashtable = NULL;
     }
@@ -1442,6 +1518,7 @@ eth_name_lookup_cleanup(void)
 static hashether_t *
 eth_addr_resolve(hashether_t *tp) {
     ether_t      *eth;
+    hashmanuf_t *manuf_value;
     const guint8 *addr = tp->addr;
 
     if ( (eth = get_ethbyaddr(addr)) != NULL) {
@@ -1451,6 +1528,7 @@ eth_addr_resolve(hashether_t *tp) {
     } else {
         guint         mask;
         gchar        *name;
+        address       ether_addr;
 
         /* Unknown name.  Try looking for it in the well-known-address
            tables for well-known address ranges smaller than 2^24. */
@@ -1497,9 +1575,10 @@ eth_addr_resolve(hashether_t *tp) {
         }
 
         /* Now try looking in the manufacturer table. */
-        if ((name = manuf_name_lookup(addr)) != NULL) {
+        manuf_value = manuf_name_lookup(addr);
+        if ((manuf_value != NULL) && (manuf_value->status != HASHETHER_STATUS_UNRESOLVED)) {
             g_snprintf(tp->resolved_name, MAXNAMELEN, "%s_%02x:%02x:%02x",
-                    name, addr[3], addr[4], addr[5]);
+                    manuf_value->resolved_name, addr[3], addr[4], addr[5]);
             tp->status = HASHETHER_STATUS_RESOLVED_DUMMY;
             return tp;
         }
@@ -1548,7 +1627,8 @@ eth_addr_resolve(hashether_t *tp) {
         }
 
         /* No match whatsoever. */
-        g_snprintf(tp->resolved_name, MAXNAMELEN, "%s", ether_to_str(addr));
+        SET_ADDRESS(&ether_addr, AT_ETHER, 6, addr);
+        address_to_str_buf(&ether_addr, tp->resolved_name, MAXNAMELEN);
         tp->status = HASHETHER_STATUS_RESOLVED_DUMMY;
         return tp;
     }
@@ -1584,13 +1664,15 @@ add_eth_name(const guint8 *addr, const gchar *name)
 
     tp = (hashether_t *)g_hash_table_lookup(eth_hashtable, addr);
 
-    if( tp == NULL ){
+    if (tp == NULL) {
         tp = eth_hash_new_entry(addr, FALSE);
     }
 
-    g_strlcpy(tp->resolved_name, name, MAXNAMELEN);
-    tp->status = HASHETHER_STATUS_RESOLVED_NAME;
-    new_resolved_objects = TRUE;
+    if (strcmp(tp->resolved_name, name) != 0) {
+        g_strlcpy(tp->resolved_name, name, MAXNAMELEN);
+        tp->status = HASHETHER_STATUS_RESOLVED_NAME;
+        new_resolved_objects = TRUE;
+    }
 
     return tp;
 } /* add_eth_name */
@@ -1601,10 +1683,10 @@ eth_name_lookup(const guint8 *addr, const gboolean resolve)
     hashether_t  *tp;
 
     tp = (hashether_t *)g_hash_table_lookup(eth_hashtable, addr);
-    if( tp == NULL ) {
+    if (tp == NULL) {
         tp = eth_hash_new_entry(addr, resolve);
     } else {
-        if (resolve && (tp->status == HASHETHER_STATUS_UNRESOLVED)){
+        if (resolve && (tp->status == HASHETHER_STATUS_UNRESOLVED)) {
             eth_addr_resolve(tp); /* Found but needs to be resolved */
         }
     }
@@ -1820,7 +1902,7 @@ initialize_ipxnets(void)
 static void
 ipx_name_lookup_cleanup(void)
 {
-    if(ipxnet_hash_table){
+    if (ipxnet_hash_table) {
         g_hash_table_destroy(ipxnet_hash_table);
         ipxnet_hash_table = NULL;
     }
@@ -1834,9 +1916,9 @@ add_ipxnet_name(guint addr, const gchar *name)
     hashipxnet_t *tp;
 
     tp = (hashipxnet_t   *)g_hash_table_lookup(ipxnet_hash_table, &addr);
-    if(tp){
+    if (tp) {
         g_strlcpy(tp->name, name, MAXNAMELEN);
-    }else{
+    } else {
         int *key;
 
         key = (int *)g_new(int, 1);
@@ -1857,21 +1939,21 @@ add_ipxnet_name(guint addr, const gchar *name)
 #endif
 
 static gchar *
-ipxnet_name_lookup(const guint addr)
+ipxnet_name_lookup(wmem_allocator_t *allocator, const guint addr)
 {
     hashipxnet_t *tp;
     ipxnet_t *ipxnet;
 
     tp = (hashipxnet_t *)g_hash_table_lookup(ipxnet_hash_table, &addr);
-    if(tp == NULL){
+    if (tp == NULL) {
         int *key;
 
         key = (int *)g_new(int, 1);
         *key = addr;
         tp = g_new(hashipxnet_t, 1);
         g_hash_table_insert(ipxnet_hash_table, key, tp);
-    }else{
-        return tp->name;
+    } else {
+        return wmem_strdup(allocator, tp->name);
     }
 
     /* fill in a new entry */
@@ -1886,7 +1968,7 @@ ipxnet_name_lookup(const guint addr)
         g_strlcpy(tp->name, ipxnet->name, MAXNAMELEN);
     }
 
-    return (tp->name);
+    return wmem_strdup(allocator, tp->name);
 
 } /* ipxnet_name_lookup */
 
@@ -1980,9 +2062,12 @@ read_hosts_file (const char *hostspath, gboolean store_entries)
             } else
                 add_ipv4_name(host_addr[0], cp);
 
+#if 0
             /*
              * Add the aliases, too, if there are any.
-             * XXX - host_lookup() only returns the first entry.
+             * XXX - except we only store the last one added.  The name
+             * resolver returns the first name in the hosts file, we should
+             * too.
              */
             while ((cp = strtok(NULL, " \t")) != NULL) {
                 if (is_ipv6) {
@@ -1991,6 +2076,7 @@ read_hosts_file (const char *hostspath, gboolean store_entries)
                 } else
                     add_ipv4_name(host_addr[0], cp);
             }
+#endif
         }
     }
     g_free(line);
@@ -2072,7 +2158,7 @@ ipv4_hash_table_resolved_to_list(gpointer key _U_, gpointer value, gpointer user
     addrinfo_lists_t *lists = (addrinfo_lists_t*)user_data;
     hashipv4_t *ipv4_hash_table_entry = (hashipv4_t *)value;
 
-    if((ipv4_hash_table_entry->flags & USED_AND_RESOLVED_MASK) == RESOLVED_ADDRESS_USED){
+    if ((ipv4_hash_table_entry->flags & USED_AND_RESOLVED_MASK) == RESOLVED_ADDRESS_USED) {
         lists->ipv4_addr_list = g_list_prepend (lists->ipv4_addr_list, ipv4_hash_table_entry);
     }
 
@@ -2088,7 +2174,7 @@ ipv6_hash_table_resolved_to_list(gpointer key _U_, gpointer value, gpointer user
     addrinfo_lists_t *lists = (addrinfo_lists_t*)user_data;
     hashipv6_t *ipv6_hash_table_entry = (hashipv6_t *)value;
 
-    if((ipv6_hash_table_entry->flags & USED_AND_RESOLVED_MASK) == RESOLVED_ADDRESS_USED){
+    if ((ipv6_hash_table_entry->flags & USED_AND_RESOLVED_MASK) == RESOLVED_ADDRESS_USED) {
         lists->ipv6_addr_list = g_list_prepend (lists->ipv6_addr_list, ipv6_hash_table_entry);
     }
 
@@ -2097,11 +2183,11 @@ ipv6_hash_table_resolved_to_list(gpointer key _U_, gpointer value, gpointer user
 addrinfo_lists_t *
 get_addrinfo_list(void) {
 
-    if(ipv4_hash_table){
+    if (ipv4_hash_table) {
         g_hash_table_foreach(ipv4_hash_table, ipv4_hash_table_resolved_to_list, &addrinfo_lists);
     }
 
-    if(ipv6_hash_table){
+    if (ipv6_hash_table) {
         g_hash_table_foreach(ipv6_hash_table, ipv6_hash_table_resolved_to_list, &addrinfo_lists);
     }
 
@@ -2145,7 +2231,7 @@ read_subnets_file (const char *subnetspath)
 
         /* Expected format is <IP4 address>/<subnet length> */
         cp2 = strchr(cp, '/');
-        if(NULL == cp2) {
+        if (NULL == cp2) {
             /* No length */
             continue;
         }
@@ -2158,7 +2244,7 @@ read_subnets_file (const char *subnetspath)
         }
 
         mask_length = atoi(cp2);
-        if(0 >= mask_length || mask_length > 31) {
+        if (0 >= mask_length || mask_length > 32) {
             continue; /* invalid mask length */
         }
 
@@ -2193,7 +2279,7 @@ subnet_lookup(const guint32 addr)
 
         length_entry = &subnet_length_entries[i];
 
-        if(NULL != length_entry->subnet_addresses) {
+        if (NULL != length_entry->subnet_addresses) {
             sub_net_hashipv4_t * tp;
             guint32 hash_idx;
 
@@ -2205,7 +2291,7 @@ subnet_lookup(const guint32 addr)
                 tp = tp->next;
             }
 
-            if(NULL != tp) {
+            if (NULL != tp) {
                 subnet_entry.mask = length_entry->mask;
                 subnet_entry.mask_length = i + 1; /* Length is offset + 1 */
                 subnet_entry.name = tp->name;
@@ -2240,26 +2326,32 @@ subnet_entry_set(guint32 subnet_addr, const guint32 mask_length, const gchar* na
 
     hash_idx = HASH_IPV4_ADDRESS(subnet_addr);
 
-    if(NULL == entry->subnet_addresses) {
-        entry->subnet_addresses = (sub_net_hashipv4_t**) se_alloc0(sizeof(sub_net_hashipv4_t*) * HASHHOSTSIZE);
+    if (NULL == entry->subnet_addresses) {
+        entry->subnet_addresses = (sub_net_hashipv4_t**) g_malloc0(sizeof(sub_net_hashipv4_t*) * HASHHOSTSIZE);
     }
 
-    if(NULL != (tp = entry->subnet_addresses[hash_idx])) {
-        if(tp->addr == subnet_addr) {
-            return;    /* XXX provide warning that an address was repeated? */
-        } else {
-            sub_net_hashipv4_t * new_tp = se_new(sub_net_hashipv4_t);
-            tp->next = new_tp;
-            tp = new_tp;
+    if (NULL != (tp = entry->subnet_addresses[hash_idx])) {
+        sub_net_hashipv4_t * new_tp;
+
+        while (tp->next) {
+            if (tp->addr == subnet_addr) {
+                return; /* XXX provide warning that an address was repeated? */
+            } else {
+                tp = tp->next;
+            }
         }
+
+        new_tp = g_new(sub_net_hashipv4_t, 1);
+        tp->next = new_tp;
+        tp = new_tp;
     } else {
-        tp = entry->subnet_addresses[hash_idx] = se_new(sub_net_hashipv4_t);
+        tp = entry->subnet_addresses[hash_idx] = g_new(sub_net_hashipv4_t, 1);
     }
 
     tp->next = NULL;
     tp->addr = subnet_addr;
     /* Clear DUMMY_ADDRESS_ENTRY */
-    tp->flags = tp->flags & 0xfe; /*Never used again...*/
+    tp->flags &= ~DUMMY_ADDRESS_ENTRY; /*Never used again...*/
     g_strlcpy(tp->name, name, MAXNAMELEN); /* This is longer than subnet names can actually be */
     have_subnet_entry = TRUE;
 }
@@ -2294,6 +2386,15 @@ subnet_name_lookup_init(void)
     g_free(subnetspath);
 }
 
+static void
+cleanup_subnet_entry(sub_net_hashipv4_t* entry)
+{
+    if ((entry != NULL) && (entry->next != NULL)) {
+        cleanup_subnet_entry(entry->next);
+    }
+
+    g_free(entry);
+}
 
 /*
  *  External Functions
@@ -2319,6 +2420,11 @@ addr_resolve_pref_init(module_t *nameres)
             " If no other options are checked name resolution is made from Wireshark's host file,"
             " capture file name resolution blocks and DNS packets in the capture.",
             &gbl_resolv_flags.network_name);
+
+    prefs_register_bool_preference(nameres, "dns_pkt_addr_resolution",
+            "Use captured DNS packet data for address resolution",
+            "Whether address/name pairs found in captured DNS packets should be used by Wireshark for name resolution.",
+            &gbl_resolv_flags.dns_pkt_addr_resolution);
 
     prefs_register_bool_preference(nameres, "use_external_name_resolver",
             "Use an external network name resolver",
@@ -2359,6 +2465,16 @@ addr_resolve_pref_init(module_t *nameres)
 
 }
 
+void
+disable_name_resolution(void) {
+    gbl_resolv_flags.mac_name                           = FALSE;
+    gbl_resolv_flags.network_name                       = FALSE;
+    gbl_resolv_flags.transport_name                     = FALSE;
+    gbl_resolv_flags.concurrent_dns                     = FALSE;
+    gbl_resolv_flags.dns_pkt_addr_resolution            = FALSE;
+    gbl_resolv_flags.use_external_net_name_resolver     = FALSE;
+}
+
 #ifdef HAVE_C_ARES
 gboolean
 host_name_lookup_process(void) {
@@ -2395,7 +2511,7 @@ host_name_lookup_process(void) {
     nfds = ares_fds(ghba_chan, &rfds, &wfds);
     if (nfds > 0) {
         if (select(nfds, &rfds, &wfds, NULL, &tv) == -1) { /* call to select() failed */
-            fprintf(stderr, "Warning: call to select() failed, error is %s\n", strerror(errno));
+            fprintf(stderr, "Warning: call to select() failed, error is %s\n", g_strerror(errno));
             return nro;
         }
         ares_process(ghba_chan, &rfds, &wfds);
@@ -2534,7 +2650,7 @@ get_hostname(const guint addr)
     if (!gbl_resolv_flags.network_name)
         return tp->ip;
 
-    tp->flags = tp->flags | RESOLVED_ADDRESS_USED;
+    tp->flags |= RESOLVED_ADDRESS_USED;
 
     return tp->name;
 }
@@ -2554,7 +2670,7 @@ get_hostname6(const struct e_in6_addr *addr)
     if (!gbl_resolv_flags.network_name)
         return tp->ip6;
 
-    tp->flags = tp->flags | RESOLVED_ADDRESS_USED;
+    tp->flags |= RESOLVED_ADDRESS_USED;
 
     return tp->name;
 }
@@ -2569,22 +2685,21 @@ add_ipv4_name(const guint addr, const gchar *name)
      * Don't add zero-length names; apparently, some resolvers will return
      * them if they get them from DNS.
      */
-    if (name[0] == '\0')
+    if (!name || name[0] == '\0')
         return;
 
 
     tp = (hashipv4_t *)g_hash_table_lookup(ipv4_hash_table, GUINT_TO_POINTER(addr));
-    if(tp){
-        g_strlcpy(tp->name, name, MAXNAMELEN);
-    }else{
+    if (!tp) {
         tp = new_ipv4(addr);
-        g_strlcpy(tp->name, name, MAXNAMELEN);
         g_hash_table_insert(ipv4_hash_table, GUINT_TO_POINTER(addr), tp);
     }
 
-    g_strlcpy(tp->name, name, MAXNAMELEN);
-    tp->flags = tp->flags | TRIED_RESOLVE_ADDRESS;
-    new_resolved_objects = TRUE;
+    if (g_ascii_strcasecmp(tp->name, name)) {
+        g_strlcpy(tp->name, name, MAXNAMELEN);
+        new_resolved_objects = TRUE;
+    }
+    tp->flags |= TRIED_RESOLVE_ADDRESS;
 
 } /* add_ipv4_name */
 
@@ -2598,25 +2713,24 @@ add_ipv6_name(const struct e_in6_addr *addrp, const gchar *name)
      * Don't add zero-length names; apparently, some resolvers will return
      * them if they get them from DNS.
      */
-    if (name[0] == '\0')
+    if (!name || name[0] == '\0')
         return;
 
     tp = (hashipv6_t *)g_hash_table_lookup(ipv6_hash_table, addrp);
-    if(tp){
-        g_strlcpy(tp->name, name, MAXNAMELEN);
-    }else{
+    if (!tp) {
         struct e_in6_addr *addr_key;
 
         addr_key = g_new(struct e_in6_addr,1);
         tp = new_ipv6(addrp);
         memcpy(addr_key, addrp, 16);
-        g_strlcpy(tp->name, name, MAXNAMELEN);
         g_hash_table_insert(ipv6_hash_table, addr_key, tp);
     }
 
-    g_strlcpy(tp->name, name, MAXNAMELEN);
-    tp->flags = tp->flags | TRIED_RESOLVE_ADDRESS;
-    new_resolved_objects = TRUE;
+    if (g_ascii_strcasecmp(tp->name, name)) {
+        g_strlcpy(tp->name, name, MAXNAMELEN);
+        new_resolved_objects = TRUE;
+    }
+    tp->flags |= TRIED_RESOLVE_ADDRESS;
 
 } /* add_ipv6_name */
 
@@ -2639,11 +2753,11 @@ add_manually_resolved_ipv6(gpointer data, gpointer user_data _U_)
 static void
 add_manually_resolved(void)
 {
-    if(manually_resolved_ipv4_list){
+    if (manually_resolved_ipv4_list) {
         g_slist_foreach(manually_resolved_ipv4_list, add_manually_resolved_ipv4, NULL);
     }
 
-    if(manually_resolved_ipv6_list){
+    if (manually_resolved_ipv6_list) {
         g_slist_foreach(manually_resolved_ipv6_list, add_manually_resolved_ipv6, NULL);
     }
 }
@@ -2674,7 +2788,7 @@ host_name_lookup_init(void)
     /*
      * Load the global hosts file, if we have one.
      */
-    if(!gbl_resolv_flags.load_hosts_file_from_profile_only){
+    if (!gbl_resolv_flags.load_hosts_file_from_profile_only) {
         hostspath = get_datafile_path(ENAME_HOSTS);
         if (!read_hosts_file(hostspath, TRUE) && errno != ENOENT) {
             report_open_failure(hostspath, errno, FALSE);
@@ -2690,15 +2804,17 @@ host_name_lookup_init(void)
     }
     g_free(hostspath);
 #ifdef HAVE_C_ARES
+    if (gbl_resolv_flags.concurrent_dns) {
 #ifdef CARES_HAVE_ARES_LIBRARY_INIT
-    if (ares_library_init(ARES_LIB_INIT_ALL) == ARES_SUCCESS) {
+        if (ares_library_init(ARES_LIB_INIT_ALL) == ARES_SUCCESS) {
 #endif
-        if (ares_init(&ghba_chan) == ARES_SUCCESS && ares_init(&ghbn_chan) == ARES_SUCCESS) {
-            async_dns_initialized = TRUE;
+            if (ares_init(&ghba_chan) == ARES_SUCCESS && ares_init(&ghbn_chan) == ARES_SUCCESS) {
+                async_dns_initialized = TRUE;
+            }
+#ifdef CARES_HAVE_ARES_LIBRARY_INIT
         }
-#ifdef CARES_HAVE_ARES_LIBRARY_INIT
-    }
 #endif
+    }
 #else
 #ifdef HAVE_GNU_ADNS
     /*
@@ -2718,7 +2834,7 @@ host_name_lookup_init(void)
          * XXX - should we base it on the dwPlatformId value from
          * GetVersionEx()?
          */
-        if(!gbl_resolv_flags.load_hosts_file_from_profile_only){
+        if (!gbl_resolv_flags.load_hosts_file_from_profile_only) {
             hostspath = g_strconcat(sysroot, rootpath_nt, NULL);
             if (!read_hosts_file(hostspath, TRUE)) {
                 g_free(hostspath);
@@ -2729,30 +2845,32 @@ host_name_lookup_init(void)
         }
     }
 #else /* _WIN32 */
-    if(!gbl_resolv_flags.load_hosts_file_from_profile_only){
+    if (!gbl_resolv_flags.load_hosts_file_from_profile_only) {
         read_hosts_file("/etc/hosts", TRUE);
     }
 #endif /* _WIN32 */
 
-    /* XXX - Any flags we should be using? */
-    /* XXX - We could provide config settings for DNS servers, and
-       pass them to ADNS with adns_init_strcfg */
-    if (adns_init(&ads, adns_if_none, 0 /*0=>stderr*/) != 0) {
-        /*
-         * XXX - should we report the error?  I'm assuming that some crashes
-         * reported on a Windows machine with TCP/IP not configured are due
-         * to "adns_init()" failing (due to the lack of TCP/IP) and leaving
-         * ADNS in a state where it crashes due to that.  We'll still try
-         * doing name resolution anyway.
-         */
-        return;
+    if (gbl_resolv_flags.concurrent_dns) {
+        /* XXX - Any flags we should be using? */
+        /* XXX - We could provide config settings for DNS servers, and
+           pass them to ADNS with adns_init_strcfg */
+        if (adns_init(&ads, adns_if_none, 0 /*0=>stderr*/) != 0) {
+            /*
+             * XXX - should we report the error?  I'm assuming that some crashes
+             * reported on a Windows machine with TCP/IP not configured are due
+             * to "adns_init()" failing (due to the lack of TCP/IP) and leaving
+             * ADNS in a state where it crashes due to that.  We'll still try
+             * doing name resolution anyway.
+             */
+            return;
+        }
+        async_dns_initialized = TRUE;
+        async_dns_in_flight = 0;
     }
-    async_dns_initialized = TRUE;
-    async_dns_in_flight = 0;
 #endif /* HAVE_GNU_ADNS */
 #endif /* HAVE_C_ARES */
 
-    if(extra_hosts_files && !gbl_resolv_flags.load_hosts_file_from_profile_only){
+    if (extra_hosts_files && !gbl_resolv_flags.load_hosts_file_from_profile_only) {
         for (i = 0; i < extra_hosts_files->len; i++) {
             read_hosts_file((const char *) g_ptr_array_index(extra_hosts_files, i), TRUE);
         }
@@ -2766,24 +2884,36 @@ host_name_lookup_init(void)
 void
 host_name_lookup_cleanup(void)
 {
+    guint32 i, j;
     _host_name_lookup_cleanup();
 
-    if(ipxnet_hash_table){
+    if (ipxnet_hash_table) {
         g_hash_table_destroy(ipxnet_hash_table);
         ipxnet_hash_table = NULL;
     }
 
-    if(ipv4_hash_table){
+    if (ipv4_hash_table) {
         g_hash_table_destroy(ipv4_hash_table);
         ipv4_hash_table = NULL;
     }
 
-    if(ipv6_hash_table){
+    if (ipv6_hash_table) {
         g_hash_table_destroy(ipv6_hash_table);
         ipv6_hash_table = NULL;
     }
 
-    memset(subnet_length_entries, 0, sizeof(subnet_length_entries));
+    for(i = 0; i < SUBNETLENGTHSIZE; ++i) {
+        if (subnet_length_entries[i].subnet_addresses != NULL) {
+            for (j = 0; j < HASHHOSTSIZE; j++) {
+                if (subnet_length_entries[i].subnet_addresses[j] != NULL)
+                {
+                    cleanup_subnet_entry(subnet_length_entries[i].subnet_addresses[j]);
+                }
+            }
+            g_free(subnet_length_entries[i].subnet_addresses);
+            subnet_length_entries[i].subnet_addresses = NULL;
+        }
+    }
 
     have_subnet_entry = FALSE;
     new_resolved_objects = FALSE;
@@ -2808,13 +2938,13 @@ free_manually_resolved_ipv6(gpointer data, gpointer user_data _U_)
 void
 manually_resolve_cleanup(void)
 {
-    if(manually_resolved_ipv4_list){
+    if (manually_resolved_ipv4_list) {
         g_slist_foreach(manually_resolved_ipv4_list, free_manually_resolved_ipv4, NULL);
         g_slist_free(manually_resolved_ipv4_list);
         manually_resolved_ipv4_list = NULL;
     }
 
-    if(manually_resolved_ipv6_list){
+    if (manually_resolved_ipv6_list) {
         g_slist_foreach(manually_resolved_ipv6_list, free_manually_resolved_ipv6, NULL);
         g_slist_free(manually_resolved_ipv6_list);
         manually_resolved_ipv6_list = NULL;
@@ -2823,113 +2953,66 @@ manually_resolve_cleanup(void)
 }
 
 gchar *
-ep_udp_port_to_display(guint port)
+udp_port_to_display(wmem_allocator_t *allocator, guint port)
 {
 
     if (!gbl_resolv_flags.transport_name) {
-        return ep_utoa(port);
+        return wmem_utoa(allocator, port);
     }
 
-    return serv_name_lookup(port, PT_UDP);
+    return wmem_strdup(allocator, serv_name_lookup(port, PT_UDP));
 
-} /* ep_udp_port_to_display */
+} /* udp_port_to_display */
 
 gchar *
-ep_dccp_port_to_display(guint port)
+dccp_port_to_display(wmem_allocator_t *allocator, guint port)
 {
 
     if (!gbl_resolv_flags.transport_name) {
-        return ep_utoa(port);
+        return wmem_utoa(allocator, port);
     }
 
-    return serv_name_lookup(port, PT_DCCP);
+    return wmem_strdup(allocator, serv_name_lookup(port, PT_DCCP));
 
-} /* ep_dccp_port_to_display */
+} /* dccp_port_to_display */
 
 gchar *
-ep_tcp_port_to_display(guint port)
+tcp_port_to_display(wmem_allocator_t *allocator, guint port)
 {
 
     if (!gbl_resolv_flags.transport_name) {
-        return ep_utoa(port);
+        return wmem_utoa(allocator, port);
     }
 
-    return serv_name_lookup(port, PT_TCP);
+    return wmem_strdup(allocator, serv_name_lookup(port, PT_TCP));
 
-} /* ep_tcp_port_to_display */
+} /* tcp_port_to_display */
 
 gchar *
-ep_sctp_port_to_display(guint port)
+sctp_port_to_display(wmem_allocator_t *allocator, guint port)
 {
 
     if (!gbl_resolv_flags.transport_name) {
-        return ep_utoa(port);
+        return wmem_utoa(allocator, port);
     }
 
-    return serv_name_lookup(port, PT_SCTP);
+    return wmem_strdup(allocator, serv_name_lookup(port, PT_SCTP));
 
-} /* ep_sctp_port_to_display */
+} /* sctp_port_to_display */
 
-const gchar *
-ep_address_to_display(const address *addr)
+int
+port_with_resolution_to_str_buf(gchar *buf, gulong buf_size, port_type port_typ, guint16 port_num)
 {
-    const gchar *result;
+    const gchar *port_res_str;
 
-    result = solve_address_to_name(addr);
-
-    if (result != NULL)
-        return result;
-
-    /* if it gets here, either it is of type AT_NONE, */
-    /* or it should be solvable in address_to_str -unless addr->type is wrongly defined */
-
-    if (addr->type == AT_NONE){
-        return "NONE";
+    if (!gbl_resolv_flags.transport_name ||
+            (port_typ == PT_NONE) ||
+            ((port_res_str = serv_name_lookup(port_num, port_typ)) == NULL)) {
+        /* No name resolution support, just return port string */
+        return g_snprintf(buf, buf_size, "%u", port_num);
     }
-
-    /* We need an ephemeral allocated string */
-    return ep_address_to_str(addr);
+    return g_snprintf(buf, buf_size, "%s (%u)", port_res_str, port_num);
 }
-
-const gchar *
-get_addr_name(const address *addr)
-{
-    guint32 ip4_addr;
-    struct e_in6_addr ip6_addr;
-
-    /*
-     * Try to look up a name for this address.
-     * If it's not found, this might return a string corresponding to
-     * the address, or it might return NULL.
-     *
-     * Whatever string is returned has at least session scope.
-     */
-    switch (addr->type) {
-
-    case AT_ETHER:
-        return get_ether_name((const guint8 *)addr->data);
-
-    case AT_IPv4:
-        memcpy(&ip4_addr, addr->data, sizeof ip4_addr);
-        return get_hostname(ip4_addr);
-
-    case AT_IPv6:
-        memcpy(&ip6_addr.bytes, addr->data, sizeof ip6_addr.bytes);
-        return get_hostname6(&ip6_addr);
-
-    default:
-        return NULL;
-    }
-}
-
-void
-get_addr_name_buf(const address *addr, gchar *buf, gsize size)
-{
-    const gchar *result = ep_address_to_display(addr);
-
-    g_strlcpy(buf, result, size);
-} /* get_addr_name_buf */
-
 
 gchar *
 get_ether_name(const guint8 *addr)
@@ -2942,6 +3025,12 @@ get_ether_name(const guint8 *addr)
     return resolve ? tp->resolved_name : tp->hexaddr;
 
 } /* get_ether_name */
+
+gchar *
+tvb_get_ether_name(tvbuff_t *tvb, gint offset)
+{
+    return get_ether_name(tvb_get_ptr(tvb, offset, 6));
+}
 
 /* Look for a (non-dummy) ether name in the hash, and return it if found.
  * If it's not found, simply return NULL.
@@ -2997,15 +3086,24 @@ add_ether_byip(const guint ip, const guint8 *eth)
 
 } /* add_ether_byip */
 
+gchar *
+ipxnet_to_str_punct(wmem_allocator_t *scope, const guint32 ad, const char punct)
+{
+    gchar *buf = (gchar *)wmem_alloc(scope, 12);
+
+    *dword_to_hex_punct(buf, ad, punct) = '\0';
+    return buf;
+}
+
 const gchar *
-get_ipxnet_name(const guint32 addr)
+get_ipxnet_name(wmem_allocator_t *allocator, const guint32 addr)
 {
 
     if (!gbl_resolv_flags.network_name) {
-        return ipxnet_to_str_punct(addr, '\0');
+        return ipxnet_to_str_punct(allocator, addr, '\0');
     }
 
-    return ipxnet_name_lookup(addr);
+    return ipxnet_name_lookup(allocator, addr);
 
 } /* get_ipxnet_name */
 
@@ -3026,25 +3124,13 @@ get_ipxnet_addr(const gchar *name, gboolean *known)
 const gchar *
 get_manuf_name(const guint8 *addr)
 {
-    gchar *cur;
-    int manuf_key;
-    guint8 oct;
+    hashmanuf_t *manuf_value;
 
-    /* manuf needs only the 3 most significant octets of the ethernet address */
-    manuf_key = addr[0];
-    manuf_key = manuf_key<<8;
-    oct = addr[1];
-    manuf_key = manuf_key | oct;
-    manuf_key = manuf_key<<8;
-    oct = addr[2];
-    manuf_key = manuf_key | oct;
+    manuf_value = manuf_name_lookup(addr);
+    if (gbl_resolv_flags.mac_name && manuf_value->status != HASHETHER_STATUS_UNRESOLVED)
+        return manuf_value->resolved_name;
 
-    if (!gbl_resolv_flags.mac_name || ((cur = (gchar *)g_hash_table_lookup(manuf_hashtable, &manuf_key)) == NULL)) {
-        cur=ep_strdup_printf("%02x:%02x:%02x", addr[0], addr[1], addr[2]);
-        return cur;
-    }
-
-    return cur;
+    return manuf_value->hexaddr;
 
 } /* get_manuf_name */
 
@@ -3068,7 +3154,7 @@ tvb_get_manuf_name(tvbuff_t *tvb, gint offset)
 const gchar *
 get_manuf_name_if_known(const guint8 *addr)
 {
-    gchar  *cur;
+    hashmanuf_t *manuf_value;
     int manuf_key;
     guint8 oct;
 
@@ -3081,24 +3167,26 @@ get_manuf_name_if_known(const guint8 *addr)
     oct = addr[2];
     manuf_key = manuf_key | oct;
 
-    if ((cur = (gchar *)g_hash_table_lookup(manuf_hashtable, &manuf_key)) == NULL) {
+    manuf_value = (hashmanuf_t *)g_hash_table_lookup(manuf_hashtable, &manuf_key);
+    if ((manuf_value == NULL) || (manuf_value->status != HASHETHER_STATUS_UNRESOLVED)) {
         return NULL;
     }
 
-    return cur;
+    return manuf_value->resolved_name;
 
 } /* get_manuf_name_if_known */
 
 const gchar *
 uint_get_manuf_name_if_known(const guint manuf_key)
 {
-    gchar  *cur;
+    hashmanuf_t *manuf_value;
 
-    if ((cur = (gchar *)g_hash_table_lookup(manuf_hashtable, &manuf_key)) == NULL) {
+    manuf_value = (hashmanuf_t *)g_hash_table_lookup(manuf_hashtable, &manuf_key);
+    if ((manuf_value == NULL) || (manuf_value->status != HASHETHER_STATUS_UNRESOLVED)) {
         return NULL;
     }
 
-    return cur;
+    return manuf_value->resolved_name;
 }
 
 const gchar *
@@ -3107,42 +3195,31 @@ tvb_get_manuf_name_if_known(tvbuff_t *tvb, gint offset)
     return get_manuf_name_if_known(tvb_get_ptr(tvb, offset, 3));
 }
 
-const gchar *
-ep_eui64_to_display(const guint64 addr_eui64)
+char* get_hash_manuf_resolved_name(hashmanuf_t* manuf)
 {
-    gchar *cur, *name;
-    guint8 *addr = (guint8 *)ep_alloc(8);
+    return manuf->resolved_name;
+}
+
+const gchar *
+eui64_to_display(wmem_allocator_t *allocator, const guint64 addr_eui64)
+{
+    guint8 *addr = (guint8 *)wmem_alloc(NULL, 8);
+    hashmanuf_t *manuf_value;
+    const gchar *ret;
 
     /* Copy and convert the address to network byte order. */
     *(guint64 *)(void *)(addr) = pntoh64(&(addr_eui64));
 
-    if (!gbl_resolv_flags.mac_name || ((name = manuf_name_lookup(addr)) == NULL)) {
-        cur=ep_strdup_printf("%02x:%02x:%02x%02x:%02x:%02x%02x:%02x", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7]);
-        return cur;
-    }
-    cur=ep_strdup_printf("%s_%02x:%02x:%02x:%02x:%02x", name, addr[3], addr[4], addr[5], addr[6], addr[7]);
-    return cur;
-
-} /* ep_eui64_to_display */
-
-
-const gchar *
-ep_eui64_to_display_if_known(const guint64 addr_eui64)
-{
-    gchar *cur, *name;
-    guint8 *addr = (guint8 *)ep_alloc(8);
-
-    /* Copy and convert the address to network byte order. */
-    *(guint64 *)(void *)(addr) = pntoh64(&(addr_eui64));
-
-    if ((name = manuf_name_lookup(addr)) == NULL) {
-        return NULL;
+    manuf_value = manuf_name_lookup(addr);
+    if (!gbl_resolv_flags.mac_name || (manuf_value->status == HASHETHER_STATUS_UNRESOLVED)) {
+        ret = wmem_strdup_printf(allocator, "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x", addr[0], addr[1], addr[2], addr[3], addr[4], addr[5], addr[6], addr[7]);
+    } else {
+        ret = wmem_strdup_printf(allocator, "%s_%02x:%02x:%02x:%02x:%02x", manuf_value->resolved_name, addr[3], addr[4], addr[5], addr[6], addr[7]);
     }
 
-    cur=ep_strdup_printf("%s_%02x:%02x:%02x:%02x:%02x", name, addr[3], addr[4], addr[5], addr[6], addr[7]);
-    return cur;
-
-} /* ep_eui64_to_display_if_known */
+    wmem_free(NULL, addr);
+    return ret;
+} /* eui64_to_display */
 
 #ifdef HAVE_C_ARES
 #define GHI_TIMEOUT (250 * 1000)
@@ -3184,9 +3261,11 @@ get_host_ipaddr(const char *host, guint32 *addrp)
     int nfds;
     fd_set rfds, wfds;
     async_hostent_t ahe;
-#else /* HAVE_C_ARES */
-    struct hostent      *hp;
-#endif /* HAVE_C_ARES */
+#elif defined(HAVE_GETADDRINFO)
+    struct addrinfo hint, *result = NULL;
+#elif defined(HAVE_GETHOSTBYNAME)
+    struct hostent *hp;
+#endif
 
     /*
      * don't change it to inet_pton(AF_INET), they are not 100% compatible.
@@ -3223,7 +3302,7 @@ get_host_ipaddr(const char *host, guint32 *addrp)
         if (nfds > 0) {
             tvp = ares_timeout(ghbn_chan, &tv, &tv);
             if (select(nfds, &rfds, &wfds, NULL, tvp) == -1) { /* call to select() failed */
-                fprintf(stderr, "Warning: call to select() failed, error is %s\n", strerror(errno));
+                fprintf(stderr, "Warning: call to select() failed, error is %s\n", g_strerror(errno));
                 return FALSE;
             }
             ares_process(ghbn_chan, &rfds, &wfds);
@@ -3233,19 +3312,38 @@ get_host_ipaddr(const char *host, guint32 *addrp)
             return TRUE;
         }
         return FALSE;
-#else /* ! HAVE_C_ARES */
+#elif defined(HAVE_GETADDRINFO)
+        /*
+         * This can be slow, particularly for capture files with lots of
+         * addresses. Should we just return FALSE instead?
+         */
+        memset(&hint, 0, sizeof(hint));
+        hint.ai_family = AF_INET;
+        if (getaddrinfo(host, NULL, &hint, &result) == 0) {
+            /* Probably more checks than necessary */
+            if (result != NULL) {
+                gboolean ret_val = FALSE;
+                if (result->ai_family == AF_INET && result->ai_addrlen == 4) {
+                    memcpy(&ipaddr, result->ai_addr->sa_data, result->ai_addrlen);
+                    ret_val = TRUE;
+                }
+                freeaddrinfo(result);
+                return ret_val;
+            }
+        }
+#elif defined(HAVE_GETHOSTBYNAME)
         hp = gethostbyname(host);
         if (hp == NULL) {
             /* No. */
             return FALSE;
             /* Apparently, some versions of gethostbyaddr can
              * return IPv6 addresses. */
-        } else if (hp->h_length <= (int) sizeof (struct in_addr)) {
-            memcpy(&ipaddr, hp->h_addr, hp->h_length);
-        } else {
-            return FALSE;
-        }
-#endif /* HAVE_C_ARES */
+         } else if (hp->h_length <= (int) sizeof (struct in_addr)) {
+             memcpy(&ipaddr, hp->h_addr, hp->h_length);
+         } else {
+             return FALSE;
+         }
+#endif
     } else {
         /* Does the string really contain dotted-quad IP?
          * Check against inet_atons that accept strings such as
@@ -3274,6 +3372,8 @@ get_host_ipaddr6(const char *host, struct e_in6_addr *addrp)
     int nfds;
     fd_set rfds, wfds;
     async_hostent_t ahe;
+#elif defined(HAVE_GETADDRINFO)
+    struct addrinfo hint, *result = NULL;
 #elif defined(HAVE_GETHOSTBYNAME2)
     struct hostent *hp;
 #endif /* HAVE_C_ARES */
@@ -3310,7 +3410,7 @@ get_host_ipaddr6(const char *host, struct e_in6_addr *addrp)
     if (nfds > 0) {
         tvp = ares_timeout(ghbn_chan, &tv, &tv);
         if (select(nfds, &rfds, &wfds, NULL, tvp) == -1) { /* call to select() failed */
-            fprintf(stderr, "Warning: call to select() failed, error is %s\n", strerror(errno));
+            fprintf(stderr, "Warning: call to select() failed, error is %s\n", g_strerror(errno));
             return FALSE;
         }
         ares_process(ghbn_chan, &rfds, &wfds);
@@ -3318,6 +3418,25 @@ get_host_ipaddr6(const char *host, struct e_in6_addr *addrp)
     ares_cancel(ghbn_chan);
     if (ahe.addr_size == ahe.copied) {
         return TRUE;
+    }
+#elif defined(HAVE_GETADDRINFO)
+    /*
+     * This can be slow, particularly for capture files with lots of
+     * addresses. Should we just return FALSE instead?
+     */
+    memset(&hint, 0, sizeof(hint));
+    hint.ai_family = AF_INET6;
+    if (getaddrinfo(host, NULL, &hint, &result) == 0) {
+        /* Probably more checks than necessary */
+        if (result != NULL) {
+            gboolean ret_val = FALSE;
+            if (result->ai_family == AF_INET6 && result->ai_addrlen == sizeof(struct e_in6_addr)) {
+                memcpy(addrp, result->ai_addr->sa_data, result->ai_addrlen);
+                ret_val = TRUE;
+            }
+            freeaddrinfo(result);
+            return ret_val;
+        }
     }
 #elif defined(HAVE_GETHOSTBYNAME2)
     hp = gethostbyname2(host, AF_INET6);
@@ -3335,18 +3454,29 @@ get_host_ipaddr6(const char *host, struct e_in6_addr *addrp)
  * Return "ip6" if it is IPv6, "ip" otherwise (including the case
  * that we don't know)
  */
-const char* host_ip_af(const char *host
-#ifndef HAVE_GETHOSTBYNAME2
+const char *
+host_ip_af(const char *host
+#if !defined(HAVE_GETADDRINFO) || !defined(HAVE_GETHOSTBYNAME2)
         _U_
 #endif
         )
 {
-#ifdef HAVE_GETHOSTBYNAME2
+    const char *af = "ip";
+#ifdef HAVE_GETADDRINFO
+    struct addrinfo hint, *result = NULL;
+    memset(&hint, 0, sizeof(hint));
+    hint.ai_family = AF_UNSPEC;
+    if (getaddrinfo(host, NULL, &hint, &result) == 0) {
+        if (result->ai_family == AF_INET6) {
+            af = "ip6";
+        }
+        freeaddrinfo(result);
+    }
+#elif defined(HAVE_GETHOSTBYNAME2)
     struct hostent *h;
     return (h = gethostbyname2(host, AF_INET6)) && h->h_addrtype == AF_INET6 ? "ip6" : "ip";
-#else
-    return "ip";
 #endif
+    return af;
 }
 
 GHashTable *

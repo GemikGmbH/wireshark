@@ -22,13 +22,14 @@
 #ifndef MODULE_PREFERENCES_SCROLL_AREA_H
 #define MODULE_PREFERENCES_SCROLL_AREA_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
 #include "color.h"
 
 #include <epan/prefs.h>
+#include <epan/prefs-int.h>
 
 #include <QScrollArea>
 
@@ -43,9 +44,10 @@ class ModulePreferencesScrollArea : public QScrollArea
 public:
     explicit ModulePreferencesScrollArea(module_t *module, QWidget *parent = 0);
     ~ModulePreferencesScrollArea();
+    const QString name() const { return QString(module_->name); }
 
 protected:
-    void showEvent(QShowEvent *evt);
+    void showEvent(QShowEvent *);
     void resizeEvent(QResizeEvent *evt);
 
 private:

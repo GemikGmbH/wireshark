@@ -24,7 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/ipproto.h>
 #include <epan/in_cksum.h>
@@ -46,6 +45,7 @@ static gint hf_carp_demotion = -1;
 static gint hf_carp_advbase = -1;
 static gint hf_carp_counter = -1;
 static gint hf_carp_hmac = -1;
+static gint hf_carp_checksum = -1;
 
 #define CARP_VERSION_MASK 0xf0
 #define CARP_TYPE_MASK 0x0f
@@ -63,7 +63,7 @@ test_carp_packet(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree _U_, vo
 
     /* First some simple check if the data is
        really CARP */
-    if (tvb_length(tvb) < 36)
+    if (tvb_captured_length(tvb) < 36)
         return FALSE;
 
     /* Version must be 1 or 2, type must be in carp_type_vals */
@@ -84,7 +84,7 @@ static int
 dissect_carp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
     int offset = 0;
-    gint carp_len;
+    guint carp_len;
     guint8  vhid;
     vec_t cksum_vec[4];
     proto_item *ti, *tv;
@@ -124,7 +124,7 @@ dissect_carp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     offset++;
 
     proto_tree_add_item(carp_tree, hf_carp_authlen, tvb,
-        offset, 1, ENC_NA);
+        offset, 1, ENC_BIG_ENDIAN);
     offset++;
 
     proto_tree_add_item(carp_tree, hf_carp_demotion, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -134,34 +134,28 @@ dissect_carp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     offset++;
 
     cksum = tvb_get_ntohs(tvb, offset);
-    carp_len = (gint)tvb_reported_length(tvb);
-    if (!pinfo->fragmented && (gint)tvb_length(tvb) >= carp_len) {
+    ti = proto_tree_add_item(carp_tree, hf_carp_checksum, tvb, offset, 2, ENC_BIG_ENDIAN);
+    carp_len = tvb_reported_length(tvb);
+    if (!pinfo->fragmented && tvb_captured_length(tvb) >= carp_len) {
         /* The packet isn't part of a fragmented datagram
            and isn't truncated, so we can checksum it. */
-        cksum_vec[0].ptr = tvb_get_ptr(tvb, 0, carp_len);
-        cksum_vec[0].len = carp_len;
+        SET_CKSUM_VEC_TVB(cksum_vec[0], tvb, 0, carp_len);
         computed_cksum = in_cksum(&cksum_vec[0], 1);
         if (computed_cksum == 0) {
-            proto_tree_add_text(carp_tree, tvb, offset, 2,
-                        "Checksum: 0x%04x [correct]",
-                        cksum);
+            proto_item_append_text(ti, " [correct]");
         } else {
-            proto_tree_add_text(carp_tree, tvb, offset, 2,
-                        "Checksum: 0x%04x [incorrect, should be 0x%04x]",
-                        cksum,
+            proto_item_append_text(ti, " [incorrect, should be 0x%04x]",
                         in_cksum_shouldbe(cksum, computed_cksum));
         }
-    } else {
-        proto_tree_add_text(carp_tree, tvb, offset, 2,
-                    "Checksum: 0x%04x", cksum);
     }
+
     offset+=2;
 
     /* Counter */
     proto_tree_add_item(carp_tree, hf_carp_counter, tvb, offset, 8, ENC_BIG_ENDIAN);
     offset+=8;
 
-    proto_tree_add_item(carp_tree, hf_carp_hmac, tvb, offset, 20, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(carp_tree, hf_carp_hmac, tvb, offset, 20, ENC_NA);
     offset+=20;
 
     return offset;
@@ -229,6 +223,11 @@ void proto_register_carp(void)
           {"HMAC", "carp.hmac",
            FT_BYTES, BASE_NONE, NULL, 0x0,
            "SHA-1 HMAC", HFILL }},
+
+        { &hf_carp_checksum,
+          {"Checksum", "carp.checksum",
+           FT_UINT16, BASE_HEX, NULL, 0x0,
+           NULL, HFILL }},
     };
 
     static gint *ett[] = {
@@ -249,7 +248,7 @@ proto_reg_handoff_carp(void)
 
     carp_handle = new_create_dissector_handle(dissect_carp, proto_carp);
     dissector_add_uint("ip.proto", IP_PROTO_VRRP, carp_handle);
-    heur_dissector_add( "ip", dissect_carp_heur, proto_carp);
+    heur_dissector_add( "ip", dissect_carp_heur, "CARP over IP", "carp_ip", proto_carp, HEURISTIC_ENABLE);
 }
 
 /*

@@ -22,25 +22,25 @@
 #ifndef WIRESHARK_APPLICATION_H
 #define WIRESHARK_APPLICATION_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
-#include "epan/prefs.h"
-
-#include "capture_opts.h"
-#include "capture_session.h"
-#include "file.h"
 #include "register.h"
 
 #include "ui/help_url.h"
 
 #include <QApplication>
-#include <QFileInfo>
+#include <QDir>
 #include <QFont>
-#include <QList>
-#include <QThread>
+#include <QIcon>
 #include <QTimer>
+#include <QTranslator>
+
+struct _e_prefs;
+
+class QAction;
+class QSocketNotifier;
 
 // Recent items:
 // - Read from prefs
@@ -63,78 +63,117 @@ public:
 
     enum AppSignal {
         ColumnsChanged,
+        CaptureFilterListChanged,
+        DisplayFilterListChanged,
         FilterExpressionsChanged,
         PacketDissectionChanged,
         PreferencesChanged,
-        StaticRecentFilesRead
+        RecentFilesRead,
+        FieldsChanged
     };
 
     void registerUpdate(register_action_e action, const char *message);
     void emitAppSignal(AppSignal signal);
+    // Emitting app signals (PacketDissectionChanged in particular) from
+    // dialogs on OS X can be problematic. Dialogs should call queueAppSignal
+    // instead.
+    void queueAppSignal(AppSignal signal) { app_signals_ << signal; }
+    // Flush queued app signals. Should be called from the main window after
+    // each dialog that calls queueAppSignal closes.
+    void flushAppSignals();
+    void emitStatCommandSignal(const QString &menu_path, const char *arg, void *userdata);
+    void emitTapParameterSignal(const QString cfg_abbr, const QString arg, void *userdata);
+    void addDynamicMenuGroupItem(int group, QAction *sg_action);
+    void appendDynamicMenuGroupItem(int group, QAction *sg_action);
+    void removeDynamicMenuGroupItem(int group, QAction *sg_action);
+    QList<QAction *> dynamicMenuGroupItems(int group);
+    QList<QAction *> addedMenuGroupItems(int group);
+    QList<QAction *> removedMenuGroupItems(int group);
+    void clearAddedMenuGroupItems();
+    void clearRemovedMenuGroupItems();
+
     void allSystemsGo();
-    e_prefs * readConfigurationFiles(char **gdp_path, char **dp_path);
+    void refreshLocalInterfaces();
+    struct _e_prefs * readConfigurationFiles(char **gdp_path, char **dp_path, bool reset);
     QList<recent_item_status *> recentItems() const;
-    void addRecentItem(const QString &filename, qint64 size, bool accessible);
-    void captureCallback(int event, capture_session * cap_session);
-    void captureFileCallback(int event, void * data);
+    void addRecentItem(const QString filename, qint64 size, bool accessible);
     QDir lastOpenDir();
     void setLastOpenDir(const char *dir_name);
     void setLastOpenDir(QString *dir_str);
     void helpTopicAction(topic_action_e action);
-    QFont monospaceFont(bool bold = false);
+    const QFont monospaceFont() const { return mono_font_; }
     void setMonospaceFont(const char *font_string);
-    int monospaceTextSize(const char *str, bool bold = false);
+    int monospaceTextSize(const char *str);
     void setConfigurationProfile(const gchar *profile_name);
     bool isInitialized() { return initialized_; }
+    void setReloadingLua(bool is_reloading) { is_reloading_lua_ = is_reloading; }
+    bool isReloadingLua() { return is_reloading_lua_; }
+    const QIcon &normalIcon() const { return normal_icon_; }
+    const QIcon &captureIcon() const { return capture_icon_; }
+    const QString &windowTitleSeparator() const { return window_title_separator_; }
+    const QString windowTitleString(QStringList title_parts);
+    const QString windowTitleString(QString title_part) { return windowTitleString(QStringList() << title_part); }
+    void applyCustomColorsFromRecent();
+
+    QTranslator translator;
+    QTranslator translatorQt;
+    void loadLanguage(const QString& language);
 
 private:
     bool initialized_;
-    QFont mono_regular_font_;
-    QFont mono_bold_font_;
+    bool is_reloading_lua_;
+    QFont mono_font_;
     QTimer recent_timer_;
+    QTimer addr_resolv_timer_;
     QTimer tap_update_timer_;
     QList<QString> pending_open_files_;
+    QSocketNotifier *if_notifier_;
+    QIcon normal_icon_;
+    QIcon capture_icon_;
+    static QString window_title_separator_;
+    QList<AppSignal> app_signals_;
+    int active_captures_;
+    void storeCustomColorsInRecent();
 
 protected:
     bool event(QEvent *event);
 
 signals:
     void appInitialized();
-    void openCaptureFile(QString &cf_path, QString &display_filter, unsigned int type);
+    void localInterfaceListChanged();
+    void openCaptureFile(QString cf_path, QString display_filter, unsigned int type);
     void recentFilesRead();
     void updateRecentItemStatus(const QString &filename, qint64 size, bool accessible);
     void splashUpdate(register_action_e action, const char *message);
-    void configurationProfileChanged(const gchar *profile_name);
+    void profileChanging();
+    void profileNameChanged(const gchar *profile_name);
 
     void columnsChanged(); // XXX This recreates the packet list. We might want to rename it accordingly.
+    void captureFilterListChanged();
+    void displayFilterListChanged();
     void filterExpressionsChanged();
     void packetDissectionChanged();
     void preferencesChanged();
+    void addressResolutionChanged();
+    void checkDisplayFilter();
+    void fieldsChanged();
 
-    // XXX It might make more sense to move these to main.cpp or main_window.cpp or their own class.
-    void captureCapturePrepared(capture_session *cap_session);
-    void captureCaptureUpdateStarted(capture_session *cap_session);
-    void captureCaptureUpdateContinue(capture_session *cap_session);
-    void captureCaptureUpdateFinished(capture_session *cap_session);
-    void captureCaptureFixedStarted(capture_session *cap_session);
-    void captureCaptureFixedFinished(capture_session *cap_session);
-    void captureCaptureStopping(capture_session *cap_session);
-    void captureCaptureFailed(capture_session *cap_session);
-
-    void captureFileOpened(const capture_file *cf);
-    void captureFileReadStarted(const capture_file *cf);
-    void captureFileReadFinished(const capture_file *cf);
-    void captureFileClosing(const capture_file *cf);
-    void captureFileClosed(const capture_file *cf);
+    void openStatCommandDialog(const QString &menu_path, const char *arg, void *userdata);
+    void openTapParameterDialog(const QString cfg_str, const QString arg, void *userdata);
 
 public slots:
     void clearRecentItems();
+    void captureFileReadStarted();
+    void captureStarted() { active_captures_++; }
+    void captureFinished() { active_captures_--; }
+    void updateTaps();
 
 private slots:
     void cleanup();
-    void itemStatusFinished(const QString &filename = "", qint64 size = 0, bool accessible = false);
+    void ifChangeEventsAvailable();
+    void itemStatusFinished(const QString filename = "", qint64 size = 0, bool accessible = false);
     void refreshRecentFiles(void);
-    void updateTaps();
+    void refreshAddressResolution(void);
 };
 
 extern WiresharkApplication *wsApp;

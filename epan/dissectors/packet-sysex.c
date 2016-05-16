@@ -21,16 +21,11 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <epan/conversation.h>
-#include <epan/wmem/wmem.h>
-#include <epan/expert.h>
 #include <epan/packet.h>
-#include <epan/reassemble.h>
-#include <epan/tfs.h>
+#include <epan/conversation.h>
+#include <epan/expert.h>
 
 void proto_register_sysex(void);
-void proto_reg_handoff_sysex(void);
 
 /* protocols and header fields */
 static int proto_sysex = -1;
@@ -742,7 +737,7 @@ static tvbuff_t *
 unpack_digitech_message(tvbuff_t *tvb, gint offset)
 {
     tvbuff_t *next_tvb;
-    gint length = tvb_length(tvb);
+    gint length = tvb_reported_length(tvb);
     gint data_len = length - offset - 2;
     const guint8* data_ptr;
     gint remaining = data_len;
@@ -977,7 +972,7 @@ dissect_digitech_procedure(guint8 procedure, const gint offset,
      * of System Exclusive packet (one byte is checksum, the other one
      * is EOX)
      */
-    if (tvb_length(tvb) - offset < 2)
+    if (tvb_reported_length(tvb) - offset < 2)
     {
         /* There is no DigiTech procedure data, do not attempt further
          * dissection */
@@ -988,7 +983,7 @@ dissect_digitech_procedure(guint8 procedure, const gint offset,
     add_new_data_source(pinfo, data_tvb, "Unpacked Procedure Data");
 
     data_offset = 0;
-    data_len = tvb_length(data_tvb);
+    data_len = tvb_reported_length(data_tvb);
 
     switch (procedure)
     {
@@ -1041,7 +1036,7 @@ dissect_digitech_procedure(guint8 procedure, const gint offset,
 
             while ((count > 0) && (str_size = tvb_strsize(data_tvb, data_offset)))
             {
-                tmp_string = tvb_get_string(wmem_packet_scope(), data_tvb, data_offset, str_size - 1);
+                tmp_string = tvb_get_string_enc(wmem_packet_scope(), data_tvb, data_offset, str_size - 1, ENC_ASCII);
                 proto_tree_add_string(tree, hf_digitech_preset_name, data_tvb, data_offset, str_size, tmp_string);
                 data_offset += (gint)str_size;
                 count--;
@@ -1065,7 +1060,7 @@ dissect_digitech_procedure(guint8 procedure, const gint offset,
 
             /* Preset name (NULL-terminated) */
             str_size = tvb_strsize(data_tvb, data_offset);
-            tmp_string = tvb_get_string(wmem_packet_scope(), data_tvb, data_offset, str_size - 1);
+            tmp_string = tvb_get_string_enc(wmem_packet_scope(), data_tvb, data_offset, str_size - 1, ENC_ASCII);
             proto_tree_add_string(tree, hf_digitech_preset_name, data_tvb, data_offset, str_size, tmp_string);
             data_offset += (gint)str_size;
 
@@ -1120,7 +1115,7 @@ dissect_sysex_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "SYSEX");
     col_set_str(pinfo->cinfo, COL_INFO, "MIDI System Exclusive Command");
 
-    data_len = tvb_length(tvb);
+    data_len = tvb_reported_length(tvb);
 
     if (parent_tree)
     {
@@ -1186,7 +1181,7 @@ dissect_sysex_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree
 
                 dissect_digitech_procedure(procedure_id, offset, tvb, pinfo, tree);
 
-                len = tvb_length(tvb) - 2;
+                len = tvb_reported_length(tvb) - 2;
                 offset = len; /* Penultimate byte is checksum */
                 data_ptr = tvb_get_ptr(tvb, 1, len);
                 /* Calculate checksum */
@@ -1421,11 +1416,6 @@ proto_register_sysex(void)
     expert_register_field_array(expert_sysex, ei, array_length(ei));
 
     register_dissector("sysex", dissect_sysex_command, proto_sysex);
-}
-
-void
-proto_reg_handoff_sysex(void)
-{
 }
 
 /*

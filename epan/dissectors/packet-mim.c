@@ -27,7 +27,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/etypes.h>
 #include <epan/addr_resolv.h>
@@ -57,16 +56,6 @@ static int hf_lid = -1;
 static int hf_ul = -1;
 static int hf_ig = -1;
 static int hf_ooodl = -1;
-
-/*  Ethernet heuristic dissectors (such as this one) get called for
- *  every Ethernet frame Wireshark handles.  In order to not impose that
- *  performance penalty on everyone this dissector disables itself by
- *  default.
- *
- *  This is done separately from the disabled protocols list mainly so
- *  we can disable it by default.  XXX Maybe there's a better way.
- */
-static gboolean  mim_enable_dissector = FALSE;
 
 static const true_false_string ig_tfs = {
   "Group address (multicast/broadcast)",
@@ -235,11 +224,14 @@ dissect_fp( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_ 
 
     if (PTREE_DATA(tree)->visible) {
       if (dest_ig) {
+        address      ether_addr;
+
+        SET_ADDRESS(&ether_addr, AT_ETHER, 6, dst_addr);
 
         ti = proto_tree_add_protocol_format(tree, proto_fp, tvb, 0, FP_HEADER_SIZE,
-                                            "Cisco FabricPath, Src: %03x.%02x.%04x, Dst: %s (%s)",
+                                            "Cisco FabricPath, Src: %03x.%02x.%04x, Dst: %s",
                                             sswid, ssswid, slid,
-                                            get_ether_name(dst_addr), ether_to_str(dst_addr));
+                                            address_with_resolution_to_str(wmem_packet_scope(), &ether_addr));
       } else {
         ti = proto_tree_add_protocol_format(tree, proto_fp, tvb, 0, FP_HEADER_SIZE,
                                             "Cisco FabricPath, Src: %03x.%02x.%04x, Dst: %03x.%02x.%04x",
@@ -283,7 +275,7 @@ dissect_fp( tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_ 
   next_tvb = tvb_new_subset_remaining( tvb, FP_HEADER_SIZE) ;
   call_dissector( eth_dissector, next_tvb, pinfo, tree ) ;
 
-  return tvb_length( tvb ) ;
+  return tvb_captured_length( tvb ) ;
 }
 
 /* Register the protocol with Wireshark */
@@ -364,9 +356,7 @@ proto_register_mim(void)
 
   mim_module = prefs_register_protocol (proto_fp, proto_reg_handoff_fabricpath);
 
-  prefs_register_bool_preference (mim_module, "enable", "Enable dissector",
-                                  "Enable this dissector (default is false)",
-                                  &mim_enable_dissector);
+  prefs_register_obsolete_preference (mim_module, "enable");
 
   proto_register_field_array(proto_fp, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
@@ -389,10 +379,21 @@ proto_reg_handoff_fabricpath(void)
      * get outer source and destination MAC
      * before the standard ethernet dissector
      */
-    heur_dissector_add ("eth", dissect_fp_heur, proto_fp);
+    heur_dissector_add ("eth", dissect_fp_heur, "Cisco FabricPath over Ethernet", "fp_eth", proto_fp, HEURISTIC_DISABLE);
     eth_dissector = find_dissector( "eth" );
     prefs_initialized = TRUE;
   }
-
-  proto_set_decoding(proto_fp, mim_enable_dissector);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

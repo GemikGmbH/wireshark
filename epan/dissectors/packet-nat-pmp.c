@@ -162,11 +162,6 @@ static const value_string result_vals[] = {
   { 0, NULL }
 };
 
-const true_false_string tfs_request_response = {
-  "Request",
-  "Response"
-};
-
 static const value_string pcp_opcode_vals[] = {
   { 0,  "Announce" },
   { 1,  "Map" },
@@ -367,8 +362,7 @@ dissect_portcontrol_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
   start_opcode_offset = offset;
   if(try_val_to_str(ropcode, pcp_ropcode_vals) != NULL)
   {
-    opcode_ti = proto_tree_add_text(pcp_tree, tvb, offset, 0, "%s", op_str);
-    opcode_tree = proto_item_add_subtree(opcode_ti, ett_opcode);
+    opcode_tree = proto_tree_add_subtree(pcp_tree, tvb, offset, 0, ett_opcode, &opcode_ti, op_str);
   }
 
   switch(ropcode) {
@@ -618,7 +612,7 @@ void proto_register_nat_pmp(void)
         NULL, 0x01, NULL, HFILL } },
     { &hf_pcp_r,
       { "R", "portcontrol.r", FT_BOOLEAN, 8,
-        TFS(&tfs_request_response), 0x80, "Indicates Request (0) or Response (1)", HFILL } },
+        TFS(&tfs_response_request), 0x80, "Indicates Request (0) or Response (1)", HFILL } },
     { &hf_pcp_opcode,
       { "Opcode", "portcontrol.opcode", FT_UINT8, BASE_DEC,
         VALS(pcp_opcode_vals), 0x7F, NULL, HFILL } },
@@ -807,7 +801,7 @@ void proto_reg_handoff_nat_pmp(void)
      NAT-PMP, but it backwards compatible.  However, still let NAT-PMP
      use Decode As
    */
-  dissector_add_handle("udp.port", nat_pmp_handle);
+  dissector_add_for_decode_as("udp.port", nat_pmp_handle);
 }
 
 /*

@@ -37,6 +37,7 @@
 
 #include <glib.h>
 
+#include <epan/tvbuff.h>
 #include <epan/in_cksum.h>
 
 /*
@@ -88,7 +89,11 @@ in_cksum(const vec_t *vec, int veclen)
 		/*
 		 * Force to even boundary.
 		 */
+#if GLIB_CHECK_VERSION(2,18,0)
+		if ((1 & (gintptr)w) && (mlen > 0)) {
+#else
 		if ((1 & (unsigned long) w) && (mlen > 0)) {
+#endif /* GLIB_CHECK_VERSION(2,18,0) */
 			REDUCE;
 			sum <<= 8;
 			s_util.c[0] = *(const guint8 *)w;
@@ -143,6 +148,24 @@ in_cksum(const vec_t *vec, int veclen)
 	return (~sum & 0xffff);
 }
 
+guint16
+ip_checksum(const guint8 *ptr, int len)
+{
+	vec_t cksum_vec[1];
+
+	SET_CKSUM_VEC_PTR(cksum_vec[0], ptr, len);
+	return in_cksum(&cksum_vec[0], 1);
+}
+
+guint16
+ip_checksum_tvb(tvbuff_t *tvb, int offset, int len)
+{
+	vec_t cksum_vec[1];
+
+	SET_CKSUM_VEC_TVB(cksum_vec[0], tvb, offset, len);
+	return in_cksum(&cksum_vec[0], 1);
+}
+
 /*
  * Given the host-byte-order value of the checksum field in a packet
  * header, and the network-byte-order computed checksum of the data
@@ -194,3 +217,16 @@ in_cksum_shouldbe(guint16 sum, guint16 computed_sum)
 	shouldbe = (shouldbe & 0xFFFF) + (shouldbe >> 16);
 	return shouldbe;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

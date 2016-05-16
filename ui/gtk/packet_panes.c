@@ -25,8 +25,6 @@
 
 #include "config.h"
 
-#include <ctype.h>
-
 #ifdef HAVE_FCNTL_H
 #include <fcntl.h>
 #endif
@@ -85,7 +83,8 @@
 #define E_BYTE_VIEW_TVBUFF_KEY    "byte_view_tvbuff"
 #define E_BYTE_VIEW_START_KEY     "byte_view_start"
 #define E_BYTE_VIEW_END_KEY       "byte_view_end"
-#define E_BYTE_VIEW_MASK_KEY      "byte_view_mask"
+#define E_BYTE_VIEW_MASK_LO_KEY   "byte_view_mask_lo"
+#define E_BYTE_VIEW_MASK_HI_KEY   "byte_view_mask_hi"
 #define E_BYTE_VIEW_MASKLE_KEY    "byte_view_mask_le"
 #define E_BYTE_VIEW_APP_START_KEY "byte_view_app_start"
 #define E_BYTE_VIEW_APP_END_KEY   "byte_view_app_end"
@@ -122,7 +121,7 @@ get_byte_view_data_and_length(GtkWidget *byte_view, guint *data_len)
     if (byte_view_tvb == NULL)
         return NULL;
 
-    if ((*data_len = tvb_length(byte_view_tvb))) {
+    if ((*data_len = tvb_captured_length(byte_view_tvb))) {
         data_ptr = tvb_get_ptr(byte_view_tvb, 0, -1);
         return data_ptr;
     } else
@@ -532,6 +531,7 @@ add_byte_views(epan_dissect_t *edt, GtkWidget *tree_view,
 {
     GSList *src_le;
     struct data_source *src;
+    char* src_name;
 
     /*
      * Get rid of all the old notebook tabs.
@@ -545,8 +545,10 @@ add_byte_views(epan_dissect_t *edt, GtkWidget *tree_view,
      */
     for (src_le = edt->pi.data_src; src_le != NULL; src_le = src_le->next) {
         src = (struct data_source *)src_le->data;
-        add_byte_tab(byte_nb_ptr, get_data_source_name(src), get_data_source_tvb(src), edt->tree,
+        src_name = get_data_source_name(src);
+        add_byte_tab(byte_nb_ptr, src_name, get_data_source_tvb(src), edt->tree,
                      tree_view);
+        wmem_free(NULL, src_name);
     }
 
     /*
@@ -838,10 +840,10 @@ savehex_cb(GtkWidget * w _U_, gpointer data _U_)
 
 static void
 packet_hex_update(GtkWidget *bv, const guint8 *pd, int len, int bstart,
-                  int bend, guint32 bmask, int bmask_le,
+                  int bend, guint64 bmask, int bmask_le,
                   int astart, int aend,
                   int pstart, int pend,
-                  int encoding)
+                  packet_char_enc encoding)
 {
         bytes_view_set_encoding(BYTES_VIEW(bv), encoding);
         bytes_view_set_format(BYTES_VIEW(bv), recent.gui_bytes_view);
@@ -899,7 +901,7 @@ packet_hex_print(GtkWidget *bv, const guint8 *pd, frame_data *fd,
     /* to redraw the display if preferences change.             */
 
     int bstart = -1, bend = -1, blen = -1;
-    guint32 bmask = 0x00; int bmask_le = 0;
+    guint64 bmask = 0x00; int bmask_le = 0;
     int astart = -1, aend = -1, alen = -1;
     int pstart = -1, pend = -1, plen = -1;
 
@@ -960,7 +962,7 @@ packet_hex_print(GtkWidget *bv, const guint8 *pd, frame_data *fd,
             /* XXX, mask has only 32 bit, later we can store bito&bitc, and use them (which should be faster) */
             if (bitt > 0 && bitt < 32) {
 
-                bmask = ((1 << bitc) - 1) << ((8-bitt) & 7);
+                bmask = ((G_GUINT64_CONSTANT(1) << bitc) - 1) << ((8-bitt) & 7);
                 bmask_le = 0; /* ? */
             }
         }
@@ -991,7 +993,8 @@ packet_hex_print(GtkWidget *bv, const guint8 *pd, frame_data *fd,
     /* should we save the fd & finfo pointers instead ?? */
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_START_KEY, GINT_TO_POINTER(bstart));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_END_KEY, GINT_TO_POINTER(bend));
-    g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_KEY, GINT_TO_POINTER(bmask));
+    g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_LO_KEY, GINT_TO_POINTER((guint32) bmask));
+    g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_HI_KEY, GINT_TO_POINTER(bmask >> 32));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_MASKLE_KEY, GINT_TO_POINTER(bmask_le));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_APP_START_KEY, GINT_TO_POINTER(astart));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_APP_END_KEY, GINT_TO_POINTER(aend));
@@ -1003,7 +1006,7 @@ packet_hex_print(GtkWidget *bv, const guint8 *pd, frame_data *fd,
     /* stig: it should be done only for bitview... */
     if (recent.gui_bytes_view != BYTES_BITS)
         bmask = 0x00;
-    packet_hex_update(bv, pd, len, bstart, bend, bmask, bmask_le, astart, aend, pstart, pend, fd->flags.encoding);
+    packet_hex_update(bv, pd, len, bstart, bend, bmask, bmask_le, astart, aend, pstart, pend, (packet_char_enc)fd->flags.encoding);
 }
 
 void
@@ -1013,7 +1016,7 @@ packet_hex_editor_print(GtkWidget *bv, const guint8 *pd, frame_data *fd, int off
     /* to redraw the display if preferences change.             */
 
     int bstart = offset, bend = (bstart != -1) ? offset+1 : -1;
-    guint32 bmask=0; int bmask_le = 0;
+    guint64 bmask=0; int bmask_le = 0;
     int astart = -1, aend = -1;
     int pstart = -1, pend = -1;
 
@@ -1023,7 +1026,7 @@ packet_hex_editor_print(GtkWidget *bv, const guint8 *pd, frame_data *fd, int off
         break;
 
     case BYTES_BITS:
-        bmask = (1 << (7-bitoffset));
+        bmask = (G_GUINT64_CONSTANT(1) << (7-bitoffset));
         break;
 
     default:
@@ -1034,7 +1037,8 @@ packet_hex_editor_print(GtkWidget *bv, const guint8 *pd, frame_data *fd, int off
     /* save the information needed to redraw the text */
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_START_KEY, GINT_TO_POINTER(bstart));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_END_KEY, GINT_TO_POINTER(bend));
-    g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_KEY, GINT_TO_POINTER(bmask));
+    g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_LO_KEY, GINT_TO_POINTER((guint32) bmask));
+    g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_HI_KEY, GINT_TO_POINTER(bmask >> 32));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_MASKLE_KEY, GINT_TO_POINTER(bmask_le));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_APP_START_KEY, GINT_TO_POINTER(astart));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_APP_END_KEY, GINT_TO_POINTER(aend));
@@ -1043,7 +1047,7 @@ packet_hex_editor_print(GtkWidget *bv, const guint8 *pd, frame_data *fd, int off
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_PROTO_START_KEY, GINT_TO_POINTER(pstart));
     g_object_set_data(G_OBJECT(bv), E_BYTE_VIEW_PROTO_END_KEY, GINT_TO_POINTER(pend));
 
-    packet_hex_update(bv, pd, len, bstart, bend, bmask, bmask_le, astart, aend, pstart, pend, fd->flags.encoding);
+    packet_hex_update(bv, pd, len, bstart, bend, bmask, bmask_le, astart, aend, pstart, pend, (packet_char_enc)fd->flags.encoding);
 }
 
 /*
@@ -1053,15 +1057,18 @@ packet_hex_editor_print(GtkWidget *bv, const guint8 *pd, frame_data *fd, int off
 void
 packet_hex_reprint(GtkWidget *bv)
 {
-    int start, end, mask, mask_le, encoding;
+    int start, end, mask_le;
+    packet_char_enc encoding;
     int astart, aend;
     int pstart, pend;
+    guint64 mask;
     const guint8 *data;
     guint len = 0;
 
     start = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_START_KEY));
     end = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_END_KEY));
-    mask = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_KEY));
+    mask = (guint64) GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_HI_KEY)) << 32 |
+                     GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_MASK_LO_KEY));
     mask_le = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_MASKLE_KEY));
     astart = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_APP_START_KEY));
     aend = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_APP_END_KEY));
@@ -1069,7 +1076,7 @@ packet_hex_reprint(GtkWidget *bv)
     pend = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_PROTO_END_KEY));
     data = get_byte_view_data_and_length(bv, &len);
     g_assert(data != NULL);
-    encoding = GPOINTER_TO_INT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_ENCODE_KEY));
+    encoding = (packet_char_enc) GPOINTER_TO_UINT(g_object_get_data(G_OBJECT(bv), E_BYTE_VIEW_ENCODE_KEY));
 
     /* stig: it should be done only for bitview... */
     if (recent.gui_bytes_view != BYTES_BITS)
@@ -1345,7 +1352,7 @@ tree_view_follow_link(field_info   *fi)
         cf_goto_frame(&cfile, fi->value.value.uinteger);
     }
     if(FI_GET_FLAG(fi, FI_URL) && IS_FT_STRING(fi->hfinfo->type)) {
-        url = fvalue_to_string_repr(&fi->value, FTREPR_DISPLAY, NULL);
+        url = fvalue_to_string_repr(&fi->value, FTREPR_DISPLAY, fi->hfinfo->display, NULL);
         if(url){
             browser_open_url(url);
             g_free(url);
@@ -1430,10 +1437,23 @@ proto_tree_draw(proto_tree *protocol_tree, GtkWidget *tree_view)
 }
 
 void
-select_bytes_view (GtkWidget *w _U_, gpointer data _U_, gint view)
+select_bytes_view (GtkWidget *w _U_, gpointer data _U_, bytes_view_type view)
 {
     if (recent.gui_bytes_view != view) {
         recent.gui_bytes_view = view;
         redraw_packet_bytes_all();
     }
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

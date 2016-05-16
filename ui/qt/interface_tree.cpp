@@ -1,4 +1,6 @@
 /* interface_tree.cpp
+ * Display of interface names, traffic sparklines, and, if available,
+ * extcap options
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -21,22 +23,47 @@
 
 #include "interface_tree.h"
 
+#include "epan/prefs.h"
+
 #ifdef HAVE_LIBPCAP
 #include "ui/capture_globals.h"
 #endif
 #include "ui/iface_lists.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 #include "ui/ui_util.h"
 
 #include "qt_ui_utils.h"
 #include "sparkline_delegate.h"
+#include "stock_icon.h"
 #include "wireshark_application.h"
+
+#ifdef HAVE_EXTCAP
+#include "extcap.h"
+#endif
 
 #include <QLabel>
 #include <QHeaderView>
 #include <QTimer>
 
+// The interface list and capture filter editor in the main window and
+// the capture interfaces dialog should have the following behavior:
+//
+// - The global capture options are the source of truth for selected
+//   interfaces.
+// - The global capture options are the source of truth for the capture
+//   filter for an interface.
+// - If multiple interfaces with different filters are selected, the
+//   CaptureFilterEdit should be cleared and show a corresponding
+//   placeholder message. Device cfilters should not be changed.
+// - Entering a filter in a CaptureFilterEdit should update the device
+//   cfilter for each selected interface. This should happen even when
+//   conflicting filters are selected, as described above.
+// - Interface selections and cfilter changes in CaptureInterfacesDialog
+//   should be reflected in MainWelcome.
+
+#ifdef HAVE_LIBPCAP
 const int stat_update_interval_ = 1000; // ms
+#endif
 
 InterfaceTree::InterfaceTree(QWidget *parent) :
     QTreeWidget(parent)
@@ -52,44 +79,52 @@ InterfaceTree::InterfaceTree(QWidget *parent) :
     header()->setVisible(false);
     setRootIsDecorated(false);
     setUniformRowHeights(true);
-    setColumnCount(2);
+    /* Seems to have no effect, still the default value (2) is being used, as it
+     * was set in the .ui file. But better safe, then sorry. */
+    resetColumnCount();
     setSelectionMode(QAbstractItemView::ExtendedSelection);
     setAccessibleName(tr("Welcome screen list"));
 
-    setItemDelegateForColumn(1, new SparkLineDelegate());
+    setItemDelegateForColumn(IFTREE_COL_STATS, new SparkLineDelegate(this));
     setDisabled(true);
 
     ti = new QTreeWidgetItem();
-    ti->setText(0, tr("Waiting for startup" UTF8_HORIZONTAL_ELLIPSIS));
+    ti->setText(IFTREE_COL_NAME, tr("Waiting for startup%1").arg(UTF8_HORIZONTAL_ELLIPSIS));
     addTopLevelItem(ti);
-    resizeColumnToContents(0);
+    resizeColumnToContents(IFTREE_COL_NAME);
 
     connect(wsApp, SIGNAL(appInitialized()), this, SLOT(getInterfaceList()));
-    connect(this, SIGNAL(itemSelectionChanged()), this, SLOT(updateSelectedInterfaces()));
+    connect(wsApp, SIGNAL(localInterfaceListChanged()), this, SLOT(interfaceListChanged()));
+    connect(this, SIGNAL(itemSelectionChanged()), this, SLOT(selectedInterfaceChanged()));
 }
 
 InterfaceTree::~InterfaceTree() {
 #ifdef HAVE_LIBPCAP
-    QTreeWidgetItemIterator iter(this);
-
     if (stat_cache_) {
       capture_stat_stop(stat_cache_);
       stat_cache_ = NULL;
     }
-
-    while (*iter) {
-        QList<int> *points;
-
-        points = (*iter)->data(1, Qt::UserRole).value<QList<int> *>();
-        delete(points);
-        ++iter;
-    }
 #endif // HAVE_LIBPCAP
 }
 
-void InterfaceTree::hideEvent(QHideEvent *evt) {
-    Q_UNUSED(evt);
+class InterfaceTreeWidgetItem : public QTreeWidgetItem
+{
+public:
+    InterfaceTreeWidgetItem() : QTreeWidgetItem()  {}
+    QList<int> points;
+};
 
+/* Resets the column count to the maximum colum count
+ *
+ * This is necessary, because the treeview may have more columns than
+ * the default value (2).
+ */
+void InterfaceTree::resetColumnCount()
+{
+    setColumnCount(IFTREE_COL_MAX);
+}
+
+void InterfaceTree::hideEvent(QHideEvent *) {
 #ifdef HAVE_LIBPCAP
     if (stat_timer_) stat_timer_->stop();
     if (stat_cache_) {
@@ -99,9 +134,7 @@ void InterfaceTree::hideEvent(QHideEvent *evt) {
 #endif // HAVE_LIBPCAP
 }
 
-void InterfaceTree::showEvent(QShowEvent *evt) {
-    Q_UNUSED(evt);
-
+void InterfaceTree::showEvent(QShowEvent *) {
 #ifdef HAVE_LIBPCAP
     if (stat_timer_) stat_timer_->start(stat_update_interval_);
 #endif // HAVE_LIBPCAP
@@ -109,37 +142,39 @@ void InterfaceTree::showEvent(QShowEvent *evt) {
 
 void InterfaceTree::resizeEvent(QResizeEvent *evt)
 {
-    Q_UNUSED(evt);
     int max_if_width = width() * 2 / 3; // Arbitrary
 
     setUpdatesEnabled(false);
-    resizeColumnToContents(0);
-    if (columnWidth(0) > max_if_width) {
-        setColumnWidth(0, max_if_width);
+    resizeColumnToContents(IFTREE_COL_NAME);
+    if (columnWidth(IFTREE_COL_NAME) > max_if_width) {
+        setColumnWidth(IFTREE_COL_NAME, max_if_width);
     }
+
     setUpdatesEnabled(true);
+
+    QTreeWidget::resizeEvent(evt);
 }
 
-void InterfaceTree::getInterfaceList()
+void InterfaceTree::display()
 {
 #ifdef HAVE_LIBPCAP
-    GList *if_list;
-    int err;
-    gchar *err_str = NULL;
+    interface_t device;
+#if HAVE_EXTCAP
+    QIcon extcap_icon(StockIcon("x-capture-options"));
+#endif
 
+    setDisabled(false);
     clear();
 
-    if_list = capture_interface_list(&err, &err_str,main_window_update);
-    if_list = g_list_sort(if_list, if_list_comparator_alph);
-
-    if (if_list == NULL) {
+    if (global_capture_opts.all_ifaces->len == 0) {
+        // Error,or just no interfaces?
         QTreeWidgetItem *ti = new QTreeWidgetItem();
         QLabel *err_label;
 
-        if (err == CANT_GET_INTERFACE_LIST || err == DONT_HAVE_PCAP) {
-            err_label = new QLabel(gchar_free_to_qstring(err_str));
-        } else {
+        if (global_capture_opts.ifaces_err == 0) {
             err_label = new QLabel("No interfaces found");
+        } else {
+            err_label = new QLabel(global_capture_opts.ifaces_err_info);
         }
         err_label->setWordWrap(true);
 
@@ -150,49 +185,75 @@ void InterfaceTree::getInterfaceList()
         return;
     }
 
-    // XXX Do we need to check for this? capture_interface_list returns an error if the length is 0.
-    if (g_list_length(if_list) > 0) {
-        interface_t device;
-        setDisabled(false);
+    /* when no interfaces were available initially and an update of the
+       interface list called this function, the column count is set to 1
+       reset it to ensure that the interface list is properly displayed */
+    resetColumnCount();
 
-        for (guint i = 0; i < global_capture_opts.all_ifaces->len; i++) {
-            QList<int> *points;
+    // List physical interfaces first. Alternatively we could sort them by
+    // traffic, interface name, or most recently used.
+    QList<QTreeWidgetItem *> phys_ifaces;
+    QList<QTreeWidgetItem *> virt_ifaces;
 
-            device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
+    global_capture_opts.num_selected = 0;
+    for (guint i = 0; i < global_capture_opts.all_ifaces->len; i++) {
+        device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
 
-            /* Continue if capture device is hidden */
-            if (device.hidden) {
-                continue;
+        /* Continue if capture device is hidden */
+        if (device.hidden) {
+            continue;
+        }
+
+        InterfaceTreeWidgetItem *ti = new InterfaceTreeWidgetItem();
+        ti->setText(IFTREE_COL_NAME, QString().fromUtf8(device.display_name));
+
+        ti->setData(IFTREE_COL_NAME, Qt::UserRole, QString(device.name));
+        ti->setData(IFTREE_COL_STATS, Qt::UserRole, qVariantFromValue(&ti->points));
+#if HAVE_EXTCAP
+        if ( device.if_info.type == IF_EXTCAP )
+        {
+            if ( extcap_has_configuration((const char *)(device.name)) )
+            {
+                ti->setIcon(IFTREE_COL_EXTCAP, extcap_icon);
+                ti->setData(IFTREE_COL_EXTCAP, Qt::UserRole, QString(device.if_info.extcap));
+
+                if ( !(device.external_cap_args_settings != 0 &&
+                        g_hash_table_size(device.external_cap_args_settings ) > 0) )
+                {
+                    QFont ti_font = ti->font(IFTREE_COL_NAME);
+                    ti_font.setItalic(true);
+                    ti->setFont(IFTREE_COL_NAME, ti_font );
+                }
             }
+            virt_ifaces << ti;
+        } else
+#endif
+        {
+            phys_ifaces << ti;
+        }
 
-            QTreeWidgetItem *ti = new QTreeWidgetItem();
-            ti->setText(0, QString().fromUtf8(device.display_name));
-            ti->setData(0, Qt::UserRole, QString(device.name));
-            points = new QList<int>();
-            ti->setData(1, Qt::UserRole, qVariantFromValue(points));
-            addTopLevelItem(ti);
-            // XXX Add other device information
-            resizeColumnToContents(1);
-            if (strstr(prefs.capture_device, device.name) != NULL) {
-                device.selected = TRUE;
-                global_capture_opts.num_selected++;
-                global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
-                g_array_insert_val(global_capture_opts.all_ifaces, i, device);
-            }
-            if (device.selected) {
-                ti->setSelected(true);
-            }
+        // XXX Need to handle interfaces passed from the command line.
+        if (strstr(prefs.capture_device, device.name) != NULL) {
+            device.selected = TRUE;
+            global_capture_opts.num_selected++;
+            global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
+            g_array_insert_val(global_capture_opts.all_ifaces, i, device);
         }
     }
-    free_interface_list(if_list);
-    resizeEvent(NULL);
 
-    if (!stat_timer_) {
-        updateStatistics();
-        stat_timer_ = new QTimer(this);
-        connect(stat_timer_, SIGNAL(timeout()), this, SLOT(updateStatistics()));
-        stat_timer_->start(stat_update_interval_);
-    }
+    if (!phys_ifaces.isEmpty()) addTopLevelItems(phys_ifaces);
+    if (!virt_ifaces.isEmpty()) addTopLevelItems(virt_ifaces);
+    updateSelectedInterfaces();
+    updateToolTips();
+
+    // XXX Add other device information
+    resizeColumnToContents(IFTREE_COL_NAME);
+    resizeColumnToContents(IFTREE_COL_STATS);
+
+#if HAVE_EXTCAP
+    resizeColumnToContents(IFTREE_COL_EXTCAP);
+#endif
+
 #else
     QTreeWidgetItem *ti = new QTreeWidgetItem();
 
@@ -202,6 +263,21 @@ void InterfaceTree::getInterfaceList()
     addTopLevelItem(ti);
     resizeColumnToContents(0);
 #endif // HAVE_LIBPCAP
+}
+
+void InterfaceTree::getInterfaceList()
+{
+    display();
+    resizeEvent(NULL);
+
+#ifdef HAVE_LIBPCAP
+    if (!stat_timer_) {
+        updateStatistics();
+        stat_timer_ = new QTimer(this);
+        connect(stat_timer_, SIGNAL(timeout()), this, SLOT(updateStatistics()));
+        stat_timer_->start(stat_update_interval_);
+    }
+#endif
 }
 
 void InterfaceTree::getPoints(int row, PointList *pts)
@@ -214,8 +290,7 @@ void InterfaceTree::getPoints(int row, PointList *pts)
         if (row == i)
         {
             //qDebug("found! row:%d", row);
-            QString device_name = (*iter)->data(0, Qt::UserRole).value<QString>();
-            QList<int> *punkt = (*iter)->data(1, Qt::UserRole).value<QList<int> *>();
+            QList<int> *punkt = (*iter)->data(IFTREE_COL_STATS, Qt::UserRole).value<QList<int> *>();
             for (int j = 0; j < punkt->length(); j++)
             {
                 pts->append(punkt->at(j));
@@ -250,7 +325,8 @@ void InterfaceTree::updateStatistics(void) {
 
         for (if_idx = 0; if_idx < global_capture_opts.all_ifaces->len; if_idx++) {
             device = g_array_index(global_capture_opts.all_ifaces, interface_t, if_idx);
-            QString device_name = (*iter)->data(0, Qt::UserRole).value<QString>();
+            QString device_name = (*iter)->data(IFTREE_COL_NAME, Qt::UserRole).value<QString>();
+
             if (device_name.compare(device.name) || device.hidden || device.type == IF_PIPE)
                 continue;
 
@@ -258,13 +334,15 @@ void InterfaceTree::updateStatistics(void) {
             if (capture_stats(stat_cache_, device.name, &stats)) {
                 if ((int)(stats.ps_recv - device.last_packets) >= 0) {
                     diff = stats.ps_recv - device.last_packets;
+                    device.packet_diff = diff;
                 }
                 device.last_packets = stats.ps_recv;
             }
 
-            points = (*iter)->data(1, Qt::UserRole).value<QList<int> *>();
+            points = (*iter)->data(IFTREE_COL_STATS, Qt::UserRole).value<QList<int> *>();
+
             points->append(diff);
-            update(indexFromItem((*iter), 1));
+            update(indexFromItem((*iter), IFTREE_COL_STATS));
             global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, if_idx);
             g_array_insert_val(global_capture_opts.all_ifaces, if_idx, device);
         }
@@ -273,16 +351,24 @@ void InterfaceTree::updateStatistics(void) {
 #endif // HAVE_LIBPCAP
 }
 
-void InterfaceTree::updateSelectedInterfaces()
+// Update our global device selections based on the given TreeWidget.
+// This is shared with CaptureInterfacesDialog.
+// Column name_col UserRole data MUST be set to the interface name.
+void InterfaceTree::updateGlobalDeviceSelections(QTreeWidget *if_tree, int name_col)
 {
+#ifndef HAVE_LIBPCAP
+    Q_UNUSED(name_col)
+#endif
+
+    if (!if_tree) return;
 #ifdef HAVE_LIBPCAP
-    QTreeWidgetItemIterator iter(this);
+    QTreeWidgetItemIterator iter(if_tree);
 
     global_capture_opts.num_selected = 0;
 
     while (*iter) {
+        QString device_name = (*iter)->data(name_col, Qt::UserRole).value<QString>();
         for (guint i = 0; i < global_capture_opts.all_ifaces->len; i++) {
-            QString device_name = (*iter)->data(0, Qt::UserRole).value<QString>();
             interface_t device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
             if (device_name.compare(QString().fromUtf8(device.name)) == 0) {
                 if (!device.locked) {
@@ -296,8 +382,6 @@ void InterfaceTree::updateSelectedInterfaces()
                     global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
                     g_array_insert_val(global_capture_opts.all_ifaces, i, device);
 
-                    emit interfaceUpdated(device.name, device.selected);
-
                     device.locked = FALSE;
                     global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
                     g_array_insert_val(global_capture_opts.all_ifaces, i, device);
@@ -305,9 +389,88 @@ void InterfaceTree::updateSelectedInterfaces()
                 break;
             }
         }
-        iter++;
+        ++iter;
     }
 #endif // HAVE_LIBPCAP
+}
+
+// Update selected interfaces based on the global interface list..
+// Must not change any interface data.
+// Must not emit itemSelectionChanged.
+void InterfaceTree::updateSelectedInterfaces()
+{
+#ifdef HAVE_LIBPCAP
+    interface_t device;
+    QTreeWidgetItemIterator iter(this);
+    bool blocking = blockSignals(true);
+
+    while (*iter) {
+        QString device_name = (*iter)->data(IFTREE_COL_NAME, Qt::UserRole).value<QString>();
+        for (guint i = 0; i < global_capture_opts.all_ifaces->len; i++) {
+            device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
+            if (device_name.compare(QString().fromUtf8(device.name)) == 0) {
+                (*iter)->setSelected(device.selected);
+                global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
+                g_array_insert_val(global_capture_opts.all_ifaces, i, device);
+                break;
+            }
+            global_capture_opts.all_ifaces = g_array_remove_index(global_capture_opts.all_ifaces, i);
+            g_array_insert_val(global_capture_opts.all_ifaces, i, device);
+        }
+        iter++;
+    }
+    blockSignals(blocking);
+#endif // HAVE_LIBPCAP
+}
+
+// Update the tooltip for each interface based on the global interface list..
+// Must not change any interface data.
+void InterfaceTree::updateToolTips()
+{
+#ifdef HAVE_LIBPCAP
+    QTreeWidgetItemIterator iter(this);
+
+    while (*iter) {
+        QString device_name = (*iter)->data(IFTREE_COL_NAME, Qt::UserRole).value<QString>();
+        for (guint i = 0; i < global_capture_opts.all_ifaces->len; i++) {
+            interface_t device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
+            if (device_name.compare(QString().fromUtf8(device.name)) == 0) {
+                // To do:
+                // - Sync with code in CaptureInterfacesDialog.
+                // - Add more information to the tooltip.
+                QString tt_str = "<p>";
+                if (device.no_addresses > 0) {
+                    tt_str += QString("%1: %2").arg(device.no_addresses > 1 ? tr("Addresses") : tr("Address")).arg(device.addresses);
+                    tt_str.replace('\n', ", ");
+                } else {
+                    tt_str = tr("No addresses");
+                }
+                tt_str += "<br/>";
+                QString cfilter = device.cfilter;
+                if (cfilter.isEmpty()) {
+                    tt_str += tr("No capture filter");
+                } else {
+                    tt_str += QString("%1: %2")
+                            .arg(tr("Capture filter"))
+                            .arg(cfilter);
+                }
+                tt_str += "</p>";
+
+                for (int col = 0; col < columnCount(); col++) {
+                    (*iter)->setToolTip(col, tt_str);
+                }
+            }
+        }
+        ++iter;
+    }
+#endif // HAVE_LIBPCAP
+}
+
+void InterfaceTree::interfaceListChanged()
+{
+#ifdef HAVE_LIBPCAP
+    display();
+#endif
 }
 
 /*

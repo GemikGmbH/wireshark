@@ -29,8 +29,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/expert.h>
 
@@ -326,7 +324,7 @@ dissect_png_text(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 {
     gint offset=0, nul_offset;
 
-    nul_offset = tvb_find_guint8(tvb, offset, tvb_length_remaining(tvb, offset), 0);
+    nul_offset = tvb_find_guint8(tvb, offset, tvb_captured_length_remaining(tvb, offset), 0);
     /* nul_offset == 0 means empty keyword, this is not allowed by the png standard */
     if (nul_offset<=0) {
         /* XXX exception */
@@ -336,7 +334,7 @@ dissect_png_text(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
     proto_tree_add_item(tree, &hfi_png_text_keyword, tvb, offset, nul_offset, ENC_ISO_8859_1|ENC_NA);
     offset = nul_offset+1; /* length of the key word + 0 character */
 
-    proto_tree_add_item(tree, &hfi_png_text_string, tvb, offset, tvb_length_remaining(tvb, offset), ENC_ISO_8859_1|ENC_NA);
+    proto_tree_add_item(tree, &hfi_png_text_string, tvb, offset, tvb_captured_length_remaining(tvb, offset), ENC_ISO_8859_1|ENC_NA);
 
 }
 
@@ -442,7 +440,7 @@ dissect_png(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *da
     /* http://libpng.org/pub/png/spec/1.2/PNG-Structure.html#PNG-file-signature */
     static const guint8 magic[8] = { 137, 80, 78, 71, 13, 10, 26, 10 };
 
-    if (tvb_length(tvb) < 20)
+    if (tvb_captured_length(tvb) < 20)
         return 0;
     if (tvb_memeql(tvb, 0, magic, sizeof(magic)) != 0)
         return 0;
@@ -457,7 +455,7 @@ dissect_png(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *da
 
     while(tvb_reported_length_remaining(tvb, offset) > 0){
         guint32     len_field;
-        proto_item *chunk_it, *len_it;
+        proto_item *len_it;
         proto_tree *chunk_tree;
         guint32     type;
         guint8     *type_str;
@@ -470,9 +468,8 @@ dissect_png(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *da
                 tvb, offset+4, 4, ENC_ASCII|ENC_NA);
 
         /* 4 byte len field, 4 byte chunk type, 4 byte CRC */
-        chunk_it = proto_tree_add_text(tree, tvb, offset, 4+4+len_field+4, "%s (%s)", 
-                val_to_str_const(type, chunk_types, "unknown"), type_str);
-        chunk_tree = proto_item_add_subtree(chunk_it, ett_png_chunk);
+        chunk_tree = proto_tree_add_subtree_format(tree, tvb, offset, 4+4+len_field+4, ett_png_chunk, NULL,
+                "%s (%s)", val_to_str_const(type, chunk_types, "unknown"), type_str);
 
         len_it = proto_tree_add_item(chunk_tree, &hfi_png_chunk_len,
                 tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -490,7 +487,7 @@ dissect_png(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *da
         proto_tree_add_item(chunk_tree, &hfi_png_chunk_flag_stc, tvb, offset, 4, ENC_BIG_ENDIAN);
         offset+=4;
 
-        chunk_tvb=tvb_new_subset(tvb, offset, len_field, len_field);
+        chunk_tvb=tvb_new_subset_length(tvb, offset, len_field);
         switch (type) {
             case CHUNK_TYPE_IHDR:
                 dissect_png_ihdr(chunk_tvb, pinfo, chunk_tree);
@@ -617,8 +614,8 @@ void
 proto_reg_handoff_png(void)
 {
     dissector_add_string("media_type", "image/png", png_handle);
-    heur_dissector_add("http", dissect_png_heur, hfi_png->id);
-    heur_dissector_add("wtap_file", dissect_png_heur, hfi_png->id);
+    heur_dissector_add("http", dissect_png_heur, "PNG file in HTTP", "png_http", hfi_png->id, HEURISTIC_ENABLE);
+    heur_dissector_add("wtap_file", dissect_png_heur, "PNG file in HTTP", "png_wtap", hfi_png->id, HEURISTIC_ENABLE);
 }
 
 /*

@@ -32,7 +32,6 @@
 #define DEBUG
 */
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "wimax_tlv.h"
 #include "wimax_mac.h"
@@ -69,7 +68,7 @@ static gint hf_ucd_tlv_t_159_band_amc_allocation_threshold = -1;
 static gint hf_ucd_tlv_t_158_optional_permutation_ul_allocated_subchannels_bitmap = -1;
 static gint hf_ucd_tlv_t_160_band_amc_release_threshold = -1;
 static gint hf_ucd_tlv_t_161_band_amc_allocation_timer = -1;
-static gint hf_ucd_tlv_t_162_band_amc_release_timer = -1;
+/* static gint hf_ucd_tlv_t_162_band_amc_release_timer = -1; */
 static gint hf_ucd_tlv_t_163_band_status_report_max_period = -1;
 static gint hf_ucd_tlv_t_164_band_amc_retry_timer = -1;
 static gint hf_ucd_tlv_t_171_harq_ack_delay_dl_burst = -1;
@@ -97,7 +96,7 @@ static gint hf_ucd_tlv_t_196_tx_power_report_a_p_avg = -1;
 static gint hf_ucd_tlv_t_196_tx_power_report_threshold_icqch = -1;
 static gint hf_ucd_tlv_t_196_tx_power_report_interval_icqch = -1;
 static gint hf_ucd_tlv_t_196_tx_power_report_a_p_avg_icqch = -1;
-static gint hf_ucd_tlv_t_197_normalized_cn_channel_sounding = -1;
+/* static gint hf_ucd_tlv_t_197_normalized_cn_channel_sounding = -1; */
 static gint hf_ucd_tlv_t_202_uplink_burst_profile_for_multiple_fec_types = -1;
 static gint hf_ucd_tlv_t_203_ul_pusc_subchannel_rotation = -1;
 static gint hf_ucd_tlv_t_205_relative_power_offset_ul_harq_burst = -1;
@@ -120,6 +119,11 @@ static gint hf_ucd_bandwidth_backoff_start = -1;
 static gint hf_ucd_bandwidth_backoff_end = -1;
 static gint hf_ucd_periodic_ranging_backoff_start = -1;
 static gint hf_ucd_periodic_ranging_backoff_end = -1;
+static gint hf_ucd_config_change_count = -1;
+static gint hf_ucd_ranging_backoff_start = -1;
+static gint hf_ucd_ranging_backoff_end = -1;
+static gint hf_ucd_request_backoff_start = -1;
+static gint hf_ucd_request_backoff_end = -1;
 
 /* static gint hf_ucd_unknown_type = -1; */
 static gint hf_ucd_invalid_tlv = -1;
@@ -135,16 +139,16 @@ static const value_string vals_dcd_burst_tcs[] =
 
 static const value_string vals_dcd_burst_fec[] =
 {
-	{0, "QPSK (CC) 1/2"},
-	{1, "QPSK (CC) 3/4"},
-	{2, "16-QAM (CC) 1/2"},
-	{3, "16-QAM (CC) 3/4"},
-	{4, "64-QAM (CC) 1/2"},
-	{5, "64-QAM (CC) 2/3"},
-	{6, "64-QAM (CC) 3/4"},
-	{7, "QPSK (BTC) 1/2"},
-	{8, "QPSK (BTC) 3/4 or 2/3"},
-	{9, "16-QAM (BTC) 3/5"},
+	{ 0, "QPSK (CC) 1/2"},
+	{ 1, "QPSK (CC) 3/4"},
+	{ 2, "16-QAM (CC) 1/2"},
+	{ 3, "16-QAM (CC) 3/4"},
+	{ 4, "64-QAM (CC) 1/2"},
+	{ 5, "64-QAM (CC) 2/3"},
+	{ 6, "64-QAM (CC) 3/4"},
+	{ 7, "QPSK (BTC) 1/2"},
+	{ 8, "QPSK (BTC) 3/4 or 2/3"},
+	{ 9, "16-QAM (BTC) 3/5"},
 	{10, "16-QAM (BTC) 4/5"},
 	{11, "64-QAM (BTC) 2/3 or 5/8"},
 	{12, "64-QAM (BTC) 5/6 or 4/5"},
@@ -224,51 +228,47 @@ static void dissect_mac_mgmt_msg_ucd_decoder(tvbuff_t *tvb, packet_info *pinfo, 
 	{	/* we are being asked for details */
 		proto_item *ucd_item;
 		proto_tree *ucd_tree;
-		guint ucd_config_change_count;
 		guint ucd_ranging_backoff_start;
 		guint ucd_ranging_backoff_end;
 		guint ucd_request_backoff_start;
 		guint ucd_request_backoff_end;
 
-		/* Get the tvb reported length */
 		tvb_len =  tvb_reported_length(tvb);
 		/* display MAC payload type UCD */
 		ucd_item = proto_tree_add_protocol_format(tree, proto_mac_mgmt_msg_ucd_decoder, tvb, offset, -1, "Uplink Channel Descriptor (UCD)");
-		/* add MAC UCD subtree */
 		ucd_tree = proto_item_add_subtree(ucd_item, ett_mac_mgmt_msg_ucd_decoder);
+
 		/* Decode and display the Uplink Channel Descriptor (UCD) */
-		/* get the Configuration Change Count */
-		ucd_config_change_count = tvb_get_guint8(tvb, offset);
 		/* display the Configuration Change Count */
-		proto_tree_add_text(ucd_tree, tvb, offset, 1, "Configuration Change Count: %u", ucd_config_change_count);
-		/* move to next field */
+		proto_tree_add_item(ucd_tree, hf_ucd_config_change_count, tvb, offset, 1, ENC_NA);
 		offset++;
+
 		/* get the ranging backoff start */
 		ucd_ranging_backoff_start = tvb_get_guint8(tvb, offset);
-		/* display the ranging backoff start */
-		proto_tree_add_text(ucd_tree, tvb, offset, 1, "Ranging Backoff Start: 2^%u = %u", ucd_ranging_backoff_start, (1 << ucd_ranging_backoff_start));
-		/* move to next field */
+		proto_tree_add_uint_format_value(ucd_tree, hf_ucd_ranging_backoff_start, tvb, offset, 1, (1 << ucd_ranging_backoff_start), "2^%u = %u", ucd_ranging_backoff_start, (1 << ucd_ranging_backoff_start));
 		offset++;
+
 		/* get the ranging backoff end */
 		ucd_ranging_backoff_end = tvb_get_guint8(tvb, offset);
-		/* display the ranging backoff end */
-		proto_tree_add_text(ucd_tree, tvb, offset, 1, "Ranging Backoff End: 2^%u = %u", ucd_ranging_backoff_end, (1 << ucd_ranging_backoff_end));
-		/* move to next field */
+		proto_tree_add_uint_format_value(ucd_tree, hf_ucd_ranging_backoff_end, tvb, offset, 1, (1 << ucd_ranging_backoff_end), "2^%u = %u", ucd_ranging_backoff_end, (1 << ucd_ranging_backoff_end));
 		offset++;
+
 		/* get the request backoff start */
 		ucd_request_backoff_start = tvb_get_guint8(tvb, offset);
-		/* display the request backoff start */
-		proto_tree_add_text(ucd_tree, tvb, offset, 1, "Request Backoff Start: 2^%u = %u", ucd_request_backoff_start, (1 << ucd_request_backoff_start));
-		/* move to next field */
+		proto_tree_add_uint_format_value(ucd_tree, hf_ucd_request_backoff_start, tvb, offset, 1, (1 << ucd_request_backoff_start), "2^%u = %u", ucd_request_backoff_start, (1 << ucd_request_backoff_start));
 		offset++;
+
 		/* get the request backoff end */
 		ucd_request_backoff_end = tvb_get_guint8(tvb, offset);
-		/* display the request backoff end */
-		proto_tree_add_text(ucd_tree, tvb, offset, 1, "Request Backoff End: 2^%u = %u", ucd_request_backoff_end, (1 << ucd_request_backoff_end));
-		/* move to next field */
+		proto_tree_add_uint_format_value(ucd_tree, hf_ucd_request_backoff_end, tvb, offset, 1, (1 << ucd_request_backoff_end), "2^%u = %u", ucd_request_backoff_end, (1 << ucd_request_backoff_end));
 		offset++;
+
 		while(offset < tvb_len)
 		{
+			proto_tree *tlv_tree;
+			proto_item *tlv_item1;
+			guint ul_burst_uiuc;
+			guint utemp;
 			/* get the TLV information */
 			init_tlv_info(&tlv_info, tvb, offset);
 			/* get the TLV type */
@@ -337,11 +337,6 @@ static void dissect_mac_mgmt_msg_ucd_decoder(tvbuff_t *tvb, packet_info *pinfo, 
 			}
 			switch (tlv_type)
 			{
-				proto_tree *tlv_tree;
-				proto_item *tlv_item1;
-				guint ul_burst_uiuc;
-				guint utemp;
-
 				case UCD_UPLINK_BURST_PROFILE:
 				{
 					/* get the UIUC */
@@ -367,7 +362,6 @@ static void dissect_mac_mgmt_msg_ucd_decoder(tvbuff_t *tvb, packet_info *pinfo, 
 
 						switch (tlv_type)
 						{
-							proto_item *tlv_item2;
 							case UCD_BURST_FEC:
 							{
 								add_tlv_subtree(&tlv_info, tlv_tree, hf_ucd_burst_fec, tvb, (offset+tlv_offset), ENC_BIG_ENDIAN);
@@ -375,6 +369,7 @@ static void dissect_mac_mgmt_msg_ucd_decoder(tvbuff_t *tvb, packet_info *pinfo, 
 							}
 							case UCD_BURST_RANGING_DATA_RATIO:
 							{
+								proto_item *tlv_item2;
 								tlv_item2 = add_tlv_subtree(&tlv_info, tlv_tree, hf_ucd_burst_ranging_data_ratio, tvb, (offset+tlv_offset), ENC_BIG_ENDIAN);
 								proto_item_append_text(tlv_item2, " dB");
 								break;
@@ -382,6 +377,7 @@ static void dissect_mac_mgmt_msg_ucd_decoder(tvbuff_t *tvb, packet_info *pinfo, 
 #if 0 /* for OFDM */
 							case UCD_BURST_POWER_BOOST:
 							{
+								proto_item *tlv_item2;
 								tlv_item2 = add_tlv_subtree(&tlv_info, tlv_tree, hf_ucd_burst_power_boost, tvb, (offset+tlv_offset), ENC_BIG_ENDIAN);
 								proto_item_append_text(tlv_item2, " dB");
 								break;
@@ -727,6 +723,7 @@ void proto_register_mac_mgmt_msg_ucd(void)
 				FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL
 			}
 		},
+#if 0
 		{
 			&hf_ucd_tlv_t_162_band_amc_release_timer,
 			{
@@ -734,6 +731,7 @@ void proto_register_mac_mgmt_msg_ucd(void)
 				FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL
 			}
 		},
+#endif
 		{
 			&hf_ucd_tlv_t_164_band_amc_retry_timer,
 			{
@@ -891,6 +889,7 @@ void proto_register_mac_mgmt_msg_ucd(void)
 				FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL
 			}
 		},
+#if 0
 		{
 			&hf_ucd_tlv_t_197_normalized_cn_channel_sounding,
 			{
@@ -898,6 +897,7 @@ void proto_register_mac_mgmt_msg_ucd(void)
 				FT_UINT8, BASE_HEX, NULL, 0, NULL, HFILL
 			}
 		},
+#endif
 		{
 			&hf_ucd_tlv_t_177_normalized_cn_override2,
 			{
@@ -1196,6 +1196,41 @@ void proto_register_mac_mgmt_msg_ucd(void)
 				FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL
 			}
 		},
+		{
+			&hf_ucd_config_change_count,
+			{
+				"Configuration Change Count", "wmx.ucd.config_change_count",
+				FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL
+			}
+		},
+		{
+			&hf_ucd_ranging_backoff_start,
+			{
+				"Ranging Backoff Start", "wmx.ucd.ranging_backoff_start",
+				FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL
+			}
+		},
+		{
+			&hf_ucd_ranging_backoff_end,
+			{
+				"Ranging Backoff End", "wmx.ucd.ranging_backoff_end",
+				FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL
+			}
+		},
+		{
+			&hf_ucd_request_backoff_start,
+			{
+				"Request Backoff Start", "wmx.ucd.request_backoff_start",
+				FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL
+			}
+		},
+		{
+			&hf_ucd_request_backoff_end,
+			{
+				"Request Backoff End", "wmx.ucd.request_backoff_end",
+				FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL
+			}
+		},
 	};
 
 	/* Setup protocol subtree array */
@@ -1221,3 +1256,16 @@ void proto_reg_handoff_mac_mgmt_msg_ucd(void)
 	ucd_handle = create_dissector_handle(dissect_mac_mgmt_msg_ucd_decoder, proto_mac_mgmt_msg_ucd_decoder);
 	dissector_add_uint("wmx.mgmtmsg", MAC_MGMT_MSG_UCD, ucd_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

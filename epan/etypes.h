@@ -102,6 +102,10 @@ extern "C" {
 #define ETHERTYPE_VINES_ECHO		0x0BAF
 #endif
 
+#ifndef ETHERTYPE_C15_HBEAT
+#define ETHERTYPE_C15_HBEAT		0x0C15
+#endif
+
 #ifndef ETHERTYPE_TRAIN
 #define ETHERTYPE_TRAIN			0x1984	/* Created by Microsoft Network Monitor as a summary packet */
 #endif
@@ -146,6 +150,10 @@ extern "C" {
 
 #ifndef ETHERTYPE_EPL_V1
 #define ETHERTYPE_EPL_V1		0x3E3F
+#endif
+
+#ifndef ETHERTYPE_C15_CH
+#define ETHERTYPE_C15_CH		0x4742
 #endif
 
 #ifndef ETHERTYPE_DEC
@@ -483,7 +491,7 @@ extern "C" {
 #endif
 
 #ifndef ETHERTYPE_FLIP
-#define ETHERTYPE_FLIP			0x8901	/* Nokia Siemens Networks Flow Layer Internal Protocol */
+#define ETHERTYPE_FLIP			0x8901	/* Nokia Solutions and Networks Flow Layer Internal Protocol */
 #endif
 
 #ifndef ETHERTYPE_CFM
@@ -522,6 +530,10 @@ extern "C" {
 #define ETHERTYPE_TTE_PCF		0x891D  /* TTEthernet Protocol Control Frame */
 #endif
 
+#ifndef ETHERTYPE_VNTAG
+#define ETHERTYPE_VNTAG			0x8926  /* VN-Tag */
+#endif
+
 #ifndef ETHERTYPE_HSR
 #define ETHERTYPE_HSR			0x892F  /* High-availability Seamless Redundancy (IEC62439 Part 3) */
 #endif
@@ -540,6 +552,14 @@ extern "C" {
 
 #ifndef ETHERTYPE_LLT
 #define ETHERTYPE_LLT			0xCAFE	/* Veritas Low Latency Transport (not officially registered) */
+#endif
+
+#ifndef ETHERTYPE_XIP
+#define ETHERTYPE_XIP			0xC0DE	/* eXpressive Internet Protocol (not officially registered) */
+#endif
+
+#ifndef ETHERTYPE_NWP
+#define ETHERTYPE_NWP			0xC0DF	/* Neighborhood Watch Protocol (not officially registered) */
 #endif
 
 #ifndef ETHERTYPE_TDMOE

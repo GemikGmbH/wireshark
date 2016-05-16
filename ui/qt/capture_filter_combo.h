@@ -31,13 +31,14 @@ class CaptureFilterCombo : public QComboBox
 {
     Q_OBJECT
 public:
-    explicit CaptureFilterCombo(QWidget *parent = 0);
+    explicit CaptureFilterCombo(QWidget *parent = 0, bool plain = false);
     bool addRecentCapture(const char *filter);
     void writeRecent(FILE *rf);
+    void setConflict(bool conflict = false) { cf_edit_->setConflict(conflict); }
 
 signals:
     void interfacesChanged();
-    void pushFilterSyntaxStatus(QString&);
+    void pushFilterSyntaxStatus(const QString&);
     void popFilterSyntaxStatus();
     void captureFilterSyntaxChanged(bool valid);
     void startCapture();

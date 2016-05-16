@@ -1,5 +1,5 @@
 /* packet-sv.c
- * Routines for IEC 61850 Sampled Vales packet dissection
+ * Routines for IEC 61850 Sampled Values packet dissection
  * Michael Bernhard 2008
  *
  * Wireshark - Network traffic analyzer
@@ -23,14 +23,11 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/asn1.h>
 #include <epan/etypes.h>
 #include <epan/expert.h>
-
-#include <stdio.h>
-#include <string.h>
+#include <epan/prefs.h>
 
 #include "packet-ber.h"
 #include "packet-acse.h"
@@ -44,29 +41,29 @@
 #define PFNAME "sv"
 
 /* see IEC61850-8-1 8.2 */
-#define Q_VALIDITY_GOOD			(0x0 << 0)
-#define Q_VALIDITY_INVALID		(0x1 << 0)
-#define Q_VALIDITY_QUESTIONABLE	(0x3 << 0)
-#define Q_VALIDITY_MASK			(0x3 << 0)
+#define Q_VALIDITY_GOOD			(0x0U << 0)
+#define Q_VALIDITY_INVALID		(0x1U << 0)
+#define Q_VALIDITY_QUESTIONABLE		(0x3U << 0)
+#define Q_VALIDITY_MASK			(0x3U << 0)
 
-#define Q_OVERFLOW				(1 << 2)
-#define Q_OUTOFRANGE			(1 << 3)
-#define Q_BADREFERENCE			(1 << 4)
-#define Q_OSCILLATORY			(1 << 5)
-#define Q_FAILURE				(1 << 6)
-#define Q_OLDDATA				(1 << 7)
-#define Q_INCONSISTENT			(1 << 8)
-#define Q_INACCURATE			(1 << 9)
+#define Q_OVERFLOW			(1U << 2)
+#define Q_OUTOFRANGE			(1U << 3)
+#define Q_BADREFERENCE			(1U << 4)
+#define Q_OSCILLATORY			(1U << 5)
+#define Q_FAILURE			(1U << 6)
+#define Q_OLDDATA			(1U << 7)
+#define Q_INCONSISTENT			(1U << 8)
+#define Q_INACCURATE			(1U << 9)
 
-#define Q_SOURCE_PROCESS		(0 << 10)
-#define Q_SOURCE_SUBSTITUTED	(1 << 10)
-#define Q_SOURCE_MASK			(1 << 10)
+#define Q_SOURCE_PROCESS		(0U << 10)
+#define Q_SOURCE_SUBSTITUTED		(1U << 10)
+#define Q_SOURCE_MASK			(1U << 10)
 
-#define Q_TEST					(1 << 11)
-#define Q_OPERATORBLOCKED		(1 << 12)
+#define Q_TEST				(1U << 11)
+#define Q_OPERATORBLOCKED		(1U << 12)
 
 /* see UCA Implementation Guideline for IEC 61850-9-2 */
-#define Q_DERIVED				(1 << 13)
+#define Q_DERIVED			(1U << 13)
 
 void proto_register_sv(void);
 void proto_reg_handoff_sv(void);
@@ -81,7 +78,6 @@ static int hf_sv_appid = -1;
 static int hf_sv_length = -1;
 static int hf_sv_reserve1 = -1;
 static int hf_sv_reserve2 = -1;
-#if 0
 static int hf_sv_phmeas_instmag_i = -1;
 static int hf_sv_phsmeas_q = -1;
 static int hf_sv_phsmeas_q_validity = -1;
@@ -97,7 +93,7 @@ static int hf_sv_phsmeas_q_source = -1;
 static int hf_sv_phsmeas_q_test = -1;
 static int hf_sv_phsmeas_q_operatorblocked = -1;
 static int hf_sv_phsmeas_q_derived = -1;
-#endif
+
 #include "packet-sv-hf.c"
 
 /* Initialize the subtree pointers */
@@ -108,30 +104,31 @@ static int ett_phsmeas_q = -1;
 #include "packet-sv-ett.c"
 
 static expert_field ei_sv_mal_utctime = EI_INIT;
+static expert_field ei_sv_zero_pdu = EI_INIT;
 
-#if 0
+static gboolean sv_decode_data_as_phsmeas = FALSE;
+
 static const value_string sv_q_validity_vals[] = {
-  {   0, "good" },
-  {   1, "invalid" },
-  {   3, "questionable" },
-  { 0, NULL }
+	{ 0, "good" },
+	{ 1, "invalid" },
+	{ 3, "questionable" },
+	{ 0, NULL }
 };
 
 static const value_string sv_q_source_vals[] = {
-  {   0, "process" },
-  {   1, "substituted" },
-  { 0, NULL }
+	{ 0, "process" },
+	{ 1, "substituted" },
+	{ 0, NULL }
 };
 
 static int
 dissect_PhsMeas1(gboolean implicit_tag, packet_info *pinfo, proto_tree *tree, tvbuff_t *tvb, int offset, int hf_id _U_)
 {
-	gint8 class;
+	gint8 ber_class;
 	gboolean pc;
 	gint32 tag;
 	guint32 len;
-	proto_item *it;
-	proto_tree *subtree = NULL;
+	proto_tree *subtree;
 	gint32 value;
 	guint32 qual;
 	guint32 i;
@@ -154,16 +151,13 @@ dissect_PhsMeas1(gboolean implicit_tag, packet_info *pinfo, proto_tree *tree, tv
 		};
 
 	if (!implicit_tag) {
-		offset=dissect_ber_identifier(pinfo, tree, tvb, offset, &class, &pc, &tag);
+		offset=dissect_ber_identifier(pinfo, tree, tvb, offset, &ber_class, &pc, &tag);
 		offset=dissect_ber_length(pinfo, tree, tvb, offset, &len, NULL);
 	} else {
-		len=tvb_length_remaining(tvb, offset);
+		len=tvb_reported_length_remaining(tvb, offset);
 	}
 
-	if (tree) {
-		it = proto_tree_add_text(tree, tvb, offset, len, "PhsMeas1");
-		subtree = proto_item_add_subtree(it, ett_phsmeas);
-	}
+	subtree = proto_tree_add_subtree(tree, tvb, offset, len, ett_phsmeas, NULL, "PhsMeas1");
 
 	sv_data.num_phsMeas = 0;
 	for (i = 0; i < len/8; i++) {
@@ -187,7 +181,6 @@ dissect_PhsMeas1(gboolean implicit_tag, packet_info *pinfo, proto_tree *tree, tv
 	return offset;
 }
 
-#endif
 #include "packet-sv-fn.c"
 
 /*
@@ -198,41 +191,36 @@ dissect_sv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 {
 	int offset = 0;
 	int old_offset;
-	proto_item *item = NULL;
-	proto_tree *tree = NULL;
+	proto_item *item;
+	proto_tree *tree;
 	asn1_ctx_t asn1_ctx;
 
 	asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
 
-	if (parent_tree){
-		item = proto_tree_add_item(parent_tree, proto_sv, tvb, 0, -1, ENC_NA);
-		tree = proto_item_add_subtree(item, ett_sv);
-	}
+	item = proto_tree_add_item(parent_tree, proto_sv, tvb, 0, -1, ENC_NA);
+	tree = proto_item_add_subtree(item, ett_sv);
+
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, PNAME);
 	col_clear(pinfo->cinfo, COL_INFO);
 
 	/* APPID */
-	if (tree && tvb_reported_length_remaining(tvb, offset) >= 2)
-		proto_tree_add_item(tree, hf_sv_appid, tvb, offset, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sv_appid, tvb, offset, 2, ENC_BIG_ENDIAN);
 
 	/* Length */
-	if (tree && tvb_reported_length_remaining(tvb, offset) >= 4)
-		proto_tree_add_item(tree, hf_sv_length, tvb, offset + 2, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sv_length, tvb, offset + 2, 2, ENC_BIG_ENDIAN);
 
 	/* Reserved 1 */
-	if (tree && tvb_reported_length_remaining(tvb, offset) >= 6)
-		proto_tree_add_item(tree, hf_sv_reserve1, tvb, offset + 4, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sv_reserve1, tvb, offset + 4, 2, ENC_BIG_ENDIAN);
 
 	/* Reserved 2 */
-	if (tree && tvb_reported_length_remaining(tvb, offset) >= 8)
-		proto_tree_add_item(tree, hf_sv_reserve2, tvb, offset + 6, 2, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_sv_reserve2, tvb, offset + 6, 2, ENC_BIG_ENDIAN);
 
 	offset = 8;
-	while (tree && tvb_reported_length_remaining(tvb, offset) > 0){
+	while (tvb_reported_length_remaining(tvb, offset) > 0){
 		old_offset = offset;
 		offset = dissect_sv_SampledValues(FALSE, tvb, offset, &asn1_ctx , tree, -1);
 		if (offset == old_offset) {
-			proto_tree_add_text(tree, tvb, offset, -1, "Internal error, zero-byte SV PDU");
+			proto_tree_add_expert(tree, pinfo, &ei_sv_zero_pdu, tvb, offset, -1);
 			break;
 		}
 	}
@@ -258,7 +246,7 @@ void proto_register_sv(void) {
 
 		{ &hf_sv_reserve2,
 		{ "Reserved 2",	"sv.reserve2", FT_UINT16, BASE_HEX_DEC, NULL, 0x0, NULL, HFILL }},
-#if 0
+
 		{ &hf_sv_phmeas_instmag_i,
 		{ "value", "sv.meas_value", FT_INT32, BASE_DEC, NULL, 0x0, NULL, HFILL}},
 
@@ -303,7 +291,7 @@ void proto_register_sv(void) {
 
 		{ &hf_sv_phsmeas_q_derived,
 		{ "derived", "sv.meas_quality.derived", FT_BOOLEAN, 32, NULL, Q_DERIVED, NULL, HFILL}},
-#endif
+
 
 #include "packet-sv-hfarr.c"
 	};
@@ -318,9 +306,11 @@ void proto_register_sv(void) {
 
 	static ei_register_info ei[] = {
 		{ &ei_sv_mal_utctime, { "sv.malformed.utctime", PI_MALFORMED, PI_WARN, "BER Error: malformed UTCTime encoding", EXPFILL }},
+		{ &ei_sv_zero_pdu, { "sv.zero_pdu", PI_PROTOCOL, PI_ERROR, "Internal error, zero-byte SV PDU", EXPFILL }},
 	};
 
 	expert_module_t* expert_sv;
+	module_t *sv_module;
 
 	/* Register protocol */
 	proto_sv = proto_register_protocol(PNAME, PSNAME, PFNAME);
@@ -331,6 +321,10 @@ void proto_register_sv(void) {
 	proto_register_subtree_array(ett, array_length(ett));
 	expert_sv = expert_register_protocol(proto_sv);
 	expert_register_field_array(expert_sv, ei, array_length(ei));
+	sv_module = prefs_register_protocol(proto_sv, NULL);
+	prefs_register_bool_preference(sv_module, "decode_data_as_phsmeas",
+		"Force decoding of seqData as PhsMeas",
+		NULL, &sv_decode_data_as_phsmeas);
 
 	/* Register tap */
 	sv_tap = register_tap("sv");

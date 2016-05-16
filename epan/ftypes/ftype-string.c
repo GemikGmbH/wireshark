@@ -22,7 +22,6 @@
 
 #include <stdio.h>
 #include <ftypes-int.h>
-#include <epan/emem.h>
 #include <string.h>
 
 #define CMP_MATCHES cmp_matches
@@ -53,7 +52,7 @@ string_fvalue_set_string(fvalue_t *fv, const gchar *value)
 }
 
 static int
-string_repr_len(fvalue_t *fv, ftrepr_t rtype)
+string_repr_len(fvalue_t *fv, ftrepr_t rtype, int field_display _U_)
 {
 	switch (rtype) {
 		case FTREPR_DISPLAY:
@@ -67,7 +66,7 @@ string_repr_len(fvalue_t *fv, ftrepr_t rtype)
 }
 
 static void
-string_to_repr(fvalue_t *fv, ftrepr_t rtype, char *buf)
+string_to_repr(fvalue_t *fv, ftrepr_t rtype, int field_display _U_, char *buf)
 {
 	switch (rtype) {
 		case FTREPR_DISPLAY:
@@ -89,7 +88,7 @@ value_get(fvalue_t *fv)
 }
 
 static gboolean
-val_from_string(fvalue_t *fv, const char *s, LogFunc logfunc _U_)
+val_from_string(fvalue_t *fv, const char *s, gchar **err_msg _U_)
 {
 	/* Free up the old value, if we have one */
 	string_fvalue_free(fv);
@@ -99,7 +98,7 @@ val_from_string(fvalue_t *fv, const char *s, LogFunc logfunc _U_)
 }
 
 static gboolean
-val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, LogFunc logfunc)
+val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, gchar **err_msg)
 {
 	fvalue_t *fv_bytes;
 
@@ -123,7 +122,7 @@ val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_,
 	}
 
 	/* Just turn it into a string */
-	return val_from_string(fv, s, logfunc);
+	return val_from_string(fv, s, err_msg);
 }
 
 static guint
@@ -249,13 +248,15 @@ ftype_register_string(void)
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		NULL,				/* set_value_floating */
 
 		value_get,			/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		NULL,				/* get_value_floating */
 
 		cmp_eq,
@@ -291,13 +292,15 @@ ftype_register_string(void)
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		NULL,				/* set_value_floating */
 
 		value_get,			/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		NULL,				/* get_value_floating */
 
 		cmp_eq,
@@ -333,13 +336,15 @@ ftype_register_string(void)
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		NULL,				/* set_value_floating */
 
 		value_get,			/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		NULL,				/* get_value_floating */
 
 		cmp_eq,
@@ -375,13 +380,15 @@ ftype_register_string(void)
 		NULL,				/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		NULL,				/* set_value_floating */
 
 		value_get,			/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		NULL,				/* get_value_floating */
 
 		cmp_eq,
@@ -403,3 +410,16 @@ ftype_register_string(void)
 	ftype_register(FT_UINT_STRING, &uint_string_type);
 	ftype_register(FT_STRINGZPAD, &stringzpad_type);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

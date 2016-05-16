@@ -22,8 +22,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/asn1.h>
 
@@ -73,12 +71,10 @@ dissect_mpeg_audio_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				"Audio Layer %d", mpa_layer(&mpa) + 1);
 	if (MPA_BITRATE_VALID(&mpa) && MPA_FREQUENCY_VALID(&mpa)) {
 		data_size = (int)(MPA_DATA_BYTES(&mpa) - sizeof mpa);
-		SET_ADDRESS(&pinfo->src, AT_NONE, 0, NULL);
-		col_add_fstr(pinfo->cinfo, COL_DEF_SRC,
-					"%d kb/s", mpa_bitrate(&mpa) / 1000);
-		SET_ADDRESS(&pinfo->dst, AT_NONE, 0, NULL);
-		col_add_fstr(pinfo->cinfo, COL_DEF_DST,
-					"%g kHz", mpa_frequency(&mpa) / (float)1000);
+		col_append_fstr(pinfo->cinfo, COL_INFO,
+						", %d kb/s, %g kHz",
+						mpa_bitrate(&mpa) / 1000,
+						mpa_frequency(&mpa) / (float)1000);
 	}
 
 	if (tree == NULL)
@@ -178,5 +174,5 @@ proto_register_mpeg_audio(void)
 void
 proto_reg_handoff_mpeg_audio(void)
 {
-	heur_dissector_add("mpeg", dissect_mpeg_audio, proto_mpeg_audio);
+	heur_dissector_add("mpeg", dissect_mpeg_audio, "MPEG Audio", "mpeg_audio", proto_mpeg_audio, HEURISTIC_ENABLE);
 }

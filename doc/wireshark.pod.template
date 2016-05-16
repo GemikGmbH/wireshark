@@ -94,7 +94,7 @@ Network Associates Windows-based B<Sniffer> captures
 Network General/Network Associates DOS-based B<Sniffer> (compressed or uncompressed) captures
 
 =item *
-AG Group/WildPackets B<EtherPeek>/B<TokenPeek>/B<AiroPeek>/B<EtherHelp>/B<PacketGrabber> captures
+AG Group/WildPackets/Savvius B<EtherPeek>/B<TokenPeek>/B<AiroPeek>/B<EtherHelp>/B<PacketGrabber> captures
 
 =item *
 B<RADCOM>'s WAN/LAN analyzer captures
@@ -180,6 +180,9 @@ MPEG-2 Transport Streams as defined in ISO/IEC 13818-1
 
 =item *
 Rabbit Labs CAM Inspector files
+
+=item *
+Colasoft Capsa files
 
 =back
 
@@ -470,6 +473,8 @@ B<t> to enable transport-layer port number resolution
 
 B<C> to enable concurrent (asynchronous) DNS lookups
 
+B<d> to enable resolution from captured DNS packets
+
 =item -o  E<lt>preference/recent settingE<gt>
 
 Set a preference or recent value, overriding the default value and any value
@@ -643,6 +648,14 @@ Currently implemented statistics are:
 
 =over 4
 
+=item B<-z help>
+
+Display all possible values for B<-z>.
+
+=item B<-z> afp,srt[,I<filter>]
+
+Show Apple Filing Protocol service response time statistics.
+
 =item B<-z> conv,I<type>[,I<filter>]
 
 Create a table that lists all conversations that could be seen in the
@@ -670,12 +683,13 @@ the total number of packets.
 These tables can also be generated at runtime by selecting the appropriate
 conversation type from the menu "Tools/Statistics/Conversation List/".
 
-=item B<-z> dcerpc,srt,I<uuid>,I<major>.I<minor>[,I<filter>]
+=item B<-z> dcerpc,srt,I<name-or-uuid>,I<major>.I<minor>[,I<filter>]
 
-Collect call/reply SRT (Service Response Time) data for DCERPC interface I<uuid>,
-version I<major>.I<minor>.
+Collect call/reply SRT (Service Response Time) data for DCERPC interface
+I<name> or I<uuid>, version I<major>.I<minor>.
 Data collected is the number of calls for each procedure, MinSRT, MaxSRT
 and AvgSRT.
+Interface I<name> and I<uuid> are case-insensitive.
 
 Example: S<B<-z dcerpc,srt,12345778-1234-abcd-ef00-0123456789ac,1.0>> will collect data for the CIFS SAMR Interface.
 
@@ -686,6 +700,14 @@ on those calls that match that filter.
 
 Example: S<B<-z dcerpc,srt,12345778-1234-abcd-ef00-0123456789ac,1.0,ip.addr==1.2.3.4>> will collect SAMR
 SRT statistics for a specific host.
+
+=item B<-z> bootp,stat[,I<filter>]
+
+Show DHCP (BOOTP) statistics.
+
+=item B<-z> expert
+
+Show expert information.
 
 =item B<-z> fc,srt[,I<filter>]
 
@@ -818,16 +840,27 @@ on those calls that match that filter.
 Example: B<-z "mgcp,srt,ip.addr==1.2.3.4"> will collect stats only for
 MGCP packets exchanged by the host at IP address 1.2.3.4 .
 
+=item B<-z> mtp3,msus[,<filter>]
+
+Show MTP3 MSU statistics.
+
+=item B<-z> multicast,stat[,<filter>]
+
+Show UDP multicast stream statistics.
+
 =item B<-z> rpc,programs
 
 Collect call/reply SRT data for all known ONC-RPC programs/versions.
 Data collected is the number of calls for each protocol/version, MinSRT,
 MaxSRT and AvgSRT.
 
-=item B<-z> rpc,srt,I<program>,I<version>[,<filter>]
+=item B<-z> rpc,srt,I<name-or-number>,I<version>[,<filter>]
 
-Collect call/reply SRT (Service Response Time) data for I<program>/I<version>.  Data collected
-is the number of calls for each procedure, MinSRT, MaxSRT and AvgSRT.
+Collect call/reply SRT (Service Response Time) data for program
+I<name>/I<version> or I<number>/I<version>.
+Data collected is the number of calls for each procedure, MinSRT, MaxSRT and
+AvgSRT.
+Program I<name> is case-insensitive.
 
 Example: B<-z rpc,srt,100003,3> will collect data for NFS v3.
 
@@ -836,7 +869,7 @@ This option can be used multiple times on the command line.
 If the optional I<filter> is provided, the stats will only be calculated
 on those calls that match that filter.
 
-Example: S<B<-z rpc,srt,100003,3,nfs.fh.hash==0x12345678>> will collect NFS v3
+Example: S<B<-z rpc,srt,nfs,3,nfs.fh.hash==0x12345678>> will collect NFS v3
 SRT statistics for a specific file.
 
 =item B<-z> scsi,srt,I<cmdset>[,<filter>]
@@ -905,6 +938,26 @@ This is the same window shown as when you go to the Statistics Menu and choose
 VoIP Calls.
 
 Example: B<-z voip,calls>
+
+=item B<-z> wlan,stat[,<filter>]
+
+Show IEEE 802.11 network and station statistics.
+
+=item B<-z> wsp,stat[,<filter>]
+
+Show WSP packet counters.
+
+=item --disable-protocol E<lt>proto_nameE<gt>
+
+Disable dissection of proto_name.
+
+=item --enable-heuristic E<lt>short_nameE<gt>
+
+Enable dissection of heuristic protocol.
+
+=item --disable-heuristic E<lt>short_nameE<gt>
+
+Disable dissection of heuristic protocol.
 
 =back
 
@@ -1859,7 +1912,7 @@ I<View:Main Toolbar>.
 A display filter can be entered into the filter toolbar.
 A filter for HTTP, HTTPS, and DNS traffic might look like this:
 
-  tcp.port == 80 || tcp.port == 443 || tcp.port == 53
+  tcp.port in {80 443 53}
 
 Selecting the I<Filter:> button lets you choose from a list of named
 filters that you can optionally save.  Pressing the Return or Enter
@@ -2477,7 +2530,7 @@ protocols built into Wireshark are.
 =head1 CAPTURE FILTER SYNTAX
 
 See the manual page of pcap-filter(7) or, if that doesn't exist, tcpdump(8),
-or, if that doesn't exist, L<http://wiki.wireshark.org/CaptureFilters>.
+or, if that doesn't exist, L<https://wiki.wireshark.org/CaptureFilters>.
 
 =head1 DISPLAY FILTER SYNTAX
 
@@ -2581,6 +2634,26 @@ Capture filter name resolution is handled by libpcap on UNIX-compatible
 systems and WinPcap on Windows.  As such the Wireshark personal F<hosts> file
 will not be consulted for capture filter name resolution.
 
+=item Name Resolution (subnets)
+
+If the an IPv4 address cannot be translated via name resolution (no exact
+match is found) then a partial match is attempted via the F<subnets> file.
+
+Each line of this file consists of an IPv4 address, a subnet mask length
+separated only by a / and a name separated by whitespace. While the address
+must be a full IPv4 address, any values beyond the mask length are subsequently
+ignored.
+
+An example is:
+
+# Comments must be prepended by the # sign!
+192.168.0.0/24 ws_test_network
+
+A partially matched name will be printed as "subnet-name.remaining-address".
+For example, "192.168.0.1" under the subnet above would be printed as
+"ws_test_network.1"; if the mask length above had been 16 rather than 24, the
+printed address would be ``ws_test_network.0.1".
+
 =item Name Resolution (ethers)
 
 The F<ethers> files are consulted to correlate 6-byte hardware addresses to
@@ -2630,6 +2703,20 @@ multiple of 8.
 
 The F<manuf> file is looked for in the same directory as the global
 preferences file.
+
+=item Name Resolution (services)
+
+The F<services> file is used to translate port numbers into names.
+
+The file has the standard F<services> file syntax; each line contains one
+(service) name and one transport identifier separated by white space.  The
+transport identifier includes one port number and one transport protocol name
+(typically tcp, udp, or sctp) separated by a /.
+
+An example is:
+
+mydns       5045/udp     # My own Domain Name Server
+mydns       5045/tcp     # My own Domain Name Server
 
 =item Name Resolution (ipxnets)
 
@@ -2743,39 +2830,6 @@ On Windows, Wireshark normally stores all application data in %APPDATA% or
 %USERPROFILE%.  You can override the default location by exporting this
 environment variable to specify an alternate location.
 
-=item WIRESHARK_DEBUG_EP_NO_CHUNKS
-
-Normally per-packet memory is allocated in large "chunks."  This behavior
-doesn't work well with debugging tools such as Valgrind or ElectricFence.
-Export this environment variable to force individual allocations.
-Note: disabling chunks also disables canaries (see below).
-
-=item WIRESHARK_DEBUG_SE_NO_CHUNKS
-
-Normally per-file memory is allocated in large "chunks."  This behavior
-doesn't work well with debugging tools such as Valgrind or ElectricFence.
-Export this environment variable to force individual allocations.
-Note: disabling chunks also disables canaries (see below).
-
-=item WIRESHARK_DEBUG_EP_NO_CANARY
-
-Normally per-packet memory allocations are separated by "canaries" which
-allow detection of memory overruns.  This comes at the expense of some extra
-memory usage.  Exporting this environment variable disables these canaries.
-
-=item WIRESHARK_DEBUG_SE_USE_CANARY
-
-Exporting this environment variable causes per-file memory allocations to be
-protected with "canaries" which allow for detection of memory overruns.
-This comes at the expense of significant extra memory usage.
-
-=item WIRESHARK_DEBUG_SCRUB_MEMORY
-
-If this environment variable is set, the contents of per-packet and
-per-file memory is initialized to 0xBADDCAFE when the memory is allocated
-and is reset to 0xDEADBEEF when the memory is freed.  This functionality is
-useful mainly to developers looking for bugs in the way memory is handled.
-
 =item WIRESHARK_DEBUG_WMEM_OVERRIDE
 
 Setting this environment variable forces the wmem framework to use the
@@ -2796,12 +2850,6 @@ with root (or setuid) permissions on *NIX.
 This environment variable causes the various data files to be loaded from
 a directory other than the standard locations.  It has no effect when the
 program in question is running with root (or setuid) permissions on *NIX.
-
-=item WIRESHARK_PYTHON_DIR
-
-This environment variable points to an alternate location for Python.
-It has no effect when the program in question is running with root (or setuid)
-permissions on *NIX.
 
 =item ERF_RECORDS_TO_CHECK
 
@@ -2840,20 +2888,6 @@ it will, on some OSes, assuming your environment is configured correctly,
 generate a core dump file.  This can be useful to developers attempting to
 troubleshoot a problem with a protocol dissector.
 
-=item WIRESHARK_EP_VERIFY_POINTERS
-
-This environment variable, if set, causes certain uses of pointers to be
-audited to ensure they do not point to memory that is deallocated after each
-packet has been fully dissected.  This can be useful to developers writing or
-auditing code.
-
-=item WIRESHARK_SE_VERIFY_POINTERS
-
-This environment variable, if set, causes certain uses of pointers to be
-audited to ensure they do not point to memory that is deallocated after when
-a capture file is closed.  This can be useful to developers writing or
-auditing code.
-
 =item WIRESHARK_QUIT_AFTER_CAPTURE
 
 Cause B<Wireshark> to exit after the end of the capture session.  This
@@ -2861,13 +2895,6 @@ doesn't automatically start a capture; you must still use B<-k> to do
 that.  You must also specify an autostop condition, e.g.  B<-c> or B<-a
 duration:...>.  This means that you will not be able to see the results
 of the capture after it stops; it's primarily useful for testing.
-
-=item WIRESHARK_ABORT_ON_OUT_OF_MEMORY
-
-This environment variable, if present, causes abort(3) to be called if certain
-out-of-memory conditions (which normally result in an exception and an
-explanatory error message) are experienced.  This can be useful to developers
-debugging out-of-memory conditions.
 
 =back
 

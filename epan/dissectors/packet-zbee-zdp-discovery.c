@@ -25,11 +25,8 @@
 /*  Include Files */
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/addr_resolv.h>
-#include <epan/wmem/wmem.h>
-
 #include "packet-zbee.h"
 #include "packet-zbee-zdp.h"
 
@@ -64,7 +61,7 @@ dissect_zbee_zdp_req_nwk_addr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     /*req_type =*/ zbee_parse_uint(tree, hf_zbee_zdp_req_type, tvb, &offset, sizeof(guint8), NULL);
     /*idx      =*/ zbee_parse_uint(tree, hf_zbee_zdp_index, tvb, &offset, sizeof(guint8), NULL);
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -234,7 +231,6 @@ dissect_zbee_zdp_req_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 void
 dissect_zbee_zdp_req_match_desc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint8 version)
 {
-    proto_item      *ti;
     proto_tree      *field_tree = NULL;
     guint           offset = 0, i;
     guint           sizeof_cluster = (version >= ZBEE_VERSION_2007)?(int)sizeof(guint16):(int)sizeof(guint8);
@@ -250,16 +246,15 @@ dissect_zbee_zdp_req_match_desc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     /* Add the input cluster list. */
     in_count = zbee_parse_uint(tree, hf_zbee_zdp_in_count, tvb, &offset, (int)sizeof(guint8), NULL);
     if (tree && in_count) {
-        ti = proto_tree_add_text(tree, tvb, offset, in_count*sizeof_cluster, "Input Cluster List");
-        field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_match_in);
+        field_tree = proto_tree_add_subtree(tree, tvb, offset, in_count*sizeof_cluster,
+                        ett_zbee_zdp_match_in, NULL, "Input Cluster List");
     }
     for (i=0; i<in_count; i++) zbee_parse_uint(field_tree, hf_zbee_zdp_in_cluster, tvb, &offset, sizeof_cluster, NULL);
 
     /* Add the output cluster list. */
     out_count = zbee_parse_uint(tree, hf_zbee_zdp_out_count, tvb, &offset, (int)sizeof(guint8), NULL);
     if (tree && out_count) {
-        ti = proto_tree_add_text(tree, tvb, offset, out_count*sizeof_cluster, "Output Cluster List");
-        field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_match_out);
+        field_tree = proto_tree_add_subtree(tree, tvb, offset, out_count*sizeof_cluster, ett_zbee_zdp_match_out, NULL, "Output Cluster List");
     }
     for (i=0; i<out_count; i++) zbee_parse_uint(field_tree, hf_zbee_zdp_out_cluster, tvb, &offset, sizeof_cluster, NULL);
 
@@ -349,7 +344,7 @@ dissect_zbee_zdp_req_discovery_cache(tvbuff_t *tvb, packet_info *pinfo, proto_tr
     /*device   =*/ zbee_parse_uint(tree, hf_zbee_zdp_device, tvb, &offset, (int)sizeof(guint16), NULL);
     ext_addr = zbee_parse_eui64(tree, hf_zbee_zdp_ext_addr, tvb, &offset, (int)sizeof(guint64), NULL);
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -381,7 +376,7 @@ dissect_zbee_zdp_device_annce(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     ext_addr    = zbee_parse_eui64(tree, hf_zbee_zdp_ext_addr, tvb, &offset, (int)sizeof(guint64), NULL);
     /*capability  =*/ zdp_parse_cinfo(tree, ett_zbee_zdp_cinfo, tvb, &offset);
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -474,8 +469,7 @@ dissect_zbee_zdp_req_system_server_disc(tvbuff_t *tvb, packet_info *pinfo, proto
 void
 dissect_zbee_zdp_req_store_discovery(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_item  *ti;
-    proto_tree  *field_tree = NULL;
+    proto_tree  *field_tree;
     guint       offset = 0;
     guint       i;
 
@@ -493,15 +487,13 @@ dissect_zbee_zdp_req_store_discovery(tvbuff_t *tvb, packet_info *pinfo, proto_tr
     /*ep_count    =*/ zbee_parse_uint(tree, hf_zbee_zdp_disc_ep_count, tvb, &offset, (int)sizeof(guint8), NULL);
     simple_count= zbee_parse_uint(tree, hf_zbee_zdp_disc_simple_count, tvb, &offset, (int)sizeof(guint8), NULL);
 
-    if (tree) {
-        ti = proto_tree_add_text(tree, tvb, offset, simple_count, "Simple Descriptor Sizes");
-        field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_simple_sizes);
-    }
+    field_tree = proto_tree_add_subtree(tree, tvb, offset, simple_count, ett_zbee_zdp_simple_sizes, NULL, "Simple Descriptor Sizes");
+
     for (i=0; i<simple_count; i++) {
         zbee_parse_uint(field_tree, hf_zbee_zdp_disc_simple_size, tvb, &offset, (int)sizeof(guint8), NULL);
     }
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -532,7 +524,7 @@ dissect_zbee_zdp_req_store_node_desc(tvbuff_t *tvb, packet_info *pinfo, proto_tr
     ext_addr = zbee_parse_eui64(tree, hf_zbee_zdp_ext_addr, tvb, &offset, (int)sizeof(guint64), NULL);
     zdp_parse_node_desc(tree, ett_zbee_zdp_node, tvb, &offset, version);
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -563,7 +555,7 @@ dissect_zbee_zdp_req_store_power_desc(tvbuff_t *tvb, packet_info *pinfo, proto_t
     ext_addr = zbee_parse_eui64(tree, hf_zbee_zdp_ext_addr, tvb, &offset, (int)sizeof(guint64), NULL);
     zdp_parse_power_desc(tree, ett_zbee_zdp_power, tvb, &offset);
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -586,8 +578,7 @@ dissect_zbee_zdp_req_store_power_desc(tvbuff_t *tvb, packet_info *pinfo, proto_t
 void
 dissect_zbee_zdp_req_store_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_item  *ti;
-    proto_tree  *field_tree = NULL;
+    proto_tree  *field_tree;
     guint       offset = 0;
     guint       i;
 
@@ -599,15 +590,13 @@ dissect_zbee_zdp_req_store_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tr
     ext_addr = zbee_parse_eui64(tree, hf_zbee_zdp_ext_addr, tvb, &offset, (int)sizeof(guint64), NULL);
     ep_count = zbee_parse_uint(tree, hf_zbee_zdp_ep_count, tvb, &offset, (int)sizeof(guint8), NULL);
 
-    if (tree) {
-        ti = proto_tree_add_text(tree, tvb, offset, ep_count, "Active Endpoints");
-        field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_endpoint);
-    }
+    field_tree = proto_tree_add_subtree(tree, tvb, offset, ep_count, ett_zbee_zdp_endpoint, NULL, "Active Endpoints");
+
     for (i=0; i<ep_count; i++) {
         (void)zbee_parse_uint(field_tree, hf_zbee_zdp_endpoint, tvb, &offset, (int)sizeof(guint8), NULL);
     }
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -640,7 +629,7 @@ dissect_zbee_zdp_req_store_simple_desc(tvbuff_t *tvb, packet_info *pinfo, proto_
     /*simple_len  =*/ zbee_parse_uint(tree, hf_zbee_zdp_simple_length, tvb, &offset, (int)sizeof(guint8), NULL);
     zdp_parse_simple_desc(tree, ett_zbee_zdp_simple, tvb, &offset, version);
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -670,7 +659,7 @@ dissect_zbee_zdp_req_remove_node_cache(tvbuff_t *tvb, packet_info *pinfo, proto_
     /*device   =*/ zbee_parse_uint(tree, hf_zbee_zdp_device, tvb, &offset, (int)sizeof(guint16), NULL);
     ext_addr = zbee_parse_eui64(tree, hf_zbee_zdp_ext_addr, tvb, &offset, (int)sizeof(guint64), NULL);
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -700,7 +689,7 @@ dissect_zbee_zdp_req_find_node_cache(tvbuff_t *tvb, packet_info *pinfo, proto_tr
     /*device   =*/ zbee_parse_uint(tree, hf_zbee_zdp_device, tvb, &offset, (int)sizeof(guint16), NULL);
     ext_addr = zbee_parse_eui64(tree, hf_zbee_zdp_ext_addr, tvb, &offset, (int)sizeof(guint64), NULL);
 
-    zbee_append_info(tree, pinfo, ", Device: %s", ep_eui64_to_display(ext_addr));
+    zbee_append_info(tree, pinfo, ", Device: %s", eui64_to_display(wmem_packet_scope(), ext_addr));
 
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
@@ -789,7 +778,6 @@ dissect_zbee_zdp_req_ext_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree
 void
 dissect_zbee_zdp_rsp_nwk_addr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_item  *ti;
     proto_tree  *field_tree = NULL;
     guint       offset = 0;
     guint       i;
@@ -810,8 +798,8 @@ dissect_zbee_zdp_rsp_nwk_addr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
         /*idx      =*/ zbee_parse_uint(tree, hf_zbee_zdp_index, tvb, &offset, (int)sizeof(guint8), NULL);
 
         if ((tree) && (assoc)) {
-            ti = proto_tree_add_text(tree, tvb, offset, assoc*(int)sizeof(guint16), "Associated Device List");
-            field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_assoc_device);
+            field_tree = proto_tree_add_subtree(tree, tvb, offset, assoc*(int)sizeof(guint16),
+                            ett_zbee_zdp_assoc_device, NULL, "Associated Device List");
         }
         for (i=0; i<assoc; i++) {
             (void)zbee_parse_uint(field_tree, hf_zbee_zdp_assoc_device, tvb, &offset, (int)sizeof(guint16), NULL);
@@ -820,7 +808,7 @@ dissect_zbee_zdp_rsp_nwk_addr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
     zbee_append_info(tree, pinfo, ", Status: %s", zdp_status_name(status));
     if (status == ZBEE_ZDP_STATUS_SUCCESS) {
-        zbee_append_info(tree, pinfo, ", Device: %s = 0x%04x", ep_eui64_to_display(ext_addr), device);
+        zbee_append_info(tree, pinfo, ", Device: %s = 0x%04x", eui64_to_display(wmem_packet_scope(), ext_addr), device);
     }
 
     /* Dump any leftover bytes. */
@@ -844,7 +832,6 @@ dissect_zbee_zdp_rsp_nwk_addr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 void
 dissect_zbee_zdp_rsp_ext_addr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_item  *ti;
     proto_tree  *field_tree = NULL;
     guint       offset = 0;
     guint       i;
@@ -865,8 +852,8 @@ dissect_zbee_zdp_rsp_ext_addr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
         /*idx      =*/ zbee_parse_uint(tree, hf_zbee_zdp_index, tvb, &offset, (int)sizeof(guint8), NULL);
 
         if ((tree) && (assoc)) {
-            ti = proto_tree_add_text(tree, tvb, offset, assoc*(int)sizeof(guint16), "Associated Device List");
-            field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_assoc_device);
+            field_tree = proto_tree_add_subtree(tree, tvb, offset, assoc*(int)sizeof(guint16),
+                    ett_zbee_zdp_assoc_device, NULL, "Associated Device List");
         }
         for (i=0; i<assoc; i++) {
             (void)zbee_parse_uint(field_tree, hf_zbee_zdp_assoc_device, tvb, &offset, (int)sizeof(guint16), NULL);
@@ -875,7 +862,7 @@ dissect_zbee_zdp_rsp_ext_addr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 
     zbee_append_info(tree, pinfo, ", Status: %s", zdp_status_name(status));
     if (status == ZBEE_ZDP_STATUS_SUCCESS) {
-        zbee_append_info(tree, pinfo, ", Device: 0x%04x = %s", device, ep_eui64_to_display(ext_addr));
+        zbee_append_info(tree, pinfo, ", Device: 0x%04x = %s", device, eui64_to_display(wmem_packet_scope(), ext_addr));
     }
 
     /* Dump any leftover bytes. */
@@ -1006,7 +993,6 @@ dissect_zbee_zdp_rsp_simple_desc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 void
 dissect_zbee_zdp_rsp_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_item  *ti;
     proto_tree  *field_tree = NULL;
     guint       offset = 0;
     guint       i;
@@ -1020,8 +1006,8 @@ dissect_zbee_zdp_rsp_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     ep_count = zbee_parse_uint(tree, hf_zbee_zdp_ep_count, tvb, &offset, (int)sizeof(guint8), NULL);
 
     if (tree && ep_count) {
-        ti = proto_tree_add_text(tree, tvb, offset, ep_count*(int)sizeof(guint8), "Active Endpoint List");
-        field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_endpoint);
+        field_tree = proto_tree_add_subtree(tree, tvb, offset, ep_count*(int)sizeof(guint8),
+                    ett_zbee_zdp_endpoint, NULL, "Active Endpoint List");
     }
     for (i=0; i<ep_count; i++) {
         (void)zbee_parse_uint(field_tree, hf_zbee_zdp_endpoint, tvb, &offset, (int)sizeof(guint8), NULL);
@@ -1051,7 +1037,6 @@ dissect_zbee_zdp_rsp_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 void
 dissect_zbee_zdp_rsp_match_desc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_item  *ti;
     proto_tree  *field_tree = NULL;
     guint       offset = 0;
     guint       i;
@@ -1065,8 +1050,8 @@ dissect_zbee_zdp_rsp_match_desc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     ep_count = zbee_parse_uint(tree, hf_zbee_zdp_ep_count, tvb, &offset, (int)sizeof(guint8), NULL);
 
     if (tree && ep_count) {
-        ti = proto_tree_add_text(tree, tvb, offset, ep_count*(int)sizeof(guint8), "Matching Endpoint List");
-        field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_endpoint);
+        field_tree = proto_tree_add_subtree(tree, tvb, offset, ep_count*(int)sizeof(guint8),
+                        ett_zbee_zdp_endpoint, NULL, "Matching Endpoint List");
     }
     for (i=0; i<ep_count; i++) {
         (void)zbee_parse_uint(field_tree, hf_zbee_zdp_endpoint, tvb, &offset, (int)sizeof(guint8), NULL);
@@ -1147,7 +1132,7 @@ dissect_zbee_zdp_rsp_user_desc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     }
     else user_length = 0;
 
-    user        = tvb_get_string(wmem_packet_scope(), tvb, offset, user_length);
+    user        = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, user_length, ENC_ASCII);
     if (tree) {
         proto_tree_add_string(tree, hf_zbee_zdp_user, tvb, offset, user_length, user);
     }
@@ -1532,7 +1517,6 @@ dissect_zbee_zdp_rsp_ext_simple_desc(tvbuff_t *tvb, packet_info *pinfo, proto_tr
 void
 dissect_zbee_zdp_rsp_ext_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-    proto_item  *ti;
     proto_tree  *field_tree = NULL;
     guint       offset = 0;
     guint       i;
@@ -1548,8 +1532,8 @@ dissect_zbee_zdp_rsp_ext_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree
     idx      = zbee_parse_uint(tree, hf_zbee_zdp_index, tvb, &offset, (int)sizeof(guint8), NULL);
 
     if (tree && ep_count) {
-        ti = proto_tree_add_text(tree, tvb, offset, ep_count*(int)sizeof(guint8), "Active Endpoint List");
-        field_tree = proto_item_add_subtree(ti, ett_zbee_zdp_endpoint);
+        field_tree = proto_tree_add_subtree(tree, tvb, offset, ep_count*(int)sizeof(guint8),
+                            ett_zbee_zdp_endpoint, NULL, "Active Endpoint List");
         for (i=idx; (i<ep_count) && tvb_bytes_exist(tvb, offset, (int)sizeof(guint8)); i++) {
             (void)zbee_parse_uint(field_tree, hf_zbee_zdp_endpoint, tvb, &offset, (int)sizeof(guint8), NULL);
         }
@@ -1561,3 +1545,16 @@ dissect_zbee_zdp_rsp_ext_active_ep(tvbuff_t *tvb, packet_info *pinfo, proto_tree
     /* Dump any leftover bytes. */
     zdp_dump_excess(tvb, offset, pinfo, tree);
 } /* dissect_zbee_zdp_rsp_ext_active_ep */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

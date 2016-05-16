@@ -20,7 +20,7 @@
  */
 
 #include "sctp_all_assocs_dialog.h"
-#include "ui_sctp_all_assocs_dialog.h"
+#include <ui_sctp_all_assocs_dialog.h>
 #include "sctp_assoc_analyse_dialog.h"
 
 #include "qt_ui_utils.h"
@@ -31,7 +31,6 @@
 #include <QWidget>
 #include <QDir>
 #include <QFileDialog>
-#include <QIcon>
 #include <QPushButton>
 
 //#include <QDebug>
@@ -42,6 +41,11 @@ SCTPAllAssocsDialog::SCTPAllAssocsDialog(QWidget *parent, capture_file *cf) :
     cap_file_(cf)
 {
     ui->setupUi(this);
+    Qt::WindowFlags flags = Qt::Window | Qt::WindowSystemMenuHint
+            | Qt::WindowMinimizeButtonHint
+            | Qt::WindowMaximizeButtonHint
+            | Qt::WindowCloseButtonHint;
+    this->setWindowFlags(flags);
     sctp_assocs = (sctp_allassocs_info_t *)g_malloc(sizeof(sctp_allassocs_info_t));
     fillTable();
 }
@@ -90,7 +94,7 @@ void SCTPAllAssocsDialog::fillTable()
     ui->setFilterButton->setEnabled(false);
     connect(ui->assocList, SIGNAL(itemSelectionChanged()), this, SLOT(getSelectedItem()));
  }
- 
+
 sctp_assoc_info_t* SCTPAllAssocsDialog::findSelectedAssoc()
 {
     QTableWidgetItem *selection;
@@ -120,8 +124,6 @@ void SCTPAllAssocsDialog::getSelectedItem()
     ui->setFilterButton->setEnabled(true);
     ui->analyseButton->setFocus(Qt::OtherFocusReason);
     selected_assoc = findSelectedAssoc();
-    printf("selection changed assoc now %p with id %d\n",
-           selected_assoc, selected_assoc->assoc_id);
 }
 
 void SCTPAllAssocsDialog::on_analyseButton_clicked()
@@ -129,8 +131,6 @@ void SCTPAllAssocsDialog::on_analyseButton_clicked()
 
     if (!selected_assoc) {
         selected_assoc = findSelectedAssoc();
-        printf("on_analyseButton_clicked found assoc %p with id %d\n",
-               selected_assoc, selected_assoc->assoc_id);
     }
 
     SCTPAssocAnalyseDialog *sctp_analyse = new SCTPAssocAnalyseDialog(this, selected_assoc, cap_file_, this);
@@ -155,13 +155,11 @@ void SCTPAllAssocsDialog::on_setFilterButton_clicked()
 
     if (!selected_assoc){
         selected_assoc = findSelectedAssoc();
-        printf("on_setFilterButton_clicked found assoc %p with id %d\n",
-               selected_assoc, selected_assoc->assoc_id);
     }
 
     QString newFilter = QString("sctp.assoc_index==%1").arg(selected_assoc->assoc_id);
     selected_assoc = NULL;
-    emit filterPackets(newFilter, false); 
+    emit filterPackets(newFilter, false);
 }
 
 /*

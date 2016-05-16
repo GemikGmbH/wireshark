@@ -33,11 +33,9 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
-#include <locale.h>
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -60,17 +58,17 @@
 #include <epan/dissectors/packet-rtp.h>
 #include <epan/rtp_pt.h>
 #include <epan/addr_resolv.h>
-#include <epan/stat_cmd_args.h>
+#include <epan/stat_tap_ui.h>
 #include <epan/strutil.h>
 
-#include "../stat_menu.h"
+#include <epan/stat_groups.h>
 
 #include "ui/util.h"
 #include "ui/alert_box.h"
 #include "ui/last_open_dir.h"
 #include "ui/progress_dlg.h"
 #include "ui/simple_dialog.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 
 #include "ui/gtk/gtkglobals.h"
@@ -80,14 +78,14 @@
 #include "ui/gtk/gui_stat_menu.h"
 #include "ui/gtk/pixmap_save.h"
 #include "ui/gtk/main.h"
-#include "ui/rtp_analysis.h"
 #include "ui/rtp_stream.h"
+#include "ui/tap-rtp-analysis.h"
 #include "ui/gtk/rtp_stream_dlg.h"
 #include "ui/gtk/stock_icons.h"
 
 #ifdef HAVE_LIBPORTAUDIO
+#include "ui/voip_calls.h"
 #include "ui/gtk/graph_analysis.h"
-#include "ui/gtk/voip_calls.h"
 #include "ui/gtk/rtp_player.h"
 #endif /* HAVE_LIBPORTAUDIO */
 
@@ -486,7 +484,7 @@ static int rtp_packet_save_payload(tap_rtp_save_info_t *saveinfo,
 
 /****************************************************************************/
 /* whenever a RTP packet is seen by the tap listener */
-static int
+static gboolean
 rtp_packet(void *user_data_arg, packet_info *pinfo, epan_dissect_t *edt _U_, const void *rtpinfo_arg)
 {
 	user_data_t	       *user_data    = (user_data_t *)user_data_arg;
@@ -495,10 +493,10 @@ rtp_packet(void *user_data_arg, packet_info *pinfo, epan_dissect_t *edt _U_, con
 
 	/* we ignore packets that are not displayed */
 	if (pinfo->fd->flags.passed_dfilter == 0)
-		return 0;
+		return FALSE;
 	/* also ignore RTP Version != 2 */
 	else if (rtpinfo->info_version != 2)
-		return 0;
+		return FALSE;
 	/* is it the forward direction?  */
 	else if (user_data->ssrc_fwd == rtpinfo->info_sync_src
 		 && (CMP_ADDRESS(&(user_data->src_fwd), &(pinfo->src)) == 0)
@@ -550,7 +548,7 @@ rtp_packet(void *user_data_arg, packet_info *pinfo, epan_dissect_t *edt _U_, con
 #endif
 	}
 
-	return 0;
+	return FALSE;
 }
 
 /*
@@ -608,7 +606,7 @@ rtp_packet_add_info(GtkWidget *list, user_data_t * user_data,
 		g_snprintf(color_str, sizeof(color_str), "#ffffbfffbfff");
 	}
 	else if (statinfo->flags & STAT_FLAG_DUP_PKT) {
-		g_snprintf(status, sizeof(status), "Suspected duplicate(MAC address) only delta time calculated");
+		g_snprintf(status, sizeof(status), "Suspected duplicate (MAC address) only delta time calculated");
 		/* color = Yellow; */
 		g_snprintf(color_str, sizeof(color_str), "#ffffffff0000");
 	}
@@ -779,15 +777,15 @@ rtp_packet_save_payload(tap_rtp_save_info_t    *saveinfo,
 		* of the RTP data */
 		data   = rtpinfo->info_data + rtpinfo->info_payload_offset;
 		nchars = fwrite(data, sizeof(unsigned char),
-                                (rtpinfo->info_payload_len - rtpinfo->info_padding_count),
-                                saveinfo->fp);
+				(rtpinfo->info_payload_len - rtpinfo->info_padding_count),
+				saveinfo->fp);
 		if (nchars != (rtpinfo->info_payload_len - rtpinfo->info_padding_count)) {
 			/* Write error or short write */
 			saveinfo->saved = FALSE;
 			saveinfo->error_type = TAP_RTP_FILE_WRITE_ERROR;
 			return 0;
 		}
-		saveinfo->count += (rtpinfo->info_payload_len - rtpinfo->info_padding_count);
+		saveinfo->count += ((int)rtpinfo->info_payload_len - rtpinfo->info_padding_count);
 
 		fflush(saveinfo->fp);
 		saveinfo->saved = TRUE;
@@ -830,7 +828,7 @@ on_destroy(GtkWidget *win _U_, user_data_t *user_data)
 		window_destroy(user_data->dlg.dialog_graph.window);
 
 	/* disable the "switch_page" signal in the dlg, otherwise will be called when the windows
-         *  is destroyed and cause an exception using GTK1*/
+	 *  is destroyed and cause an exception using GTK1*/
 	g_signal_handler_disconnect(user_data->dlg.notebook, user_data->dlg.notebook_signal_id);
 
 	g_free(user_data->f_tempname);
@@ -867,24 +865,32 @@ static void
 dialog_graph_set_title(user_data_t* user_data)
 {
 	char            *title;
+	char *src_fwd_addr, *dst_fwd_addr, *src_rev_addr, *dst_rev_addr;
 
 	if (!user_data->dlg.dialog_graph.window) {
 		return;
 	}
 
+	src_fwd_addr = (char*)address_to_display(NULL, &(user_data->src_fwd));
+	dst_fwd_addr = (char*)address_to_display(NULL, &(user_data->dst_fwd));
+	src_rev_addr = (char*)address_to_display(NULL, &(user_data->src_rev));
+	dst_rev_addr = (char*)address_to_display(NULL, &(user_data->dst_rev));
 	title = g_strdup_printf("RTP Graph Analysis Forward: %s:%u to %s:%u   Reverse: %s:%u to %s:%u",
-			ep_address_to_display(&(user_data->src_fwd)),
+			src_fwd_addr,
 			user_data->port_src_fwd,
-			ep_address_to_display(&(user_data->dst_fwd)),
+			dst_fwd_addr,
 			user_data->port_dst_fwd,
-			ep_address_to_display(&(user_data->src_rev)),
+			src_rev_addr,
 			user_data->port_src_rev,
-			ep_address_to_display(&(user_data->dst_rev)),
+			dst_rev_addr,
 			user_data->port_dst_rev);
 
 	gtk_window_set_title(GTK_WINDOW(user_data->dlg.dialog_graph.window), title);
 	g_free(title);
-
+	wmem_free(NULL, src_fwd_addr);
+	wmem_free(NULL, dst_fwd_addr);
+	wmem_free(NULL, src_rev_addr);
+	wmem_free(NULL, dst_rev_addr);
 }
 
 
@@ -893,6 +899,7 @@ static void
 dialog_graph_reset(user_data_t* user_data)
 {
 	int i, j;
+	char *src_addr, *dst_addr;
 
 	user_data->dlg.dialog_graph.needs_redraw = TRUE;
 	for (i = 0; i < MAX_GRAPHS; i++) {
@@ -911,27 +918,33 @@ dialog_graph_reset(user_data_t* user_data)
 	for (i = 0; i < MAX_GRAPHS; i++) {
 		/* it is forward */
 		if (i < (MAX_GRAPHS/2)) {
+			src_addr = (char*)address_to_display(NULL, &(user_data->src_fwd));
+			dst_addr = (char*)address_to_display(NULL, &(user_data->dst_fwd));
 			g_snprintf(user_data->dlg.dialog_graph.graph[i].title,
 				   sizeof(user_data->dlg.dialog_graph.graph[0].title),
 				   "%s: %s:%u to %s:%u (SSRC=0x%X)",
 				   graph_descr[i],
-				   ep_address_to_display(&(user_data->src_fwd)),
+				   src_addr,
 				   user_data->port_src_fwd,
-				   ep_address_to_display(&(user_data->dst_fwd)),
+				   dst_addr,
 				   user_data->port_dst_fwd,
 				   user_data->ssrc_fwd);
 		/* it is reverse */
 		} else {
+			src_addr = (char*)address_to_display(NULL, &(user_data->src_rev));
+			dst_addr = (char*)address_to_display(NULL, &(user_data->dst_rev));
 			g_snprintf(user_data->dlg.dialog_graph.graph[i].title,
 				   sizeof(user_data->dlg.dialog_graph.graph[0].title),
 				   "%s: %s:%u to %s:%u (SSRC=0x%X)",
 				   graph_descr[i],
-				   ep_address_to_display(&(user_data->src_rev)),
+				   src_addr,
 				   user_data->port_src_rev,
-				   ep_address_to_display(&(user_data->dst_rev)),
+				   dst_addr,
 				   user_data->port_dst_rev,
 				   user_data->ssrc_rev);
 		}
+		wmem_free(NULL, src_addr);
+		wmem_free(NULL, dst_addr);
 	}
 
 	dialog_graph_set_title(user_data);
@@ -1216,8 +1229,8 @@ dialog_graph_draw(user_data_t* user_data)
 		      left_x_border + 0.5,
 		      user_data->dlg.dialog_graph.surface_height-bottom_y_border + 1.5);
 	cairo_line_to(cr,
-                      user_data->dlg.dialog_graph.surface_width - right_x_border + 1.5,
-                      user_data->dlg.dialog_graph.surface_height - bottom_y_border + 1.5);
+		      user_data->dlg.dialog_graph.surface_width - right_x_border + 1.5,
+		      user_data->dlg.dialog_graph.surface_height - bottom_y_border + 1.5);
 	cairo_stroke(cr);
 	cairo_destroy(cr);
 
@@ -1423,7 +1436,7 @@ dialog_graph_draw(user_data_t* user_data)
 				y_pos = draw_height - 1 - (val*draw_height)/max_y + top_y_border;
 			}
 
-			/* dont need to draw anything if the segment
+			/* don't need to draw anything if the segment
 			 * is entirely above the top of the graph
 			 */
 			if ( (prev_y_pos == 0) && (y_pos == 0) ) {
@@ -2060,7 +2073,6 @@ on_refresh_bt_clicked(GtkWidget *bt _U_, user_data_t *user_data)
 static void
 on_player_bt_clicked(GtkButton *button _U_, gpointer user_data _U_)
 {
-	/*rtp_player_init(voip_calls_get_info());*/
 	rtp_player_init(NULL);
 }
 #endif /* HAVE_LIBPORTAUDIO */
@@ -2511,7 +2523,7 @@ copy_file(gchar *dest, gint channels, gint format, user_data_t *user_data)
 		if (nchars != 4)
 			goto copy_file_err;
 		/* total length; it is permitted to set this to 0xffffffff */
-		phton32(pd, -1);
+		phton32(pd, 0xffffffff);
 		nchars = fwrite(pd, 1, 4, to_stream);
 		if (nchars != 4)
 			goto copy_file_err;
@@ -3200,7 +3212,7 @@ draw_stat(user_data_t *user_data)
 		user_data->forward.statinfo.max_delta, user_data->forward.statinfo.max_nr,
 		user_data->forward.statinfo.max_jitter, user_data->forward.statinfo.mean_jitter,
 		user_data->forward.statinfo.max_skew,
-		f_expected, f_expected, f_lost, f_perc,
+		f_total_nr, f_expected, f_lost, f_perc,
 		user_data->forward.statinfo.sequence,
 		f_duration / 1000,
 		f_duration * (f_clock_drift - 1.0),
@@ -3219,7 +3231,7 @@ draw_stat(user_data_t *user_data)
 		user_data->reversed.statinfo.max_delta, user_data->reversed.statinfo.max_nr,
 		user_data->reversed.statinfo.max_jitter, user_data->reversed.statinfo.mean_jitter,
 		user_data->reversed.statinfo.max_skew,
-		r_expected, r_expected, r_lost, r_perc,
+		r_total_nr, r_expected, r_lost, r_perc,
 		user_data->reversed.statinfo.sequence,
 		r_duration / 1000,
 		r_duration * (r_clock_drift - 1.0),
@@ -3531,12 +3543,10 @@ create_rtp_dialog(user_data_t* user_data)
 	GtkWidget *player_bt;
 #endif /* HAVE_LIBPORTAUDIO */
 	GtkWidget *graph_bt;
-	gchar	   label_forward[150];
-	gchar	   label_forward_tree[150];
-	gchar	   label_reverse[150];
-
-	gchar	   str_src[16];
-	gchar	   str_dst[16];
+	gchar	   label_forward[200];
+	gchar	   label_forward_tree[200];
+	gchar	   label_reverse[200];
+	char *src_addr, *dst_addr;
 
 	window = dlg_window_new("Wireshark: RTP Stream Analysis");  /* transient_for top_level */
 	gtk_window_set_default_size(GTK_WINDOW(window), 700, 400);
@@ -3548,26 +3558,27 @@ create_rtp_dialog(user_data_t* user_data)
 	gtk_widget_show(main_vb);
 
 	/* Notebooks... */
-	g_strlcpy(str_src, ep_address_to_display(&(user_data->src_fwd)), sizeof(str_src));
-	g_strlcpy(str_dst, ep_address_to_display(&(user_data->dst_fwd)), sizeof(str_dst));
-
+	src_addr = (char*)address_to_display(NULL, &(user_data->src_fwd));
+	dst_addr = (char*)address_to_display(NULL, &(user_data->dst_fwd));
 	g_snprintf(label_forward, sizeof(label_forward),
 		"Analysing stream from  %s port %u  to  %s port %u   SSRC = 0x%X",
-		str_src, user_data->port_src_fwd, str_dst, user_data->port_dst_fwd, user_data->ssrc_fwd);
+		src_addr, user_data->port_src_fwd, dst_addr, user_data->port_dst_fwd, user_data->ssrc_fwd);
 
 	g_snprintf(label_forward_tree, sizeof(label_forward_tree),
 		"Analysing stream from  %s port %u  to  %s port %u   SSRC = 0x%X \n"
-		"Note many things affects the accurasy of the analysis, use with caution",
-		str_src, user_data->port_src_fwd, str_dst, user_data->port_dst_fwd, user_data->ssrc_fwd);
+		"Note many things affects the accuracy of the analysis, use with caution",
+		src_addr, user_data->port_src_fwd, dst_addr, user_data->port_dst_fwd, user_data->ssrc_fwd);
+	wmem_free(NULL, src_addr);
+	wmem_free(NULL, dst_addr);
 
-
-	g_strlcpy(str_src, ep_address_to_display(&(user_data->src_rev)), sizeof(str_src));
-	g_strlcpy(str_dst, ep_address_to_display(&(user_data->dst_rev)), sizeof(str_dst));
-
+	src_addr = (char*)address_to_display(NULL, &(user_data->src_rev));
+	dst_addr = (char*)address_to_display(NULL, &(user_data->dst_rev));
 	g_snprintf(label_reverse, sizeof(label_reverse),
 		"Analysing stream from  %s port %u  to  %s port %u   SSRC = 0x%X \n"
-		"Note many things affects the accurasy of the analysis, use with caution",
-		str_src, user_data->port_src_rev, str_dst, user_data->port_dst_rev, user_data->ssrc_rev);
+		"Note many things affects the accuracy of the analysis, use with caution",
+		src_addr, user_data->port_src_rev, dst_addr, user_data->port_dst_rev, user_data->ssrc_rev);
+	wmem_free(NULL, src_addr);
+	wmem_free(NULL, dst_addr);
 
 	/* Start a notebook for flipping between sets of changes */
 	notebook = gtk_notebook_new();
@@ -3920,8 +3931,9 @@ rtp_analysis_cb(GtkAction *action _U_, gpointer user_data _U_)
 	guint32	      ssrc_rev	    = 0;
 	unsigned int  version_fwd;
 
-	gchar	      filter_text[256];
+	const gchar  *filter_text = "rtp && rtp.version && rtp.ssrc && (ip || ipv6)";
 	dfilter_t    *sfcode;
+	gchar        *err_msg;
 	capture_file *cf;
 	frame_data   *fdata;
 	GList	     *strinfo_list;
@@ -3931,9 +3943,9 @@ rtp_analysis_cb(GtkAction *action _U_, gpointer user_data _U_)
 	rtp_stream_info_t *strinfo;
 
 	/* Try to compile the filter. */
-	g_strlcpy(filter_text, "rtp && rtp.version && rtp.ssrc && (ip || ipv6)", sizeof(filter_text));
-	if (!dfilter_compile(filter_text, &sfcode)) {
-		simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", dfilter_error_msg);
+	if (!dfilter_compile(filter_text, &sfcode, &err_msg)) {
+		simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+		g_free(err_msg);
 		return;
 	}
 	/* we load the current file into cf variable */
@@ -3986,10 +3998,10 @@ rtp_analysis_cb(GtkAction *action _U_, gpointer user_data _U_)
 	}
 
 	/* Scan for rtpstream */
-	rtpstream_scan();
+	rtpstream_scan(rtpstream_dlg_get_tapinfo(), &cfile, NULL);
 	/* search for reversed direction in the global rtp streams list */
 	nfound = 0;
-	strinfo_list = g_list_first(rtpstream_get_info()->strinfo_list);
+	strinfo_list = g_list_first(rtpstream_dlg_get_tapinfo()->strinfo_list);
 	while (strinfo_list)
 	{
 		strinfo = (rtp_stream_info_t*)(strinfo_list->data);
@@ -4044,8 +4056,30 @@ rtp_analysis_init(const char *dummy _U_, void *userdata _U_)
 }
 
 /****************************************************************************/
+static stat_tap_ui rtp_analysis_ui = {
+	REGISTER_STAT_GROUP_GENERIC,
+	NULL,
+	"rtp",
+	rtp_analysis_init,
+	0,
+	NULL
+};
+
 void
 register_tap_listener_rtp_analysis(void)
 {
-	register_stat_cmd_arg("rtp", rtp_analysis_init, NULL);
+	register_stat_tap_ui(&rtp_analysis_ui, NULL);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

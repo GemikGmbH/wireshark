@@ -30,9 +30,6 @@
 
 #include "config.h"
 
-#include <string.h>
-
-#include <glib.h>
 
 #include <epan/packet.h>
 #include <epan/prefs.h>
@@ -538,13 +535,13 @@ static int dissect_olsr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
   guint16 packet_len;
 
   /* Does this packet have a valid message type at the beginning? */
-  if (tvb_length(tvb) < 4) {
+  if (tvb_captured_length(tvb) < 4) {
     col_add_fstr(pinfo->cinfo, COL_INFO, "OLSR Packet,  Length: %u Bytes (not enough data in packet)",
-          tvb_length(tvb));
+          tvb_captured_length(tvb));
     return 0; /* not enough bytes for the packet length */
   }
   packet_len = tvb_get_ntohs(tvb, 0);
-  if (packet_len > tvb_length(tvb)) {
+  if (packet_len > tvb_reported_length(tvb)) {
     col_add_fstr(pinfo->cinfo, COL_INFO, "OLSR Packet,  Length: %u Bytes (not enough data in packet)", packet_len);
     return 0;
   }
@@ -678,7 +675,7 @@ static int dissect_olsr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
       offset = message_end;
     } /* end while for message alive */
 
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 } /* end Dissecting */
 
 /*-----------Register the Dissector for OLSR--------------*/
@@ -819,7 +816,7 @@ void proto_register_olsr(void) {
 
     { &hf_olsr_netmask,
       { "Netmask", "olsr.netmask",
-        FT_IPv4, BASE_NONE, NULL, 0,
+        FT_IPv4, BASE_NETMASK, NULL, 0,
         NULL, HFILL
       }
     },

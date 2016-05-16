@@ -31,11 +31,9 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
-#include <epan/wmem/wmem.h>
 
 #include "packet-ber.h"
 #include "packet-pkcs1.h"
@@ -61,13 +59,6 @@ static int hf_pkcs1_RSASSA_PSS_params_PDU = -1;   /* RSASSA_PSS_params */
 static int hf_pkcs1_ECParameters_PDU = -1;        /* ECParameters */
 static int hf_pkcs1_modulus = -1;                 /* INTEGER */
 static int hf_pkcs1_publicExponent = -1;          /* INTEGER */
-static int hf_pkcs1_version = -1;                 /* Version */
-static int hf_pkcs1_privateExponent = -1;         /* INTEGER */
-static int hf_pkcs1_prime1 = -1;                  /* INTEGER */
-static int hf_pkcs1_prime2 = -1;                  /* INTEGER */
-static int hf_pkcs1_exponent1 = -1;               /* INTEGER */
-static int hf_pkcs1_exponent2 = -1;               /* INTEGER */
-static int hf_pkcs1_coefficient = -1;             /* INTEGER */
 static int hf_pkcs1_digestAlgorithm = -1;         /* DigestAlgorithmIdentifier */
 static int hf_pkcs1_digest = -1;                  /* Digest */
 static int hf_pkcs1_p = -1;                       /* INTEGER */
@@ -86,14 +77,13 @@ static int hf_pkcs1_r = -1;                       /* INTEGER */
 static int hf_pkcs1_s = -1;                       /* INTEGER */
 
 /*--- End of included file: packet-pkcs1-hf.c ---*/
-#line 46 "../../asn1/pkcs1/packet-pkcs1-template.c"
+#line 44 "../../asn1/pkcs1/packet-pkcs1-template.c"
 
 /* Initialize the subtree pointers */
 
 /*--- Included file: packet-pkcs1-ett.c ---*/
 #line 1 "../../asn1/pkcs1/packet-pkcs1-ett.c"
 static gint ett_pkcs1_RSAPublicKey = -1;
-static gint ett_pkcs1_RSAPrivateKey = -1;
 static gint ett_pkcs1_DigestInfo = -1;
 static gint ett_pkcs1_DSA_Params = -1;
 static gint ett_pkcs1_DomainParameters = -1;
@@ -104,7 +94,7 @@ static gint ett_pkcs1_DSA_Sig_Value = -1;
 static gint ett_pkcs1_ECDSA_Sig_Value = -1;
 
 /*--- End of included file: packet-pkcs1-ett.c ---*/
-#line 49 "../../asn1/pkcs1/packet-pkcs1-template.c"
+#line 47 "../../asn1/pkcs1/packet-pkcs1-template.c"
 
 
 /*--- Included file: packet-pkcs1-fn.c ---*/
@@ -130,38 +120,6 @@ int
 dissect_pkcs1_RSAPublicKey(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    RSAPublicKey_sequence, hf_index, ett_pkcs1_RSAPublicKey);
-
-  return offset;
-}
-
-
-
-static int
-dissect_pkcs1_Version(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
-                                                NULL);
-
-  return offset;
-}
-
-
-static const ber_sequence_t RSAPrivateKey_sequence[] = {
-  { &hf_pkcs1_version       , BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_Version },
-  { &hf_pkcs1_modulus       , BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_INTEGER },
-  { &hf_pkcs1_publicExponent, BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_INTEGER },
-  { &hf_pkcs1_privateExponent, BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_INTEGER },
-  { &hf_pkcs1_prime1        , BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_INTEGER },
-  { &hf_pkcs1_prime2        , BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_INTEGER },
-  { &hf_pkcs1_exponent1     , BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_INTEGER },
-  { &hf_pkcs1_exponent2     , BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_INTEGER },
-  { &hf_pkcs1_coefficient   , BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_pkcs1_INTEGER },
-  { NULL, 0, 0, 0, NULL }
-};
-
-int
-dissect_pkcs1_RSAPrivateKey(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
-                                   RSAPrivateKey_sequence, hf_index, ett_pkcs1_RSAPrivateKey);
 
   return offset;
 }
@@ -341,40 +299,52 @@ dissect_pkcs1_ECParameters(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 
 /*--- PDUs ---*/
 
-static void dissect_DSA_Params_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_DSA_Params_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkcs1_DSA_Params(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkcs1_DSA_Params_PDU);
+  offset = dissect_pkcs1_DSA_Params(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkcs1_DSA_Params_PDU);
+  return offset;
 }
-static void dissect_DomainParameters_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_DomainParameters_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkcs1_DomainParameters(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkcs1_DomainParameters_PDU);
+  offset = dissect_pkcs1_DomainParameters(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkcs1_DomainParameters_PDU);
+  return offset;
 }
-static void dissect_KEA_Params_Id_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_KEA_Params_Id_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkcs1_KEA_Params_Id(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkcs1_KEA_Params_Id_PDU);
+  offset = dissect_pkcs1_KEA_Params_Id(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkcs1_KEA_Params_Id_PDU);
+  return offset;
 }
-static void dissect_HashAlgorithm_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_HashAlgorithm_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkcs1_HashAlgorithm(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkcs1_HashAlgorithm_PDU);
+  offset = dissect_pkcs1_HashAlgorithm(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkcs1_HashAlgorithm_PDU);
+  return offset;
 }
-static void dissect_RSASSA_PSS_params_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_RSASSA_PSS_params_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkcs1_RSASSA_PSS_params(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkcs1_RSASSA_PSS_params_PDU);
+  offset = dissect_pkcs1_RSASSA_PSS_params(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkcs1_RSASSA_PSS_params_PDU);
+  return offset;
 }
-static void dissect_ECParameters_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ECParameters_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkcs1_ECParameters(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkcs1_ECParameters_PDU);
+  offset = dissect_pkcs1_ECParameters(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkcs1_ECParameters_PDU);
+  return offset;
 }
 
 
 /*--- End of included file: packet-pkcs1-fn.c ---*/
-#line 51 "../../asn1/pkcs1/packet-pkcs1-template.c"
+#line 49 "../../asn1/pkcs1/packet-pkcs1-template.c"
 
 /*--- proto_register_pkcs1 ----------------------------------------------*/
 void proto_register_pkcs1(void) {
@@ -414,34 +384,6 @@ void proto_register_pkcs1(void) {
         "INTEGER", HFILL }},
     { &hf_pkcs1_publicExponent,
       { "publicExponent", "pkcs1.publicExponent",
-        FT_INT32, BASE_DEC, NULL, 0,
-        "INTEGER", HFILL }},
-    { &hf_pkcs1_version,
-      { "version", "pkcs1.version",
-        FT_INT32, BASE_DEC, NULL, 0,
-        NULL, HFILL }},
-    { &hf_pkcs1_privateExponent,
-      { "privateExponent", "pkcs1.privateExponent",
-        FT_INT32, BASE_DEC, NULL, 0,
-        "INTEGER", HFILL }},
-    { &hf_pkcs1_prime1,
-      { "prime1", "pkcs1.prime1",
-        FT_INT32, BASE_DEC, NULL, 0,
-        "INTEGER", HFILL }},
-    { &hf_pkcs1_prime2,
-      { "prime2", "pkcs1.prime2",
-        FT_INT32, BASE_DEC, NULL, 0,
-        "INTEGER", HFILL }},
-    { &hf_pkcs1_exponent1,
-      { "exponent1", "pkcs1.exponent1",
-        FT_INT32, BASE_DEC, NULL, 0,
-        "INTEGER", HFILL }},
-    { &hf_pkcs1_exponent2,
-      { "exponent2", "pkcs1.exponent2",
-        FT_INT32, BASE_DEC, NULL, 0,
-        "INTEGER", HFILL }},
-    { &hf_pkcs1_coefficient,
-      { "coefficient", "pkcs1.coefficient",
         FT_INT32, BASE_DEC, NULL, 0,
         "INTEGER", HFILL }},
     { &hf_pkcs1_digestAlgorithm,
@@ -510,7 +452,7 @@ void proto_register_pkcs1(void) {
         "INTEGER", HFILL }},
 
 /*--- End of included file: packet-pkcs1-hfarr.c ---*/
-#line 58 "../../asn1/pkcs1/packet-pkcs1-template.c"
+#line 56 "../../asn1/pkcs1/packet-pkcs1-template.c"
   };
 
   /* List of subtrees */
@@ -519,7 +461,6 @@ void proto_register_pkcs1(void) {
 /*--- Included file: packet-pkcs1-ettarr.c ---*/
 #line 1 "../../asn1/pkcs1/packet-pkcs1-ettarr.c"
     &ett_pkcs1_RSAPublicKey,
-    &ett_pkcs1_RSAPrivateKey,
     &ett_pkcs1_DigestInfo,
     &ett_pkcs1_DSA_Params,
     &ett_pkcs1_DomainParameters,
@@ -530,7 +471,7 @@ void proto_register_pkcs1(void) {
     &ett_pkcs1_ECDSA_Sig_Value,
 
 /*--- End of included file: packet-pkcs1-ettarr.c ---*/
-#line 63 "../../asn1/pkcs1/packet-pkcs1-template.c"
+#line 61 "../../asn1/pkcs1/packet-pkcs1-template.c"
   };
 
   /* Register protocol */
@@ -548,18 +489,18 @@ void proto_reg_handoff_pkcs1(void) {
 
 /*--- Included file: packet-pkcs1-dis-tab.c ---*/
 #line 1 "../../asn1/pkcs1/packet-pkcs1-dis-tab.c"
-  register_ber_oid_dissector("1.2.840.10040.4.1", dissect_DSA_Params_PDU, proto_pkcs1, "id-dsa");
-  register_ber_oid_dissector("1.2.840.10046.2.1", dissect_DomainParameters_PDU, proto_pkcs1, "dhpublicnumber");
-  register_ber_oid_dissector("2.16.840.1.101.2.1.1.22", dissect_KEA_Params_Id_PDU, proto_pkcs1, "id-keyExchangeAlgorithm");
-  register_ber_oid_dissector("1.2.840.10045.2.1", dissect_ECParameters_PDU, proto_pkcs1, "id-ecPublicKey");
-  register_ber_oid_dissector("1.3.132.1.12", dissect_ECParameters_PDU, proto_pkcs1, "id-ecDH");
-  register_ber_oid_dissector("1.2.840.10045.2.13", dissect_ECParameters_PDU, proto_pkcs1, "id-ecMQV");
-  register_ber_oid_dissector("1.2.840.113549.1.1.10", dissect_RSASSA_PSS_params_PDU, proto_pkcs1, "id-RSASSA-PSS");
-  register_ber_oid_dissector("1.2.840.113549.1.1.8", dissect_HashAlgorithm_PDU, proto_pkcs1, "id-mgf1");
+  new_register_ber_oid_dissector("1.2.840.10040.4.1", dissect_DSA_Params_PDU, proto_pkcs1, "id-dsa");
+  new_register_ber_oid_dissector("1.2.840.10046.2.1", dissect_DomainParameters_PDU, proto_pkcs1, "dhpublicnumber");
+  new_register_ber_oid_dissector("2.16.840.1.101.2.1.1.22", dissect_KEA_Params_Id_PDU, proto_pkcs1, "id-keyExchangeAlgorithm");
+  new_register_ber_oid_dissector("1.2.840.10045.2.1", dissect_ECParameters_PDU, proto_pkcs1, "id-ecPublicKey");
+  new_register_ber_oid_dissector("1.3.132.1.12", dissect_ECParameters_PDU, proto_pkcs1, "id-ecDH");
+  new_register_ber_oid_dissector("1.2.840.10045.2.13", dissect_ECParameters_PDU, proto_pkcs1, "id-ecMQV");
+  new_register_ber_oid_dissector("1.2.840.113549.1.1.10", dissect_RSASSA_PSS_params_PDU, proto_pkcs1, "id-RSASSA-PSS");
+  new_register_ber_oid_dissector("1.2.840.113549.1.1.8", dissect_HashAlgorithm_PDU, proto_pkcs1, "id-mgf1");
 
 
 /*--- End of included file: packet-pkcs1-dis-tab.c ---*/
-#line 78 "../../asn1/pkcs1/packet-pkcs1-template.c"
+#line 76 "../../asn1/pkcs1/packet-pkcs1-template.c"
 
 	register_ber_oid_dissector("1.2.840.113549.2.2", dissect_ber_oid_NULL_callback, proto_pkcs1, "md2");
 	register_ber_oid_dissector("1.2.840.113549.2.4", dissect_ber_oid_NULL_callback, proto_pkcs1, "md4");
@@ -574,8 +515,14 @@ void proto_reg_handoff_pkcs1(void) {
 	/* these two are not from RFC2313  but pulled in from
  	   http://www.alvestrand.no/objectid/1.2.840.113549.1.1.html
 	*/
-	register_ber_oid_dissector("1.2.840.113549.1.1.5", dissect_ber_oid_NULL_callback, proto_pkcs1, "shaWithRSAEncryption");
+	register_ber_oid_dissector("1.2.840.113549.1.1.5", dissect_ber_oid_NULL_callback, proto_pkcs1, "sha1WithRSAEncryption");
 	register_ber_oid_dissector("1.2.840.113549.1.1.6", dissect_ber_oid_NULL_callback, proto_pkcs1, "rsaOAEPEncryptionSET");
+
+	/* these sha2 algorithms are from RFC3447 */
+	register_ber_oid_dissector("1.2.840.113549.1.1.11", dissect_ber_oid_NULL_callback, proto_pkcs1, "sha256WithRSAEncryption");
+	register_ber_oid_dissector("1.2.840.113549.1.1.12", dissect_ber_oid_NULL_callback, proto_pkcs1, "sha384WithRSAEncryption");
+	register_ber_oid_dissector("1.2.840.113549.1.1.13", dissect_ber_oid_NULL_callback, proto_pkcs1, "sha512WithRSAEncryption");
+	register_ber_oid_dissector("1.2.840.113549.1.1.14", dissect_ber_oid_NULL_callback, proto_pkcs1, "sha224WithRSAEncryption");
 
 	oid_add_from_string("secp192r1","1.2.840.10045.3.1.1");
 	oid_add_from_string("sect163k1","1.3.132.0.1");
@@ -589,12 +536,15 @@ void proto_reg_handoff_pkcs1(void) {
 	oid_add_from_string("secp384r1","1.3.132.0.34");
 	oid_add_from_string("sect409k1","1.3.132.0.36");
 	oid_add_from_string("sect409r1","1.3.132.0.37");
-	oid_add_from_string("sect521r1","1.3.132.0.35")
-;	oid_add_from_string("sect571k1","1.3.132.0.38");
+	oid_add_from_string("secp521r1","1.3.132.0.35");
+	oid_add_from_string("sect571k1","1.3.132.0.38");
 	oid_add_from_string("sect571r1","1.3.132.0.39");
 
 	/* sha2 family, see RFC3447 and http://www.oid-info.com/get/2.16.840.1.101.3.4.2 */
 	oid_add_from_string("sha256", "2.16.840.1.101.3.4.2.1");
+	oid_add_from_string("sha384", "2.16.840.1.101.3.4.2.2");
+	oid_add_from_string("sha512", "2.16.840.1.101.3.4.2.3");
+	oid_add_from_string("sha224", "2.16.840.1.101.3.4.2.4");
 
 }
 

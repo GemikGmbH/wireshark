@@ -39,14 +39,27 @@ void macros_post_update(void) {
 }
 
 void macros_init (void) {
-	void* dfmuat;
+	uat_t* dfmuat;
 	dfilter_macro_get_uat(&dfmuat);
-	((uat_t*)dfmuat)->post_update_cb = macros_post_update;
+	dfmuat->post_update_cb = macros_post_update;
 }
 
 void macros_dialog_cb(GtkWidget *w _U_, gpointer data _U_) {
-	void* dfmuat;
+	uat_t* dfmuat;
 	dfilter_macro_get_uat(&dfmuat);
 	uat_window_cb(NULL,dfmuat);
 }
 
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

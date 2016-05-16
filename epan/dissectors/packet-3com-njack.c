@@ -51,8 +51,6 @@ Specs:
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 
 /* Forward declarations */
@@ -383,7 +381,6 @@ dissect_tlvs(tvbuff_t *tvb, proto_tree *njack_tree, guint32 offset)
 {
 	guint8      tlv_type;
 	guint8      tlv_length;
-	proto_item *tlv_item;
 	proto_item *tlv_tree;
 
 	for (;;) {
@@ -402,14 +399,12 @@ dissect_tlvs(tvbuff_t *tvb, proto_tree *njack_tree, guint32 offset)
 			continue;
 		}
 		tlv_length = tvb_get_guint8(tvb, offset + 1);
-		tlv_item = proto_tree_add_text(njack_tree, tvb,
-			offset, tlv_length + 2,
+		tlv_tree = proto_tree_add_subtree_format(njack_tree, tvb,
+			offset, tlv_length + 2, ett_njack_tlv_header, NULL,
 			"T %02x, L %02x: %s",
 			tlv_type,
 			tlv_length,
 			val_to_str_ext_const(tlv_type, &njack_cmd_vals_ext, "Unknown"));
-		tlv_tree = proto_item_add_subtree(tlv_item,
-			ett_njack_tlv_header);
 		proto_tree_add_item(tlv_tree, hf_njack_tlv_type,
 			tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
@@ -532,8 +527,8 @@ verify_password(tvbuff_t *tvb, const char *password)
 	md5_state_t   md_ctx;
 	md5_byte_t   *digest;
 
-	workbuffer=ep_alloc(32);
-	digest=ep_alloc(16);
+	workbuffer=wmem_alloc(wmem_packet_scope(), 32);
+	digest=wmem_alloc(wmem_packet_scope(), 16);
 
 	length = tvb_get_ntohs(tvb, 6);
 	packetdata = tvb_get_ptr(tvb, 0, length);
@@ -644,7 +639,7 @@ static gboolean
 test_njack(tvbuff_t *tvb)
 {
 	/* We need at least 'NJ200' + 1 Byte packet type */
-	if ( (tvb_length(tvb) < 6) ||
+	if ( (tvb_captured_length(tvb) < 6) ||
 	     (tvb_strncaseeql(tvb, 0, "NJ200", 5) != 0) ) {
 		return FALSE;
 	}
@@ -794,7 +789,19 @@ proto_reg_handoff_njack(void)
 	dissector_add_uint("udp.port", PORT_NJACK_SWITCH, njack_handle);
 	/* dissector_add_uint("tcp.port", PORT_NJACK_SWITCH, njack_handle); */
 
-	heur_dissector_add("udp", dissect_njack_heur, proto_njack);
-	/* heur_dissector_add("tcp", dissect_njack_heur, proto_njack); */
+	heur_dissector_add("udp", dissect_njack_heur, "NJACK over UDP", "njack_udp", proto_njack, HEURISTIC_ENABLE);
+	heur_dissector_add("tcp", dissect_njack_heur, "NJACK over TCP", "njack_tcp", proto_njack, HEURISTIC_DISABLE);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

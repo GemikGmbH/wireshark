@@ -1,5 +1,12 @@
 /* packet-ieee8023.c
- * Routine for dissecting 802.3 (as opposed to D/I/X Ethernet) packets.
+ * Routine for dissecting Ethernet packets with a length field (as opposed
+ * to a type field).
+ *
+ * The name "ieee8023" is historical, dating back to when IEEE Std 802.3
+ * had only a length field and expected all packets to have an 802.2
+ * header following the MAC header.  Since IEEE 802.3y-1997, 802.3
+ * supports either a type field or a length field, so it's no longer
+ * correct to refer to "802.3" vs. "D/I/X" or vs. "Ethernet II" frames.
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -22,7 +29,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/expert.h>
@@ -38,16 +44,15 @@ static dissector_handle_t ccsds_handle;
 
 void
 dissect_802_3(volatile int length, gboolean is_802_2, tvbuff_t *tvb,
-	      int offset_after_length, packet_info *pinfo, proto_tree *tree,
-	      proto_tree *fh_tree, int length_id, int trailer_id, expert_field* ei_len,
-	      int fcs_len)
+              int offset_after_length, packet_info *pinfo, proto_tree *tree,
+              proto_tree *fh_tree, int length_id, int trailer_id, expert_field* ei_len,
+              int fcs_len)
 {
-  proto_item		*length_it;
-  tvbuff_t		*volatile next_tvb = NULL;
-  tvbuff_t		*trailer_tvb = NULL;
-  const char		*saved_proto;
-  gint			captured_length, reported_length;
-  void			*pd_save;
+  proto_item *length_it;
+  tvbuff_t   *volatile next_tvb = NULL;
+  tvbuff_t   *trailer_tvb = NULL;
+  const char *saved_proto;
+  gint        captured_length, reported_length;
 
   length_it = proto_tree_add_uint(fh_tree, length_id, tvb,
                                   offset_after_length - 2, 2, length);
@@ -70,7 +75,7 @@ dissect_802_3(volatile int length, gboolean is_802_2, tvbuff_t *tvb,
   }
 
   /* Give the next dissector only 'length' number of bytes. */
-  captured_length = tvb_length_remaining(tvb, offset_after_length);
+  captured_length = tvb_captured_length_remaining(tvb, offset_after_length);
   if (captured_length > length)
     captured_length = length;
   next_tvb = tvb_new_subset(tvb, offset_after_length, captured_length, length);
@@ -81,7 +86,6 @@ dissect_802_3(volatile int length, gboolean is_802_2, tvbuff_t *tvb,
      exception was thrown, we can still put in an item for
      the trailer. */
   saved_proto = pinfo->current_proto;
-  pd_save = pinfo->private_data;
   TRY {
     if (is_802_2)
       call_dissector(llc_handle, next_tvb, pinfo, tree);
@@ -104,17 +108,13 @@ dissect_802_3(volatile int length, gboolean is_802_2, tvbuff_t *tvb,
        Just show the exception and then drive on to show the trailer,
        after noting that a dissector was found and restoring the
        protocol value that was in effect before we called the subdissector. */
-    pinfo->private_data = pd_save;
-
     show_exception(next_tvb, pinfo, tree, EXCEPT_CODE, GET_MESSAGE);
   }
   ENDTRY;
 
   /* Restore the protocol value, so that any exception thrown by
      tvb_new_subset_remaining() refers to the protocol for which
-     this is a trailer, and restore the private_data structure in
-     case one of the called dissectors modified it. */
-  pinfo->private_data = pd_save;
+     this is a trailer. */
   pinfo->current_proto = saved_proto;
 
   /* Construct a tvbuff for the trailer; if the trailer is past the
@@ -135,3 +135,16 @@ proto_reg_handoff_ieee802_3(void)
   llc_handle = find_dissector("llc");
   ccsds_handle = find_dissector("ccsds");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

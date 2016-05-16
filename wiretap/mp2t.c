@@ -42,8 +42,8 @@
 
 #define MP2T_SYNC_BYTE      0x47
 #define MP2T_SIZE           188
-#define MP2T_QAM256_BITRATE 38810700    /* bits per second */
 #define MP2T_QAM64_BITRATE  26970350    /* bits per second */
+#define MP2T_PCR_CLOCK      27000000    /* cycles per second - 27MHz */
 
 /* we try to detect trailing data up to 40 bytes after each packet */
 #define TRAILER_LEN_MAX 40
@@ -55,6 +55,7 @@
 
 typedef struct {
     int start_offset;
+    guint64 bitrate;
     /* length of trailing data (e.g. FEC) that's appended after each packet */
     guint8  trailer_len;
 } mp2t_filetype_t;
@@ -65,19 +66,10 @@ mp2t_read_packet(mp2t_filetype_t *mp2t, FILE_T fh, gint64 offset,
                  gchar **err_info)
 {
     guint64 tmp;
-    int bytes_read;
 
-    buffer_assure_space(buf, MP2T_SIZE);
-    errno = WTAP_ERR_CANT_READ;
-    bytes_read = file_read(buffer_start_ptr(buf), MP2T_SIZE, fh);
-    if (MP2T_SIZE != bytes_read) {
-        *err = file_error(fh, err_info);
-        /* bytes_read==0 is end of file, not a short read */
-        if (bytes_read>0 && *err == 0) {
-            *err = WTAP_ERR_SHORT_READ;
-        }
+    ws_buffer_assure_space(buf, MP2T_SIZE);
+    if (!wtap_read_bytes_or_eof(fh, ws_buffer_start_ptr(buf), MP2T_SIZE, err, err_info))
         return FALSE;
-    }
 
     phdr->rec_type = REC_TYPE_PACKET;
 
@@ -88,15 +80,19 @@ mp2t_read_packet(mp2t_filetype_t *mp2t, FILE_T fh, gint64 offset,
      * Every packet in an MPEG2-TS stream is has a fixed size of
      * MP2T_SIZE plus the number of trailer bytes.
      *
-     * The bitrate is constant, so the time offset, from the beginning
-     * of the stream, of a given packet is the packet offset, in bits,
-     * divided by the bitrate.
+     * We assume that the bits in the transport stream are supplied at
+     * a constant rate; is that guaranteed by all media that use
+     * MPEG2-TS?  If so, the time offset, from the beginning of the
+     * stream, of a given packet is the packet offset, in bits, divided
+     * by the bitrate.
      *
-     * It would be really cool to be able to configure the bitrate...
+     * It would be really cool to be able to configure the bitrate, in
+     * case our attempt to guess it from the PCRs of one of the programs
+     * doesn't get the right answer.
      */
-    tmp = ((guint64)(offset - mp2t->start_offset) * 8);	/* offset, in bits */
-    phdr->ts.secs = (time_t)(tmp / MP2T_QAM256_BITRATE);
-    phdr->ts.nsecs = (int)((tmp % MP2T_QAM256_BITRATE) * 1000000000 / MP2T_QAM256_BITRATE);
+    tmp = ((guint64)(offset - mp2t->start_offset) * 8); /* offset, in bits */
+    phdr->ts.secs = (time_t)(tmp / mp2t->bitrate);
+    phdr->ts.nsecs = (int)((tmp % mp2t->bitrate) * 1000000000 / mp2t->bitrate);
 
     phdr->caplen = MP2T_SIZE;
     phdr->len = MP2T_SIZE;
@@ -149,26 +145,162 @@ mp2t_seek_read(wtap *wth, gint64 seek_off, struct wtap_pkthdr *phdr,
     return TRUE;
 }
 
-int
+static guint64
+mp2t_read_pcr(guint8 *buffer)
+{
+    guint64 base;
+    guint64 ext;
+
+    base = pntoh40(buffer);
+    base >>= 7;
+
+    ext = pntoh16(&buffer[4]);
+    ext &= 0x01ff;
+
+    return (base * 300 + ext);
+}
+
+/*
+ * XXX - should we limit this to a fixed number of frames, rather than
+ * potentially scanning the entire file for a PCR?
+ */
+static gboolean
+mp2t_find_next_pcr(wtap *wth, guint8 trailer_len,
+        int *err, gchar **err_info, guint32 *idx, guint64 *pcr, guint16 *pid)
+{
+    guint8 buffer[MP2T_SIZE+TRAILER_LEN_MAX];
+    gboolean found;
+    guint8 afc;
+
+    found = FALSE;
+    while (FALSE == found) {
+        (*idx)++;
+        if (!wtap_read_bytes_or_eof(
+                    wth->fh, buffer, MP2T_SIZE+trailer_len, err, err_info)) {
+            /* Read error, short read, or EOF */
+            return FALSE;
+        }
+
+        if (MP2T_SYNC_BYTE != buffer[0]) {
+            continue;
+        }
+
+        /* Read out the AFC value. */
+        afc = 3 & (buffer[3] >> 4);
+        if (afc < 2) {
+            continue;
+        }
+
+        /* Check the length. */
+        if (buffer[4] < 7) {
+            continue;
+        }
+
+        /* Check that there is the PCR flag. */
+        if (0x10 != (0x10 & buffer[5])) {
+            continue;
+        }
+
+        /* We have a PCR value! */
+        *pcr = mp2t_read_pcr(&buffer[6]);
+        *pid = 0x01ff & pntoh16(&buffer[1]);
+        found = TRUE;
+    }
+
+    return TRUE;
+}
+
+static wtap_open_return_val
+mp2t_bits_per_second(wtap *wth, gint first, guint8 trailer_len,
+        guint64 *bitrate, int *err, gchar **err_info)
+{
+    guint32 pn1, pn2;
+    guint64 pcr1, pcr2;
+    guint16 pid1, pid2;
+    guint32 idx;
+    guint64 pcr_delta, bits_passed;
+
+    /* Find the first PCR + PID.
+     * Then find another PCR in that PID.
+     * Take the difference and that's our bitrate.
+     * All the different PCRs in different PIDs 'should' be the same.
+     *
+     * XXX - is this assuming that the time stamps in the PCRs correspond
+     * to the time scale of the underlying transport stream?
+     */
+
+    if (first<0)
+        return WTAP_OPEN_ERROR;
+    idx = (guint32)first;
+
+    if (!mp2t_find_next_pcr(wth, trailer_len, err, err_info, &idx, &pcr1, &pid1)) {
+        /* Read error, short read, or EOF */
+        if (*err == WTAP_ERR_SHORT_READ)
+            return WTAP_OPEN_NOT_MINE;    /* not a full frame */
+        if (*err != 0)
+            return WTAP_OPEN_ERROR;
+
+        /* We don't have any PCRs, so we can't guess the bit rate.
+         * Default to something reasonable.
+         */
+        *bitrate = MP2T_QAM64_BITRATE;
+        return WTAP_OPEN_MINE;
+    }
+
+    pn1 = idx;
+    pn2 = pn1;
+
+    while (pn1 == pn2) {
+        if (!mp2t_find_next_pcr(wth, trailer_len, err, err_info, &idx, &pcr2, &pid2)) {
+            /* Read error, short read, or EOF */
+            if (*err == WTAP_ERR_SHORT_READ)
+                return WTAP_OPEN_NOT_MINE;    /* not a full frame */
+            if (*err != 0)
+                return WTAP_OPEN_ERROR;
+
+            /* We don't have two PCRs for the same PID, so we can't guess
+             * the bit rate.
+             * Default to something reasonable.
+             */
+            *bitrate = MP2T_QAM64_BITRATE;
+            return WTAP_OPEN_MINE;
+        }
+
+        if (pid1 == pid2) {
+            pn2 = idx;
+        }
+    }
+
+    if (pcr2 <= pcr1) {
+        /* The PCRs for that PID didn't go forward; treat that as an
+         * indication that this isn't an MPEG-2 TS.
+         */
+        return WTAP_OPEN_NOT_MINE;
+    }
+    pcr_delta = pcr2 - pcr1;
+    bits_passed = MP2T_SIZE * (pn2 - pn1) * 8;
+
+    *bitrate = ((MP2T_PCR_CLOCK * bits_passed) / pcr_delta);
+    return WTAP_OPEN_MINE;
+}
+
+wtap_open_return_val
 mp2t_open(wtap *wth, int *err, gchar **err_info)
 {
-    int bytes_read;
     guint8 buffer[MP2T_SIZE+TRAILER_LEN_MAX];
     guint8 trailer_len = 0;
     guint sync_steps = 0;
     int i;
     int first;
     mp2t_filetype_t *mp2t;
+    wtap_open_return_val status;
+    guint64 bitrate;
 
 
-    errno = WTAP_ERR_CANT_READ;
-    bytes_read = file_read(buffer, MP2T_SIZE, wth->fh);
-
-    if (MP2T_SIZE != bytes_read) {
-        *err = file_error(wth->fh, err_info);
-        if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-            return -1;
-        return 0;
+    if (!wtap_read_bytes(wth->fh, buffer, MP2T_SIZE, err, err_info)) {
+        if (*err != WTAP_ERR_SHORT_READ)
+            return WTAP_OPEN_ERROR;
+        return WTAP_OPEN_NOT_MINE;
     }
 
     first = -1;
@@ -179,21 +311,19 @@ mp2t_open(wtap *wth, int *err, gchar **err_info)
         }
     }
     if (-1 == first) {
-        return 0; /* wrong file type - not an mpeg2 ts file */
+        return WTAP_OPEN_NOT_MINE; /* wrong file type - not an mpeg2 ts file */
     }
 
     if (-1 == file_seek(wth->fh, first, SEEK_SET, err)) {
-        return -1;
+        return WTAP_OPEN_ERROR;
     }
+
     /* read some packets and make sure they all start with a sync byte */
     do {
-       bytes_read = file_read(buffer, MP2T_SIZE+trailer_len, wth->fh);
-       if (bytes_read < 0) {
-          *err = file_error(wth->fh, err_info);
-          return -1;  /* read error */
-       }
-       if (bytes_read < MP2T_SIZE+trailer_len) {
-	  if(sync_steps<2) return 0; /* wrong file type - not an mpeg2 ts file */
+       if (!wtap_read_bytes(wth->fh, buffer, MP2T_SIZE+trailer_len, err, err_info)) {
+          if (*err != WTAP_ERR_SHORT_READ)
+            return WTAP_OPEN_ERROR;  /* read error */
+          if(sync_steps<2) return WTAP_OPEN_NOT_MINE; /* wrong file type - not an mpeg2 ts file */
           break;  /* end of file, that's ok if we're still in sync */
        }
        if (buffer[0] == MP2T_SYNC_BYTE) {
@@ -206,14 +336,14 @@ mp2t_open(wtap *wth, int *err, gchar **err_info)
            /* if we've already detected a trailer field, we must remain in sync
               another mismatch means we have no mpeg2 ts file */
            if (trailer_len>0)
-               return 0;
+               return WTAP_OPEN_NOT_MINE;
 
            /* check if a trailer is appended to the packet */
            for (i=0; i<TRAILER_LEN_MAX; i++) {
                if (buffer[i] == MP2T_SYNC_BYTE) {
                    trailer_len = i;
                    if (-1 == file_seek(wth->fh, first, SEEK_SET, err)) {
-                       return -1;
+                       return WTAP_OPEN_ERROR;
                    }
                    sync_steps = 0;
                    break;
@@ -221,29 +351,56 @@ mp2t_open(wtap *wth, int *err, gchar **err_info)
            }
            /* no sync byte found in the vicinity, this is no mpeg2 ts file */
            if (i==TRAILER_LEN_MAX)
-               return 0;
+               return WTAP_OPEN_NOT_MINE;
        }
     } while (sync_steps < SYNC_STEPS);
 
     if (-1 == file_seek(wth->fh, first, SEEK_SET, err)) {
-        return -1;
+        return WTAP_OPEN_ERROR;
+    }
+
+    /* Ensure there is a valid bitrate */
+    status = mp2t_bits_per_second(wth, first, trailer_len,
+            &bitrate, err, err_info);
+    if (status != WTAP_OPEN_MINE) {
+        return status;
+    }
+
+    if (bitrate == 0) {
+        /* Prevent an eventual divide by zero */
+        return WTAP_OPEN_ERROR;
+    }
+
+    if (-1 == file_seek(wth->fh, first, SEEK_SET, err)) {
+        return WTAP_OPEN_ERROR;
     }
 
     wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_MPEG_2_TS;
     wth->file_encap = WTAP_ENCAP_MPEG_2_TS;
-    wth->tsprecision = WTAP_FILE_TSPREC_NSEC;
+    wth->file_tsprec = WTAP_TSPREC_NSEC;
     wth->subtype_read = mp2t_read;
     wth->subtype_seek_read = mp2t_seek_read;
     wth->snapshot_length = 0;
 
     mp2t = (mp2t_filetype_t*) g_malloc(sizeof(mp2t_filetype_t));
-    if (NULL == mp2t) {
-        return -1;
-    }
 
     wth->priv = mp2t;
     mp2t->start_offset = first;
     mp2t->trailer_len = trailer_len;
+    mp2t->bitrate = bitrate;
 
-    return 1;
+    return WTAP_OPEN_MINE;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

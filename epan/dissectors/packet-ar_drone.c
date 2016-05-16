@@ -26,8 +26,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
@@ -124,7 +122,7 @@ dissect_ar_drone(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
     char       *command;
     guint32     dword;
 
-    if (tvb_length(tvb) < 4)
+    if (tvb_captured_length(tvb) < 4)
         return 0;
 
     /* Make sure the packet we're dissecting is a ar_drone packet
@@ -423,7 +421,7 @@ dissect_ar_drone(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
                 expert_add_info(pinfo, sub_item, &ei_NO_CR);
                 return offset;
             }
-            proto_tree_add_text(sub_tree, tvb, master_offset, length, "(Sets the reference for the horizontal plane)");
+            proto_item_append_text(sub_item, " (Sets the reference for the horizontal plane)");
             proto_tree_add_item(sub_tree, hf_FTRIM_seq, tvb, offset, length, ENC_ASCII|ENC_NA);
             offset += (length + 1);
         } else if (!strncmp(command, "AT*CONFIG", 9))
@@ -798,7 +796,7 @@ proto_reg_handoff_ar_drone(void)
     {
         ar_drone_handle = new_create_dissector_handle(dissect_ar_drone, proto_ar_drone);
 
-        heur_dissector_add("udp", dissect_ar_drone, proto_ar_drone);
+        heur_dissector_add("udp", dissect_ar_drone, "AR Drone over UDP", "ar_drone_udp", proto_ar_drone, HEURISTIC_ENABLE);
 
         initialized = TRUE;
     }

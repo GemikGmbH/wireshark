@@ -34,9 +34,6 @@
 
 #include "config.h"
 
-#include <string.h>
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include "packet-tcp.h"
@@ -72,14 +69,14 @@ static header_field_info *hfi_tali = NULL;
 #define TALI_HFI_INIT HFI_INIT(proto_tali)
 
 /* Initialize the protocol and registered fields */
-static header_field_info hfi_tali_sync_indicator TALI_HFI_INIT =
-      { "Sync", "tali.sync", FT_STRING, BASE_NONE, NULL, 0x00, "TALI SYNC", HFILL };
+static header_field_info hfi_tali_sync_indicator TALI_HFI_INIT = {
+  "Sync", "tali.sync", FT_STRING, BASE_NONE, NULL, 0x00, "TALI SYNC", HFILL };
 
-static header_field_info hfi_tali_opcode_indicator TALI_HFI_INIT =
-      { "Opcode", "tali.opcode", FT_STRING, BASE_NONE, NULL, 0x00, "TALI Operation Code", HFILL };
+static header_field_info hfi_tali_opcode_indicator TALI_HFI_INIT = {
+  "Opcode", "tali.opcode", FT_STRING, BASE_NONE, NULL, 0x00, "TALI Operation Code", HFILL };
 
-static header_field_info hfi_tali_length_indicator TALI_HFI_INIT =
-      { "Length", "tali.msu_length", FT_UINT16, BASE_DEC, NULL, 0x00, "TALI MSU Length", HFILL };
+static header_field_info hfi_tali_length_indicator TALI_HFI_INIT = {
+  "Length", "tali.msu_length", FT_UINT16, BASE_DEC, NULL, 0x00, "TALI MSU Length", HFILL };
 
 static dissector_table_t tali_dissector_table;
 
@@ -90,7 +87,7 @@ static gboolean tali_desegment = TRUE;
 
 /* Code to actually dissect the packets */
 static guint
-get_tali_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_tali_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
   guint16 length;
 
@@ -135,7 +132,7 @@ dissect_tali_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
     }
   }
 
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 static int
@@ -143,22 +140,22 @@ dissect_tali(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
   tcp_dissect_pdus(tvb, pinfo, tree, tali_desegment, TALI_HEADER_LENGTH,
                    get_tali_pdu_len, dissect_tali_pdu, data);
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 /*
  * A 'heuristic dissector' that attemtps to establish whether we have
  * a TALI MSU here.
  * Only works when:
- *	the fixed header is there
- *	it is a 'well-known' operation
+ *   the fixed header is there
+ *   it is a 'well-known' operation
  */
 static gboolean
 dissect_tali_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
   char opcode[TALI_OPCODE_LENGTH]; /* TALI opcode */
 
-  if (tvb_reported_length(tvb) < TALI_HEADER_LENGTH)	/* Mandatory header	*/
+  if (tvb_reported_length(tvb) < TALI_HEADER_LENGTH)   /* Mandatory header */
     return FALSE;
 
   if (tvb_strneql(tvb, 0, TALI_SYNC, TALI_SYNC_LENGTH) != 0)
@@ -217,17 +214,29 @@ proto_register_tali(void)
 
   tali_module = prefs_register_protocol(proto_tali, NULL);
   prefs_register_bool_preference(tali_module, "reassemble",
-	"Reassemble TALI messages spanning multiple TCP segments",
-	"Whether the TALI dissector should reassemble messages spanning multiple TCP segments."
-	" To use this option, you must also enable \"Allow subdissectors to reassemble TCP streams\" in the TCP protocol settings.",
+        "Reassemble TALI messages spanning multiple TCP segments",
+        "Whether the TALI dissector should reassemble messages spanning multiple TCP segments."
+        " To use this option, you must also enable \"Allow subdissectors to reassemble TCP streams\" in the TCP protocol settings.",
     &tali_desegment);
 }
 
 void
 proto_reg_handoff_tali(void)
 {
-  heur_dissector_add("tcp", dissect_tali_heur, hfi_tali->id);
+  heur_dissector_add("tcp", dissect_tali_heur, "Tali over TCP", "tali_tcp", hfi_tali->id, HEURISTIC_ENABLE);
 
   data_handle = find_dissector("data");
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

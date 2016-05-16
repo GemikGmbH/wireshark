@@ -39,6 +39,7 @@
 #define YYTEXT_POINTER 1
 
 #define HAVE_PLUGINS		1
+#define HAVE_EXTCAP		1
 
 /* #undef HAVE_SA_LEN */
 
@@ -47,10 +48,15 @@
 
 @HAVE_LIBPCAP@
 @HAVE_PCAP_BREAKLOOP@
-@HAVE_PCAP_FINDALLDEVS@
 @HAVE_PCAP_DATALINK_NAME_TO_VAL@
-@HAVE_PCAP_DATALINK_VAL_TO_NAME@
+
+/* Always true in WinPcap, even without pcap_capture(). */
+/* Define to 1 if the capture buffer size can be set. */
+#define CAN_SET_CAPTURE_BUFFER_SIZE 1
+
 @HAVE_PCAP_DATALINK_VAL_TO_DESCRIPTION@
+@HAVE_PCAP_DATALINK_VAL_TO_NAME@
+@HAVE_PCAP_FINDALLDEVS@
 
 @HAVE_PCAP_LIST_DATALINKS@
 @HAVE_PCAP_FREE_DATALINKS@
@@ -85,17 +91,17 @@
  */
 #define WS_MSVC_NORETURN	__declspec(noreturn)
 
-/* Define if you have the gethostbyname2 function.  */
-/* #undef HAVE_GETHOSTBYNAME2 */
+/* Define if you have the floorl function. */
+#define HAVE_FLOORL 1
+
+/* Define if you have the getaddrinfo function.  */
+#define HAVE_GETADDRINFO 1
 
 /* Define if you have the getprotobynumber function.  */
 /* #undef HAVE_GETPROTOBYNUMBER */
 
 /* Define if you have the <arpa/inet.h> header file.  */
 /* #undef HAVE_ARPA_INET_H */
-
-/* Define if you have the <direct.h> header file.  */
-#define HAVE_DIRECT_H 1
 
 /* Define if you have the <fcntl.h> header file.  */
 #define HAVE_FCNTL_H 1
@@ -117,12 +123,6 @@
 
 /* Define if you have the <snmp/version.h> header file.  */
 /* #undef HAVE_SNMP_VERSION_H */
-
-/* Define if you have the <stdarg.h> header file.  */
-#define HAVE_STDARG_H 1
-
-/* Define if you have the <stddef.h> header file.  */
-/* #undef HAVE_STDDEF_H */
 
 /* Define if you have the <sys/ioctl.h> header file.  */
 /* #undef HAVE_SYS_IOCTL_H */
@@ -178,9 +178,6 @@
 #define ADNS_JGAA_WIN32 1
 #endif
 
-/* Define to use the Nettle library */
-@HAVE_NETTLE@
-
 /* Define to use the gnutls library */
 @HAVE_LIBGNUTLS@
 
@@ -195,10 +192,6 @@
 
 /* Define to use Lua */
 @HAVE_LUA@
-@HAVE_LUA@
-
-/* Define to use Python */
-@HAVE_PYTHON@
 
 /* Define to use Portaudio library */
 @HAVE_LIBPORTAUDIO@
@@ -223,9 +216,10 @@
 /* Define to have ntddndis.h */
 @HAVE_NTDDNDIS_H@
 
-/* #undef HAVE_INET_ATON_H */
+/* Define if you have the strptime function. */
+/* #undef HAVE_STRPTIME 1 */
+
 #define NEED_INET_V6DEFS_H  1
-#define NEED_STRPTIME_H     1
 
 #ifndef WIN32
 #define WIN32			1
@@ -237,13 +231,11 @@
 #define _U_
 
 /* Visual C 9 (2008), Visual C 10 (2010) and Visual C 11 (2012) and Visual C 12 (2013) need these prototypes */
-/* XXX: Can we use MSC_VER >= 1500 ?? */
-#if _MSC_VER == 1500 || _MSC_VER == 1600 || _MSC_VER == 1700 || _MSC_VER == 1800
-#define NTDDI_VERSION NTDDI_WIN2K
-#define _WIN32_WINNT _WIN32_WINNT_WIN2K
+#if _MSC_VER >= 1500
+#define NTDDI_VERSION NTDDI_WINXPSP3
+#define _WIN32_WINNT _WIN32_WINNT_WINXP
 #endif
 
-#define strncasecmp		strnicmp
 #define popen			_popen
 #define pclose			_pclose
 
@@ -260,6 +252,8 @@
 #define VERSION_MAJOR @VERSION_MAJOR@
 #define VERSION_MINOR @VERSION_MINOR@
 #define VERSION_MICRO @VERSION_MICRO@
+
+#define VERSION_FLAVOR "@VERSION_FLAVOR@"
 
 /* We shouldn't need this under Windows but we'll define it anyway. */
 #define HTML_VIEWER "mozilla"
@@ -281,3 +275,6 @@
 #if !defined(QT_VERSION) || !defined(_SSIZE_T_DEFINED)
 typedef int ssize_t;
 #endif
+
+/* to use define _ws_mempbrk_sse42 if available (checked with cpuinfo)  */
+#define HAVE_SSE4_2 1

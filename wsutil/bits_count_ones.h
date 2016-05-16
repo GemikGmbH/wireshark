@@ -37,15 +37,15 @@
  */
 
 static inline int
-ws_count_ones(const guint32 x)
+ws_count_ones(const guint64 x)
 {
-	int bits = x;
+	guint64 bits = x;
 
-	bits = bits - ((bits >> 1) & 0x55555555);
-	bits = (bits & 0x33333333) + ((bits >> 2) & 0x33333333);
-	bits = (bits + (bits >> 4)) & 0x0F0F0F0F;
+	bits = bits - ((bits >> 1) & G_GUINT64_CONSTANT(0x5555555555555555));
+	bits = (bits & G_GUINT64_CONSTANT(0x3333333333333333)) + ((bits >> 2) & G_GUINT64_CONSTANT(0x3333333333333333));
+	bits = (bits + (bits >> 4)) & G_GUINT64_CONSTANT(0x0F0F0F0F0F0F0F0F);
 
-	return (bits * 0x01010101) >> 24;
+	return (int)((bits * G_GUINT64_CONSTANT(0x0101010101010101)) >> 56);
 }
 
 #endif /* __WSUTIL_BITS_COUNT_ONES_H__ */

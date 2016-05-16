@@ -108,7 +108,7 @@ void *
 wmem_tree_lookup32_le(wmem_tree_t *tree, guint32 key);
 
 /** case insensitive strings as keys */
-#define WMEM_TREE_STRING_NOCASE			0x00000001
+#define WMEM_TREE_STRING_NOCASE                 0x00000001
 /** Insert a new value under a string key. Like wmem_tree_insert32 but where the
  * key is a null-terminated string instead of a guint32. You may pass
  * WMEM_TREE_STRING_NOCASE to the flags argument in order to make it store the
@@ -127,6 +127,13 @@ wmem_tree_insert_string(wmem_tree_t *tree, const gchar* key, void *data,
 WS_DLL_PUBLIC
 void *
 wmem_tree_lookup_string(wmem_tree_t* tree, const gchar* key, guint32 flags);
+
+/** Remove the value under a string key.  This is not really a remove, but the
+ * value is set to NULL so that wmem_tree_lookup_string not will find it.
+ * See wmem_tree_insert_string for an explanation of flags. */
+WS_DLL_PUBLIC
+void *
+wmem_tree_remove_string(wmem_tree_t* tree, const gchar* key, guint32 flags);
 
 typedef struct _wmem_tree_key_t {
     guint32 length;    /**< length in guint32 words */
@@ -159,14 +166,14 @@ typedef struct _wmem_tree_key_t {
  * The NFS dissector handles this by providing a guint32 containing the length
  * as the very first item in this vector :
  *
- *			wmem_tree_key_t fhkey[3];
+ *                      wmem_tree_key_t fhkey[3];
  *
- *			fhlen=nns->fh_length;
- *			fhkey[0].length=1;
- *			fhkey[0].key=&fhlen;
- *			fhkey[1].length=fhlen/4;
- *			fhkey[1].key=nns->fh;
- *			fhkey[2].length=0;
+ *                      fhlen=nns->fh_length;
+ *                      fhkey[0].length=1;
+ *                      fhkey[0].key=&fhlen;
+ *                      fhkey[1].length=fhlen/4;
+ *                      fhkey[1].key=nns->fh;
+ *                      fhkey[2].length=0;
  */
 WS_DLL_PUBLIC
 void
@@ -197,7 +204,7 @@ wmem_tree_lookup32_array_le(wmem_tree_t *tree, wmem_tree_key_t *key);
  * the value of the node, userdata is whatever was passed to the traversal
  * function. If the function returns TRUE the traversal will end prematurely.
  */
-typedef gboolean (*wmem_foreach_func)(void *value, void *userdata);
+typedef gboolean (*wmem_foreach_func)(const void *key, void *value, void *userdata);
 
 /** Traverse the tree and call callback(value, userdata) for each value found.
  * Returns TRUE if the traversal was ended prematurely by the callback.

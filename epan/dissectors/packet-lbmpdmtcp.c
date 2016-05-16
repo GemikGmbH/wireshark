@@ -23,14 +23,11 @@
  */
 
 #include "config.h"
-#include <glib.h>
+
 #include <epan/packet.h>
-#include <epan/strutil.h>
 #include <epan/prefs.h>
-#include <epan/dissectors/packet-tcp.h>
 #include <epan/uat.h>
-#include <epan/address.h>
-#include <epan/conversation.h>
+#include "packet-tcp.h"
 #include "packet-lbm.h"
 
 void proto_register_lbmpdm_tcp(void);
@@ -103,9 +100,9 @@ static lbmtcp_transport_t * lbmtcp_transport_add(const address * address1, guint
         return (entry);
     }
     entry = wmem_new(wmem_file_scope(), lbmtcp_transport_t);
-    SE_COPY_ADDRESS(&(entry->addr1), address1);
+    WMEM_COPY_ADDRESS(wmem_file_scope(), &(entry->addr1), address1);
     entry->port1 = port1;
-    SE_COPY_ADDRESS(&(entry->addr2), address2);
+    WMEM_COPY_ADDRESS(wmem_file_scope(), &(entry->addr2), address2);
     entry->port2 = port2;
     lbmtcp_order_key(entry);
     entry->channel = lbm_channel_assign(LBM_CHANNEL_TCP);
@@ -156,13 +153,14 @@ static uat_field_t lbmpdm_tcp_tag_array[] =
 /*----------------------------------------------------------------------------*/
 /* UAT callback functions.                                                    */
 /*----------------------------------------------------------------------------*/
-static void lbmpdm_tcp_tag_update_cb(void * record, const char * * error_string)
+static gboolean lbmpdm_tcp_tag_update_cb(void * record, char * * error_string)
 {
     lbmpdm_tcp_tag_entry_t * tag = (lbmpdm_tcp_tag_entry_t *)record;
 
     if (tag->name == NULL)
     {
         *error_string = g_strdup_printf("Tag name can't be empty");
+        return FALSE;
     }
     else
     {
@@ -170,8 +168,10 @@ static void lbmpdm_tcp_tag_update_cb(void * record, const char * * error_string)
         if (tag->name[0] == 0)
         {
             *error_string = g_strdup_printf("Tag name can't be empty");
+            return FALSE;
         }
     }
+    return TRUE;
 }
 
 static void * lbmpdm_tcp_tag_copy_cb(void * destination, const void * source, size_t length _U_)
@@ -246,7 +246,8 @@ static int ett_lbmpdm_tcp = -1;
 static int hf_lbmpdm_tcp_tag = -1;
 static int hf_lbmpdm_tcp_channel = -1;
 
-static guint get_lbmpdm_tcp_pdu_length(packet_info * pinfo _U_, tvbuff_t * tvb, int offset)
+static guint get_lbmpdm_tcp_pdu_length(packet_info * pinfo _U_, tvbuff_t * tvb,
+                                       int offset, void *data _U_)
 {
     int encoding;
     int packet_len = 0;
@@ -438,8 +439,8 @@ void proto_reg_handoff_lbmpdm_tcp(void)
     if (!already_registered)
     {
         lbmpdm_tcp_dissector_handle = create_dissector_handle(dissect_lbmpdm_tcp, lbmpdm_tcp_protocol_handle);
-        dissector_add_handle("tcp.port", lbmpdm_tcp_dissector_handle); /* for "decode as" */
-        heur_dissector_add("tcp", test_lbmpdm_tcp_packet, lbmpdm_tcp_protocol_handle);
+        dissector_add_for_decode_as("tcp.port", lbmpdm_tcp_dissector_handle);
+        heur_dissector_add("tcp", test_lbmpdm_tcp_packet, "LBMPDM over TCP", "lbmpdm_tcp", lbmpdm_tcp_protocol_handle, HEURISTIC_ENABLE);
     }
 
     /* Make sure the port low is <= the port high. If not, don't change them. */
@@ -459,10 +460,10 @@ void proto_reg_handoff_lbmpdm_tcp(void)
  *
  * Local variables:
  * c-basic-offset: 4
- * tab-width: 4
+ * tab-width: 8
  * indent-tabs-mode: nil
  * End:
  *
- * vi: set shiftwidth=4 tabstop=4 expandtab:
- * :indentSize=4:tabSize=4:noTabs=true:
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
  */

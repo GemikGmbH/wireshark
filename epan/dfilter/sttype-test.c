@@ -96,6 +96,7 @@ num_operands(test_op_t op)
 		case TEST_OP_BITWISE_AND:
 		case TEST_OP_CONTAINS:
 		case TEST_OP_MATCHES:
+		case TEST_OP_IN:
 			return 2;
 	}
 	g_assert_not_reached();
@@ -174,3 +175,16 @@ sttype_register_test(void)
 
 	sttype_register(&test_type);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

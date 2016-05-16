@@ -24,14 +24,17 @@
 #ifndef LBM_LBTRU_TRANSPORT_DIALOG_H
 #define LBM_LBTRU_TRANSPORT_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
 #include "cfile.h"
 #include <epan/packet_info.h>
 #include <QDialog>
-#include <QTreeWidgetItem>
+
+class QHeaderView;
+class QMenu;
+class QTreeWidgetItem;
 
 namespace Ui
 {

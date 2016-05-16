@@ -25,7 +25,7 @@
 /*
  * Documentation that formed the basis of the packet decoding:
  * https://github.com/matthiasbock/OpenSkype/wiki/Skype's-UDP-Format
- * For additional information see: http://wiki.wireshark.org/Skype
+ * For additional information see: https://wiki.wireshark.org/Skype
  *
  *  TODO:
  *  - Authentication
@@ -40,8 +40,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <epan/wmem/wmem.h>
 #include <epan/packet.h>
 #include <epan/conversation.h>
 
@@ -134,7 +132,7 @@ dissect_skype_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	/* XXX: Just until we know how to decode skype over tcp */
 	packet_type = 255;
 
-	packet_length = tvb_length(tvb);
+	packet_length = tvb_captured_length(tvb);
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, PROTO_SHORT_NAME);
 	col_add_str(pinfo->cinfo, COL_INFO, val_to_str(packet_type,
@@ -189,7 +187,7 @@ dissect_skype_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	packet_type = tvb_get_guint8(tvb, 2) & SKYPE_SOM_TYPE_MASK;
 	packet_unk = (tvb_get_guint8(tvb, 2) & SKYPE_SOM_UNK_MASK) >> 4;
 
-	packet_length = tvb_length(tvb);
+	packet_length = tvb_captured_length(tvb);
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, PROTO_SHORT_NAME);
 	col_add_str(pinfo->cinfo, COL_INFO, val_to_str(packet_type,
@@ -208,9 +206,9 @@ dissect_skype_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			ENC_BIG_ENDIAN);
 		offset += 2;
 		proto_tree_add_item(skype_tree, hf_skype_som_unk, tvb, offset, 1,
-			ENC_NA);
+			ENC_BIG_ENDIAN);
 		proto_tree_add_item(skype_tree, hf_skype_som_type, tvb, offset, 1,
-			ENC_NA);
+			ENC_BIG_ENDIAN);
 		offset += 1;
 
 		/* Body dissection */
@@ -234,7 +232,7 @@ dissect_skype_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			break;
 		case SKYPE_TYPE_FFR:
 			proto_tree_add_item(skype_tree, hf_skype_ffr_num, tvb, offset, 1,
-				ENC_NA);
+				ENC_BIG_ENDIAN);
 			offset += 1;
 			proto_tree_add_item(skype_tree, hf_skype_ffr_unk1, tvb, offset, 4,
 				ENC_BIG_ENDIAN);
@@ -289,12 +287,11 @@ dissect_skype_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	return offset;
 }
 
-#if SKYPE_HEUR
 static gboolean
 test_skype_udp(tvbuff_t *tvb)
 {
 	/* Minimum of 3 bytes, check for valid message type */
-	guint length = tvb_length(tvb);
+	guint length = tvb_captured_length(tvb);
 	guint8 type = tvb_get_guint8(tvb, 2) & 0xF;
 	if ( length >= 3 &&
 		    ( type == 0   ||
@@ -323,7 +320,6 @@ dissect_skype_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *da
 	}
 	return TRUE;
 }
-#endif
 
 static int
 dissect_skype_static(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
@@ -334,7 +330,7 @@ dissect_skype_static(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
 	 */
 	if (pinfo->ptype == PT_UDP) {
 		return dissect_skype_udp(tvb, pinfo, tree);
-	} else if (pinfo->ptype == PT_UDP) {
+	} else if (pinfo->ptype == PT_TCP) {
 		return dissect_skype_tcp(tvb, pinfo, tree);
 	}
 	return 0;
@@ -448,12 +444,22 @@ proto_reg_handoff_skype(void)
 	dissector_handle_t skype_handle;
 
 	skype_handle = new_create_dissector_handle(dissect_skype_static, proto_skype);
-	dissector_add_handle("tcp.port", skype_handle);
-	dissector_add_handle("udp.port", skype_handle);
-#if SKYPE_HEUR
-	heur_dissector_add("tcp", dissect_skype_heur, proto_skype);
-	heur_dissector_add("udp", dissect_skype_heur, proto_skype);
-#endif
+	dissector_add_for_decode_as("tcp.port", skype_handle);
+	dissector_add_for_decode_as("udp.port", skype_handle);
 
+	heur_dissector_add("tcp", dissect_skype_heur, "Skype over TCP", "skype_tcp", proto_skype, HEURISTIC_DISABLE);
+	heur_dissector_add("udp", dissect_skype_heur, "Skype over UDP", "skype_udp", proto_skype, HEURISTIC_DISABLE);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

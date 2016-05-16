@@ -20,8 +20,16 @@
  */
 
 #include "sctp_graph_byte_dialog.h"
-#include "ui_sctp_graph_byte_dialog.h"
+#include <ui_sctp_graph_byte_dialog.h>
 
+#include <file.h>
+#include <math.h>
+#include <epan/dissectors/packet-sctp.h>
+#include "epan/packet.h"
+
+#include "ui/tap-sctp-analysis.h"
+
+#include "qcustomplot.h"
 #include "sctp_graph_dialog.h"
 #include "sctp_assoc_analyse_dialog.h"
 
@@ -36,6 +44,11 @@ SCTPGraphByteDialog::SCTPGraphByteDialog(QWidget *parent, sctp_assoc_info_t *ass
     if (!selected_assoc) {
         selected_assoc = SCTPAssocAnalyseDialog::findAssocForPacket(cap_file_);
     }
+    Qt::WindowFlags flags = Qt::Window | Qt::WindowSystemMenuHint
+            | Qt::WindowMinimizeButtonHint
+            | Qt::WindowMaximizeButtonHint
+            | Qt::WindowCloseButtonHint;
+    this->setWindowFlags(flags);
     this->setWindowTitle(QString(tr("SCTP Data and Adv. Rec. Window over Time: %1 Port1 %2 Port2 %3")).arg(cf_get_display_name(cap_file_)).arg(selected_assoc->port1).arg(selected_assoc->port2));
     if ((direction == 1 && selected_assoc->n_array_tsn1 == 0) || (direction == 2 && selected_assoc->n_array_tsn2 == 0)) {
         QMessageBox msgBox;
@@ -77,8 +90,12 @@ void SCTPGraphByteDialog::drawBytesGraph()
         while (tlist)
         {
             type = ((struct chunk_header *)tlist->data)->type;
-            if (type == SCTP_DATA_CHUNK_ID) {
+            if (type == SCTP_DATA_CHUNK_ID || type == SCTP_I_DATA_CHUNK_ID) {
                 length = g_ntohs(((struct data_chunk_header *)tlist->data)->length);
+                if (type == SCTP_DATA_CHUNK_ID)
+                    length -= DATA_CHUNK_HEADER_LENGTH;
+                else
+                    length -= I_DATA_CHUNK_HEADER_LENGTH;
                 sumBytes += length;
                 yb.append(sumBytes);
                 xb.append(tsn->secs + tsn->usecs/1000000.0);

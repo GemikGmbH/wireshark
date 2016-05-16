@@ -29,7 +29,6 @@
 #include <wiretap/wtap.h>
 #include <epan/frame_data.h>
 #include <epan/packet.h>
-#include <epan/emem.h>
 #include <epan/wmem/wmem.h>
 #include <epan/timestamp.h>
 #include <epan/packet_info.h>
@@ -67,27 +66,29 @@ p_compare(gconstpointer a, gconstpointer b)
 }
 
 void
-p_add_proto_data(wmem_allocator_t *scope, struct _packet_info* pinfo, int proto, guint32 key, void *proto_data)
+p_add_proto_data(wmem_allocator_t *tmp_scope, struct _packet_info* pinfo, int proto, guint32 key, void *proto_data)
 {
   frame_proto_data *p1;
   GSList** proto_list;
+  wmem_allocator_t *scope;
 
-  if (scope == pinfo->pool) {
-    p1 = (frame_proto_data *)wmem_alloc(scope, sizeof(frame_proto_data));
+  if (tmp_scope == pinfo->pool) {
+    scope = tmp_scope;
     proto_list = &pinfo->proto_data;
   } else {
-    p1 = (frame_proto_data *)wmem_alloc(wmem_file_scope(), sizeof(frame_proto_data));
+    scope = wmem_file_scope();
     proto_list = &pinfo->fd->pfd;
   }
+
+  p1 = (frame_proto_data *)wmem_alloc(scope, sizeof(frame_proto_data));
 
   p1->proto = proto;
   p1->key = key;
   p1->proto_data = proto_data;
 
   /* Add it to the GSLIST */
-  *proto_list = g_slist_insert_sorted(*proto_list,
-                    (gpointer *)p1,
-                    p_compare);
+  *proto_list = g_slist_prepend(*proto_list,
+                    (gpointer *)p1);
 }
 
 void *
@@ -150,7 +151,7 @@ p_get_proto_name_and_key(wmem_allocator_t *scope, struct _packet_info* pinfo, gu
     temp = (frame_proto_data*)g_slist_nth_data(pinfo->fd->pfd, pfd_index);
   }
 
-  return ep_strdup_printf("[%s, key %u]",proto_get_protocol_name(temp->proto), temp->key);
+  return wmem_strdup_printf(wmem_packet_scope(),"[%s, key %u]",proto_get_protocol_name(temp->proto), temp->key);
 }
 
 #define COMPARE_FRAME_NUM()     ((fdata1->num < fdata2->num) ? -1 : \
@@ -309,6 +310,7 @@ frame_data_init(frame_data *fdata, guint32 num,
   fdata->flags.has_ts = (phdr->presence_flags & WTAP_HAS_TS) ? 1 : 0;
   fdata->flags.has_phdr_comment = (phdr->opt_comment != NULL);
   fdata->flags.has_user_comment = 0;
+  fdata->tsprec = (gint16)phdr->pkt_tsprec;
   fdata->color_filter = NULL;
   fdata->abs_ts.secs = phdr->ts.secs;
   fdata->abs_ts.nsecs = phdr->ts.nsecs;
@@ -356,7 +358,7 @@ frame_data_set_after_dissect(frame_data *fdata,
 {
   /* This frame either passed the display filter list or is marked as
      a time reference frame.  All time reference frames are displayed
-     even if they dont pass the display filter */
+     even if they don't pass the display filter */
   if(fdata->flags.ref_time){
     /* if this was a TIME REF frame we should reset the cul bytes field */
     *cum_bytes = fdata->pkt_len;
@@ -372,6 +374,7 @@ void
 frame_data_reset(frame_data *fdata)
 {
   fdata->flags.visited = 0;
+  fdata->subnum = 0;
 
   if (fdata->pfd) {
     g_slist_free(fdata->pfd);

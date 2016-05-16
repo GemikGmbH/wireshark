@@ -181,7 +181,7 @@ fi
 
 SOURCE=${SOURCE-$HOME/Source/gtk}
 CAIROCVSROOT=${CAIROCVSROOT-:pserver:anoncvs@cvs.freedesktop.org:/cvs/cairo}
-WIRESHARKSVNURL="http://anonsvn.wireshark.org/wireshark/trunk
+WIRESHARKSVNURL="https://anonsvn.wireshark.org/wireshark/trunk
 GNOMESVNURL=${GNOMESVNURL-https://svn.gnome.org/svn}
 
 if [ x$1 = xrun ]; then
@@ -208,7 +208,7 @@ MORE_MODULES="libIDL ORBit2 gconf"
 function print_usage
 {
     echo
-    echo "GTK+ on Mac OS X build script version $version."
+    echo "GTK+ on OS X build script version $version."
     echo
     echo "Usage:"
     echo "`basename $0` [bootstrap|[shell]|run <cmd>|build [<modules>]], modules are:"
@@ -653,6 +653,3 @@ fi
 
 process_modules
 echo "Done."
-
-
-

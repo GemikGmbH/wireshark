@@ -25,8 +25,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 
 void proto_register_yhoo(void);
@@ -186,7 +184,7 @@ dissect_yhoo(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
 	}
 
 	/* get at least a full packet structure */
-	if ( tvb_length(tvb) < YAHOO_RAWPACKET_LEN ) {
+	if ( tvb_captured_length(tvb) < YAHOO_RAWPACKET_LEN ) {
 		/* Not enough data captured; maybe it is a Yahoo
 		   Messenger packet, but it contains too little data to
 		   tell. */
@@ -288,7 +286,7 @@ proto_register_yhoo(void)
 		{ &hf_yhoo_version, {
 				"Version", "yhoo.version", FT_STRING, BASE_NONE,
 				NULL, 0, "Packet version identifier", HFILL }},
-        };
+	};
 	static gint *ett[] = {
 		&ett_yhoo,
 	};
@@ -311,5 +309,18 @@ proto_reg_handoff_yhoo(void)
 	 * Just register as a heuristic TCP dissector, and reject stuff
 	 * not to or from that port.
 	 */
-	heur_dissector_add("tcp", dissect_yhoo, proto_yhoo);
+	heur_dissector_add("tcp", dissect_yhoo, "Yahoo Messenger over TCP", "yhoo_tcp", proto_yhoo, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

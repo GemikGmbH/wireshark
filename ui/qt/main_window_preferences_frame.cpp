@@ -19,10 +19,15 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include "wireshark_application.h"
 #include "main_window_preferences_frame.h"
-#include "ui_main_window_preferences_frame.h"
+#include "qt_ui_utils.h"
+
+#include <ui_main_window_preferences_frame.h>
+#include "ui/language.h"
 
 #include <epan/prefs-int.h>
+#include <wsutil/filesystem.h>
 
 #include <QFileDialog>
 #include <QDebug>
@@ -45,7 +50,6 @@ MainWindowPreferencesFrame::MainWindowPreferencesFrame(QWidget *parent) :
     pref_auto_scroll_percentage_ = prefFromPrefPtr(&prefs.gui_auto_scroll_percentage);
     pref_toolbar_main_style_ = prefFromPrefPtr(&prefs.gui_toolbar_main_style);
     pref_toolbar_filter_style_ = prefFromPrefPtr(&prefs.gui_toolbar_filter_style);
-    pref_qt_language_ = prefFromPrefPtr(&prefs.gui_qt_language);
 
     QStyleOption style_opt;
     QString indent_ss = QString(
@@ -64,6 +68,44 @@ MainWindowPreferencesFrame::MainWindowPreferencesFrame(QWidget *parent) :
     ui->maxFilterLineEdit->setMaximumWidth(num_entry_width);
     ui->maxRecentLineEdit->setMaximumWidth(num_entry_width);
     ui->autoScrollPercentageLineEdit->setMaximumWidth(num_entry_width);
+
+    QString globalLanguagesPath(QString(get_datafile_dir()) + "/languages/");
+    QString userLanguagesPath(gchar_free_to_qstring(get_persconffile_path("languages/", FALSE)));
+
+
+
+    QStringList filenames = QDir(":/i18n/").entryList(QStringList("wireshark_*.qm"));
+    filenames += QDir(globalLanguagesPath).entryList(QStringList("wireshark_*.qm"));
+    filenames += QDir(userLanguagesPath).entryList(QStringList("wireshark_*.qm"));
+
+    for (int i = 0; i < filenames.size(); i += 1) {
+        QString locale;
+        locale = filenames[i];
+        locale.truncate(locale.lastIndexOf('.'));
+        locale.remove(0, locale.indexOf('_') + 1);
+
+        QString lang = QLocale::languageToString(QLocale(locale).language());
+        QIcon ico = QIcon();
+        if (QFile::exists(QString(":/languages/%1.svg").arg(locale)))
+            ico.addFile(QString(":/languages/%1.svg").arg(locale));
+        if (QFile::exists(globalLanguagesPath + locale + ".svg"))
+            ico.addFile(globalLanguagesPath + locale + ".svg");
+        if (QFile::exists(userLanguagesPath + locale + ".svg"))
+            ico.addFile(userLanguagesPath + locale + ".svg");
+
+        ui->languageComboBox->addItem(ico, lang, locale);
+    }
+
+    ui->languageComboBox->setItemData(0, "system");
+    ui->languageComboBox->model()->sort(0);
+
+    for (int i = 0; i < ui->languageComboBox->count(); i += 1) {
+        if (QString(language) == ui->languageComboBox->itemData(i).toString()) {
+            ui->languageComboBox->setCurrentIndex(i);
+            break;
+        }
+    }
+
 }
 
 MainWindowPreferencesFrame::~MainWindowPreferencesFrame()
@@ -71,9 +113,8 @@ MainWindowPreferencesFrame::~MainWindowPreferencesFrame()
     delete ui;
 }
 
-void MainWindowPreferencesFrame::showEvent(QShowEvent *evt)
+void MainWindowPreferencesFrame::showEvent(QShowEvent *)
 {
-    Q_UNUSED(evt);
     updateWidgets();
 }
 
@@ -97,12 +138,18 @@ void MainWindowPreferencesFrame::updateWidgets()
     ui->maxFilterLineEdit->setText(QString::number(pref_recent_df_entries_max_->stashed_val.uint));
     ui->maxRecentLineEdit->setText(QString::number(pref_recent_files_count_max_->stashed_val.uint));
 
+    ui->confirmUnsavedCheckBox->setChecked(pref_ask_unsaved_->stashed_val.boolval);
     ui->autoScrollCheckBox->setChecked(pref_auto_scroll_on_expand_->stashed_val.boolval);
     ui->autoScrollPercentageLineEdit->setText(QString::number(pref_auto_scroll_on_expand_->stashed_val.uint));
 
     ui->mainToolbarComboBox->setCurrentIndex(pref_toolbar_main_style_->stashed_val.enumval);
-    ui->filterToolbarComboBox->setCurrentIndex(pref_toolbar_filter_style_->stashed_val.enumval);
-    ui->languageComboBox->setCurrentIndex(pref_qt_language_->stashed_val.enumval);
+
+    for (int i = 0; i < ui->languageComboBox->count(); i += 1) {
+        if (QString(language) == ui->languageComboBox->itemData(i).toString()) {
+            ui->languageComboBox->setCurrentIndex(i);
+            break;
+        }
+    }
 }
 
 void MainWindowPreferencesFrame::on_geometryCheckBox_toggled(bool checked)
@@ -129,7 +176,7 @@ void MainWindowPreferencesFrame::on_foStyleSpecifiedRadioButton_toggled(bool che
 void MainWindowPreferencesFrame::on_foStyleSpecifiedLineEdit_textEdited(const QString &new_dir)
 {
     g_free(pref_fileopen_dir_->stashed_val.string);
-    pref_fileopen_dir_->stashed_val.string = g_strdup(new_dir.toUtf8().constData());
+    pref_fileopen_dir_->stashed_val.string = qstring_strdup(new_dir);
     pref_fileopen_style_->stashed_val.enumval = FO_STYLE_SPECIFIED;
     updateWidgets();
 }
@@ -142,7 +189,7 @@ void MainWindowPreferencesFrame::on_foStyleSpecifiedPushButton_clicked()
 
     ui->foStyleSpecifiedLineEdit->setText(specified_dir);
     g_free(pref_fileopen_dir_->stashed_val.string);
-    pref_fileopen_dir_->stashed_val.string = g_strdup(specified_dir.toUtf8().constData());
+    pref_fileopen_dir_->stashed_val.string = qstring_strdup(specified_dir);
     pref_fileopen_style_->stashed_val.enumval = FO_STYLE_SPECIFIED;
     updateWidgets();
 }
@@ -154,7 +201,7 @@ void MainWindowPreferencesFrame::on_maxFilterLineEdit_textEdited(const QString &
 
 void MainWindowPreferencesFrame::on_maxRecentLineEdit_textEdited(const QString &new_max)
 {
-    pref_recent_df_entries_max_->stashed_val.uint = new_max.toUInt();
+    pref_recent_files_count_max_->stashed_val.uint = new_max.toUInt();
 }
 
 void MainWindowPreferencesFrame::on_confirmUnsavedCheckBox_toggled(bool checked)
@@ -179,14 +226,12 @@ void MainWindowPreferencesFrame::on_mainToolbarComboBox_currentIndexChanged(int 
     pref_toolbar_main_style_->stashed_val.enumval = index;
 }
 
-void MainWindowPreferencesFrame::on_filterToolbarComboBox_currentIndexChanged(int index)
-{
-    pref_toolbar_filter_style_->stashed_val.enumval = index;
-}
-
 void MainWindowPreferencesFrame::on_languageComboBox_currentIndexChanged(int index)
 {
-    pref_qt_language_->stashed_val.enumval = index;
+    if (language)
+        g_free(language);
+
+    language = g_strdup(ui->languageComboBox->itemData(index).toString().toStdString().c_str());
 }
 
 /*

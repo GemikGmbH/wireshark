@@ -1,7 +1,7 @@
 #!/usr/bin/env perl
 
 #
-# Copyright 2006, Jeff Morriss <jeff.morriss[AT]ulticom.com>
+# Copyright 2006, Jeff Morriss <jeff.morriss.ws[AT]gmail.com>
 #
 # A simple tool to check source code for function calls that should not
 # be called by Wireshark code and to perform certain other checks.
@@ -81,7 +81,7 @@ my %APIs = (
                 # The MSDN page for ZeroMemory recommends SecureZeroMemory
                 # instead.
                 'ZeroMemory',
-                # use ep_*, se_*, or g_* functions instead of these:
+                # use wmem_*, ep_*, or g_* functions instead of these:
                 # (One thing to be aware of is that space allocated with malloc()
                 # may not be freeable--at least on Windows--with g_free() and
                 # vice-versa.)
@@ -96,6 +96,20 @@ my %APIs = (
                 # "I" isn't always the upper-case form of "i", and "i" isn't
                 # always the lower-case form of "I").  Use the g_ascii_* version
                 # instead.
+                'isalnum',
+                'isascii',
+                'isalpha',
+                'iscntrl',
+                'isdigit',
+                'islower',
+                'isgraph',
+                'isprint',
+                'ispunct',
+                'isspace',
+                'isupper',
+                'isxdigit',
+                'tolower',
+                'atof',
                 'strtod',
                 'strcasecmp',
                 'strncasecmp',
@@ -119,6 +133,8 @@ my %APIs = (
                 'remove',
                 'fopen',
                 'freopen',
+                'fstat',
+                'lseek',
                 # Misc
                 'tmpnam',       # use mkstemp
                 '_snwprintf'    # use StringCchPrintf
@@ -128,68 +144,16 @@ my %APIs = (
         # have not been entirely removed from old code. These will become errors
         # once they've been removed from all existing code.
         'soft-deprecated' => { 'count_errors' => 0, 'functions' => [
-                'tvb_length', # replaced with tvb_captured_length
                 'tvb_length_remaining', # replaced with tvb_captured_length_remaining
-                'tvb_ensure_length_remaining', # replaced with tvb_ensure_captured_length_remaining
                 'tvb_get_string', # replaced with tvb_get_string_enc
                 'tvb_get_stringz', # replaced with tvb_get_stringz_enc
 
-                # wmem calls should replace all emem calls (see doc/README.wmem)
-                'ep_alloc',
-                'ep_new',
-                'ep_alloc0',
-                'ep_new0',
-                'ep_strdup',
-                'ep_strndup',
-                'ep_memdup',
-                'ep_strdup_vprintf',
-                'ep_strdup_printf',
-                'ep_strconcat',
-                'ep_alloc_array',
-                'ep_alloc_array0',
-                'ep_strsplit',
-                'ep_stack_new',
-                'ep_stack_push',
-                'ep_stack_pop',
-                'ep_stack_peek',
-                'ep_address_to_str',
-                'se_alloc',
-                'se_new',
-                'se_alloc0',
-                'se_new0',
-                'se_strdup',
-                'se_strndup',
-                'se_memdup',
-                'se_strdup_vprintf',
-                'se_strdup_printf',
-                'se_alloc_array',
-                'se_tree_create',
-                'se_tree_insert32',
-                'se_tree_lookup32',
-                'se_tree_lookup32_le',
-                'se_tree_insert32_array',
-                'se_tree_lookup32_array',
-                'se_tree_lookup32_array_le',
-                'emem_tree_insert32',
-                'emem_tree_lookup32',
-                'emem_tree_lookup32_le',
-                'emem_tree_insert32_array',
-                'emem_tree_lookup32_array',
-                'emem_tree_lookup32_array_le',
-                'emem_tree_insert_string',
-                'emem_tree_lookup_string',
-                'emem_tree_foreach',
-                'ep_strbuf_new',
-                'ep_strbuf_new_label',
-                'ep_strbuf_sized_new',
-                'ep_strbuf_append_vprintf',
-                'ep_strbuf_printf',
-                'ep_strbuf_append_printf',
-                'ep_strbuf_append',
-                'ep_strbuf_append_c',
-                'ep_strbuf_append_unichar',
-                'ep_strbuf_truncate',
-                'emem_print_tree'
+                # Locale-unsafe APIs
+                # These may have unexpected behaviors in some locales (e.g.,
+                # "I" isn't always the upper-case form of "i", and "i" isn't
+                # always the lower-case form of "I").  Use the g_ascii_* version
+                # instead.
+                'toupper'
             ] },
 
         # APIs that SHOULD NOT be used in Wireshark (any more)
@@ -336,6 +300,7 @@ my %APIs = (
 );
 
 my @apiGroups = qw(prohibited deprecated soft-deprecated);
+
 
 # Deprecated GTK+ (and GDK) functions/macros with (E)rror or (W)arning flag:
 # (The list is based upon the GTK+ 2.24.8 documentation;
@@ -1376,64 +1341,6 @@ sub findAPIinFile($$$)
         }
 }
 
-sub checkAddTextCalls($$)
-{
-        my ($fileContentsRef, $filename) = @_;
-        my $add_text_count = 0;
-        my $okay_add_text_count = 0;
-        my $add_xxx_count = 0;
-        my $total_count = 0;
-        my $aggressive = 0;
-        my $percentage = 100;
-
-        # The 3 loops here are slow, but trying a single loop with capturing
-        # parenthesis is even slower!
-
-        # First count how many proto_tree_add_text() calls there are in total
-        while (${$fileContentsRef} =~ m/ \W* proto_tree_add_text \W* \( /gox) {
-                $add_text_count++;
-        }
-        # Then count how many of them are "okay" by virtue of their generate proto_item
-        # being used (e.g., to hang a subtree off of)
-        while (${$fileContentsRef} =~ m/ \W* [a-zA-Z0-9]+ \W* = \W* proto_tree_add_text \W* \( /gox) {
-                $okay_add_text_count++;
-        }
-        # Then count how many proto_tree_add_*() calls there are
-        while (${$fileContentsRef} =~ m/ \W proto_tree_add_[a-z0-9_]+ \W* \( /gox) {
-                $add_xxx_count++;
-        }
-
-        #printf "add_text_count %d, okay_add_text_count %d\n", $add_text_count, $okay_add_text_count;
-        $add_xxx_count -= $add_text_count;
-        $add_text_count -= $okay_add_text_count;
-
-        $total_count = $add_text_count+$add_xxx_count;
-
-        # Don't bother with files with small counts
-        if (($add_xxx_count < 10 || $add_text_count < 10) && ($total_count < 20)) {
-                return;
-        }
-
-        if ($add_xxx_count > 0) {
-            $percentage = 100*$add_text_count/$add_xxx_count;
-        }
-
-        if ($aggressive > 0) {
-            if ((($total_count <= 50) && ($percentage > 50)) ||
-                (($total_count > 50) && ($total_count <= 100) && ($percentage > 40)) ||
-                (($total_count > 100) && ($total_count <= 200) && ($percentage > 30)) ||
-                (($total_count > 200) && ($percentage > 20))) {
-                    printf "%s: found %d useless add_text() vs. %d add_<something else>() calls (%.2f%%)\n",
-                        $filename, $add_text_count, $add_xxx_count, $percentage;
-            }
-        } else {
-            if ($percentage > 50) {
-                printf "%s: found %d useless add_text() vs. %d add_<something else>() calls (%.2f%%)\n",
-                        $filename, $add_text_count, $add_xxx_count, $percentage;
-            }
-        }
-}
-
 # APIs which (generally) should not be called with an argument of tvb_get_ptr()
 my @TvbPtrAPIs = (
         # Use NULL for the value_ptr instead of tvb_get_ptr() (only if the
@@ -1442,11 +1349,6 @@ my @TvbPtrAPIs = (
         'proto_tree_add_bytes_format_value',
         'proto_tree_add_ether',
         # Use the tvb_* version of these:
-        'ether_to_str',
-        'ip_to_str',
-        'ip6_to_str',
-        'fc_to_str',
-        'fcwwn_to_str',
         # Use tvb_bytes_to_str[_punct] instead of:
         'bytes_to_str',
         'bytes_to_str_punct',
@@ -1471,6 +1373,30 @@ sub checkAPIsCalledWithTvbGetPtr($$$)
                         }
                 }
 
+                if ($cnt > 0) {
+                        push @{$foundAPIsRef}, $api;
+                }
+        }
+}
+
+# List of possible shadow variable (Majority coming from Mac OS X..)
+my @ShadowVariable = (
+        'index',
+        'time',
+        'strlen',
+);
+
+sub checkShadowVariable($$$)
+{
+        my ($groupHashRef, $fileContentsRef, $foundAPIsRef) = @_;
+
+        for my $api ( @{$groupHashRef} )
+        {
+                my $cnt = 0;
+                while (${$fileContentsRef} =~ m/ \s $api \s* [^\(\w] /gx)
+                {
+                        $cnt += 1;
+                }
                 if ($cnt > 0) {
                         push @{$foundAPIsRef}, $api;
                 }
@@ -1583,25 +1509,46 @@ sub check_value_string_arrays($$$)
         return $cnt;
 }
 
+
 sub check_included_files($$)
 {
         my ($fileContentsRef, $filename) = @_;
         my @incFiles;
 
-        # wsutils/wsgcrypt.h is our wrapper around gcrypt.h, it must be excluded from the tests
-        if ($filename =~ /wsgcrypt\.h/) {
-                return;
+        @incFiles = (${$fileContentsRef} =~ m/\#include \s* ([<"].+[>"])/gox);
+
+        # only our wrapper file wsutils/wsgcrypt.h may include gcrypt.h
+        # all other files should include the wrapper
+        if ($filename !~ /wsgcrypt\.h/) {
+                foreach (@incFiles) {
+                        if ( m#([<"]|/+)gcrypt\.h[>"]$# ) {
+                                print STDERR "Warning: ".$filename.
+                                        " includes gcrypt.h directly. ".
+                                        "Include wsutil/wsgrypt.h instead.\n";
+                                last;
+                        }
+                }
         }
 
-        @incFiles = (${$fileContentsRef} =~ m/\#include \s* [<"](.+)[>"]/gox);
-        foreach (@incFiles) {
-                if ( m#(^|/+)gcrypt\.h$# ) {
-                        print STDERR "Warning: ".$filename." includes gcrypt.h directly. ".
-                                "Include wsutil/wsgrypt.h instead.\n";
-                        last;
+        # files in the ui/qt directory should include the ui class includes
+        # by using #include <>
+        # this ensures that Visual Studio picks up these files from the
+        # build directory if we're compiling with cmake
+        if ($filename =~ m#ui/qt/# ) {
+                foreach (@incFiles) {
+                        if ( m#"ui_.*\.h"$# ) {
+                                # strip the quotes to get the base name
+                                # for the error message
+                                s/\"//g;
+
+                                print STDERR "$filename: ".
+                                        "Please use #include <$_> ".
+                                        "instead of #include \"$_\".\n";
+                        }
                 }
         }
 }
+
 
 sub check_proto_tree_add_XXX_encoding($$)
 {
@@ -1624,7 +1571,7 @@ sub check_proto_tree_add_XXX_encoding($$)
                 $args =~ s/\(.*\)//sg;
 
                 if ($args =~ /,\s*ENC_/xos) {
-                        if (!($func =~ /proto_tree_add_(time|item|bitmask|bits_item|bits_ret_val)/xos)
+                        if (!($func =~ /proto_tree_add_(time|item|bitmask|bits_item|bits_ret_val|item_ret_int|item_ret_uint|bytes_item)/xos)
                            ) {
                                 print STDERR "Error: ".$filename." uses $func with ENC_*.\n";
                                 $errorCount++;
@@ -1672,7 +1619,7 @@ sub check_ett_registration($$)
         }xgiom);
 
         if (!@ett_declarations) {
-                print "Found no etts in ".$filename."\n";
+                print STDERR "Found no etts in ".$filename."\n";
                 return;
         }
 
@@ -1701,7 +1648,7 @@ sub check_ett_registration($$)
         #print "Found this ett registration block in ".$filename.": ".join(',', @reg_blocks)."\n";
 
         if (@reg_blocks == 0) {
-                print "Hmm, found ".@reg_blocks." ett registration blocks in ".$filename."\n";
+                print STDERR "Hmm, found ".@reg_blocks." ett registration blocks in ".$filename."\n";
                 # For now...
                 return;
         }
@@ -1765,7 +1712,7 @@ sub check_hf_entries($$)
                                   \s*,\s*
                                   ([A-Z0-9x\|_]+)               # display
                                   \s*,\s*
-                                  ([A-Z0-9&_\(\)' -]+)          # convert
+                                  ([^,]+?)                      # convert
                                   \s*,\s*
                                   ([A-Z0-9_]+)                  # bitmask
                                   \s*,\s*
@@ -1776,10 +1723,11 @@ sub check_hf_entries($$)
 
         #print "Found @items items\n";
         while (@items) {
+                ##my $errorCount_save = $errorCount;
                 my ($hf, $name, $abbrev, $ft, $display, $convert, $bitmask, $blurb) = @items;
                 shift @items; shift @items; shift @items; shift @items; shift @items; shift @items; shift @items; shift @items;
 
-                #print "name=$name, abbrev=$abbrev, ft=$ft, display=$display, convert=$convert, bitmask=$bitmask, blurb=$blurb\n";
+                #print "name=$name, abbrev=$abbrev, ft=$ft, display=$display, convert=>$convert<, bitmask=$bitmask, blurb=$blurb\n";
 
                 if ($abbrev eq '""' || $abbrev eq "NULL") {
                         print STDERR "Error: $hf does not have an abbreviation in $filename\n";
@@ -1790,27 +1738,27 @@ sub check_hf_entries($$)
                         $errorCount++;
                 }
                 if ($name eq $abbrev) {
-                        print STDERR "Error: the abbreviation for $hf matches the field name in $filename\n";
+                        print STDERR "Error: the abbreviation for $hf ($abbrev) matches the field name ($name) in $filename\n";
                         $errorCount++;
                 }
                 if (lc($name) eq lc($blurb)) {
-                        print STDERR "Error: the blurb for $hf ($abbrev) matches the field name in $filename\n";
+                        print STDERR "Error: the blurb for $hf ($blurb) matches the field name ($name) in $filename\n";
                         $errorCount++;
                 }
                 if ($name =~ m/"\s+/) {
-                        print STDERR "Error: the name for $hf ($abbrev) has leading space in $filename\n";
+                        print STDERR "Error: the name for $hf ($name) has leading space in $filename\n";
                         $errorCount++;
                 }
                 if ($name =~ m/\s+"/) {
-                        print STDERR "Error: the name for $hf ($abbrev) has trailing space in $filename\n";
+                        print STDERR "Error: the name for $hf ($name) has trailing space in $filename\n";
                         $errorCount++;
                 }
                 if ($blurb =~ m/"\s+/) {
-                        print STDERR "Error: the blurb for $hf ($abbrev) has leading space in $filename\n";
+                        print STDERR "Error: the blurb for $hf ($blurb) has leading space in $filename\n";
                         $errorCount++;
                 }
                 if ($blurb =~ m/\s+"/) {
-                        print STDERR "Error: the blurb for $hf ($abbrev) has trailing space in $filename\n";
+                        print STDERR "Error: the blurb for $hf ($blurb) has trailing space in $filename\n";
                         $errorCount++;
                 }
                 if ($abbrev =~ m/\s+/) {
@@ -1837,23 +1785,35 @@ sub check_hf_entries($$)
                         print STDERR "Error: $hf: FT_BOOLEAN with a bitmask must specify a 'parent field width' for 'display' in $filename\n";
                         $errorCount++;
                 }
+                if (($ft eq "FT_BOOLEAN") && ($convert !~ m/^((0[xX]0?)?0$|NULL$|TFS)/)) {
+                        print STDERR "Error: $hf: FT_BOOLEAN with non-null 'convert' field missing TFS in $filename\n";
+                        $errorCount++;
+                }
                 if ($convert =~ m/RVALS/ && $display !~ m/BASE_RANGE_STRING/) {
                         print STDERR "Error: $hf uses RVALS but 'display' does not include BASE_RANGE_STRING in $filename\n";
                         $errorCount++;
                 }
-		if ($convert =~ m/^VALS\(&.*\)/) {
+                if ($convert =~ m/^VALS\(&.*\)/) {
                         print STDERR "Error: $hf is passing the address of a pointer to VALS in $filename\n";
                         $errorCount++;
-		}
-		if ($convert =~ m/^RVALS\(&.*\)/) {
+                }
+                if ($convert =~ m/^RVALS\(&.*\)/) {
                         print STDERR "Error: $hf is passing the address of a pointer to RVALS in $filename\n";
                         $errorCount++;
-		}
+                }
+                if ($convert !~ m/^((0[xX]0?)?0$|NULL$|VALS|VALS64|VALS_EXT_PTR|RVALS|TFS|CF_FUNC|FRAMENUM_TYPE|&)/ && $display !~ /BASE_CUSTOM/) {
+                        print STDERR "Error: non-null $hf 'convert' field missing 'VALS|VALS64|RVALS|TFS|CF_FUNC|FRAMENUM_TYPE|&' in $filename ?\n";
+                        $errorCount++;
+                }
 ## Benign...
 ##              if (($ft eq "FT_BOOLEAN") && ($bitmask =~ /^(0x)?0+$/) && ($display ne "BASE_NONE")) {
 ##                      print STDERR "Error: $abbrev: FT_BOOLEAN with no bitmask must use BASE_NONE for 'display' in $filename\n";
 ##                      $errorCount++;
 ##              }
+                ##if ($errorCount != $errorCount_save) {
+                ##        print STDERR "name=$name, abbrev=$abbrev, ft=$ft, display=$display, convert=>$convert<, bitmask=$bitmask, blurb=$blurb\n";
+                ##}
+
         }
 
         return $errorCount;
@@ -1929,7 +1889,7 @@ my $debug = 0;
             (defined $_[1]) && print "  >$_[1]<\n";
         }
 
-        # #if/#if 0/#else/#ndif processing
+        # #if/#if 0/#else/#endif processing
         if (defined $_[1]) {
             my ($if) = $_[1];
             if ($if eq 'if') {
@@ -2035,7 +1995,7 @@ if (!$result || $help_flag) {
 if ($pre_commit) {
     my $filename = $ARGV[0];
     # if the filename is packet-*.c or packet-*.h, then we set the abort and termoutput groups.
-    if ($filename =~ /\bpacket-\w+\.[ch]$/) {
+    if ($filename =~ /\bpacket-[^\/\\]+\.[ch]$/) {
         push @apiGroups, "abort";
         push @apiGroups, "termoutput";
     }
@@ -2058,10 +2018,11 @@ while ($_ = $ARGV[0])
         my $fileContents = '';
         my @foundAPIs = ();
         my $line;
+        my $prohibit_cpp_comments = 1;
 
         if ($source_dir and ! -e $filename) {
-		$filename = $source_dir . '/' . $filename;
-	}
+                $filename = $source_dir . '/' . $filename;
+        }
         if (! -e $filename) {
                 warn "No such file: \"$filename\"";
                 next;
@@ -2073,6 +2034,11 @@ while ($_ = $ARGV[0])
                 print STDERR "Warning: $filename is not of type file - skipping.\n";
                 next;
         }
+
+        # Establish or remove local taboos
+        if ($filename =~ m{ ui/qt/ }x) { $prohibit_cpp_comments = 0; }
+        if ($filename =~ m{ image/*.rc }x) { $prohibit_cpp_comments = 0; }
+
         # Read in the file (ouch, but it's easier that way)
         open(FC, $filename) || die("Couldn't open $filename");
         $line = 1;
@@ -2086,6 +2052,24 @@ while ($_ = $ARGV[0])
         }
         close(FC);
 
+        if (($fileContents =~ m{ \$Id .* \$ }xo))
+        {
+                print STDERR "Warning: ".$filename." has an SVN Id tag. Please remove it!\n";
+        }
+
+        # Remove all the C-comments
+        $fileContents =~ s{ $CComment } []xog;
+
+        # optionally check the hf entries (including those under #if 0)
+        if ($check_hf) {
+            $errorCount += check_hf_entries(\$fileContents, $filename);
+        }
+
+        if ($fileContents =~ m{ __func__ }xo)
+        {
+                print STDERR "Error: Found __func__ (which is not portable, use G_STRFUNC) in " .$filename."\n";
+                $errorCount++;
+        }
         if ($fileContents =~ m{ %ll }xo)
         {
                 # use G_GINT64_MODIFIER instead of ll
@@ -2099,17 +2083,6 @@ while ($_ = $ARGV[0])
                 # Need to use temporary variables instead.
                 print STDERR "Error: Found %hh in " .$filename."\n";
                 $errorCount++;
-        }
-        if (($fileContents =~ m{ \$Id .* \$ }xo))
-        {
-                print STDERR "Warning: ".$filename." does have an SVN Id tag. Please remove !\n";
-        }
-        # Remove all the C-comments
-        $fileContents =~ s{ $CComment } []xog;
-
-        # optionally check the hf entries (including those under #if 0)
-        if ($check_hf) {
-            $errorCount += check_hf_entries(\$fileContents, $filename);
         }
 
         # check for files that we should not include directly
@@ -2127,7 +2100,7 @@ while ($_ = $ARGV[0])
 
         #$errorCount += check_ett_registration(\$fileContents, $filename);
 
-        if ($fileContents =~ m{ \s// }xo)
+        if ($prohibit_cpp_comments && $fileContents =~ m{ \s// }xo)
         {
                 print STDERR "Error: Found C++ style comments in " .$filename."\n";
                 $errorCount++;
@@ -2144,11 +2117,13 @@ while ($_ = $ARGV[0])
         #       print STDERR "Found APIs with embedded tvb_get_ptr() calls in ".$filename." : ".join(',', @foundAPIs)."\n"
         #}
 
-        check_snprintf_plus_strlen(\$fileContents, $filename);
-
-        if ($check_addtext && ! $buildbot_flag) {
-                checkAddTextCalls(\$fileContents, $filename);
+        checkShadowVariable(\@ShadowVariable, \$fileContents, \@foundAPIs);
+        if (@foundAPIs) {
+               print STDERR "Warning: Found shadow variable(s) in ".$filename." : ".join(',', @foundAPIs)."\n"
         }
+
+
+        check_snprintf_plus_strlen(\$fileContents, $filename);
 
         $errorCount += check_proto_tree_add_XXX_encoding(\$fileContents, $filename);
 

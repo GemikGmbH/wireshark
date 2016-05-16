@@ -25,7 +25,6 @@
 #include <string.h>
 #include "wtap-int.h"
 #include "file_wrappers.h"
-#include <wsutil/buffer.h>
 #include "i4b_trace.h"
 #include "i4btrace.h"
 
@@ -44,25 +43,21 @@ static int i4b_read_rec(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr,
  * Test some fields in the header to see if they make sense.
  */
 #define	I4B_HDR_IS_OK(hdr) \
-	(!((unsigned)hdr.length < 3 || (unsigned)hdr.length > 16384 || \
-	    (unsigned)hdr.unit > 4 || (unsigned)hdr.type > 4 || \
-	    (unsigned)hdr.dir > 2 || (unsigned)hdr.trunc > 2048))
+	(!((unsigned int)hdr.length < 3 || (unsigned int)hdr.length > 16384 || \
+	    (unsigned int)hdr.unit > 4 || (unsigned int)hdr.type > 4 || \
+	    (unsigned int)hdr.dir > 2 || (unsigned int)hdr.trunc > 2048))
 
-int i4btrace_open(wtap *wth, int *err, gchar **err_info)
+wtap_open_return_val i4btrace_open(wtap *wth, int *err, gchar **err_info)
 {
-	int bytes_read;
 	i4b_trace_hdr_t hdr;
 	gboolean byte_swapped = FALSE;
 	i4btrace_t *i4btrace;
 
 	/* I4B trace files have no magic in the header... Sigh */
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(&hdr, sizeof(hdr), wth->fh);
-	if (bytes_read != sizeof(hdr)) {
-		*err = file_error(wth->fh, err_info);
-		if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-			return -1;
-		return 0;
+	if (!wtap_read_bytes(wth->fh, &hdr, sizeof(hdr), err, err_info)) {
+		if (*err != WTAP_ERR_SHORT_READ)
+			return WTAP_OPEN_ERROR;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
 	/* Silly heuristic... */
@@ -79,7 +74,7 @@ int i4btrace_open(wtap *wth, int *err, gchar **err_info)
 			/*
 			 * It doesn't look valid in either byte order.
 			 */
-			return 0;
+			return WTAP_OPEN_NOT_MINE;
 		}
 
 		/*
@@ -90,7 +85,7 @@ int i4btrace_open(wtap *wth, int *err, gchar **err_info)
 	}
 
 	if (file_seek(wth->fh, 0, SEEK_SET, err) == -1)
-		return -1;
+		return WTAP_OPEN_ERROR;
 
 	/* Get capture start time */
 
@@ -104,9 +99,9 @@ int i4btrace_open(wtap *wth, int *err, gchar **err_info)
 	i4btrace->byte_swapped = byte_swapped;
 
 	wth->file_encap = WTAP_ENCAP_ISDN;
-	wth->tsprecision = WTAP_FILE_TSPREC_USEC;
+	wth->file_tsprec = WTAP_TSPREC_USEC;
 
-	return 1;
+	return WTAP_OPEN_MINE;
 }
 
 /* Read the next packet */
@@ -143,19 +138,10 @@ i4b_read_rec(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
 {
 	i4btrace_t *i4btrace = (i4btrace_t *)wth->priv;
 	i4b_trace_hdr_t hdr;
-	int	bytes_read;
 	guint32 length;
 
-	errno = WTAP_ERR_CANT_READ;
-	bytes_read = file_read(&hdr, sizeof hdr, fh);
-	if (bytes_read != sizeof hdr) {
-		*err = file_error(fh, err_info);
-		if (*err == 0 && bytes_read != 0) {
-			/* Read something, but not enough */
-			*err = WTAP_ERR_SHORT_READ;
-		}
+	if (!wtap_read_bytes_or_eof(fh, &hdr, sizeof hdr, err, err_info))
 		return FALSE;
-	}
 
 	if (i4btrace->byte_swapped) {
 		/*
@@ -241,3 +227,16 @@ i4b_read_rec(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr, Buffer *buf,
 	 */
 	return wtap_read_packet_bytes(fh, buf, length, err, err_info);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -20,13 +20,12 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * ref OMA-TS-ULP-V2_0_1-20121205-A
+ * ref OMA-TS-ULP-V2_0_2-20140708-A
  * http://www.openmobilealliance.org
  */
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/asn1.h>
@@ -34,6 +33,8 @@
 #include "packet-per.h"
 #include "packet-tcp.h"
 #include "packet-gsm_map.h"
+#include "packet-e164.h"
+#include "packet-e212.h"
 
 #define PNAME  "OMA UserPlane Location Protocol"
 #define PSNAME "ULP"
@@ -60,9 +61,12 @@ static int proto_ulp = -1;
 static gboolean ulp_desegment = TRUE;
 
 #include "packet-ulp-hf.c"
+static int hf_ulp_mobile_directory_number = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_ulp = -1;
+static gint ett_ulp_setid = -1;
+static gint ett_ulp_thirdPartyId = -1;
 #include "packet-ulp-ett.c"
 
 /* Include constants */
@@ -73,7 +77,7 @@ static gint ett_ulp = -1;
 
 
 static guint
-get_ulp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_ulp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
   /* PDU length = Message length */
   return tvb_get_ntohs(tvb,offset);
@@ -84,7 +88,7 @@ dissect_ulp_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
   tcp_dissect_pdus(tvb, pinfo, tree, ulp_desegment, ULP_HEADER_SIZE,
                    get_ulp_pdu_len, dissect_ULP_PDU_PDU, data);
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 void proto_reg_handoff_ulp(void);
@@ -96,11 +100,17 @@ void proto_register_ulp(void) {
   static hf_register_info hf[] = {
 
 #include "packet-ulp-hfarr.c"
+    { &hf_ulp_mobile_directory_number,
+      { "Mobile Directory Number", "ulp.mobile_directory_number",
+        FT_STRING, BASE_NONE, NULL, 0,
+        NULL, HFILL }}
   };
 
   /* List of subtrees */
   static gint *ett[] = {
     &ett_ulp,
+    &ett_ulp_setid,
+    &ett_ulp_thirdPartyId,
 #include "packet-ulp-ettarr.c"
   };
 

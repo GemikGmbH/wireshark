@@ -1,4 +1,4 @@
-/* packet-SML.c
+/* packet-sml.c
  * Routines for SML dissection
  * Copyright 2013, Alexander Gaertner <gaertner.alex@gmx.de>
  *
@@ -26,11 +26,10 @@ SML dissector is based on v1.03 (12.11.2008) specifications of "smart message la
 
 Link to specifications: http://www.vde.com/de/fnn/arbeitsgebiete/messwesen/Sym2/infomaterial/seiten/sml-spezifikation.aspx
 
-Short description of the SML protocol on the SML Wireshark Wiki page:  http://wiki.wireshark.org/SML
+Short description of the SML protocol on the SML Wireshark Wiki page:  https://wiki.wireshark.org/SML
 */
 
 #include "config.h"
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/crc16-tvb.h>
@@ -87,6 +86,7 @@ static int hf_sml_esc = -1;
 static int hf_sml_version_1 = -1;
 static int hf_sml_groupNo = -1;
 static int hf_sml_transactionId = -1;
+static int hf_sml_length = -1;
 static int hf_sml_datatype = -1;
 static int hf_sml_abortOnError = -1;
 static int hf_sml_MessageBody = -1;
@@ -152,6 +152,8 @@ static int hf_sml_value_R3 = -1;
 static int hf_sml_unit_R4 = -1;
 static int hf_sml_scaler_R4 = -1;
 static int hf_sml_value_R4 = -1;
+static int hf_sml_file_marker = -1;
+static int hf_sml_new_file_marker = -1;
 
 static const value_string datatype []={
 	{0x52, "Integer 8"},
@@ -183,20 +185,20 @@ static const value_string sml_abort[]={
 };
 
 static const value_string sml_body[]={
-	{OPEN_REQ, "PublicOpen.Req"},
-	{OPEN_RES, "PublicOpen.Res"},
-	{CLOSE_REQ, "PublicClose.Req"},
-	{CLOSE_RES, "PublicClose.Res"},
-	{PROFILEPACK_REQ, "GetProfilePack.Req"},
-	{PROFILEPACK_RES, "GetProfilePack.Res"},
-	{PROFILELIST_REQ, "GetProfileList.Req"},
-	{PROFILELIST_RES, "GetProfileList.Res"},
+	{OPEN_REQ,	       "PublicOpen.Req"},
+	{OPEN_RES,	       "PublicOpen.Res"},
+	{CLOSE_REQ,	       "PublicClose.Req"},
+	{CLOSE_RES,	       "PublicClose.Res"},
+	{PROFILEPACK_REQ,      "GetProfilePack.Req"},
+	{PROFILEPACK_RES,      "GetProfilePack.Res"},
+	{PROFILELIST_REQ,      "GetProfileList.Req"},
+	{PROFILELIST_RES,      "GetProfileList.Res"},
 	{GETPROCPARAMETER_REQ, "GetProcParameter.Req"},
 	{GETPROCPARAMETER_RES, "GetProcParameter.Res"},
 	{SETPROCPARAMETER_REQ, "SetProcParameter.Req"},
-	{GETLIST_REQ, "GetList.Req"},
-	{GETLIST_RES, "GetList.Res"},
-	{ATTENTION, "Attention.Res"},
+	{GETLIST_REQ,	       "GetList.Req"},
+	{GETLIST_RES,	       "GetList.Res"},
+	{ATTENTION,	       "Attention.Res"},
 	{0, NULL}
 };
 
@@ -207,10 +209,10 @@ static const value_string sml_timetypes[]={
 };
 
 static const value_string procvalues[]={
-	{PROC_VALUE, "Value"},
+	{PROC_VALUE,  "Value"},
 	{PROC_PERIOD, "PeriodEntry"},
-	{PROC_TUPEL, "TupelEntry"},
-	{PROC_TIME, "Time"},
+	{PROC_TUPEL,  "TupelEntry"},
+	{PROC_TIME,   "Time"},
 	{0, NULL}
 };
 
@@ -353,6 +355,9 @@ static expert_field ei_sml_crc_error_length = EI_INIT;
 static expert_field ei_sml_invalid_count = EI_INIT;
 static expert_field ei_sml_MessageBody = EI_INIT;
 static expert_field ei_sml_esc_error = EI_INIT;
+static expert_field ei_sml_version2_not_supported = EI_INIT;
+static expert_field ei_sml_attentionNo = EI_INIT;
+
 
 /*options*/
 static gboolean sml_reassemble = TRUE;
@@ -406,11 +411,11 @@ static void sml_value(tvbuff_t *tvb,proto_tree *insert_tree,guint *offset, guint
 	if (tvb_get_guint8(tvb, *offset) != OPTIONAL){
 		value_tree = proto_item_add_subtree (value, ett_sml_value);
 		if ((tvb_get_guint8(tvb, *offset) & 0x80) == MSB || (tvb_get_guint8(tvb, *offset) & 0xF0) == 0){
-			proto_tree_add_text (value_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+			proto_tree_add_uint(value_tree, hf_sml_length, tvb, *offset, *length, *data);
 			*offset+= *length;
 		}
 		else {
-			proto_tree_add_item (value_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+			proto_tree_add_item (value_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 			*offset+=1;
 		}
 		proto_tree_add_item (value_tree, hf_sml_value, tvb, *offset, *data, ENC_NA);
@@ -421,15 +426,13 @@ static void sml_value(tvbuff_t *tvb,proto_tree *insert_tree,guint *offset, guint
 }
 
 static void sml_time_type(tvbuff_t *tvb, proto_tree *SML_time_tree, guint *offset){
-	proto_item *timetype = NULL;
-	proto_tree *timetype_tree = NULL;
+	proto_tree *timetype_tree;
 
-	timetype = proto_tree_add_text (SML_time_tree, tvb, *offset, 2, "SML-Time Type");
-	timetype_tree = proto_item_add_subtree (timetype, ett_sml_timetype);
+	timetype_tree = proto_tree_add_subtree(SML_time_tree, tvb, *offset, 2, ett_sml_timetype, NULL, "SML-Time Type");
 
-	proto_tree_add_item (timetype_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (timetype_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (timetype_tree, hf_sml_timetype, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (timetype_tree, hf_sml_timetype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 }
 
@@ -442,7 +445,7 @@ static void field_codepage(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset
 
 	if (*data > 0) {
 		codepage_tree = proto_item_add_subtree (codepage , ett_sml_codepage);
-		proto_tree_add_text (codepage_tree, tvb, *offset, *length, "Length: %d %s", *data ,plurality(*data, "octet", "octets"));
+		proto_tree_add_uint(codepage_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+= *length;
 
 		proto_tree_add_item (codepage_tree, hf_sml_codepage, tvb, *offset, *data, ENC_NA);
@@ -461,7 +464,7 @@ static void field_clientId(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset
 
 	if (*data > 0) {
 		clientId_tree = proto_item_add_subtree (clientId, ett_sml_clientId);
-		proto_tree_add_text (clientId_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+		proto_tree_add_uint(clientId_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (clientId_tree, hf_sml_clientId, tvb, *offset, *data, ENC_NA);
 		*offset+=*data;
@@ -471,14 +474,12 @@ static void field_clientId(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset
 }
 
 static void field_reqFileId(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, guint *data, guint *length){
-	proto_item *reqFileId = NULL;
-	proto_tree *reqFileId_tree = NULL;
+	proto_tree *reqFileId_tree;
 
 	get_length(tvb, offset, data, length);
-	reqFileId = proto_tree_add_text (insert_tree, tvb, *offset, *length + *data, "reqFileId");
+	reqFileId_tree = proto_tree_add_subtree(insert_tree, tvb, *offset, *length + *data, ett_sml_reqFileId, NULL, "reqFileId");
 
-	reqFileId_tree = proto_item_add_subtree (reqFileId, ett_sml_reqFileId);
-	proto_tree_add_text (reqFileId_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+	proto_tree_add_uint (reqFileId_tree, hf_sml_length, tvb, *offset, *length, *data);
 	*offset+=*length;
 	proto_tree_add_item (reqFileId_tree, hf_sml_reqFileId, tvb, *offset, *data, ENC_NA);
 	*offset+=*data;
@@ -494,7 +495,7 @@ static void field_serverId(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset
 
 	if (*data > 0){
 		serverId_tree = proto_item_add_subtree (serverId , ett_sml_serverId);
-		proto_tree_add_text (serverId_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+		proto_tree_add_uint (serverId_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (serverId_tree, hf_sml_serverId, tvb, *offset, *data, ENC_NA);
 		*offset+=*data;
@@ -513,7 +514,7 @@ static void field_username(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset
 
 	if (*data > 0){
 		username_tree = proto_item_add_subtree (username , ett_sml_username);
-		proto_tree_add_text (username_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+		proto_tree_add_uint (username_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (username_tree, hf_sml_username, tvb, *offset, *data, ENC_ASCII | ENC_BIG_ENDIAN);
 		*offset+=*data;
@@ -532,7 +533,7 @@ static void field_password(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset
 
 	if (*data > 0) {
 		password_tree = proto_item_add_subtree (password, ett_sml_password);
-		proto_tree_add_text (password_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+		proto_tree_add_uint (password_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (password_tree, hf_sml_password, tvb, *offset, *data, ENC_ASCII | ENC_BIG_ENDIAN);
 		*offset+=*data;
@@ -551,10 +552,10 @@ static void field_smlVersion(tvbuff_t *tvb, proto_tree *insert_tree, guint *offs
 
 	if (*data > 0) {
 		smlVersion_tree = proto_item_add_subtree (smlVersion, ett_sml_smlVersion);
-		proto_tree_add_item (smlVersion_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		proto_tree_add_item (smlVersion_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 
-		proto_tree_add_item (smlVersion_tree, hf_sml_smlVersion, tvb, *offset, 1,ENC_NA);
+		proto_tree_add_item (smlVersion_tree, hf_sml_smlVersion, tvb, *offset, 1,ENC_BIG_ENDIAN);
 		*offset+=1;
 	}
 	else
@@ -572,7 +573,7 @@ static void field_globalSignature(tvbuff_t *tvb, proto_tree *insert_tree, guint 
 
 	if (*data > 0){
 		globalSignature_tree = proto_item_add_subtree (globalSignature, ett_sml_globalSignature);
-		proto_tree_add_text (globalSignature_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+		proto_tree_add_uint (globalSignature_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (globalSignature_tree, hf_sml_globalSignature, tvb, *offset, *data, ENC_NA);
 		*offset+=*data;
@@ -591,7 +592,7 @@ static void field_listName(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset
 
 	if (*data > 0) {
 		listName_tree = proto_item_add_subtree (listName, ett_sml_listName);
-		proto_tree_add_text (listName_tree, tvb, *offset, *length, "Length: %d %s", *length ,plurality(*data, "octet", "octets"));
+		proto_tree_add_uint (listName_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (listName_tree, hf_sml_listName, tvb, *offset, *data, ENC_NA);
 		*offset+=*data;
@@ -601,30 +602,27 @@ static void field_listName(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset
 }
 
 static void field_objName(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, guint *data, guint *length){
-	proto_item *objName = NULL;
-	proto_tree *objName_tree = NULL;
+	proto_tree *objName_tree;
 
 	/*Objectname*/
 	get_length(tvb, offset, data, length);
-	objName = proto_tree_add_text (insert_tree, tvb, *offset, *length + *data ,"Objectname");
+	objName_tree = proto_tree_add_subtree(insert_tree, tvb, *offset, *length + *data, ett_sml_objName, NULL, "Objectname");
 
-	objName_tree = proto_item_add_subtree (objName, ett_sml_objName);
-	proto_tree_add_text (objName_tree, tvb, *offset, *length, "Length: %d %s", *data ,plurality(*data, "octet", "octets"));
+	proto_tree_add_uint (objName_tree, hf_sml_length, tvb, *offset, *length, *data);
 	*offset+=*length;
 	proto_tree_add_item (objName_tree, hf_sml_objName, tvb, *offset, *data, ENC_NA);
 	*offset+=*data;
 }
 
 static void field_status(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, guint *data, guint *length){
-	proto_item *status = NULL;
 	proto_tree *status_tree = NULL;
 
 	get_length(tvb, offset, data, length);
-	status = proto_tree_add_text (insert_tree, tvb, *offset, *length + *data ,"status %s", (*data == 0)? ": NOT SET" : "");
+	status_tree = proto_tree_add_subtree_format(insert_tree, tvb, *offset, *length + *data,
+						ett_sml_status, NULL, "status %s", (*data == 0)? ": NOT SET" : "");
 
 	if (*data > 0){
-		status_tree = proto_item_add_subtree (status, ett_sml_status);
-		proto_tree_add_item (status_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		proto_tree_add_item (status_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 		proto_tree_add_item (status_tree, hf_sml_status, tvb, *offset, *data, ENC_BIG_ENDIAN);
 		*offset+= *data;
@@ -642,9 +640,9 @@ static void field_unit(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, gu
 	unit = proto_tree_add_uint_format (insert_tree, hf_sml_unit, tvb, *offset, *length + *data, *length + *data, "Unit %s", (*data == 0)? ": NOT SET" : "");
 	if (*data > 0) {
 		unit_tree = proto_item_add_subtree (unit, ett_sml_unit);
-		proto_tree_add_item (unit_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		proto_tree_add_item (unit_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
-		proto_tree_add_item(unit_tree, hf_sml_unit, tvb, *offset, 1, ENC_NA);
+		proto_tree_add_item(unit_tree, hf_sml_unit, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 	}
 	else
@@ -661,9 +659,9 @@ static void field_scaler(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, 
 
 	if (*data > 0){
 		scaler_tree = proto_item_add_subtree (scaler, ett_sml_scaler);
-		proto_tree_add_item (scaler_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		proto_tree_add_item (scaler_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
-		proto_tree_add_item(scaler_tree, hf_sml_scaler, tvb, *offset, 1, ENC_NA);
+		proto_tree_add_item(scaler_tree, hf_sml_scaler, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 	}
 	else
@@ -680,7 +678,7 @@ static void field_valueSignature(tvbuff_t *tvb, proto_tree *insert_tree, guint *
 
 	if (*data > 0){
 		valueSignature_tree = proto_item_add_subtree (valueSignature, ett_sml_valueSignature);
-		proto_tree_add_text (valueSignature_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+		proto_tree_add_uint (valueSignature_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (valueSignature_tree, hf_sml_valueSignature, tvb, *offset, *data, ENC_NA);
 		*offset+=*data;
@@ -698,35 +696,31 @@ static void field_parameterTreePath(tvbuff_t *tvb, proto_tree *insert_tree, guin
 	parameterTreePath = proto_tree_add_bytes_format (insert_tree, hf_sml_parameterTreePath, tvb, *offset, *length + *data, NULL, "path_Entry %s", (*data == 0)? ": NOT SET" : "");
 
 	parameterTreePath_tree = proto_item_add_subtree (parameterTreePath, ett_sml_parameterTreePath);
-	proto_tree_add_text (parameterTreePath_tree, tvb, *offset, *length, "Length: %d %s", *data ,plurality(*data, "octet", "octets"));
+	proto_tree_add_uint (parameterTreePath_tree, hf_sml_length, tvb, *offset, *length, *data);
 	*offset+=*length;
 	proto_tree_add_item (parameterTreePath_tree, hf_sml_parameterTreePath, tvb, *offset, *data, ENC_NA);
 	*offset+=*data;
 }
 
 static void field_ObjReqEntry(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, guint *data, guint *length){
-	proto_item *object_list_Entry = NULL;
-	proto_tree *object_list_Entry_tree = NULL;
+	proto_tree *object_list_Entry_tree;
 
 	/*parameterTreePath*/
 	get_length(tvb, offset, data, length);
-	object_list_Entry = proto_tree_add_text (insert_tree, tvb ,*offset, *length + *data, "object_list_Entry");
-	object_list_Entry_tree = proto_item_add_subtree (object_list_Entry, ett_sml_object_list_Entry);
-	proto_tree_add_text (object_list_Entry_tree, tvb, *offset, *length, "Length: %d %s", *data ,plurality(*data, "octet", "octets"));
+	object_list_Entry_tree = proto_tree_add_subtree(insert_tree, tvb ,*offset, *length + *data, ett_sml_object_list_Entry, NULL, "object_list_Entry");
+	proto_tree_add_uint (object_list_Entry_tree, hf_sml_length, tvb, *offset, *length, *data);
 	*offset+=*length;
 	proto_tree_add_item (object_list_Entry_tree, hf_sml_object_list_Entry, tvb, *offset, *data, ENC_NA);
 	*offset+=*data;
 }
 
 static void field_regPeriod(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, guint *data, guint *length){
-	proto_item *regPeriod = NULL;
-	proto_tree *regPeriod_tree = NULL;
+	proto_tree *regPeriod_tree;
 
 	get_length(tvb, offset, data, length);
-	regPeriod = proto_tree_add_text (insert_tree, tvb, *offset, *length + *data, "regPeriod");
+	regPeriod_tree = proto_tree_add_subtree(insert_tree, tvb, *offset, *length + *data, ett_sml_regPeriod, NULL, "regPeriod");
 
-	regPeriod_tree = proto_item_add_subtree (regPeriod, ett_sml_regPeriod);
-	proto_tree_add_item (regPeriod_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (regPeriod_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 	proto_tree_add_item (regPeriod_tree, hf_sml_regPeriod, tvb, *offset, *data, ENC_BIG_ENDIAN);
 	*offset+=*data;
@@ -742,7 +736,7 @@ static void field_rawdata(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset,
 
 	if (*data > 0){
 		rawdata_tree = proto_item_add_subtree (rawdata, ett_sml_rawdata);
-		proto_tree_add_text (rawdata_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+		proto_tree_add_uint (rawdata_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (rawdata_tree, hf_sml_rawdata, tvb, *offset, *data, ENC_NA);
 		*offset+=*data;
@@ -761,7 +755,7 @@ static void field_periodSignature(tvbuff_t *tvb, proto_tree *insert_tree, guint 
 
 	if (*data > 0){
 		periodSignature_tree = proto_item_add_subtree (periodSignature, ett_sml_periodSignature);
-		proto_tree_add_text (periodSignature_tree, tvb, *offset, *length, "Length: %d %s", *data, plurality(*data, "octet", "octets"));
+		proto_tree_add_uint (periodSignature_tree, hf_sml_length, tvb, *offset, *length, *data);
 		*offset+=*length;
 		proto_tree_add_item (periodSignature_tree, hf_sml_periodSignature, tvb, *offset, *data, ENC_NA);
 		*offset+=*data;
@@ -771,55 +765,30 @@ static void field_periodSignature(tvbuff_t *tvb, proto_tree *insert_tree, guint 
 }
 
 static void field_actTime(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, guint *data, guint *length){
-	proto_item *actTime = NULL;
-	proto_tree *actTime_tree = NULL;
+	proto_tree *actTime_tree;
 
 	get_length(tvb, offset, data, length);
-	actTime = proto_tree_add_text (insert_tree, tvb, *offset, *length + *data, "actTime");
-	actTime_tree = proto_item_add_subtree (actTime, ett_sml_actTime);
-	proto_tree_add_item (actTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	actTime_tree = proto_tree_add_subtree(insert_tree, tvb, *offset, *length + *data, ett_sml_actTime, NULL, "actTime");
+	proto_tree_add_item (actTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 	proto_tree_add_item(actTime_tree, hf_sml_actTime, tvb, *offset, *data, ENC_BIG_ENDIAN);
 	*offset+=*data;
 }
 
 static void field_valTime(tvbuff_t *tvb, proto_tree *insert_tree, guint *offset, guint *data, guint *length){
-	proto_item *valTime = NULL;
-	proto_tree *valTime_tree = NULL;
+	proto_tree *valTime_tree;
 
 	get_length(tvb, offset, data, length);
-	valTime = proto_tree_add_text (insert_tree, tvb, *offset, *length + *data, "valTime");
-	valTime_tree = proto_item_add_subtree (valTime, ett_sml_valTime);
-	proto_tree_add_item (valTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	valTime_tree = proto_tree_add_subtree(insert_tree, tvb, *offset, *length + *data, ett_sml_valTime, NULL, "valTime");
+	proto_tree_add_item (valTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 	proto_tree_add_item(valTime_tree, hf_sml_valTime, tvb, *offset, *data, ENC_BIG_ENDIAN);
 	*offset+=*data;
 }
 
 static void TupelEntryTree(tvbuff_t *tvb, proto_tree *procParValue_tree, guint *offset){
-	proto_item *TupelEntry = NULL;
-	proto_item *SML_time = NULL;
-	proto_item *secIndex = NULL;
-	proto_item *unit_pA = NULL;
-	proto_item *scaler_pA = NULL;
-	proto_item *value_pA = NULL;
-	proto_item *unit_mA = NULL;
-	proto_item *scaler_mA = NULL;
-	proto_item *value_mA = NULL;
-	proto_item *unit_R1 = NULL;
-	proto_item *scaler_R1 = NULL;
-	proto_item *value_R1 = NULL;
-	proto_item *unit_R2 = NULL;
-	proto_item *scaler_R2 = NULL;
-	proto_item *value_R2 = NULL;
-	proto_item *unit_R3 = NULL;
-	proto_item *scaler_R3 = NULL;
-	proto_item *value_R3 = NULL;
-	proto_item *unit_R4 = NULL;
-	proto_item *scaler_R4 = NULL;
-	proto_item *value_R4 = NULL;
-	proto_item *signature_pA_R1_R4 = NULL;
-	proto_item *signature_mA_R2_R3 = NULL;
+	proto_item *SML_time;
+	proto_item *TupelEntry;
 
 	proto_tree *TupelEntry_list = NULL;
 	proto_tree *SML_time_tree = NULL;
@@ -849,8 +818,7 @@ static void TupelEntryTree(tvbuff_t *tvb, proto_tree *procParValue_tree, guint *
 	guint length = 0;
 
 	/*Tupel_List*/
-	TupelEntry = proto_tree_add_text (procParValue_tree, tvb, *offset, -1, "TupelEntry");
-	TupelEntry_list = proto_item_add_subtree (TupelEntry, ett_sml_tupel);
+	TupelEntry_list = proto_tree_add_subtree(procParValue_tree, tvb, *offset, -1, ett_sml_tupel, &TupelEntry, "TupelEntry");
 	get_length(tvb, offset, &data, &length);
 	*offset+=length;
 
@@ -858,14 +826,12 @@ static void TupelEntryTree(tvbuff_t *tvb, proto_tree *procParValue_tree, guint *
 	field_serverId(tvb, TupelEntry_list, offset, &data, &length);
 
 	/*secindex*/
-	SML_time = proto_tree_add_text (procParValue_tree, tvb, *offset, -1, "secIndex");
-	SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
+	SML_time_tree = proto_tree_add_subtree(procParValue_tree, tvb, *offset, -1, ett_sml_time, &SML_time, "secIndex");
 	*offset+=1;
 	sml_time_type(tvb, SML_time_tree, offset);
 	get_length(tvb, offset, &data, &length);
-	secIndex = proto_tree_add_text (SML_time_tree, tvb, *offset, length + data, "secIndex");
-	secIndex_tree = proto_item_add_subtree (secIndex, ett_sml_secIndex);
-	proto_tree_add_item (secIndex_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	secIndex_tree = proto_tree_add_subtree(SML_time_tree, tvb, *offset, length + data, ett_sml_secIndex, NULL, "secIndex");
+	proto_tree_add_item (secIndex_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 	proto_tree_add_item(secIndex_tree, hf_sml_secIndex, tvb, *offset, data, ENC_BIG_ENDIAN);
 	*offset+=data;
@@ -875,169 +841,149 @@ static void TupelEntryTree(tvbuff_t *tvb, proto_tree *procParValue_tree, guint *
 	field_status(tvb, TupelEntry_list, offset, &data, &length);
 
 	/*unit_pA*/
-	unit_pA= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "unit_pA");
-	unit_pA_tree = proto_item_add_subtree(unit_pA, ett_sml_unit_pA);
-	proto_tree_add_item (unit_pA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	unit_pA_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_unit_pA, NULL, "unit_pA");
+	proto_tree_add_item (unit_pA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (unit_pA_tree, hf_sml_unit_pA, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (unit_pA_tree, hf_sml_unit_pA, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*scaler_pA*/
-	scaler_pA= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "scaler_pA");
-	scaler_pA_tree = proto_item_add_subtree(scaler_pA, ett_sml_scaler_pA);
-	proto_tree_add_item (scaler_pA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	scaler_pA_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_scaler_pA, NULL, "scaler_pA");
+	proto_tree_add_item (scaler_pA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (scaler_pA_tree, hf_sml_scaler_pA, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (scaler_pA_tree, hf_sml_scaler_pA, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*value_pA*/
 	get_length(tvb, offset, &data, &length);
-	value_pA= proto_tree_add_text (TupelEntry_list, tvb, *offset, length+data, "value_pA");
-	value_pA_tree = proto_item_add_subtree(value_pA, ett_sml_value_pA);
-	proto_tree_add_item (value_pA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	value_pA_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, length+data, ett_sml_value_pA, NULL, "value_pA");
+	proto_tree_add_item (value_pA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (value_pA_tree, hf_sml_value_pA, tvb, *offset, data, ENC_NA);
+	proto_tree_add_item (value_pA_tree, hf_sml_value_pA, tvb, *offset, data, ENC_BIG_ENDIAN);
 	*offset+=data;
 
 	/*unit_R1*/
-	unit_R1= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "unit_R1");
-	unit_R1_tree = proto_item_add_subtree(unit_R1, ett_sml_unit_R1);
-	proto_tree_add_item (unit_R1_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	unit_R1_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_unit_R1, NULL, "unit_R1");
+	proto_tree_add_item (unit_R1_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (unit_R1_tree, hf_sml_unit_R1, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (unit_R1_tree, hf_sml_unit_R1, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*scaler_R1*/
-	scaler_R1= proto_tree_add_text (TupelEntry_list, tvb, *offset, 1, "scaler_R1");
-	scaler_R1_tree = proto_item_add_subtree(scaler_R1, ett_sml_scaler_R1);
-	proto_tree_add_item (scaler_R1_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	scaler_R1_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 1, ett_sml_scaler_R1, NULL, "scaler_R1");
+	proto_tree_add_item (scaler_R1_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (scaler_R1_tree, hf_sml_scaler_R1, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (scaler_R1_tree, hf_sml_scaler_R1, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*value_R1*/
 	get_length(tvb, offset, &data, &length);
-	value_R1= proto_tree_add_text (TupelEntry_list, tvb, *offset, length+data, "value_R1");
-	value_R1_tree = proto_item_add_subtree(value_R1, ett_sml_value_R1);
-	proto_tree_add_item (value_R1_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	value_R1_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, length+data, ett_sml_value_R1, NULL, "value_R1");
+	proto_tree_add_item (value_R1_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (value_R1_tree, hf_sml_value_R1, tvb, *offset, data, ENC_NA);
+	proto_tree_add_item (value_R1_tree, hf_sml_value_R1, tvb, *offset, data, ENC_BIG_ENDIAN);
 	*offset+=data;
 
 	/*unit_R4*/
-	unit_R4= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "unit_R4");
-	unit_R4_tree = proto_item_add_subtree(unit_R4, ett_sml_unit_R4);
-	proto_tree_add_item (unit_R4_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	unit_R4_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_unit_R4, NULL, "unit_R4");
+	proto_tree_add_item (unit_R4_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (unit_R4_tree, hf_sml_unit_R4, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (unit_R4_tree, hf_sml_unit_R4, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*scaler_R4*/
-	scaler_R4= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "scaler_R4");
-	scaler_R4_tree = proto_item_add_subtree(scaler_R4, ett_sml_scaler_R4);
-	proto_tree_add_item (scaler_R4_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	scaler_R4_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_scaler_R4, NULL, "scaler_R4");
+	proto_tree_add_item (scaler_R4_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (scaler_R4_tree, hf_sml_scaler_R4, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (scaler_R4_tree, hf_sml_scaler_R4, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*value_R4*/
 	get_length(tvb, offset, &data, &length);
-	value_R4= proto_tree_add_text (TupelEntry_list, tvb, *offset, length+data, "value_R4");
-	value_R4_tree = proto_item_add_subtree(value_R4, ett_sml_value_R4);
-	proto_tree_add_item (value_R4_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	value_R4_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, length+data, ett_sml_value_R4, NULL, "value_R4");
+	proto_tree_add_item (value_R4_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (value_R4_tree, hf_sml_value_R4, tvb, *offset, data, ENC_NA);
+	proto_tree_add_item (value_R4_tree, hf_sml_value_R4, tvb, *offset, data, ENC_BIG_ENDIAN);
 	*offset+=data;
 
 	/*signature_pA_R1_R4*/
 	get_length(tvb, offset, &data, &length);
-	signature_pA_R1_R4= proto_tree_add_text (TupelEntry_list, tvb, *offset, length+data, "signature_pa_R1_R4");
-	signature_pA_R1_R4_tree = proto_item_add_subtree(signature_pA_R1_R4, ett_sml_signature_pA_R1_R4);
-	proto_tree_add_text (signature_pA_R1_R4_tree, tvb, *offset, length, "Length: %d %s", data ,plurality(data, "octet", "octets"));
+	signature_pA_R1_R4_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, length+data, ett_sml_signature_pA_R1_R4, NULL, "signature_pa_R1_R4");
+	proto_tree_add_uint (signature_pA_R1_R4_tree, hf_sml_length, tvb, *offset, length, data);
 	*offset+=length;
 	proto_tree_add_item (signature_pA_R1_R4_tree, hf_sml_signature_pA_R1_R4, tvb, *offset, data, ENC_NA);
 	*offset+=data;
 
 	/*unit_mA*/
-	unit_mA= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "unit_mA");
-	unit_mA_tree = proto_item_add_subtree(unit_mA, ett_sml_unit_mA);
-	proto_tree_add_item (unit_mA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	unit_mA_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_unit_mA, NULL, "unit_mA");
+	proto_tree_add_item (unit_mA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (unit_mA_tree, hf_sml_unit_mA, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (unit_mA_tree, hf_sml_unit_mA, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*scaler_mA*/
-	scaler_mA= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "scaler_mA");
-	scaler_mA_tree = proto_item_add_subtree(scaler_mA, ett_sml_scaler_mA);
-	proto_tree_add_item (scaler_mA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	scaler_mA_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_scaler_mA, NULL, "scaler_mA");
+	proto_tree_add_item (scaler_mA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (scaler_mA_tree, hf_sml_scaler_mA, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (scaler_mA_tree, hf_sml_scaler_mA, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*value_mA*/
 	get_length(tvb, offset, &data, &length);
-	value_mA= proto_tree_add_text (TupelEntry_list, tvb, *offset, length+data, "value_mA");
-	value_mA_tree = proto_item_add_subtree(value_mA, ett_sml_value_mA);
-	proto_tree_add_item (value_mA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	value_mA_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, length+data, ett_sml_value_mA, NULL, "value_mA");
+	proto_tree_add_item (value_mA_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (value_mA_tree, hf_sml_value_mA, tvb, *offset, data, ENC_NA);
+	proto_tree_add_item (value_mA_tree, hf_sml_value_mA, tvb, *offset, data, ENC_BIG_ENDIAN);
 	*offset+=data;
 
 	/*unit_R2*/
-	unit_R2= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "unit_R2");
-	unit_R2_tree = proto_item_add_subtree(unit_R2, ett_sml_unit_R2);
-	proto_tree_add_item (unit_R2_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	unit_R2_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_unit_R2, NULL, "unit_R2");
+	proto_tree_add_item (unit_R2_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (unit_R2_tree, hf_sml_unit_R2, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (unit_R2_tree, hf_sml_unit_R2, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*scaler_R2*/
-	scaler_R2= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "scaler_R2");
-	scaler_R2_tree = proto_item_add_subtree(scaler_R2, ett_sml_scaler_R2);
-	proto_tree_add_item (scaler_R2_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	scaler_R2_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_scaler_R2, NULL, "scaler_R2");
+	proto_tree_add_item (scaler_R2_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (scaler_R2_tree, hf_sml_scaler_R2, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (scaler_R2_tree, hf_sml_scaler_R2, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*value_R2*/
 	get_length(tvb, offset, &data, &length);
-	value_R2= proto_tree_add_text (TupelEntry_list, tvb, *offset, length+data, "value_R2");
-	value_R2_tree = proto_item_add_subtree(value_R2, ett_sml_value_R2);
-	proto_tree_add_item (value_R2_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	value_R2_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, length+data, ett_sml_value_R2, NULL, "value_R2");
+	proto_tree_add_item (value_R2_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (value_R2_tree, hf_sml_value_R2, tvb, *offset, data, ENC_NA);
+	proto_tree_add_item (value_R2_tree, hf_sml_value_R2, tvb, *offset, data, ENC_BIG_ENDIAN);
 	*offset+=data;
 
 	/*unit_R3*/
-	unit_R3= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "unit_R3");
-	unit_R3_tree = proto_item_add_subtree(unit_R3, ett_sml_unit_R3);
-	proto_tree_add_item (unit_R3_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	unit_R3_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_unit_R3, NULL, "unit_R3");
+	proto_tree_add_item (unit_R3_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (unit_R3_tree, hf_sml_unit_R3, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (unit_R3_tree, hf_sml_unit_R3, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*scaler_R3*/
-	scaler_R3= proto_tree_add_text (TupelEntry_list, tvb, *offset, 2, "scaler_R3");
-	scaler_R3_tree = proto_item_add_subtree(scaler_R3, ett_sml_scaler_R3);
-	proto_tree_add_item (scaler_R3_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	scaler_R3_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, 2, ett_sml_scaler_R3, NULL, "scaler_R3");
+	proto_tree_add_item (scaler_R3_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (scaler_R3_tree, hf_sml_scaler_R3, tvb, *offset, 1, ENC_NA);
+	proto_tree_add_item (scaler_R3_tree, hf_sml_scaler_R3, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
 
 	/*value_R3*/
 	get_length(tvb, offset, &data, &length);
-	value_R3= proto_tree_add_text (TupelEntry_list, tvb, *offset, length+data, "value_R3");
-	value_R3_tree = proto_item_add_subtree(value_R3, ett_sml_value_R3);
-	proto_tree_add_item (value_R3_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+	value_R3_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, length+data, ett_sml_value_R3, NULL, "value_R3");
+	proto_tree_add_item (value_R3_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 	*offset+=1;
-	proto_tree_add_item (value_R3_tree, hf_sml_value_R3, tvb, *offset, data, ENC_NA);
+	proto_tree_add_item (value_R3_tree, hf_sml_value_R3, tvb, *offset, data, ENC_BIG_ENDIAN);
 	*offset+=data;
 
 	/*signature_mA_R2_R3*/
 	get_length(tvb, offset, &data, &length);
-	signature_mA_R2_R3= proto_tree_add_text (TupelEntry_list, tvb, *offset, length+data, "signature_mA_R2_R3");
-	signature_mA_R2_R3_tree = proto_item_add_subtree(signature_mA_R2_R3, ett_sml_signature_mA_R2_R3);
-	proto_tree_add_text (signature_mA_R2_R3_tree, tvb, *offset, length, "Length: %d %s", data ,plurality(data, "octet", "octets"));
+	signature_mA_R2_R3_tree = proto_tree_add_subtree(TupelEntry_list, tvb, *offset, length+data, ett_sml_signature_mA_R2_R3, NULL, "signature_mA_R2_R3");
+	proto_tree_add_uint (signature_mA_R2_R3_tree, hf_sml_length, tvb, *offset, length, data);
 	*offset+=length;
 	proto_tree_add_item (signature_mA_R2_R3_tree, hf_sml_signature_mA_R2_R3, tvb, *offset, data, ENC_NA);
 	*offset+=data;
@@ -1046,14 +992,12 @@ static void TupelEntryTree(tvbuff_t *tvb, proto_tree *procParValue_tree, guint *
 }
 
 static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tree, guint *offset, guint *data, guint *length){
-	proto_item *parameterName = NULL;
-	proto_item *procParValue = NULL;
-	proto_item *child = NULL;
-	proto_item *procParValuetype = NULL;
-	proto_item *periodEntry = NULL;
-	proto_item *SML_time = NULL;
-	proto_item *procParValueTime = NULL;
-	proto_item *tree_Entry = NULL;
+	proto_item *parameterName;
+	proto_item *procParValue;
+	proto_item *child;
+	proto_item *periodEntry;
+	proto_item *SML_time;
+	proto_item *tree_Entry;
 
 	proto_tree *parameterName_tree = NULL;
 	proto_tree *procParValue_tree = NULL;
@@ -1070,9 +1014,8 @@ static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tre
 
 	/*parameterName*/
 	get_length(tvb, offset, data, length);
-	parameterName = proto_tree_add_text (insert_tree, tvb, *offset, *length + *data ,"parameterName");
-	parameterName_tree = proto_item_add_subtree (parameterName, ett_sml_parameterName);
-	proto_tree_add_text (parameterName_tree, tvb, *offset, *length, "Length: %d %s", *data ,plurality(*data, "octet", "octets"));
+	parameterName_tree = proto_tree_add_subtree(insert_tree, tvb, *offset, *length + *data, ett_sml_parameterName, &parameterName, "parameterName");
+	proto_tree_add_uint (parameterName_tree, hf_sml_length, tvb, *offset, *length, *data);
 	*offset+=*length;
 	proto_tree_add_item (parameterName_tree, hf_sml_parameterName, tvb, *offset, *data, ENC_NA);
 	*offset+=*data;
@@ -1081,23 +1024,21 @@ static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tre
 	check = tvb_get_guint8(tvb, *offset);
 
 	if (check == OPTIONAL){
-		procParValue = proto_tree_add_item(insert_tree, hf_sml_procParValue, tvb, *offset, 1, ENC_NA);
+		procParValue = proto_tree_add_item(insert_tree, hf_sml_procParValue, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		proto_item_append_text(procParValue, ": NOT SET");
 		*offset+=1;
 	}
 	else if (check == 0x72){
 		get_length(tvb, offset, data, length);
-		procParValue = proto_tree_add_text(insert_tree, tvb, *offset, -1, "ProcParValue");
-		procParValue_tree = proto_item_add_subtree (procParValue, ett_sml_procParValue);
+		procParValue_tree = proto_tree_add_subtree(insert_tree, tvb, *offset, -1, ett_sml_procParValue, &procParValue, "ProcParValue");
 		*offset+=1;
 
 		/*procParValue CHOOSE*/
-		procParValuetype = proto_tree_add_text (procParValue_tree, tvb, *offset, 2, "ProcParValueType");
-		procParValuetype_tree = proto_item_add_subtree (procParValuetype, ett_sml_procParValuetype);
-		proto_tree_add_item (procParValuetype_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		procParValuetype_tree = proto_tree_add_subtree(procParValue_tree, tvb, *offset, 2, ett_sml_procParValuetype, NULL, "ProcParValueType");
+		proto_tree_add_item (procParValuetype_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 		check = tvb_get_guint8(tvb, *offset);
-		proto_tree_add_item (procParValuetype_tree, hf_sml_procParValue, tvb, *offset, 1 ,ENC_NA);
+		proto_tree_add_item (procParValuetype_tree, hf_sml_procParValue, tvb, *offset, 1 ,ENC_BIG_ENDIAN);
 		*offset+=1;
 
 		switch (check) {
@@ -1109,8 +1050,8 @@ static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tre
 			case PROC_PERIOD:
 				/*period*/
 				get_length(tvb, offset, data, length);
-				periodEntry = proto_tree_add_text(procParValue_tree, tvb, *offset, -1, "PeriodEntry List with %d %s", *length + *data, plurality(*length + *data, "element", "elements"));
-				periodEntry_tree = proto_item_add_subtree(periodEntry, ett_sml_periodEntry);
+				periodEntry_tree = proto_tree_add_subtree_format(procParValue_tree, tvb, *offset, -1, ett_sml_periodEntry, &periodEntry,
+										"PeriodEntry List with %d %s", *length + *data, plurality(*length + *data, "element", "elements"));
 				*offset+=*length;
 
 				/*objName*/
@@ -1143,17 +1084,15 @@ static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tre
 				break;
 
 			case PROC_TIME:
-				SML_time = proto_tree_add_text (procParValue_tree, tvb, *offset, -1, "Time");
-				SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
+				SML_time_tree = proto_tree_add_subtree(procParValue_tree, tvb, *offset, -1, ett_sml_time, &SML_time, "Time");
 				*offset+=1;
 
 				sml_time_type(tvb, SML_time_tree, offset);
 
 				/*Time*/
 				get_length(tvb, offset, data, length);
-				procParValueTime = proto_tree_add_text (SML_time_tree, tvb, *offset, *length + *data, "procParValueTime");
-				procParValueTime_tree = proto_item_add_subtree (procParValueTime, ett_sml_procParValueTime);
-				proto_tree_add_item (procParValueTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+				procParValueTime_tree = proto_tree_add_subtree(SML_time_tree, tvb, *offset, *length + *data, ett_sml_procParValueTime, NULL, "procParValueTime");
+				proto_tree_add_item (procParValueTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 				*offset+=1;
 				proto_tree_add_item(procParValueTime_tree, hf_sml_procParValueTime, tvb, *offset, *data, ENC_BIG_ENDIAN);
 				*offset+=*data;
@@ -1175,19 +1114,19 @@ static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tre
 	/*child list OPTIONAL*/
 	check = tvb_get_guint8(tvb, *offset);
 
+	child_list = proto_tree_add_subtree(insert_tree, tvb, *offset, -1, ett_sml_child, &child, "Child List");
 	if (check == OPTIONAL){
-		proto_tree_add_text (insert_tree, tvb, *offset, 1, "Child List: NOT SET");
+		proto_item_append_text(child, ": NOT SET");
+		proto_item_set_len(child, 1);
 		*offset+=1;
 	}
 	else if ((check & 0x0F) != 0){
 		if (check == 0x71){
 			get_length(tvb, offset, data, length);
-			child = proto_tree_add_text(insert_tree, tvb, *offset, -1, "Child List with %d %s", *length + *data, plurality(*length + *data, "element", "elements"));
-			child_list = proto_item_add_subtree(child, ett_sml_child);
+			proto_item_append_text(child, "with %d %s", *length + *data, plurality(*length + *data, "element", "elements"));
 			*offset+=1;
 
-			tree_Entry = proto_tree_add_text (child_list, tvb, *offset, -1, "tree_Entry");
-			tree_Entry_list = proto_item_add_subtree(tree_Entry, ett_sml_tree_Entry);
+			tree_Entry_list = proto_tree_add_subtree(child_list, tvb, *offset, -1, ett_sml_tree_Entry, &tree_Entry, "tree_Entry");
 			*offset+=1;
 
 			child_tree(tvb, pinfo,tree_Entry_list, offset, data, length);
@@ -1198,8 +1137,7 @@ static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tre
 		else if ((check & 0xF0) == SHORT_LIST || (check & 0xF0) == LONG_LIST){
 			get_length(tvb, offset, data, length);
 			repeat = *length + *data;
-			child = proto_tree_add_text(insert_tree, tvb, *offset, -1, "Child List with %d %s", *length + *data, plurality(*length + *data, "element", "elements"));
-			child_list = proto_item_add_subtree(child, ett_sml_child);
+			proto_item_append_text(child, "with %d %s", *length + *data, plurality(*length + *data, "element", "elements"));
 			if (repeat <= 0){
 				expert_add_info_format(pinfo, child, &ei_sml_invalid_count, "invalid loop count");
 				return;
@@ -1207,8 +1145,7 @@ static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tre
 			*offset+=*length;
 
 			for(i =0 ; i < repeat; i++){
-				tree_Entry = proto_tree_add_text (child_list, tvb, *offset, -1, "tree_Entry");
-				tree_Entry_list = proto_item_add_subtree(tree_Entry, ett_sml_tree_Entry);
+				tree_Entry_list = proto_tree_add_subtree(child_list, tvb, *offset, -1, ett_sml_tree_Entry, &tree_Entry, "tree_Entry");
 
 				if (tvb_get_guint8(tvb, *offset) != 0x73){
 					expert_add_info_format(pinfo, tree_Entry, &ei_sml_invalid_count, "invalid count of elements in tree_Entry");
@@ -1223,7 +1160,7 @@ static void child_tree(tvbuff_t *tvb, packet_info *pinfo, proto_tree *insert_tre
 		}
 	}
 	else {
-		expert_add_info_format(pinfo, NULL, &ei_sml_invalid_count, "invalid count of elements in child List");
+		expert_add_info_format(pinfo, child, &ei_sml_invalid_count, "invalid count of elements in child List");
 	}
 }
 
@@ -1255,7 +1192,6 @@ static void decode_PublicOpenReq (tvbuff_t *tvb, proto_tree *messagebodytree_lis
 }
 
 static void decode_PublicOpenRes (tvbuff_t *tvb, proto_tree *messagebodytree_list, guint *offset){
-	proto_item *refTime = NULL;
 	proto_item *SML_time = NULL;
 
 	proto_tree *refTime_tree = NULL;
@@ -1279,23 +1215,22 @@ static void decode_PublicOpenRes (tvbuff_t *tvb, proto_tree *messagebodytree_lis
 	/*RefTime Optional*/
 	get_length(tvb, offset, &data, &length);
 
+	SML_time_tree = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_time, &SML_time, "refTime");
 	if (data == 0){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, length + data, "refTime: NOT SET");
+		proto_item_append_text(SML_time, ": NOT SET");
+		proto_item_set_len(SML_time, length + data);
 		*offset+=1;
 	}
 	else{
 		/*SML TIME*/
-		SML_time = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "refTime");
-		SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
 		*offset+=1;
 
 		sml_time_type(tvb, SML_time_tree, offset);
 
 		/*refTime*/
 		get_length(tvb, offset, &data, &length);
-		refTime = proto_tree_add_text (SML_time_tree, tvb, *offset, length+data, "refTime");
-		refTime_tree = proto_item_add_subtree (refTime, ett_sml_refTime);
-		proto_tree_add_item (refTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		refTime_tree = proto_tree_add_subtree(SML_time_tree, tvb, *offset, length+data, ett_sml_refTime, NULL, "refTime");
+		proto_tree_add_item (refTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 		proto_tree_add_item(refTime_tree, hf_sml_refTime, tvb, *offset, data, ENC_BIG_ENDIAN);
 		*offset+=data;
@@ -1308,10 +1243,8 @@ static void decode_PublicOpenRes (tvbuff_t *tvb, proto_tree *messagebodytree_lis
 static gboolean decode_GetProfile_List_Pack_Req (tvbuff_t *tvb, packet_info *pinfo, proto_tree *messagebodytree_list, guint *offset){
 	proto_item *withRawdata = NULL;
 	proto_item *SML_time = NULL;
-	proto_item *beginTime = NULL;
 	proto_item *treepath = NULL;
 	proto_item *object_list = NULL;
-	proto_item *endTime = NULL;
 	proto_item *dasDetails = NULL;
 
 	proto_tree *withRawdata_tree = NULL;
@@ -1343,9 +1276,9 @@ static gboolean decode_GetProfile_List_Pack_Req (tvbuff_t *tvb, packet_info *pin
 
 	if (data > 0) {
 		withRawdata_tree = proto_item_add_subtree (withRawdata, ett_sml_withRawdata);
-		proto_tree_add_item (withRawdata_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		proto_tree_add_item (withRawdata_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
-		proto_tree_add_item (withRawdata_tree, hf_sml_withRawdata, tvb, *offset, 1, ENC_NA);
+		proto_tree_add_item (withRawdata_tree, hf_sml_withRawdata, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 	}
 	else
@@ -1354,23 +1287,22 @@ static gboolean decode_GetProfile_List_Pack_Req (tvbuff_t *tvb, packet_info *pin
 	/*beginTime OPTIONAL*/
 	get_length(tvb, offset, &data, &length);
 
+	SML_time_tree = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_time, &SML_time, "beginTime");
 	if (data == 0){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, length + data, "beginTime: NOT SET");
+		proto_item_append_text(SML_time, ": NOT SET");
+		proto_item_set_len(SML_time, length + data);
 		*offset+=1;
 	}
 	else {
 		/*SML TIME*/
-		SML_time = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "beginTime");
-		SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
 		*offset+=1;
 
 		sml_time_type(tvb, SML_time_tree, offset);
 
 		/*beginTime*/
 		get_length(tvb, offset, &data, &length);
-		beginTime = proto_tree_add_text (SML_time_tree, tvb, *offset, length + data, "beginTime");
-		beginTime_tree = proto_item_add_subtree (beginTime, ett_sml_beginTime);
-		proto_tree_add_item (beginTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		beginTime_tree = proto_tree_add_subtree(SML_time_tree, tvb, *offset, length + data, ett_sml_beginTime, NULL, "beginTime");
+		proto_tree_add_item (beginTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 		proto_tree_add_item(beginTime_tree, hf_sml_beginTime, tvb, *offset, data, ENC_BIG_ENDIAN);
 		*offset+=data;
@@ -1380,23 +1312,22 @@ static gboolean decode_GetProfile_List_Pack_Req (tvbuff_t *tvb, packet_info *pin
 	/*endTime OPTIONAL*/
 	get_length(tvb, offset, &data, &length);
 
+	SML_time_tree = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_time, &SML_time, "endTime");
 	if (data == 0){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, length + data, "endTime: NOT SET");
+		proto_item_append_text(SML_time, ": NOT SET");
+		proto_item_set_len(SML_time, length + data);
 		*offset+=1;
 	}
 	else {
 		/*SML TIME*/
-		SML_time = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "endTime");
-		SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
 		*offset+=1;
 
 		sml_time_type(tvb, SML_time_tree, offset);
 
 		/*endTime*/
 		get_length(tvb, offset, &data, &length);
-		endTime = proto_tree_add_text (SML_time_tree, tvb, *offset, length + data, "endTime");
-		endTime_tree = proto_item_add_subtree (endTime, ett_sml_beginTime);
-		proto_tree_add_item (endTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		endTime_tree = proto_tree_add_subtree(SML_time_tree, tvb, *offset, length + data, ett_sml_beginTime, NULL, "endTime");
+		proto_tree_add_item (endTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 		proto_tree_add_item(endTime_tree, hf_sml_endTime, tvb, *offset, data, ENC_BIG_ENDIAN);
 		*offset+=data;
@@ -1406,8 +1337,8 @@ static gboolean decode_GetProfile_List_Pack_Req (tvbuff_t *tvb, packet_info *pin
 	/*Treepath List*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (data+length);
-	treepath = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
-	treepath_list = proto_item_add_subtree(treepath, ett_sml_treepath);
+	treepath_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_treepath, &treepath,
+					"parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, treepath, &ei_sml_invalid_count, "invalid count of elements in Treepath");
@@ -1425,15 +1356,16 @@ static gboolean decode_GetProfile_List_Pack_Req (tvbuff_t *tvb, packet_info *pin
 	proto_item_set_end(treepath, tvb, *offset);
 
 	/*object_list*/
+	object_list_list = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_object_list, &object_list, "object_List");
 	if (tvb_get_guint8(tvb,*offset) == OPTIONAL){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, 1, "object_List: NOT SET");
+		proto_item_append_text(object_list, ": NOT SET");
+		proto_item_set_len(object_list, 1);
 		*offset+=1;
 	}
 	else{
 		get_length(tvb, offset, &data, &length);
 		repeat = (data+length);
-		object_list = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "object_List with %d %s", length+data, plurality(length+data, "element", "elements"));
-		object_list_list = proto_item_add_subtree(object_list, ett_sml_object_list);
+		proto_item_append_text(object_list, " with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 		if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 			expert_add_info_format(pinfo, object_list, &ei_sml_invalid_count, "invalid count of elements in object_List");
@@ -1455,21 +1387,22 @@ static gboolean decode_GetProfile_List_Pack_Req (tvbuff_t *tvb, packet_info *pin
 	/*dasDetails*/
 	check = tvb_get_guint8(tvb,*offset);
 
+	dasDetails_list = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_dasDetails, &dasDetails, "dasDetails");
 	if (check == OPTIONAL){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, 1, "dasDetails: NOT SET");
+		proto_item_append_text(dasDetails, ": NOT SET");
+		proto_item_set_len(dasDetails, 1);
 		*offset+=1;
 	}
 	else if ((check & 0xF0) == LONG_LIST || (check & 0xF0) == SHORT_LIST){
 		get_length(tvb, offset, &data, &length);
-		dasDetails = proto_tree_add_text(messagebodytree_list, tvb, *offset, -1, "dasDetails with %d %s", length+data, plurality(length+data, "element", "elements"));
-		dasDetails_list = proto_item_add_subtree(dasDetails, ett_sml_dasDetails);
+		proto_item_append_text(dasDetails, " with %d %s", length+data, plurality(length+data, "element", "elements"));
 		*offset+=length;
 
 		child_tree(tvb, pinfo, dasDetails_list, offset, &data, &length);
 		proto_item_set_end(dasDetails, tvb, *offset);
 	}
 	else {
-		expert_add_info_format(pinfo, NULL, &ei_sml_invalid_count, "invalid count of elements in dasDetails");
+		expert_add_info_format(pinfo, dasDetails, &ei_sml_invalid_count, "invalid count of elements in dasDetails");
 		return TRUE;
 	}
 	return FALSE;
@@ -1508,8 +1441,8 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 
 	/*actTime*/
 	get_length(tvb, offset, &data, &length);
-	SML_time = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "actTime List with %d %s", length+data, plurality(length+data, "element", "elements"));
-	SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
+	SML_time_tree = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_time, &SML_time,
+				"actTime List with %d %s", length+data, plurality(length+data, "element", "elements"));
 	*offset+=1;
 	sml_time_type(tvb, SML_time_tree, offset);
 	field_actTime(tvb, SML_time_tree, offset, &data, &length);
@@ -1521,8 +1454,8 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 	/*Treepath List*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (data+length);
-	treepath = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
-	treepath_list = proto_item_add_subtree(treepath, ett_sml_treepath);
+	treepath_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_treepath, &treepath,
+					"parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, treepath, &ei_sml_invalid_count, "invalid count of elements in Treepath");
@@ -1543,8 +1476,8 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 	/*headerList*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (data+length);
-	headerList = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "header_List with %d %s", length+data, plurality(length+data, "element", "elements"));
-	headerList_subtree = proto_item_add_subtree(headerList, ett_sml_headerList);
+	headerList_subtree = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_headerList, &headerList,
+							"header_List with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, headerList, &ei_sml_invalid_count, "invalid count of elements in headerlist");
@@ -1559,8 +1492,8 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 
 	for (i=0; i< repeat; i++) {
 		get_length(tvb, offset, &data, &length);
-		header_List_Entry = proto_tree_add_text (headerList_subtree, tvb, *offset, -1, "header_List_Entry with %d %s", length+data, plurality(length+data, "element", "elements"));
-		header_List_Entry_list = proto_item_add_subtree(header_List_Entry, ett_sml_header_List_Entry);
+		header_List_Entry_list = proto_tree_add_subtree_format(headerList_subtree, tvb, *offset, -1, ett_sml_header_List_Entry, &header_List_Entry,
+								"header_List_Entry with %d %s", length+data, plurality(length+data, "element", "elements"));
 		*offset+=1;
 
 		/*objname*/
@@ -1579,8 +1512,8 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 	/*period List*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (data+length);
-	periodList = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "period_List with %d %s", length+data, plurality(length+data, "element", "elements"));
-	periodList_list = proto_item_add_subtree(periodList, ett_sml_periodList);
+	periodList_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_periodList, &periodList,
+				"period_List with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, periodList, &ei_sml_invalid_count, "invalid count of elements in periodList");
@@ -1595,14 +1528,13 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 
 	for (i=0; i< repeat; i++) {
 		get_length(tvb, offset, &data, &length);
-		period_List_Entry = proto_tree_add_text (periodList_list, tvb, *offset, -1, "period_List_Entry with %d %s", length+data, plurality(length+data, "element", "elements"));
-		period_List_Entry_list = proto_item_add_subtree(period_List_Entry, ett_sml_period_List_Entry);
+		period_List_Entry_list = proto_tree_add_subtree_format(periodList_list, tvb, *offset, -1, ett_sml_period_List_Entry, &period_List_Entry,
+						"period_List_Entry with %d %s", length+data, plurality(length+data, "element", "elements"));
 		*offset+=1;
 
 		/*valTime*/
 		get_length(tvb, offset, &data, &length);
-		SML_time = proto_tree_add_text (period_List_Entry, tvb, *offset, -1, "valTime");
-		SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
+		SML_time_tree = proto_tree_add_subtree(period_List_Entry, tvb, *offset, -1, ett_sml_time, &SML_time, "valTime");
 		*offset+=1;
 		sml_time_type(tvb, SML_time_tree, offset);
 		field_valTime(tvb, SML_time_tree, offset, &data, &length);
@@ -1614,8 +1546,8 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 		/*value List*/
 		get_length(tvb, offset, &data, &length);
 		repeat2 = data + length;
-		valuelist = proto_tree_add_text (period_List_Entry_list, tvb, *offset, -1, "period_List with %d %s", length+data, plurality(length+data, "element", "elements"));
-		valuelist_list = proto_item_add_subtree(valuelist, ett_sml_valuelist);
+		valuelist_list = proto_tree_add_subtree_format(period_List_Entry_list, tvb, *offset, -1, ett_sml_valuelist, &valuelist,
+							       "period_List with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 		if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 			expert_add_info_format(pinfo, valuelist, &ei_sml_invalid_count, "invalid count of elements in valueList");
@@ -1630,8 +1562,8 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 
 		for (d=0; d< repeat2; d++) {
 			get_length(tvb, offset, &data, &length);
-			value_List_Entry = proto_tree_add_text (valuelist_list, tvb, *offset, -1, "value_List_Entry with %d %s", length+data, plurality(length+data, "element", "elements"));
-			value_List_Entry_list = proto_item_add_subtree(value_List_Entry, ett_sml_value_List_Entry);
+			value_List_Entry_list = proto_tree_add_subtree_format(valuelist_list, tvb, *offset, -1, ett_sml_value_List_Entry, NULL,
+									"value_List_Entry with %d %s", length+data, plurality(length+data, "element", "elements"));
 			*offset+=1;
 
 			/*value*/
@@ -1660,7 +1592,7 @@ static gboolean decode_GetProfilePackRes(tvbuff_t *tvb, packet_info *pinfo, prot
 
 	if (data > 0){
 		profileSignature_tree = proto_item_add_subtree (profileSignature, ett_sml_profileSignature);
-		proto_tree_add_text (profileSignature_tree, tvb, *offset, length, "Length: %d %s", data, plurality(data, "octet", "octets"));
+		proto_tree_add_uint (profileSignature_tree, hf_sml_length, tvb, *offset, length, data);
 		*offset+=length;
 		proto_tree_add_item (profileSignature_tree, hf_sml_profileSignature, tvb, *offset, data, ENC_NA);
 		*offset+=data;
@@ -1692,8 +1624,7 @@ static gboolean decode_GetProfileListRes(tvbuff_t *tvb, packet_info *pinfo, prot
 
 	/*actTime*/
 	get_length(tvb, offset, &data, &length);
-	SML_time = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "actTime");
-	SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
+	SML_time_tree = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_time, &SML_time, "actTime");
 	*offset+=1;
 	sml_time_type(tvb, SML_time_tree, offset);
 	field_actTime(tvb, SML_time_tree, offset, &data, &length);
@@ -1705,8 +1636,8 @@ static gboolean decode_GetProfileListRes(tvbuff_t *tvb, packet_info *pinfo, prot
 	/*Treepath List*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (data+length);
-	treepath = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
-	treepath_list = proto_item_add_subtree(treepath, ett_sml_treepath);
+	treepath_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_treepath, &treepath,
+				"parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, treepath, &ei_sml_invalid_count, "invalid count of elements in parameterTreePath");
@@ -1727,14 +1658,14 @@ static gboolean decode_GetProfileListRes(tvbuff_t *tvb, packet_info *pinfo, prot
 	/*valTime Optional*/
 	get_length(tvb, offset, &data, &length);
 
+	SML_time_tree = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_time, &SML_time, "valTime");
 	if (data == 0){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, length + data, "valTime: NOT SET");
+		proto_item_append_text(SML_time, ": NOT SET");
+		proto_item_set_len(SML_time, length + data);
 		*offset+=1;
 	}
 	else {
 		/*SML TIME*/
-		SML_time = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "valTime");
-		SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
 		*offset+=1;
 
 		sml_time_type(tvb, SML_time_tree, offset);
@@ -1748,8 +1679,8 @@ static gboolean decode_GetProfileListRes(tvbuff_t *tvb, packet_info *pinfo, prot
 	/*period-List*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (data+length);
-	periodList = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "period-List with %d %s", length+data, plurality(length+data, "element", "elements"));
-	periodList_list = proto_item_add_subtree(periodList, ett_sml_periodList);
+	periodList_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_periodList, &periodList,
+					"period-List with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, periodList, &ei_sml_invalid_count, "invalid count of elements in periodList");
@@ -1764,8 +1695,7 @@ static gboolean decode_GetProfileListRes(tvbuff_t *tvb, packet_info *pinfo, prot
 
 	for (i=0; i< repeat; i++) {
 		get_length(tvb, offset, &data, &length);
-		periodList_Entry = proto_tree_add_text (periodList_list, tvb, *offset, -1, "PeriodEntry");
-		periodList_Entry_list = proto_item_add_subtree(periodList_Entry, ett_sml_period_List_Entry);
+		periodList_Entry_list = proto_tree_add_subtree(periodList_list, tvb, *offset, -1, ett_sml_period_List_Entry, &periodList_Entry, "PeriodEntry");
 		*offset+=1;
 
 		/*ObjName*/
@@ -1817,11 +1747,9 @@ static void decode_GetListReq (tvbuff_t *tvb, proto_tree *messagebodytree_list, 
 }
 
 static gboolean decode_GetListRes (tvbuff_t *tvb, packet_info *pinfo, proto_tree *messagebodytree_list, guint *offset){
-	proto_item *actSensorTime = NULL;
 	proto_item *valList = NULL;
 	proto_item *listSignature = NULL;
 	proto_item *valtree = NULL;
-	proto_item *actGatewayTime = NULL;
 	proto_item *SML_time;
 
 	proto_tree *actSensorTime_tree = NULL;
@@ -1848,23 +1776,22 @@ static gboolean decode_GetListRes (tvbuff_t *tvb, packet_info *pinfo, proto_tree
 	/*actSensorTime OPTIONAL*/
 	get_length(tvb, offset, &data, &length);
 
+	SML_time_tree = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_time, &SML_time, "actSensorTime");
 	if (data == 0){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, length + data, "actSensorTime: NOT SET");
+		proto_item_append_text(SML_time, ": NOT SET");
+		proto_item_set_len(SML_time, length + data);
 		*offset+=1;
 	}
 	else {
 		/*SML TIME*/
-		SML_time = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "actSensorTime");
-		SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
 		*offset+=1;
 
 		sml_time_type(tvb, SML_time_tree, offset);
 
 		/*actSensorTime*/
 		get_length(tvb, offset, &data, &length);
-		actSensorTime = proto_tree_add_text (SML_time_tree, tvb, *offset, length + data, "actSensorTime");
-		actSensorTime_tree = proto_item_add_subtree (actSensorTime, ett_sml_actSensorTime);
-		proto_tree_add_item (actSensorTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		actSensorTime_tree = proto_tree_add_subtree(SML_time_tree, tvb, *offset, length + data, ett_sml_actSensorTime, NULL, "actSensorTime");
+		proto_tree_add_item (actSensorTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 		proto_tree_add_item(actSensorTime_tree, hf_sml_actSensorTime, tvb, *offset, data, ENC_BIG_ENDIAN);
 		*offset+=data;
@@ -1874,8 +1801,8 @@ static gboolean decode_GetListRes (tvbuff_t *tvb, packet_info *pinfo, proto_tree
 	/*valList*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (length + data);
-	valtree = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "valList with %d %s", length+data, plurality(length+data, "element", "elements"));
-	valtree_list = proto_item_add_subtree (valtree, ett_sml_valtree);
+	valtree_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_valtree, &valtree,
+						"valList with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, valtree, &ei_sml_invalid_count, "invalid count of elements in valList");
@@ -1890,8 +1817,7 @@ static gboolean decode_GetListRes (tvbuff_t *tvb, packet_info *pinfo, proto_tree
 
 	for (i=0; i < repeat; i++){
 		get_length(tvb, offset, &data, &length);
-		valList = proto_tree_add_text (valtree_list, tvb, *offset, -1, "valListEntry");
-		valList_list = proto_item_add_subtree (valList, ett_sml_valList);
+		valList_list = proto_tree_add_subtree(valtree_list, tvb, *offset, -1, ett_sml_valList, &valList, "valListEntry");
 		*offset+=length;
 
 		/*objName*/
@@ -1903,14 +1829,14 @@ static gboolean decode_GetListRes (tvbuff_t *tvb, packet_info *pinfo, proto_tree
 		/*valTime OPTIONAL*/
 		get_length(tvb, offset, &data, &length);
 
+		SML_time_tree = proto_tree_add_subtree(valList_list, tvb, *offset, -1, ett_sml_time, &SML_time, "valTime");
 		if (data == 0){
-			proto_tree_add_text (valList_list, tvb, *offset, length + data, "valTime: NOT SET");
+			proto_item_append_text(SML_time, ": NOT SET");
+			proto_item_set_len(SML_time, length + data);
 			*offset+=1;
 		}
 		else {
 			/*SML TIME*/
-			SML_time = proto_tree_add_text (valList_list, tvb, *offset, -1, "valTime");
-			SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
 			*offset+=1;
 
 			sml_time_type(tvb, SML_time_tree, offset);
@@ -1940,7 +1866,7 @@ static gboolean decode_GetListRes (tvbuff_t *tvb, packet_info *pinfo, proto_tree
 
 	if (data > 0){
 		listSignature_tree = proto_item_add_subtree (listSignature, ett_sml_listSignature);
-		proto_tree_add_text (listSignature_tree, tvb, *offset, length, "Length: %d %s", data, plurality(data, "byte", "bytes"));
+		proto_tree_add_uint (listSignature_tree, hf_sml_length, tvb, *offset, length, data);
 		*offset+=length;
 		proto_tree_add_item (listSignature_tree, hf_sml_listSignature, tvb, *offset, data, ENC_NA);
 		*offset+=data;
@@ -1951,22 +1877,21 @@ static gboolean decode_GetListRes (tvbuff_t *tvb, packet_info *pinfo, proto_tree
 	/*actGatewayTime OPTIONAL*/
 	get_length(tvb, offset, &data, &length);
 
+	SML_time_tree = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_time, &SML_time, "actGatewayTime");
 	if (data == 0){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, length + data, "actGatewayTime: NOT SET");
+		proto_item_append_text(SML_time, ": NOT SET");
+		proto_item_set_len(SML_time, length + data);
 		*offset+=1;
 	}
 	else{
 		/*SML TIME*/
-		SML_time = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "actGatewayTime");
-		SML_time_tree = proto_item_add_subtree (SML_time, ett_sml_time);
 		*offset+=1;
 
 		sml_time_type(tvb, SML_time_tree, offset);
 
 		get_length(tvb, offset, &data, &length);
-		actGatewayTime = proto_tree_add_text (SML_time_tree, tvb, *offset, length + data, "actGatewayTime");
-		actGatewayTime_tree = proto_item_add_subtree (actGatewayTime, ett_sml_actSensorTime);
-		proto_tree_add_item (actGatewayTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+		actGatewayTime_tree = proto_tree_add_subtree(SML_time_tree, tvb, *offset, length + data, ett_sml_actSensorTime, NULL, "actGatewayTime");
+		proto_tree_add_item (actGatewayTime_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 		*offset+=1;
 		proto_tree_add_item(actGatewayTime_tree, hf_sml_actGatewayTime, tvb, *offset, data, ENC_BIG_ENDIAN);
 		*offset+=data;
@@ -1999,8 +1924,8 @@ static gboolean decode_GetProcParameterReq(tvbuff_t *tvb, packet_info *pinfo, pr
 	/*Treepath List*/
 	get_length(tvb, offset, &data, &length);
 	repeat = data+length;
-	treepath = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "ParameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
-	treepath_list = proto_item_add_subtree(treepath, ett_sml_treepath);
+	treepath_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_treepath, &treepath,
+					"ParameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, treepath, &ei_sml_invalid_count, "invalid count of elements in ParameterTreePath");
@@ -2024,7 +1949,7 @@ static gboolean decode_GetProcParameterReq(tvbuff_t *tvb, packet_info *pinfo, pr
 
 	if (data > 0) {
 		attribute_tree = proto_item_add_subtree (attribute, ett_sml_attribute);
-		proto_tree_add_text (attribute_tree, tvb, *offset, length, "Length: %d %s", data, plurality(data, "octet", "octets"));
+		proto_tree_add_uint (attribute_tree, hf_sml_length, tvb, *offset, length, data);
 		*offset+=length;
 		proto_tree_add_item (attribute_tree, hf_sml_attribute, tvb, *offset, data, ENC_NA);
 		*offset+=data;
@@ -2053,8 +1978,8 @@ static gboolean decode_GetProcParameterRes(tvbuff_t *tvb, packet_info *pinfo, pr
 	/*Treepath List*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (data+length);
-	treepath = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
-	treepath_list = proto_item_add_subtree(treepath, ett_sml_treepath);
+	treepath_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_treepath, &treepath,
+					"parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, treepath, &ei_sml_invalid_count, "invalid count of elements in ParameterTreePath");
@@ -2074,8 +1999,8 @@ static gboolean decode_GetProcParameterRes(tvbuff_t *tvb, packet_info *pinfo, pr
 
 	/*parameterTree*/
 	get_length(tvb, offset, &data, &length);
-	parameterTree = proto_tree_add_text(messagebodytree_list, tvb, *offset, -1, "parameterTree with %d %s", length+data, plurality(length+data, "element", "elements"));
-	parameterTree_list = proto_item_add_subtree(parameterTree, ett_sml_parameterTree);
+	parameterTree_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_parameterTree, &parameterTree,
+				"parameterTree with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, parameterTree, &ei_sml_invalid_count, "invalid count of elements in parameterTree");
@@ -2114,8 +2039,8 @@ static gboolean decode_SetProcParameterReq(tvbuff_t *tvb, packet_info *pinfo,pro
 	/*Treepath List*/
 	get_length(tvb, offset, &data, &length);
 	repeat = (data+length);
-	treepath = proto_tree_add_text (messagebodytree_list, tvb, *offset, -1, "parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
-	treepath_list = proto_item_add_subtree(treepath, ett_sml_treepath);
+	treepath_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_treepath, &treepath,
+					"parameterTreePath with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, treepath, &ei_sml_invalid_count, "invalid count of elements in ParameterTreePath");
@@ -2135,8 +2060,8 @@ static gboolean decode_SetProcParameterReq(tvbuff_t *tvb, packet_info *pinfo,pro
 
 	/*parameterTree*/
 	get_length(tvb, offset, &data, &length);
-	parameterTree = proto_tree_add_text(messagebodytree_list, tvb, *offset, -1, "parameterTree with %d %s", length+data, plurality(length+data, "element", "elements"));
-	parameterTree_list = proto_item_add_subtree(parameterTree, ett_sml_parameterTree);
+	parameterTree_list = proto_tree_add_subtree_format(messagebodytree_list, tvb, *offset, -1, ett_sml_parameterTree, &parameterTree,
+				"parameterTree with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 	if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 		expert_add_info_format(pinfo, parameterTree, &ei_sml_invalid_count, "invalid count of elements in parameterTree");
@@ -2152,13 +2077,13 @@ static gboolean decode_SetProcParameterReq(tvbuff_t *tvb, packet_info *pinfo,pro
 }
 
 static gboolean decode_AttentionRes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *messagebodytree_list, guint *offset){
-	proto_item *attentionNo = NULL;
 	proto_item *attentionMsg = NULL;
 	proto_item *attentionDetails = NULL;
 
 	proto_tree *attentionNo_tree = NULL;
 	proto_tree *attentionMsg_tree = NULL;
 	proto_tree *attentionDetails_list = NULL;
+    proto_item *attentionNo_item;
 
 	guint data = 0;
 	guint length = 0;
@@ -2168,9 +2093,8 @@ static gboolean decode_AttentionRes(tvbuff_t *tvb, packet_info *pinfo, proto_tre
 
 	/*attention NO*/
 	get_length(tvb, offset, &data, &length);
-	attentionNo = proto_tree_add_text (messagebodytree_list, tvb ,*offset, length+data, "attentionNo");
-	attentionNo_tree = proto_item_add_subtree (attentionNo, ett_sml_attentionNo);
-	proto_tree_add_text (attentionNo_tree, tvb, *offset, length, "Length: %d %s", data ,plurality(data, "octet", "octets"));
+	attentionNo_tree = proto_tree_add_subtree(messagebodytree_list, tvb ,*offset, length+data, ett_sml_attentionNo, &attentionNo_item, "attentionNo");
+	proto_tree_add_uint (attentionNo_tree, hf_sml_length, tvb, *offset, length, data);
 	*offset+=length;
 
 	if (data == 6){
@@ -2179,7 +2103,7 @@ static gboolean decode_AttentionRes(tvbuff_t *tvb, packet_info *pinfo, proto_tre
 		*offset+=2;
 	}
 	else {
-		proto_tree_add_text (attentionNo_tree, tvb ,*offset, data, "unknown attentionNo");
+		expert_add_info(pinfo, attentionNo_item, &ei_sml_attentionNo);
 		*offset+=data;
 	}
 
@@ -2189,7 +2113,7 @@ static gboolean decode_AttentionRes(tvbuff_t *tvb, packet_info *pinfo, proto_tre
 
 	if (data > 0){
 		attentionMsg_tree = proto_item_add_subtree (attentionMsg, ett_sml_attentionMsg);
-		proto_tree_add_text (attentionMsg_tree, tvb, *offset, length, "Length: %d %s", data, plurality(data, "octet", "octets"));
+		proto_tree_add_uint (attentionMsg_tree, hf_sml_length, tvb, *offset, length, data);
 		*offset+=length;
 		proto_tree_add_item (attentionMsg_tree, hf_sml_attentionMsg, tvb, *offset, data, ENC_ASCII | ENC_BIG_ENDIAN);
 		*offset+=data;
@@ -2198,14 +2122,15 @@ static gboolean decode_AttentionRes(tvbuff_t *tvb, packet_info *pinfo, proto_tre
 		*offset+=1;
 
 	/*attentiondetails*/
+	attentionDetails_list = proto_tree_add_subtree(messagebodytree_list, tvb, *offset, -1, ett_sml_attentionDetails, &attentionDetails, "attentionDetails");
 	if (tvb_get_guint8(tvb,*offset) == OPTIONAL){
-		proto_tree_add_text (messagebodytree_list, tvb, *offset, 1, "attentionDetails: NOT SET");
+		proto_item_append_text(attentionDetails, ": NOT SET");
+		proto_item_set_len(attentionDetails, 1);
 		*offset+=1;
 	}
 	else{
 		get_length(tvb, offset, &data, &length);
-		attentionDetails = proto_tree_add_text(messagebodytree_list, tvb, *offset, -1, "attentionDetails with %d %s", length+data, plurality(length+data, "element", "elements"));
-		attentionDetails_list = proto_item_add_subtree(attentionDetails, ett_sml_attentionDetails);
+		proto_item_append_text(attentionDetails, " with %d %s", length+data, plurality(length+data, "element", "elements"));
 
 		if ((tvb_get_guint8(tvb,*offset) & 0xF0) != LONG_LIST && (tvb_get_guint8(tvb,*offset) & 0xF0) != SHORT_LIST){
 			expert_add_info_format(pinfo, attentionDetails, &ei_sml_invalid_count, "invalid count of elements in attentionDetails");
@@ -2224,15 +2149,12 @@ static gboolean decode_AttentionRes(tvbuff_t *tvb, packet_info *pinfo, proto_tre
 /*dissect SML-File*/
 static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, proto_tree *sml_tree){
 	proto_item *file = NULL;
-	proto_item *mainlist = NULL;
-	proto_item *trans = NULL;
-	proto_item *groupNo = NULL;
-	proto_item *abortOnError = NULL;
-	proto_item *sublist = NULL;
-	proto_item *messagebody = NULL;
-	proto_item *crc16 = NULL;
-	proto_item *messagebodytree = NULL;
-	proto_item *msgend = NULL;
+	proto_item *mainlist;
+	proto_item *sublist;
+	proto_item *messagebody;
+	proto_item *crc16;
+	proto_item *messagebodytree;
+	proto_item *msgend;
 
 	proto_tree *mainlist_list = NULL;
 	proto_tree *trans_tree = NULL;
@@ -2286,7 +2208,7 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 
 	while(!close1 && !close2){
 		if (sml_reassemble){
-			file = proto_tree_add_text(sml_tree,tvb, *offset, -1 , "----SML-File----");
+			file = proto_tree_add_item(sml_tree, hf_sml_file_marker, tvb, *offset, -1, ENC_NA);
 		}
 
 		/*check if escape*/
@@ -2302,7 +2224,7 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 				*offset+=4;
 			}
 			else{
-				proto_tree_add_text (sml_tree, tvb, *offset, -1, "SML Version 2 not supported");
+				proto_tree_add_expert(sml_tree, pinfo, &ei_sml_version2_not_supported, tvb, *offset, -1);
 				return;
 			}
 		}
@@ -2312,9 +2234,9 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 
 			/*List*/
 			get_length(tvb, offset, &data, &length);
-			mainlist = proto_tree_add_text (sml_tree, tvb, *offset, -1, "List with %d %s", length+data, plurality(length+data, "element", "elements"));
+			mainlist_list = proto_tree_add_subtree_format(sml_tree, tvb, *offset, -1, ett_sml_mainlist, &mainlist, "List with %d %s",
+								      length+data, plurality(length+data, "element", "elements"));
 
-			mainlist_list = proto_item_add_subtree (mainlist, ett_sml_mainlist);
 			if (tvb_get_guint8(tvb, *offset) != LIST_6_ELEMENTS) {
 				expert_add_info_format(pinfo, mainlist, &ei_sml_invalid_count, "invalid count of elements");
 				return;
@@ -2323,39 +2245,34 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 
 			/*Transaction ID*/
 			get_length(tvb, offset, &data, &length);
-			trans = proto_tree_add_text (mainlist_list, tvb, *offset, length + data ,"Transaction ID");
-			trans_tree = proto_item_add_subtree (trans, ett_sml_trans);
-			proto_tree_add_text (trans_tree, tvb, *offset, length, "Length: %d %s", data, plurality(data, "octet", "octets"));
+			trans_tree = proto_tree_add_subtree_format(mainlist_list, tvb, *offset, length + data, ett_sml_trans, NULL, "Transaction ID");
+			proto_tree_add_uint (trans_tree, hf_sml_length, tvb, *offset, length, data);
 			*offset+=length;
 			proto_tree_add_item (trans_tree, hf_sml_transactionId, tvb, *offset, data, ENC_NA);
 			*offset+=data;
 
 			/*Group No*/
-			groupNo = proto_tree_add_text (mainlist_list, tvb, *offset, 2, "Group No");
-			groupNo_tree = proto_item_add_subtree (groupNo, ett_sml_group);
-			proto_tree_add_item (groupNo_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+			groupNo_tree = proto_tree_add_subtree(mainlist_list, tvb, *offset, 2, ett_sml_group, NULL, "Group No");
+			proto_tree_add_item (groupNo_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 			*offset+=1;
-			proto_tree_add_item (groupNo_tree, hf_sml_groupNo, tvb, *offset, 1, ENC_NA);
+			proto_tree_add_item (groupNo_tree, hf_sml_groupNo, tvb, *offset, 1, ENC_BIG_ENDIAN);
 			*offset+=1;
 
 			/*abort on Error*/
-			abortOnError = proto_tree_add_text (mainlist_list, tvb, *offset, 2, "Abort on Error");
-			abortOnError_tree = proto_item_add_subtree (abortOnError ,ett_sml_abort);
-			proto_tree_add_item(abortOnError_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+			abortOnError_tree = proto_tree_add_subtree(mainlist_list, tvb, *offset, 2, ett_sml_abort, NULL, "Abort on Error");
+			proto_tree_add_item(abortOnError_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 			*offset+=1;
-			proto_tree_add_item(abortOnError_tree, hf_sml_abortOnError, tvb, *offset, 1, ENC_NA);
+			proto_tree_add_item(abortOnError_tree, hf_sml_abortOnError, tvb, *offset, 1, ENC_BIG_ENDIAN);
 			*offset+=1;
 
 			/*Sub List*/
-			sublist = proto_tree_add_text (mainlist_list, tvb, *offset, -1, "MessageBody");
-			sublist_list = proto_item_add_subtree (sublist, ett_sml_sublist);
+			sublist_list = proto_tree_add_subtree(mainlist_list, tvb, *offset, -1, ett_sml_sublist, &sublist, "MessageBody");
 			*offset+=1;
 
 			/*Zero Cutting Check*/
 			get_length(tvb, offset, &data, &length);
-			messagebody = proto_tree_add_text (sublist_list, tvb, *offset, length + data, "Messagetype");
-			messagebody_tree = proto_item_add_subtree (messagebody , ett_sml_mttree);
-			proto_tree_add_item (messagebody_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+			messagebody_tree = proto_tree_add_subtree(sublist_list, tvb, *offset, length + data, ett_sml_mttree, &messagebody, "Messagetype");
+			proto_tree_add_item (messagebody_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 			*offset+=1;
 
 			if (data == 4){
@@ -2372,8 +2289,8 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 
 			/*MessageBody List*/
 			get_length(tvb, offset, &data, &length);
-			messagebodytree = proto_tree_add_text (sublist_list, tvb, *offset, -1, "List with %d %s", length+data, plurality(length+data, "element", "elements"));
-			messagebodytree_list = proto_item_add_subtree (messagebodytree, ett_sml_mblist);
+			messagebodytree_list = proto_tree_add_subtree_format(sublist_list, tvb, *offset, -1, ett_sml_mblist, &messagebodytree,
+												"List with %d %s", length+data, plurality(length+data, "element", "elements"));
 			*offset+=length;
 
 			switch (messagebody_switch){
@@ -2462,18 +2379,17 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 
 			/* CRC 16*/
 			get_length(tvb, offset, &data, &length);
-			crc16 = proto_tree_add_text (mainlist_list, tvb, *offset, data + length, "CRC");
-			crc16_tree = proto_item_add_subtree (crc16, ett_sml_crc16);
+			crc16_tree = proto_tree_add_subtree(mainlist_list, tvb, *offset, data + length, ett_sml_crc16, &crc16, "CRC");
 
 			if(tvb_get_guint8(tvb, *offset) != UNSIGNED8 && tvb_get_guint8(tvb, *offset) != UNSIGNED16){
 				expert_add_info(pinfo, crc16, &ei_sml_crc_error_length);
 				return;
 			}
 
-			proto_tree_add_item (crc16_tree, hf_sml_datatype, tvb, *offset, 1, ENC_NA);
+			proto_tree_add_item (crc16_tree, hf_sml_datatype, tvb, *offset, 1, ENC_BIG_ENDIAN);
 			*offset+=1;
 
-			proto_tree_add_item (crc16_tree, hf_sml_crc16, tvb, *offset, data, ENC_BIG_ENDIAN);
+			crc16 = proto_tree_add_item (crc16_tree, hf_sml_crc16, tvb, *offset, data, ENC_BIG_ENDIAN);
 			*offset+=data;
 
 			if (sml_crc_enabled) {
@@ -2486,17 +2402,17 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 				}
 
 				if (crc_check == crc_ref) {
-					proto_tree_add_text (crc16_tree, tvb, *offset, 0, "[CRC Okay]");
+					proto_item_append_text(crc16, " [CRC Okay]");
 				}
 				else {
 					/*(little to big endian convert) to display in correct order*/
 					crc_check = ((crc_check >> 8) & 0xFF) + ((crc_check << 8 & 0xFF00));
-					proto_tree_add_text (crc16_tree, tvb, *offset, 0, "[CRC Bad 0x%X]", crc_check);
+					proto_item_append_text(crc16, " [CRC Bad 0x%X]", crc_check);
 					expert_add_info(pinfo, crc16, &ei_sml_crc_error);
 				}
 			}
 			else {
-				proto_tree_add_text (crc16_tree, tvb, *offset, 0, "[CRC validation disabled]");
+				proto_item_append_text(crc16, " [CRC validation disabled]");
 			}
 
 			/*Message END*/
@@ -2559,7 +2475,7 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 		*offset+=1;
 		proto_tree_add_item (msgend_tree, hf_sml_padding, tvb, *offset, 1, ENC_NA);
 		*offset+=1;
-		proto_tree_add_item (msgend_tree, hf_sml_crc16, tvb, *offset, 2, ENC_BIG_ENDIAN);
+		crc16 = proto_tree_add_item (msgend_tree, hf_sml_crc16, tvb, *offset, 2, ENC_BIG_ENDIAN);
 		*offset+=2;
 
 		if (sml_crc_enabled && sml_reassemble){
@@ -2568,17 +2484,17 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 			crc_ref = tvb_get_letohs(tvb, *offset-2);
 
 			if (crc_check == crc_ref){
-				proto_tree_add_text (msgend_tree, tvb, *offset, 0, "[CRC Okay]");
+				proto_item_append_text(crc16, " [CRC Okay]");
 			}
 			else{
 				/*(little to big endian convert) to display in correct order*/
 				crc_check = ((crc_check >> 8) & 0xFF) + ((crc_check << 8) & 0xFF00);
-				proto_tree_add_text (msgend_tree, tvb, *offset, 0, "[CRC Bad 0x%X]", crc_check);
+				proto_item_append_text(crc16, " [CRC Bad 0x%X]", crc_check);
 				expert_add_info_format(pinfo, msgend, &ei_sml_crc_error, "CRC error (messages not reassembled ?)");
 			}
 		}
 		else {
-			proto_tree_add_text (msgend_tree, tvb, *offset, 0, "[CRC validation disabled]");
+			proto_item_append_text(crc16, " [CRC validation disabled]");
 		}
 
 		available = tvb_reported_length_remaining(tvb, *offset);
@@ -2590,7 +2506,7 @@ static void dissect_sml_file(tvbuff_t *tvb, packet_info *pinfo, gint *offset, pr
 				proto_item_set_end(file, tvb, *offset);
 			}
 			else {
-				proto_tree_add_text(sml_tree,tvb, *offset, 0 , "---New SML File---");
+				proto_tree_add_item(sml_tree, hf_sml_new_file_marker, tvb, *offset, 0, ENC_NA);
 			}
 			close1 = FALSE;
 		}
@@ -2618,6 +2534,12 @@ static void dissect_sml (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 	dissect_sml_file(tvb, pinfo, &offset, sml_tree);
 }
 
+static void
+sml_fmt_length( gchar *result, guint32 length )
+{
+   g_snprintf( result, ITEM_LABEL_LENGTH, "%d %s", length, plurality(length, "octet", "octets"));
+}
+
 void proto_register_sml (void) {
 	module_t *sml_module;
 	expert_module_t* expert_sml;
@@ -2635,6 +2557,8 @@ void proto_register_sml (void) {
 			{ "End of SML Msg", "sml.end", FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 		{ &hf_sml_transactionId,
 			{ "Transaction ID", "sml.transactionid", FT_BYTES, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+		{ &hf_sml_length,
+			{ "Length", "sml.length", FT_UINT32, BASE_CUSTOM, CF_FUNC(sml_fmt_length), 0x0, NULL, HFILL }},
 		{ &hf_sml_groupNo,
 			{ "GroupNo", "sml.groupno", FT_UINT8, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 		{ &hf_sml_datatype,
@@ -2760,7 +2684,11 @@ void proto_register_sml (void) {
 		{ &hf_sml_value_R3,
 			{ "value_R3", "sml.valueR3", FT_UINT64, BASE_HEX, NULL, 0x0, NULL, HFILL }},
 		{ &hf_sml_value_R4,
-			{ "value_R4", "sml.valueR4", FT_UINT64, BASE_HEX, NULL, 0x0, NULL, HFILL }}
+			{ "value_R4", "sml.valueR4", FT_UINT64, BASE_HEX, NULL, 0x0, NULL, HFILL }},
+		{ &hf_sml_file_marker,
+			{ "---SML-File---", "sml.file_marker", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+		{ &hf_sml_new_file_marker,
+			{ "---New SML File---", "sml.new_file_marker", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
 	};
 
 	/* Setup protocol subtree array */
@@ -2870,6 +2798,8 @@ void proto_register_sml (void) {
 		{ &ei_sml_crc_error, { "sml.crc.error", PI_CHECKSUM, PI_WARN, "CRC error", EXPFILL }},
 		{ &ei_sml_endOfSmlMsg, { "sml.end.not_zero", PI_PROTOCOL, PI_ERROR, "MsgEnd not 0x00", EXPFILL }},
 		{ &ei_sml_esc_error, { "sml.esc.error", PI_PROTOCOL, PI_ERROR, "escapesequence error", EXPFILL }},
+		{ &ei_sml_version2_not_supported, { "sml.version2_not_supported", PI_UNDECODED, PI_WARN, "SML Version 2 not supported", EXPFILL }},
+		{ &ei_sml_attentionNo, { "sml.attentionno.unknown", PI_PROTOCOL, PI_WARN, "unknown attentionNo", EXPFILL }},
 	};
 
 	proto_sml = proto_register_protocol("Smart Message Language","SML", "sml");

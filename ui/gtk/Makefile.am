@@ -23,7 +23,7 @@ include Makefile.common
 include ../../Makefile.am.inc
 
 if HAVE_WARNINGS_AS_ERRORS
-AM_CLEAN_CFLAGS = -Werror
+AM_CLEAN_CFLAGS = -Werror -Wno-error=deprecated-declarations
 endif
 
 noinst_LIBRARIES = libgtkui.a
@@ -52,19 +52,14 @@ MAINTAINERCLEANFILES = \
 # The first argument is the directory in which the source files live.
 # All subsequent arguments are the files to scan.
 #
-wireshark-tap-register.c: $(WIRESHARK_TAP_SRC) $(top_srcdir)/tools/make-tapreg-dotc $(top_srcdir)/tools/make-tap-reg.py
-	@if test -n "$(PYTHON)"; then \
-		echo Making wireshark-tap-register.c with python ; \
-		$(PYTHON) $(top_srcdir)/tools/make-tap-reg.py $(srcdir) taps $(WIRESHARK_TAP_SRC); \
-	else \
-		echo Making wireshark-tap-register.c; \
-		$(top_srcdir)/tools/make-tapreg-dotc wireshark-tap-register.c $(srcdir) $(WIRESHARK_TAP_SRC); \
-	fi
+wireshark-tap-register.c:  $(WIRESHARK_TAP_SRC) Makefile.common Makefile_custom.common $(top_srcdir)/tools/make-tap-reg.py
+	@echo Making wireshark-tap-register.c
+	@$(PYTHON) $(top_srcdir)/tools/make-tap-reg.py $(srcdir) taps $(WIRESHARK_TAP_SRC)
 
 WIRESHARK_CLEAN_LIBGTKUI_SRC = \
- 	$(WIRESHARK_GTK_SRC) \
+	$(WIRESHARK_GTK_SRC) \
 	$(WIRESHARK_TAP_SRC) \
- 	$(GENERATED_C_FILES)
+	$(GENERATED_C_FILES)
 
 libgtkui_a_SOURCES = \
 	$(WIRESHARK_CLEAN_LIBGTKUI_SRC) \
@@ -134,12 +129,7 @@ pipe_icon.h:
 
 TOOLBAR_COMMON_ICONS = \
 	capture_interfaces \
-	capture_options_alt1 \
-	capture_restart \
-	capture_start \
-	capture_stop \
-	gnome_emblem_web \
-	toolbar_wireshark_file
+	gnome_emblem_web
 
 toolbar_icons.h:
 	echo "/* This file was automatically generated. DO NOT EDIT. */" > $@
@@ -149,6 +139,13 @@ toolbar_icons.h:
 	done
 	for icon24 in $(TOOLBAR_COMMON_ICONS) ; do \
 		gdk-pixbuf-csource --raw --name=$${icon24}_24_pb_data $(top_srcdir)/image/toolbar/$${icon24}_24.png >> $@ ;\
+	done
+	for icon_size in 16 24 ; do \
+		gdk-pixbuf-csource --raw --name=toolbar_wireshark_file_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-file-save.png >> $@ ;\
+		gdk-pixbuf-csource --raw --name=capture_options_alt1_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-options.png >> $@ ;\
+		gdk-pixbuf-csource --raw --name=capture_restart_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-restart.png >> $@ ;\
+		gdk-pixbuf-csource --raw --name=capture_start_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-start.png >> $@ ;\
+		gdk-pixbuf-csource --raw --name=capture_stop_$${icon_size}_pb_data $(top_srcdir)/image/toolbar/$${icon_size}x$${icon_size}/x-capture-stop.png >> $@ ;\
 	done
 
 layouts.h:

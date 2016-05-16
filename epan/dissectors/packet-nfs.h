@@ -25,6 +25,7 @@
 #include "packet-rpc.h"
 
 #define NFS_PROGRAM 100003
+#define NFS_CB_PROGRAM 0x40000000
 
 #define FHSIZE 32
 
@@ -45,9 +46,10 @@
 /*
  * NFSv4 error codes used in code, as opposed to UI
  */
-#define NFS4_OK                0
-#define NFS4ERR_DENIED     10010
-#define NFS4ERR_CLID_INUSE 10017
+#define NFS4_OK                      0
+#define NFS4ERR_DENIED	         10010
+#define NFS4ERR_CLID_INUSE       10017
+#define NFS4ERR_OFFLOAD_NO_REQS  10094
 
 /*
  * NFSv4 file types
@@ -123,7 +125,21 @@
 #define NFS4_OP_WANT_DELEGATION             56
 #define NFS4_OP_DESTROY_CLIENTID            57
 #define NFS4_OP_RECLAIM_COMPLETE            58
-
+/* Minor version 2 */
+#define NFS4_OP_ALLOCATE                    59
+#define NFS4_OP_COPY                        60
+#define NFS4_OP_COPY_NOTIFY                 61
+#define NFS4_OP_DEALLOCATE                  62
+#define NFS4_OP_IO_ADVISE                   63
+#define NFS4_OP_LAYOUTERROR                 64
+#define NFS4_OP_LAYOUTSTATS                 65
+#define NFS4_OP_OFFLOAD_CANCEL              66
+#define NFS4_OP_OFFLOAD_STATUS              67
+#define NFS4_OP_READ_PLUS                   68
+#define NFS4_OP_SEEK                        69
+#define NFS4_OP_WRITE_SAME                  70
+#define NFS4_OP_CLONE                       71
+#define NFS4_LAST_OP                        71
 #define NFS4_OP_ILLEGAL                  10044
 
 /*
@@ -141,6 +157,7 @@
 #define NFS4_OP_CB_WANTS_CANCELLED          12
 #define NFS4_OP_CB_NOTIFY_LOCK              13
 #define NFS4_OP_CB_NOTIFY_DEVICEID          14
+#define NFS4_OP_CB_OFFLOAD                  15
 #define NFS4_OP_CB_ILLEGAL               10044
 
 /* for write */
@@ -168,9 +185,18 @@
 #define NFS_ACCESS_MASK_EXECUTE     0x20
 
 /* pNFS layout types */
-#define LAYOUT4_NFSV4_1_FILES  1
-#define LAYOUT4_OSD2_OBJECTS   2
-#define LAYOUT4_BLOCK_VOLUME   3
+#define LAYOUT4_NO_LAYOUT_TYPE            0
+#define LAYOUT4_NFSV4_1_FILES             1
+#define LAYOUT4_OSD2_OBJECTS              2
+#define LAYOUT4_BLOCK_VOLUME              3
+#define LAYOUT4_FLEX_FILES                4
+
+/* NFSv4.2 */
+
+/* netloc types */
+#define NL4_NAME    1
+#define NL4_URL     2
+#define NL4_NETADDR 3
 
 extern gboolean nfs_file_name_snooping;
 extern void nfs_name_snoop_add_name(int xid, tvbuff_t *tvb, int name_offset, int name_len,
@@ -186,9 +212,9 @@ extern int dissect_nfs3_post_op_attr(tvbuff_t *tvb, int offset, packet_info *pin
 extern int dissect_nfs2_fattr(tvbuff_t *tvb, int offset, proto_tree *tree, const char* name);
 extern proto_tree* display_access_items(tvbuff_t* tvb, int offset, packet_info* pinfo,
 	                                    proto_tree* tree, guint32 amask, char mtype, int version,
-										GString* optext, const char* label);
+										wmem_strbuf_t* optext, const char* label);
 extern int dissect_access_reply(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree* tree,
-                                int version, GString *optext, rpc_call_info_value *civ);
+                                int version, wmem_strbuf_t *optext, rpc_call_info_value *civ);
 extern int hf_nfs_status;
 
 #endif /* packet-nfs.h */

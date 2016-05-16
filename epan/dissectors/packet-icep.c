@@ -38,31 +38,26 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
-#include <epan/wmem/wmem.h>
 #include "packet-tcp.h"
 
 void proto_register_icep(void);
 void proto_reg_handoff_icep(void);
 
 #if 0
-#define DBG(str, args...)       do {\
+#define DBG(...)       do {\
                                         fprintf(stdout, \
                                         "[%s][%s][%d]: ",\
                                         __FILE__, \
                                         __FUNCTION__, \
                                         __LINE__); \
                                         fflush(stdout); \
-                                        fprintf(stdout, str, ## args); \
+                                        fprintf(stdout, __VA_ARGS__); \
                                 } while (0)
 #else
-#define DBG0(format)
-#define DBG1(format, arg1)
-#define DBG2(format, arg1, arg2)
+#define DBG(...)
 #endif /* 0/1 */
 
 /* fixed values taken from the standard */
@@ -83,6 +78,7 @@ static int hf_icep_encoding_minor = -1;
 static int hf_icep_message_type = -1;
 static int hf_icep_compression_status = -1;
 static int hf_icep_message_size = -1;
+static int hf_icep_magic_number = -1;
 
 /* [Batch] Request Message Body */
 static int hf_icep_request_id = -1;
@@ -106,6 +102,7 @@ static int hf_icep_reply_status = -1;
 /* Initialize the subtree pointers */
 static gint ett_icep = -1;
 static gint ett_icep_msg = -1;
+static gint ett_icep_invocation_context = -1;
 
 static expert_field ei_icep_params_size = EI_INIT;
 static expert_field ei_icep_context_missing = EI_INIT;
@@ -119,6 +116,7 @@ static expert_field ei_icep_mode_missing = EI_INIT;
 static expert_field ei_icep_params_encapsulated = EI_INIT;
 static expert_field ei_icep_params_missing = EI_INIT;
 static expert_field ei_icep_batch_requests = EI_INIT;
+static expert_field ei_icep_empty_batch = EI_INIT;
 static expert_field ei_icep_facet_missing = EI_INIT;
 static expert_field ei_icep_context_too_long = EI_INIT;
 
@@ -219,7 +217,7 @@ static void dissect_ice_string(packet_info *pinfo, proto_tree *tree, proto_item 
         (*consumed) += 4;
     }
 
-    DBG1("string.Size --> %d\n", Size);
+    DBG("string.Size --> %d\n", Size);
 
     /* check if the string exists */
     if ( !tvb_bytes_exist(tvb, offset, Size) ) {
@@ -242,7 +240,7 @@ static void dissect_ice_string(packet_info *pinfo, proto_tree *tree, proto_item 
 
 
     if ( Size != 0 ) {
-        s = tvb_get_string(wmem_packet_scope(), tvb, offset, Size);
+        s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, Size, ENC_ASCII);
         proto_tree_add_string(tree, hf_icep, tvb, offset, Size, s);
     } else {
         s = wmem_strdup(wmem_packet_scope(), "(empty)");
@@ -390,7 +388,7 @@ static void dissect_ice_context(packet_info *pinfo, proto_tree *tree, proto_item
         (*consumed) += 4;
     }
 
-    DBG1("context.Size --> %d\n", Size);
+    DBG("context.Size --> %d\n", Size);
 
     if ( Size > icep_max_ice_context_pairs ) {
 
@@ -418,12 +416,13 @@ static void dissect_ice_context(packet_info *pinfo, proto_tree *tree, proto_item
         /* value */
         gint32 consumed_value = 0;
         char *str_value = NULL;
-        proto_item *ti = NULL;
+        proto_item *ti;
+        proto_tree *context_tree;
 
-        DBG1("looping through context dictionary, loop #%d\n", i);
-        ti = proto_tree_add_text(tree, tvb, offset, -1, "Invocation Context");
+        DBG("looping through context dictionary, loop #%d\n", i);
+        context_tree = proto_tree_add_subtree(tree, tvb, offset, -1, ett_icep_invocation_context, &ti, "Invocation Context");
 
-        dissect_ice_string(pinfo, tree, ti, hf_icep_invocation_key, tvb, offset, &consumed_key, &str_key);
+        dissect_ice_string(pinfo, context_tree, ti, hf_icep_invocation_key, tvb, offset, &consumed_key, &str_key);
 
         if ( consumed_key == -1 ) {
             (*consumed) = -1;
@@ -433,7 +432,7 @@ static void dissect_ice_context(packet_info *pinfo, proto_tree *tree, proto_item
         offset += consumed_key;
         (*consumed) += consumed_key;
 
-        dissect_ice_string(pinfo, tree, ti, hf_icep_invocation_value, tvb, offset, &consumed_value, &str_value);
+        dissect_ice_string(pinfo, context_tree, ti, hf_icep_invocation_value, tvb, offset, &consumed_value, &str_value);
 
         if ( consumed_value == -1 ) {
             (*consumed) = -1;
@@ -484,7 +483,7 @@ static void dissect_ice_params(packet_info *pinfo, proto_tree *tree, proto_item 
     /* get the size */
     size = tvb_get_letohl(tvb, offset);
 
-    DBG1("params.size --> %d\n", size);
+    DBG("params.size --> %d\n", size);
 
     if ( size < ICEP_MIN_PARAMS_SIZE ) {
 
@@ -584,7 +583,7 @@ static void dissect_icep_request_common(tvbuff_t *tvb, guint32 offset,
     if ( consumed == -1 )
         goto error;
 
-    offset += consumed; DBG1("consumed --> %d\n", consumed);
+    offset += consumed; DBG("consumed --> %d\n", consumed);
     (*total_consumed) += consumed;
 
 
@@ -593,7 +592,7 @@ static void dissect_icep_request_common(tvbuff_t *tvb, guint32 offset,
     if ( consumed == -1 )
         goto error;
 
-    offset += consumed; DBG1("consumed --> %d\n", consumed);
+    offset += consumed; DBG("consumed --> %d\n", consumed);
     (*total_consumed) += consumed;
 
 
@@ -607,7 +606,7 @@ static void dissect_icep_request_common(tvbuff_t *tvb, guint32 offset,
     if ( consumed == -1 )
         goto error;
 
-    offset += consumed; DBG1("consumed --> %d\n", consumed);
+    offset += consumed; DBG("consumed --> %d\n", consumed);
     (*total_consumed) += consumed;
 
     /*  "operation" is an ice_string
@@ -619,11 +618,11 @@ static void dissect_icep_request_common(tvbuff_t *tvb, guint32 offset,
     if ( consumed == -1 )
         goto error;
     else {
-        offset += consumed; DBG1("consumed --> %d\n", consumed);
+        offset += consumed; DBG("consumed --> %d\n", consumed);
         (*total_consumed) += consumed;
 
         if ( opstr && namestr ) {
-            DBG2("operation --> %s.%s()\n", namestr, opstr);
+            DBG("operation --> %s.%s()\n", namestr, opstr);
             col_append_fstr(pinfo->cinfo, COL_INFO, " %s.%s()",
                         namestr, opstr);
             opstr = NULL;
@@ -642,7 +641,7 @@ static void dissect_icep_request_common(tvbuff_t *tvb, guint32 offset,
 
     proto_tree_add_item(icep_sub_tree, hf_icep_mode, tvb, offset, 1, ENC_LITTLE_ENDIAN);
 
-    offset++; DBG0("consumed --> 1\n");
+    offset++; DBG("consumed --> 1\n");
     (*total_consumed)++;
 
 
@@ -655,7 +654,7 @@ static void dissect_icep_request_common(tvbuff_t *tvb, guint32 offset,
     if ( consumed == -1 )
         goto error;
 
-    offset += consumed; DBG1("consumed --> %d\n", consumed);
+    offset += consumed; DBG("consumed --> %d\n", consumed);
     (*total_consumed) += consumed;
 
     /*  "params" is a Encapsulation
@@ -668,7 +667,7 @@ static void dissect_icep_request_common(tvbuff_t *tvb, guint32 offset,
         goto error;
 
     /*offset += consumed;*/
-     DBG1("consumed --> %d\n", consumed);
+     DBG("consumed --> %d\n", consumed);
     (*total_consumed) += consumed;
 
     return;
@@ -699,7 +698,7 @@ static void dissect_icep_request(tvbuff_t *tvb, guint32 offset,
     gint32 consumed = 0;
     guint32 reqid = 0;
 
-    DBG0("dissect request\n");
+    DBG("dissect request\n");
 
     /* check for req id */
     if ( !tvb_bytes_exist(tvb, offset, 4) ) {
@@ -715,8 +714,7 @@ static void dissect_icep_request(tvbuff_t *tvb, guint32 offset,
 
     reqid = tvb_get_letohl(tvb, offset);
 
-    ti = proto_tree_add_text(icep_tree, tvb, offset, -1, "Request Message Body");
-    icep_sub_tree = proto_item_add_subtree(ti, ett_icep_msg);
+    icep_sub_tree = proto_tree_add_subtree(icep_tree, tvb, offset, -1, ett_icep_msg, &ti, "Request Message Body");
 
     proto_tree_add_item(icep_sub_tree, hf_icep_request_id, tvb, offset, 4, ENC_LITTLE_ENDIAN);
 
@@ -727,7 +725,7 @@ static void dissect_icep_request(tvbuff_t *tvb, guint32 offset,
 
 
     offset += 4;
-    DBG0("consumed --> 4\n");
+    DBG("consumed --> 4\n");
 
     dissect_icep_request_common(tvb, offset, pinfo, icep_sub_tree, ti, &consumed);
 
@@ -735,7 +733,7 @@ static void dissect_icep_request(tvbuff_t *tvb, guint32 offset,
         return;
 
     /*offset += consumed;*/
-    DBG1("consumed --> %d\n", consumed);
+    DBG("consumed --> %d\n", consumed);
 }
 
 
@@ -768,7 +766,7 @@ static void dissect_icep_batch_request(tvbuff_t *tvb, guint32 offset,
     guint32 i = 0;
     gint32 consumed = 0;
 
-    DBG0("dissect batch request\n");
+    DBG("dissect batch request\n");
 
     /* check for first 4 byte */
     if ( !tvb_bytes_exist(tvb, offset, 4) ) {
@@ -781,7 +779,7 @@ static void dissect_icep_batch_request(tvbuff_t *tvb, guint32 offset,
     num_reqs = tvb_get_letohl(tvb, offset);
     offset += 4;
 
-    DBG1("batch_requests.count --> %d\n", num_reqs);
+    DBG("batch_requests.count --> %d\n", num_reqs);
 
     if ( num_reqs > icep_max_batch_requests ) {
 
@@ -793,8 +791,7 @@ static void dissect_icep_batch_request(tvbuff_t *tvb, guint32 offset,
 
     if ( num_reqs == 0 ) {
 
-        proto_tree_add_text(icep_tree, tvb, offset, -1,
-                        "empty batch requests sequence");
+        proto_tree_add_expert(icep_tree, pinfo, &ei_icep_empty_batch, tvb, offset, -1);
         col_append_str(pinfo->cinfo, COL_INFO, " (empty batch requests sequence)");
 
         return;
@@ -809,13 +806,12 @@ static void dissect_icep_batch_request(tvbuff_t *tvb, guint32 offset,
 
     for ( i = 0; i < num_reqs; i++ ) {
 
-        DBG1("looping through sequence of batch requests, loop #%d\n", i);
+        DBG("looping through sequence of batch requests, loop #%d\n", i);
 
         /* create display subtree for this message type */
 
-        ti = proto_tree_add_text(icep_tree, tvb, offset, -1,
-                         "Batch Request Message Body: #%d", i);
-            icep_sub_tree = proto_item_add_subtree(ti, ett_icep_msg);
+        icep_sub_tree = proto_tree_add_subtree_format(icep_tree, tvb, offset, -1,
+                         ett_icep_msg, &ti, "Batch Request Message Body: #%d", i);
 
         if (i != 0) {
             col_append_str(pinfo->cinfo, COL_INFO, ",");
@@ -830,7 +826,7 @@ static void dissect_icep_batch_request(tvbuff_t *tvb, guint32 offset,
             proto_item_set_len(ti, consumed);
 
         offset += consumed;
-        DBG1("consumed --> %d\n", consumed);
+        DBG("consumed --> %d\n", consumed);
     }
 }
 
@@ -852,7 +848,7 @@ static void dissect_icep_reply(tvbuff_t *tvb, guint32 offset,
     proto_item *ti = NULL;
     proto_tree *icep_sub_tree = NULL;
 
-    DBG0("dissect reply\n");
+    DBG("dissect reply\n");
 
     /* get at least a full reply message header */
 
@@ -868,10 +864,8 @@ static void dissect_icep_reply(tvbuff_t *tvb, guint32 offset,
 
     /* create display subtree for this message type */
 
-    ti = proto_tree_add_text(icep_tree, tvb, offset, -1,
-                     "Reply Message Body");
-
-    icep_sub_tree = proto_item_add_subtree(ti, ett_icep_msg);
+    icep_sub_tree = proto_tree_add_subtree(icep_tree, tvb, offset, -1,
+                     ett_icep_msg, &ti, "Reply Message Body");
 
     proto_tree_add_item(icep_sub_tree, hf_icep_request_id, tvb, offset, 4, ENC_LITTLE_ENDIAN);
 
@@ -888,10 +882,10 @@ static void dissect_icep_reply(tvbuff_t *tvb, guint32 offset,
 
     offset++;
 
-    DBG1("consumed --> %d\n", 5);
+    DBG("consumed --> %d\n", 5);
 
     /* check if I got all reply data */
-    tvb_data_remained = tvb_length_remaining(tvb, offset);
+    tvb_data_remained = tvb_reported_length_remaining(tvb, offset);
     messageSize = tvb_get_letohl(tvb, 10);
     reported_reply_data = messageSize - (ICEP_HEADER_SIZE + ICEP_MIN_REPLY_SIZE);
 
@@ -905,7 +899,7 @@ static void dissect_icep_reply(tvbuff_t *tvb, guint32 offset,
                     reported_reply_data - tvb_data_remained);
 
         /*offset += tvb_data_remained;*/
-        DBG1("consumed --> %d\n", tvb_data_remained);
+        DBG("consumed --> %d\n", tvb_data_remained);
         return;
     }
 
@@ -914,10 +908,11 @@ static void dissect_icep_reply(tvbuff_t *tvb, guint32 offset,
     proto_tree_add_item(icep_sub_tree, hf_icep_reply_data, tvb, offset, reported_reply_data, ENC_NA);
 
     /*offset += reported_reply_data;*/
-    DBG1("consumed --> %d\n", reported_reply_data);
+    DBG("consumed --> %d\n", reported_reply_data);
 }
 
-static guint get_icep_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+static guint get_icep_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                              int offset, void *data _U_)
 {
     return tvb_get_letohl(tvb, offset + 10);
 }
@@ -951,7 +946,7 @@ static int dissect_icep_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                     icep_msgtype_vals,
                     "Unknown Message Type: 0x%02x"));
 
-    DBG0("got an icep msg, start analysis\n");
+    DBG("got an icep msg, start analysis\n");
 
     /* create display subtree for the protocol */
 
@@ -963,8 +958,7 @@ static int dissect_icep_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
         /* message header */
 
-        proto_tree_add_text(icep_tree, tvb, offset, 4,
-                    "Magic Number: 'I','c','e','P'");
+        proto_tree_add_item(icep_tree, hf_icep_magic_number, tvb, offset, 4, ENC_ASCII|ENC_NA);
         offset += 4;
 
         proto_tree_add_item(icep_tree, hf_icep_protocol_major,
@@ -1000,18 +994,18 @@ static int dissect_icep_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
     switch(tvb_get_guint8(tvb, 8)) {
     case 0x0:
-        DBG1("request message body: parsing %d bytes\n",
-            tvb_length_remaining(tvb, offset));
+        DBG("request message body: parsing %d bytes\n",
+            tvb_captured_length_remaining(tvb, offset));
         dissect_icep_request(tvb, offset, pinfo, icep_tree, ti);
         break;
     case 0x1:
-        DBG1("batch request message body: parsing %d bytes\n",
-            tvb_length_remaining(tvb, offset));
+        DBG("batch request message body: parsing %d bytes\n",
+            tvb_captured_length_remaining(tvb, offset));
         dissect_icep_batch_request(tvb, offset, pinfo, icep_tree, ti);
         break;
     case 0x2:
-        DBG1("reply message body: parsing %d bytes\n",
-            tvb_length_remaining(tvb, offset));
+        DBG("reply message body: parsing %d bytes\n",
+            tvb_captured_length_remaining(tvb, offset));
         dissect_icep_reply(tvb, offset, pinfo, icep_tree, ti);
         break;
     case 0x3:
@@ -1022,13 +1016,13 @@ static int dissect_icep_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         expert_add_info_format(pinfo, msg_item, &ei_icep_message_type, "Unknown Message Type: 0x%02x", tvb_get_guint8(tvb, 8));
         break;
     }
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 /* entry point */
 static gboolean dissect_icep_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-    DBG0("triggered\n");
+    DBG("triggered\n");
 
     if ( tvb_memeql(tvb, 0, icep_magic, 4) == -1 ) {
         /* Not a ICEP packet. */
@@ -1045,7 +1039,7 @@ static gboolean dissect_icep_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 
 static gboolean dissect_icep_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-    DBG0("triggered\n");
+    DBG("triggered\n");
 
     if ( tvb_memeql(tvb, 0, icep_magic, 4) == -1 ) {
         /* Not a ICEP packet. */
@@ -1105,6 +1099,14 @@ void proto_register_icep(void)
               "Message Type", "icep.message_type",
               FT_INT8, BASE_DEC, VALS(icep_msgtype_vals), 0x0,
               "The message type", HFILL
+          }
+        },
+
+        { &hf_icep_magic_number,
+          {
+              "Magic Number", "icep.magic_number",
+              FT_STRING, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
           }
         },
 
@@ -1259,6 +1261,7 @@ void proto_register_icep(void)
     static gint *ett[] = {
         &ett_icep,
         &ett_icep_msg,
+        &ett_icep_invocation_context,
     };
 
     static ei_register_info ei[] = {
@@ -1274,6 +1277,7 @@ void proto_register_icep(void)
         { &ei_icep_length, { "icep.length_invalid", PI_MALFORMED, PI_ERROR, "Invalid length", EXPFILL }},
         { &ei_icep_mode_missing, { "icep.mode.missing", PI_MALFORMED, PI_ERROR, "mode field missing", EXPFILL }},
         { &ei_icep_batch_requests, { "icep.batch_requests.invalid", PI_PROTOCOL, PI_WARN, "too many batch requests", EXPFILL }},
+        { &ei_icep_empty_batch, { "icep.batch_requests.empty", PI_PROTOCOL, PI_WARN, "empty batch requests sequence", EXPFILL }},
         { &ei_icep_reply_data, { "icep.params.reply_data.missing", PI_MALFORMED, PI_ERROR, "Reply Data missing", EXPFILL }},
         { &ei_icep_message_type, { "icep.message_type.unknown", PI_PROTOCOL, PI_WARN, "Unknown Message Type", EXPFILL }},
     };
@@ -1334,8 +1338,8 @@ void proto_reg_handoff_icep(void)
         icep_tcp_handle = new_create_dissector_handle(dissect_icep_tcp, proto_icep);
         icep_udp_handle = new_create_dissector_handle(dissect_icep_udp, proto_icep);
 
-        heur_dissector_add("tcp", dissect_icep_tcp, proto_icep);
-        heur_dissector_add("udp", dissect_icep_udp, proto_icep);
+        heur_dissector_add("tcp", dissect_icep_tcp, "ICEP over TCP", "icep_tcp", proto_icep, HEURISTIC_ENABLE);
+        heur_dissector_add("udp", dissect_icep_udp, "ICEP over UDP", "icep_udp", proto_icep, HEURISTIC_ENABLE);
 
         icep_prefs_initialized = TRUE;
     }
@@ -1362,3 +1366,16 @@ void proto_reg_handoff_icep(void)
 
     old_icep_udp_port = icep_udp_port;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

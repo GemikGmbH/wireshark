@@ -46,17 +46,22 @@ either expressed or implied, of the FreeBSD Project.
   it is often set to IEEE 754 double precision floating point, one cannot store a 64 bit integer
   with full precision.
 
-  For details, see [[http://wiki.wireshark.org/LuaAPI/Int64]].
+  For details, see [[https://wiki.wireshark.org/LuaAPI/Int64]].
  */
 
 #define LUATYPE64_STRING_SIZE 21  /* string to hold 18446744073709551615 */
 
+#if G_BYTE_ORDER == G_LITTLE_ENDIAN
+#define IS_LITTLE_ENDIAN TRUE
+#else
+#define IS_LITTLE_ENDIAN FALSE
+#endif
 
 WSLUA_CLASS_DEFINE_BASE(Int64,NOP,NOP,0);
 /*
   `Int64` represents a 64 bit signed integer.
 
-  For details, see [[http://wiki.wireshark.org/LuaAPI/Int64]].
+  For details, see [[https://wiki.wireshark.org/LuaAPI/Int64]].
  */
 
 /* A checkInt64 but that also auto-converts numbers, strings, and UINT64 to a gint64 */
@@ -111,7 +116,7 @@ WSLUA_METHOD Int64_encode(lua_State* L) {
                                               if false then big-endian; if missing/nil,
                                               native host endian. */
     luaL_Buffer b;
-    gboolean asLittleEndian = (G_BYTE_ORDER == G_LITTLE_ENDIAN)? TRUE : FALSE;
+    gboolean asLittleEndian = IS_LITTLE_ENDIAN;
 
     if (lua_gettop(L) >= WSLUA_OPTARG_Int64_encode_ENDIAN) {
         if (lua_type(L,WSLUA_OPTARG_Int64_encode_ENDIAN) == LUA_TBOOLEAN)
@@ -156,7 +161,7 @@ WSLUA_CONSTRUCTOR Int64_decode(lua_State* L) {
 #define WSLUA_OPTARG_Int64_decode_ENDIAN 2 /* If set to true then little-endian is used,
                                               if false then big-endian; if missing/nil, native
                                               host endian. */
-    gboolean asLittleEndian = (G_BYTE_ORDER == G_LITTLE_ENDIAN)? TRUE : FALSE;
+    gboolean asLittleEndian = IS_LITTLE_ENDIAN;
     size_t len = 0;
     const gchar *s = luaL_checklstring(L, WSLUA_ARG_Int64_decode_STRING, &len);
 
@@ -255,8 +260,10 @@ WSLUA_CONSTRUCTOR Int64_fromhex(lua_State* L) {
     size_t len = 0;
     const gchar *s = luaL_checklstring(L,WSLUA_ARG_Int64_fromhex_HEX,&len);
 
-    if (s && len > 0) {
-        sscanf(s, "%" G_GINT64_MODIFIER "x", &result);
+    if (len > 0) {
+        if (sscanf(s, "%" G_GINT64_MODIFIER "x", &result) != 1) {
+            return luaL_error(L, "Error decoding the passed-in hex string");
+        }
     }
     pushInt64(L,(gint64)result);
     WSLUA_RETURN(1); /* The new `Int64` object. */
@@ -269,10 +276,10 @@ WSLUA_METHOD Int64_tohex(lua_State* L) {
 #define WSLUA_OPTARG_Int64_new_NUMBYTES 2 /* The number of hex-chars/nibbles to generate,
                                              negative means uppercase (default=16). */
     gint64 b = getInt64(L,1);
-    gint n = luaL_optint(L, WSLUA_OPTARG_Int64_new_NUMBYTES, 16);
+    lua_Integer n = luaL_optinteger(L, WSLUA_OPTARG_Int64_new_NUMBYTES, 16);
     const gchar *hexdigits = "0123456789abcdef";
     gchar buf[16];
-    gint i;
+    lua_Integer i;
     if (n < 0) { n = -n; hexdigits = "0123456789ABCDEF"; }
     if (n > 16) n = 16;
     for (i = n-1; i >= 0; --i) { buf[i] = hexdigits[b & 15]; b >>= 4; }
@@ -607,7 +614,7 @@ LUALIB_API int Int64_register(lua_State* L) {
 WSLUA_CLASS_DEFINE_BASE(UInt64,NOP,NOP,0);
 /* `UInt64` represents a 64 bit unsigned integer, similar to `Int64`.
 
-   For details, see: http://wiki.wireshark.org/LuaAPI/`Int64`.
+   For details, see: [[https://wiki.wireshark.org/LuaAPI/Int64]].
 */
 
 /* A checkUInt64 but that also auto-converts numbers, strings, and `Int64` to a guint64. */
@@ -661,7 +668,7 @@ WSLUA_METHOD UInt64_encode(lua_State* L) {
                                                if false then big-endian; if missing/nil,
                                                native host endian. */
     luaL_Buffer b;
-    gboolean asLittleEndian = (G_BYTE_ORDER == G_LITTLE_ENDIAN)? TRUE : FALSE;
+    gboolean asLittleEndian = IS_LITTLE_ENDIAN;
 
     if (lua_gettop(L) >= 2) {
         if (lua_type(L,2) == LUA_TBOOLEAN)
@@ -706,7 +713,7 @@ WSLUA_CONSTRUCTOR UInt64_decode(lua_State* L) {
 #define WSLUA_OPTARG_UInt64_decode_ENDIAN 2 /* If set to true then little-endian is used,
                                                if false then big-endian; if missing/nil,
                                                native host endian. */
-    gboolean asLittleEndian = (G_BYTE_ORDER == G_LITTLE_ENDIAN)? TRUE : FALSE;
+    gboolean asLittleEndian = IS_LITTLE_ENDIAN;
     size_t len = 0;
     const gchar *s = luaL_checklstring(L, WSLUA_ARG_UInt64_decode_STRING, &len);
 
@@ -815,8 +822,10 @@ WSLUA_CONSTRUCTOR UInt64_fromhex(lua_State* L) {
     size_t len = 0;
     const gchar *s = luaL_checklstring(L,WSLUA_ARG_UInt64_fromhex_HEX,&len);
 
-    if (s && len > 0) {
-        sscanf(s, "%" G_GINT64_MODIFIER "x", &result);
+    if (len > 0) {
+        if (sscanf(s, "%" G_GINT64_MODIFIER "x", &result) != 1) {
+            return luaL_error(L, "Error decoding the passed-in hex string");
+        }
     }
     pushUInt64(L,result);
     WSLUA_RETURN(1); /* The new `UInt64` object. */
@@ -829,10 +838,10 @@ WSLUA_METHOD UInt64_tohex(lua_State* L) {
 #define WSLUA_OPTARG_UInt64_new_NUMBYTES 2 /* The number of hex-chars/nibbles to generate,
                                               negative means uppercase (default=16). */
     guint64 b = getUInt64(L,1);
-    gint n = luaL_optint(L, WSLUA_OPTARG_UInt64_new_NUMBYTES, 16);
+    lua_Integer n = luaL_optinteger(L, WSLUA_OPTARG_UInt64_new_NUMBYTES, 16);
     const gchar *hexdigits = "0123456789abcdef";
     gchar buf[16];
-    gint i;
+    lua_Integer i;
     if (n < 0) { n = -n; hexdigits = "0123456789ABCDEF"; }
     if (n > 16) n = 16;
     for (i = n-1; i >= 0; --i) { buf[i] = hexdigits[b & 15]; b >>= 4; }
@@ -1120,3 +1129,16 @@ LUALIB_API int UInt64_register(lua_State* L) {
     WSLUA_REGISTER_CLASS(UInt64);
     return 0;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

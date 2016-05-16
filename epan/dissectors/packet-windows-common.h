@@ -78,6 +78,7 @@
     XXX( WERR_INVALID_SECURITY_DESCRIPTOR,       1338) \
     XXX( WERR_NO_SUCH_DOMAIN,                    1355) \
     XXX( WERR_NO_SYSTEM_RESOURCES,               1450) \
+    XXX( WERR_TIMEOUT,                           1460) \
     XXX( WERR_SERVER_UNAVAILABLE,                1722) \
     XXX( WERR_PRINTER_DRIVER_ALREADY_INSTALLED,  1795) \
     XXX( WERR_UNKNOWN_PORT,                      1796) \
@@ -117,6 +118,7 @@
     XXX( WERR_PRINT_MONITOR_IN_USE,              3008) \
     XXX( WERR_PRINTER_HAS_JOBS_QUEUED,           3009) \
     XXX( WERR_DEVICE_NOT_AVAILABLE,              4319) \
+    XXX( WERR_INVALID_STATE,                     5023) \
     XXX( WERR_DS_SERVICE_BUSY,                   8206) /* 0x0000200e */ \
     XXX( WERR_DS_SERVICE_UNAVAILABLE,            8207) /* 0x0000200f */ \
     XXX( WERR_DS_NO_SUCH_OBJECT,                 8240) /* 0x00002030 */ \
@@ -242,9 +244,10 @@ extern value_string_ext ms_country_codes_ext;
 
 WS_DLL_PUBLIC
 int dissect_nt_64bit_time(tvbuff_t *tvb, proto_tree *tree, int offset, int hf_date);
-
 WS_DLL_PUBLIC
-int dissect_nt_64bit_time_ex(tvbuff_t *tvb, proto_tree *tree, int offset, int hf_date, proto_item **createdItem);
+int dissect_nt_64bit_time_opt(tvbuff_t *tvb, proto_tree *tree, int offset, int hf_date, gboolean onesec_resolution);
+WS_DLL_PUBLIC
+int dissect_nt_64bit_time_ex(tvbuff_t *tvb, proto_tree *tree, int offset, int hf_date, proto_item **createdItem, gboolean onesec_resolution);
 
 /*
  *  SIDs and RIDs
@@ -258,7 +261,7 @@ typedef struct _sid_strings {
 /* Dissect a NT SID.  Label it with 'name' and return a string version
  * of the SID in the 'sid_str' parameter which has a packet lifetime
  * scope and should NOT be freed by the caller. hf_sid can be -1 if
- * the caller doesnt care what name is used and then "nt.sid" will be
+ * the caller doesn't care what name is used and then "nt.sid" will be
  * the default instead. If the caller wants a more appropriate hf
  * field, it will just pass a FT_STRING hf field here
  */

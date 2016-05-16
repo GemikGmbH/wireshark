@@ -30,7 +30,6 @@
 #include <epan/expert.h>
 #include <wsutil/pint.h>
 #include "packet-cip.h"
-#include "packet-enip.h"
 #include "packet-cipsafety.h"
 
 
@@ -243,6 +242,7 @@ static int hf_tcpip_snn_time = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_cip_safety                = -1;
+static gint ett_path                      = -1;
 static gint ett_cipsafety_mode_byte       = -1;
 static gint ett_cipsafety_ack_byte        = -1;
 static gint ett_cipsafety_mcast_byte      = -1;
@@ -438,12 +438,10 @@ dissect_unid(tvbuff_t *tvb, packet_info *pinfo _U_, int offset, proto_item *pi,
              int hf_ssn_date, int hf_ssn_time, int hf_macid, gint ett, gint ett_ssn)
 {
    proto_tree *tree, *ssn_tree;
-   proto_item *ssn_item;
 
    tree = proto_item_add_subtree(pi, ett);
 
-   ssn_item = proto_tree_add_text(tree, tvb, offset, 6, "%s", ssn_name);
-   ssn_tree = proto_item_add_subtree(ssn_item, ett_ssn);
+   ssn_tree = proto_tree_add_subtree(tree, tvb, offset, 6, ett_ssn, NULL, ssn_name);
    dissect_cipsafety_ssn(ssn_tree, tvb, pinfo, offset, hf_ssn_timestamp, hf_ssn_date, hf_ssn_time);
 
    proto_tree_add_item(tree, hf_macid, tvb, offset+6, 4, ENC_LITTLE_ENDIAN);
@@ -490,8 +488,7 @@ dissect_cip_s_supervisor_data( proto_tree *item_tree,
 
    /* Add Service code & Request/Response tree */
    service   = tvb_get_guint8( tvb, offset );
-   rrsc_item = proto_tree_add_text( item_tree, tvb, offset, 1, "Service: " );
-   rrsc_tree = proto_item_add_subtree( rrsc_item, ett_ssupervisor_rrsc );
+   rrsc_tree = proto_tree_add_subtree( item_tree, tvb, offset, 1, ett_ssupervisor_rrsc, &rrsc_item, "Service: " );
 
    /* Add Request/Response */
    proto_tree_add_item( rrsc_tree, hf_cip_reqrsp, tvb, offset, 1, ENC_LITTLE_ENDIAN );
@@ -528,9 +525,8 @@ dissect_cip_s_supervisor_data( proto_tree *item_tree,
       /* If there is any command specific data create a sub-tree for it */
       if( ( item_length-4-add_stat_size ) != 0 )
       {
-         pi = proto_tree_add_text( item_tree,
-                         tvb, offset+4+add_stat_size, item_length-4-add_stat_size, "Command Specific Data" );
-         cmd_data_tree = proto_item_add_subtree( pi, ett_ssupervisor_cmd_data );
+         cmd_data_tree = proto_tree_add_subtree( item_tree, tvb, offset+4+add_stat_size,
+                         item_length-4-add_stat_size, ett_ssupervisor_cmd_data, NULL, "Command Specific Data" );
 
          if( gen_status == CI_GRC_SUCCESS || gen_status == CI_GRC_SERVICE_ERROR )
          {
@@ -579,9 +575,8 @@ dissect_cip_s_supervisor_data( proto_tree *item_tree,
       /* If there is any command specific data create a sub-tree for it */
       if( (item_length-req_path_size-2) != 0 )
       {
-         pi = proto_tree_add_text( item_tree, tvb, offset+2+req_path_size, item_length-req_path_size-2,
-                                   "Command Specific Data" );
-         cmd_data_tree = proto_item_add_subtree( pi, ett_ssupervisor_cmd_data );
+         cmd_data_tree = proto_tree_add_subtree( item_tree, tvb, offset+2+req_path_size, item_length-req_path_size-2,
+                                   ett_ssupervisor_cmd_data, NULL, "Command Specific Data" );
 
          /* Check what service code that received */
          switch (service)
@@ -740,9 +735,9 @@ dissect_cip_class_s_supervisor(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
    ti = proto_tree_add_item(tree, proto_cip_class_s_supervisor, tvb, 0, -1, ENC_NA);
    class_tree = proto_item_add_subtree( ti, ett_cip_class_s_supervisor );
 
-   dissect_cip_s_supervisor_data( class_tree, tvb, 0, tvb_length(tvb), pinfo );
+   dissect_cip_s_supervisor_data( class_tree, tvb, 0, tvb_reported_length(tvb), pinfo );
 
-   return tvb_length(tvb);
+   return tvb_reported_length(tvb);
 }
 
 static int dissect_s_supervisor_exception_detail(proto_tree *tree, proto_item *item, tvbuff_t *tvb, int offset, int hf_size, int hf_data)
@@ -764,8 +759,7 @@ static int dissect_s_supervisor_exception_detail_alarm(packet_info *pinfo, proto
    proto_tree *item_tree;
    int total_size = 0, size;
 
-   pi = proto_tree_add_text(tree, tvb, offset, 1, "Common Exception Detail");
-   item_tree = proto_item_add_subtree(pi, ett_exception_detail_alarm_common);
+   item_tree = proto_tree_add_subtree(tree, tvb, offset, 1, ett_exception_detail_alarm_common, &pi, "Common Exception Detail");
    size = dissect_s_supervisor_exception_detail(item_tree, pi, tvb, offset,
                hf_cip_ssupervisor_exception_detail_alarm_ced_size,
                hf_cip_ssupervisor_exception_detail_alarm_ced_detail);
@@ -776,8 +770,7 @@ static int dissect_s_supervisor_exception_detail_alarm(packet_info *pinfo, proto
    }
    total_size += size;
 
-   pi = proto_tree_add_text(tree, tvb, offset, 1, "Device Exception Detail");
-   item_tree = proto_item_add_subtree(pi, ett_exception_detail_alarm_device);
+   item_tree = proto_tree_add_subtree(tree, tvb, offset, 1, ett_exception_detail_alarm_device, &pi, "Device Exception Detail");
    size = dissect_s_supervisor_exception_detail(item_tree, pi, tvb, offset,
                hf_cip_ssupervisor_exception_detail_alarm_ded_size,
                hf_cip_ssupervisor_exception_detail_alarm_ded_detail);
@@ -788,8 +781,7 @@ static int dissect_s_supervisor_exception_detail_alarm(packet_info *pinfo, proto
    }
    total_size += size;
 
-   pi = proto_tree_add_text(tree, tvb, offset, 1, "Manufacturer Exception Detail");
-   item_tree = proto_item_add_subtree(pi, ett_exception_detail_alarm_manufacturer);
+   item_tree = proto_tree_add_subtree(tree, tvb, offset, 1, ett_exception_detail_alarm_manufacturer, &pi, "Manufacturer Exception Detail");
    size = dissect_s_supervisor_exception_detail(item_tree, pi, tvb, offset,
                hf_cip_ssupervisor_exception_detail_alarm_med_size,
                hf_cip_ssupervisor_exception_detail_alarm_med_detail);
@@ -810,8 +802,7 @@ static int dissect_s_supervisor_exception_detail_warning(packet_info *pinfo, pro
    proto_tree *item_tree;
    int         total_size = 0, size;
 
-   pi = proto_tree_add_text(tree, tvb, offset, 1, "Common Exception Detail");
-   item_tree = proto_item_add_subtree(pi, ett_exception_detail_warning_common);
+   item_tree = proto_tree_add_subtree(tree, tvb, offset, 1, ett_exception_detail_warning_common, &pi, "Common Exception Detail");
    size = dissect_s_supervisor_exception_detail(item_tree, pi, tvb, offset,
                hf_cip_ssupervisor_exception_detail_warning_ced_size,
                hf_cip_ssupervisor_exception_detail_warning_ced_detail);
@@ -822,8 +813,7 @@ static int dissect_s_supervisor_exception_detail_warning(packet_info *pinfo, pro
    }
    total_size += size;
 
-   pi = proto_tree_add_text(tree, tvb, offset, 1, "Device Exception Detail");
-   item_tree = proto_item_add_subtree(pi, ett_exception_detail_warning_device);
+   item_tree = proto_tree_add_subtree(tree, tvb, offset, 1, ett_exception_detail_warning_device, &pi, "Device Exception Detail");
    size = dissect_s_supervisor_exception_detail(item_tree, pi, tvb, offset,
                hf_cip_ssupervisor_exception_detail_warning_ded_size,
                hf_cip_ssupervisor_exception_detail_warning_ded_detail);
@@ -834,8 +824,7 @@ static int dissect_s_supervisor_exception_detail_warning(packet_info *pinfo, pro
    }
    total_size += size;
 
-   pi = proto_tree_add_text(tree, tvb, offset, 1, "Manufacturer Exception Detail");
-   item_tree = proto_item_add_subtree(pi, ett_exception_detail_warning_manufacturer);
+   item_tree = proto_tree_add_subtree(tree, tvb, offset, 1, ett_exception_detail_warning_manufacturer, &pi, "Manufacturer Exception Detail");
    size = dissect_s_supervisor_exception_detail(item_tree, pi, tvb, offset,
                hf_cip_ssupervisor_exception_detail_warning_med_size,
                hf_cip_ssupervisor_exception_detail_warning_med_detail);
@@ -911,7 +900,7 @@ static int dissect_s_supervisor_output_connection_point_owners(packet_info *pinf
 {
    guint16     i, num_entries;
    proto_item *entry_item, *app_path_item;
-   proto_tree *entry_tree;
+   proto_tree *entry_tree, *epath_tree;
    int         attr_len = 0, app_path_size;
 
    if (total_len < 2)
@@ -957,9 +946,9 @@ static int dissect_s_supervisor_output_connection_point_owners(packet_info *pinf
             return total_len;
          }
 
-         app_path_item = proto_tree_add_text(entry_tree,
-                         tvb, offset+attr_len, app_path_size, "Application Resource: ");
-         dissect_epath( tvb, pinfo, app_path_item, offset+attr_len, app_path_size, FALSE, TRUE, NULL, NULL);
+         epath_tree = proto_tree_add_subtree(entry_tree,
+                         tvb, offset+attr_len, app_path_size, ett_path, &app_path_item, "Application Resource: ");
+         dissect_epath( tvb, pinfo, epath_tree, app_path_item, offset+attr_len, app_path_size, FALSE, TRUE, NULL, NULL);
          attr_len += app_path_size;
       }
    }
@@ -1106,10 +1095,12 @@ static int dissect_s_validator_coordination_conn_inst(packet_info *pinfo, proto_
    return (size+1);
 }
 
-static int dissect_s_validator_app_data_path(packet_info *pinfo, proto_tree *tree _U_,
-                                             proto_item *item, tvbuff_t *tvb, int offset, int total_len)
+static int dissect_s_validator_app_data_path(packet_info *pinfo, proto_tree *tree,
+                                             proto_item *item _U_, tvbuff_t *tvb, int offset, int total_len)
 {
-   dissect_epath(tvb, pinfo, item, offset, total_len, FALSE, FALSE, NULL, NULL);
+   proto_item* pi;
+   proto_tree* epath_tree = proto_tree_add_subtree(tree, NULL, 0, 0, ett_path, &pi, "Application Data Path: ");
+   dissect_epath(tvb, pinfo, epath_tree, pi, offset, total_len, FALSE, FALSE, NULL, NULL);
    return total_len;
 }
 
@@ -1152,8 +1143,7 @@ dissect_cip_s_validator_data( proto_tree *item_tree,
 
    /* Add Service code & Request/Response tree */
    service   = tvb_get_guint8( tvb, offset );
-   rrsc_item = proto_tree_add_text( item_tree, tvb, offset, 1, "Service: " );
-   rrsc_tree = proto_item_add_subtree( rrsc_item, ett_svalidator_rrsc );
+   rrsc_tree = proto_tree_add_subtree( item_tree, tvb, offset, 1, ett_svalidator_rrsc, &rrsc_item, "Service: " );
 
    /* Add Request/Response */
    proto_tree_add_item( rrsc_tree, hf_cip_reqrsp, tvb, offset, 1, ENC_LITTLE_ENDIAN );
@@ -1192,9 +1182,8 @@ dissect_cip_s_validator_data( proto_tree *item_tree,
       /* If there is any command specific data create a sub-tree for it */
       if( ( item_length-4-add_stat_size ) != 0 )
       {
-         pi = proto_tree_add_text( item_tree,
-                         tvb, offset+4+add_stat_size, item_length-4-add_stat_size, "Command Specific Data" );
-         cmd_data_tree = proto_item_add_subtree( pi, ett_ssupervisor_cmd_data );
+         cmd_data_tree = proto_tree_add_subtree( item_tree, tvb, offset+4+add_stat_size, item_length-4-add_stat_size,
+                                ett_ssupervisor_cmd_data, &pi, "Command Specific Data" );
 
          if( gen_status == CI_GRC_SUCCESS || gen_status == CI_GRC_SERVICE_ERROR )
          {
@@ -1278,9 +1267,8 @@ dissect_cip_s_validator_data( proto_tree *item_tree,
       /* If there is any command specific data create a sub-tree for it */
       if( (item_length-req_path_size-2) != 0 )
       {
-         pi = proto_tree_add_text( item_tree,
-                         tvb, offset+2+req_path_size, item_length-req_path_size-2, "Command Specific Data" );
-         cmd_data_tree = proto_item_add_subtree( pi, ett_ssupervisor_cmd_data );
+         cmd_data_tree = proto_tree_add_subtree( item_tree, tvb, offset+2+req_path_size, item_length-req_path_size-2,
+                                                ett_ssupervisor_cmd_data, NULL, "Command Specific Data" );
          proto_tree_add_item(cmd_data_tree, hf_cip_data,
                          tvb, offset+2+req_path_size, item_length-req_path_size-2, ENC_NA);
       }
@@ -1299,9 +1287,9 @@ dissect_cip_class_s_validator(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
    ti = proto_tree_add_item(tree, proto_cip_class_s_validator, tvb, 0, -1, ENC_NA);
    class_tree = proto_item_add_subtree( ti, ett_cip_class_s_validator );
 
-   dissect_cip_s_validator_data( class_tree, tvb, 0, tvb_length(tvb), pinfo );
+   dissect_cip_s_validator_data( class_tree, tvb, 0, tvb_reported_length(tvb), pinfo );
 
-   return tvb_length(tvb);
+   return tvb_reported_length(tvb);
 }
 
 static gboolean
@@ -1625,7 +1613,7 @@ dissect_cipsafety(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
    ti = proto_tree_add_item(tree, proto_cipsafety, tvb, 0, -1, ENC_NA);
    safety_tree = proto_item_add_subtree( ti, ett_cip_safety);
 
-   dissect_cip_safety_data(safety_tree, ti, tvb, tvb_length(tvb), pinfo );
+   dissect_cip_safety_data(safety_tree, ti, tvb, tvb_reported_length(tvb), pinfo );
 }
 
 static int dissect_sercosiii_link_error_count_p1p2(packet_info *pinfo, proto_tree *tree, proto_item *item, tvbuff_t *tvb,
@@ -2480,6 +2468,7 @@ proto_register_cipsafety(void)
 
    static gint *ett[] = {
       &ett_cip_safety,
+      &ett_path,
       &ett_cipsafety_mode_byte,
       &ett_cipsafety_ack_byte,
       &ett_cipsafety_mcast_byte
@@ -2621,7 +2610,7 @@ proto_register_cipsafety(void)
 void
 proto_reg_handoff_cipsafety(void)
 {
-   dissector_handle_t cip_class_s_supervisor_handle;
+   dissector_handle_t cip_class_s_supervisor_handle, cipsafety_handle;
 
    /* Create and register dissector handle for Safety Supervisor */
    cip_class_s_supervisor_handle = new_create_dissector_handle( dissect_cip_class_s_supervisor, proto_cip_class_s_supervisor );
@@ -2630,7 +2619,11 @@ proto_reg_handoff_cipsafety(void)
    /* Create and register dissector handle for Safety Validator */
    cip_class_s_validator_handle = new_create_dissector_handle( dissect_cip_class_s_validator, proto_cip_class_s_validator );
    dissector_add_uint( "cip.class.iface", CI_CLS_SAFETY_VALIDATOR, cip_class_s_validator_handle );
-   heur_dissector_add("cip.sc", dissect_class_svalidator_heur, proto_cip_class_s_validator);
+   heur_dissector_add("cip.sc", dissect_class_svalidator_heur, "CIP Safety Validator", "s_validator_cip", proto_cip_class_s_validator, HEURISTIC_ENABLE);
+
+   /* Create and register dissector for I/O data handling */
+   cipsafety_handle = create_dissector_handle( dissect_cipsafety, proto_cipsafety );
+   dissector_add_for_decode_as("enip.io", cipsafety_handle );
 
    proto_cip = proto_get_id_by_filter_name( "cip" );
 }

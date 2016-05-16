@@ -23,14 +23,11 @@
 
 #include "config.h"
 
-#include <glib.h>
+#include <epan/packet.h>
+#include <epan/prefs.h>
 
-#include "epan/packet.h"
-#include "epan/prefs.h"
-
-#include "epan/dissectors/packet-rtp.h"
-#include "epan/dissectors/packet-rtcp.h"
-
+#include "packet-rtp.h"
+#include "packet-rtcp.h"
 #include "packet-uaudp.h"
 
 void proto_register_ua_msg(void);
@@ -50,6 +47,7 @@ static gboolean setup_conversations_enabled = TRUE;
 
 static dissector_handle_t noe_handle;
 static dissector_handle_t ua3g_handle;
+static dissector_handle_t data_handle;
 
 static void uadecode(e_ua_direction  direction,
                      proto_tree     *tree,
@@ -65,7 +63,7 @@ static void uadecode(e_ua_direction  direction,
     case 0x16:
         {
             call_dissector(noe_handle,
-                           tvb_new_subset(tvb, offset, length, length),
+                           tvb_new_subset_length(tvb, offset, length),
                            pinfo,
                            tree);
             break;
@@ -141,7 +139,7 @@ static void uadecode(e_ua_direction  direction,
     case 0x50:  /* Only UA NOE */
         {
             call_dissector_with_data(ua3g_handle,
-                       tvb_new_subset(tvb, offset, length, length),
+                       tvb_new_subset_length(tvb, offset, length),
                        pinfo,
                        tree, &direction);
             break;
@@ -149,14 +147,12 @@ static void uadecode(e_ua_direction  direction,
     default:
         {
             /* add text to the frame "INFO" column */
-            col_append_str(pinfo->cinfo, COL_INFO, " - UA3G Message ERR: Opcode Unknown");
+            col_append_fstr(pinfo->cinfo, COL_INFO, " - UA3G Message ERR: Opcode (0x%02x) Unknown", tvb_get_guint8(tvb, (offset + 2)));
 
-            proto_tree_add_text(tree,
-                tvb,
-                offset,
-                length,
-                "Opcode Unknown 0x%02x",
-                tvb_get_guint8(tvb, (offset + 2)));
+            call_dissector(data_handle,
+                           tvb_new_subset_length(tvb, offset, length),
+                           pinfo,
+                           tree);
             break;
         }
     }
@@ -215,9 +211,7 @@ static void _dissect_ua_msg(tvbuff_t       *tvb,
                     }
                 case 0x01: /* remote IP */
                     {
-                    remote_rtp_addr.type = AT_IPv4;
-                    remote_rtp_addr.len  = 4;
-                    remote_rtp_addr.data = tvb_get_ptr(tvb, suboffset+2, 4);
+                    TVB_SET_ADDRESS(&remote_rtp_addr, AT_IPv4, tvb, suboffset+2, 4);
                     break;
                     }
                 case 0x02: /* remote port */
@@ -312,5 +306,19 @@ void proto_reg_handoff_ua_msg(void)
 #endif
     noe_handle  = find_dissector("noe");
     ua3g_handle = find_dissector("ua3g");
+    data_handle = find_dissector("data");
 
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

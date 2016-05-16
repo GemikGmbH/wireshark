@@ -23,8 +23,9 @@
 
 #include "config.h"
 
+#include <string.h>
+
 #include <glib.h>
-#include <memory.h>
 
 #include "codec-g7231.h"
 
@@ -61,13 +62,13 @@ int codec_g7231_decode(void *context, const void *input, int inputSizeBytes, voi
   if (!ctx) return 0;
 
   if ( ctx->handle == -1) {
-  	if ( bitstream[0] & 0x03 ) {
-  	   ctx->handle=EasyG7231_init_decoder(FALSE);
-  	   ctx->l_g7231_frame_compressed = L_G7231_FRAME_COMPRESSED_53;
-  	} else {
-  	   ctx->handle=EasyG7231_init_decoder(TRUE);
-  	   ctx->l_g7231_frame_compressed = L_G7231_FRAME_COMPRESSED_63;
-  	}
+    if ( bitstream[0] & 0x03 ) {
+      ctx->handle=EasyG7231_init_decoder(FALSE);
+      ctx->l_g7231_frame_compressed = L_G7231_FRAME_COMPRESSED_53;
+    } else {
+      ctx->handle=EasyG7231_init_decoder(TRUE);
+      ctx->l_g7231_frame_compressed = L_G7231_FRAME_COMPRESSED_63;
+    }
   }
 
   if ((inputSizeBytes % ctx->l_g7231_frame_compressed) != 0)
@@ -93,3 +94,15 @@ int codec_g7231_decode(void *context, const void *input, int inputSizeBytes, voi
   return decodedBytes;
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

@@ -11,8 +11,6 @@
  * By Gerald Combs <gerald@wireshark.org>
  * Copyright 1998 Gerald Combs
  *
- * Copied from README.developer
- *
  * This program is free software; you can redistribute it and/or
  * modify it under the terms of the GNU General Public License
  * as published by the Free Software Foundation; either version 2
@@ -37,17 +35,11 @@
 
 #include "config.h"
 
-#include <string.h>
-
-#include <glib.h>
-
 #include <epan/packet.h>
 
-/* Forward declaration we need below */
 void proto_reg_handoff_tivoconnect(void);
 void proto_register_tivoconnect(void);
 
-/* Initialize the protocol and registered fields */
 static int proto_tivoconnect = -1;
 static int hf_tivoconnect_flavor = -1;
 static int hf_tivoconnect_method = -1;
@@ -57,18 +49,16 @@ static int hf_tivoconnect_identity = -1;
 static int hf_tivoconnect_services = -1;
 static int hf_tivoconnect_version = -1;
 
-/* Initialize the subtree pointers */
 static gint ett_tivoconnect = -1;
 
-/* Code to actually dissect the packets */
 static int
 dissect_tivoconnect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolean is_tcp)
 {
     /* parsing variables */
-    gchar * string = NULL;
-    gint length = -1;
+    gchar * string;
+    gint length;
     /* value strings */
-    const gchar * proto_name = NULL;
+    const gchar * proto_name;
     gchar * packet_identity = NULL;
     gchar * packet_machine = NULL;
 
@@ -77,8 +67,8 @@ dissect_tivoconnect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolea
         return 0;
     }
 
-    length = tvb_length(tvb);
-    string = (gchar*)tvb_get_string(wmem_packet_scope(), tvb, 0, length);
+    length = tvb_captured_length(tvb);
+    string = (gchar*)tvb_get_string_enc(wmem_packet_scope(), tvb, 0, length, ENC_ASCII);
 
     /* Make entries in Protocol column and Info column on summary display */
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "TiVoConnect");
@@ -88,14 +78,14 @@ dissect_tivoconnect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolea
 
     col_set_str(pinfo->cinfo, COL_INFO, proto_name);
 
-    if (tree) {
+    /* if (tree) */ {
         /* Set up structures needed to add the protocol subtree and manage it */
-        proto_item *ti = NULL;
-        proto_tree *tivoconnect_tree = NULL;
+        proto_item *ti;
+        proto_tree *tivoconnect_tree;
 
         /* parsing variables */
         guint offset = 0;
-        gchar * field = NULL;
+        gchar * field;
 
         /* create display subtree for the protocol */
         ti = proto_tree_add_item(tree, proto_tivoconnect, tvb, 0, -1, ENC_NA);
@@ -103,54 +93,54 @@ dissect_tivoconnect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolea
         tivoconnect_tree = proto_item_add_subtree(ti, ett_tivoconnect);
 
         /* process the packet */
-        for ( field = strtok(string,"\n");
+        for ( field = strtok(string, "\n");
               field;
-              offset+=length, field = strtok(NULL,"\n") ) {
-            gchar * value = NULL;
+              offset += length, field = strtok(NULL, "\n") ) {
+            gchar * value;
             gint fieldlen;
 
             length = (int)strlen(field) + 1;
 
-            if ( !(value=strchr(field, '=')) ) {
+            if ( !(value = strchr(field, '=')) ) {
                 /* bad packet: missing the field separator */
                 continue;
             }
-            *value++='\0';
-            fieldlen=(int)strlen(field)+1;
+            *value++ = '\0';
+            fieldlen = (int)strlen(field) + 1;
 
-            if ( g_ascii_strcasecmp(field,"tivoconnect") == 0 ) {
+            if ( g_ascii_strcasecmp(field, "tivoconnect") == 0 ) {
                 proto_tree_add_item(tivoconnect_tree,
                     hf_tivoconnect_flavor, tvb, offset+fieldlen,
                     length-fieldlen-1, ENC_ASCII|ENC_NA);
             }
-            else if ( g_ascii_strcasecmp(field,"method") == 0 ) {
+            else if ( g_ascii_strcasecmp(field, "method") == 0 ) {
                 proto_tree_add_item(tivoconnect_tree,
                     hf_tivoconnect_method, tvb, offset+fieldlen,
                     length-fieldlen-1, ENC_ASCII|ENC_NA);
             }
-            else if ( g_ascii_strcasecmp(field,"platform") == 0 ) {
+            else if ( g_ascii_strcasecmp(field, "platform") == 0 ) {
                 proto_tree_add_item(tivoconnect_tree,
                     hf_tivoconnect_platform, tvb, offset+fieldlen,
                     length-fieldlen-1, ENC_ASCII|ENC_NA);
             }
-            else if ( g_ascii_strcasecmp(field,"machine") == 0 ) {
+            else if ( g_ascii_strcasecmp(field, "machine") == 0 ) {
                 proto_tree_add_item(tivoconnect_tree,
                     hf_tivoconnect_machine, tvb, offset+fieldlen,
                     length-fieldlen-1, ENC_ASCII|ENC_NA);
                 packet_machine = value;
             }
-            else if ( g_ascii_strcasecmp(field,"identity") == 0 ) {
+            else if ( g_ascii_strcasecmp(field, "identity") == 0 ) {
                 proto_tree_add_item(tivoconnect_tree,
                     hf_tivoconnect_identity, tvb, offset+fieldlen,
                     length-fieldlen-1, ENC_ASCII|ENC_NA);
                 packet_identity = value;
             }
-            else if ( g_ascii_strcasecmp(field,"services") == 0 ) {
+            else if ( g_ascii_strcasecmp(field, "services") == 0 ) {
                 proto_tree_add_item(tivoconnect_tree,
                     hf_tivoconnect_services, tvb, offset+fieldlen,
                     length-fieldlen-1, ENC_ASCII|ENC_NA);
             }
-            else if ( g_ascii_strcasecmp(field,"swversion") == 0 ) {
+            else if ( g_ascii_strcasecmp(field, "swversion") == 0 ) {
                 proto_tree_add_item(tivoconnect_tree,
                     hf_tivoconnect_version, tvb, offset+fieldlen,
                     length-fieldlen-1, ENC_ASCII|ENC_NA);
@@ -182,9 +172,7 @@ dissect_tivoconnect(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gboolea
 
     }
 
-    /* If this protocol has a sub-dissector call it here, see section 1.8 */
-
-    return tvb_length(tvb);
+    return tvb_reported_length(tvb);
 }
 
 static int
@@ -199,16 +187,9 @@ dissect_tivoconnect_udp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
     return dissect_tivoconnect(tvb, pinfo, tree, FALSE);
 }
 
-/* Register the protocol with Wireshark */
-
-/* this format is require because a script is used to build the C function
-   that calls all the protocol registration.
-*/
-
 void
 proto_register_tivoconnect(void)
 {
-    /* Setup list of header fields  See Section 1.6.1 for details*/
     static hf_register_info hf[] = {
         { &hf_tivoconnect_flavor,
             { "Flavor",           "tivoconnect.flavor",
@@ -240,16 +221,13 @@ proto_register_tivoconnect(void)
             "System software version", HFILL }},
     };
 
-    /* Setup protocol subtree array */
     static gint *ett[] = {
         &ett_tivoconnect,
     };
 
-    /* Register the protocol name and description */
     proto_tivoconnect = proto_register_protocol("TiVoConnect Discovery Protocol",
         "TiVoConnect", "tivoconnect");
 
-    /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_tivoconnect, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 }
@@ -265,3 +243,16 @@ proto_reg_handoff_tivoconnect(void)
     dissector_add_uint("udp.port", 2190, tivoconnect_udp_handle);
     dissector_add_uint("tcp.port", 2190, tivoconnect_tcp_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

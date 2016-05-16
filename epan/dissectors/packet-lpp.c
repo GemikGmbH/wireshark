@@ -7,8 +7,8 @@
 
 #line 1 "../../asn1/lpp/packet-lpp-template.c"
 /* packet-lpp.c
- * Routines for 3GPP LTE Positioning Protocol (LLP) packet dissection
- * Copyright 2011-2013 Pascal Quantin <pascal.quantin@gmail.com>
+ * Routines for 3GPP LTE Positioning Protocol (LPP) packet dissection
+ * Copyright 2011-2015 Pascal Quantin <pascal.quantin@gmail.com>
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -28,21 +28,22 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Ref 3GPP TS 36.355 version 11.5.0 Release 11
+ * Ref 3GPP TS 36.355 version 12.4.0 Release 12
  * http://www.3gpp.org
  */
 
 #include "config.h"
+
 #include "math.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/asn1.h>
+#include <epan/tfs.h>
 
 #include "packet-per.h"
 #include "packet-lpp.h"
 
-#define PNAME  "LTE Positioning Protocol (LLP)"
+#define PNAME  "LTE Positioning Protocol (LPP)"
 #define PSNAME "LPP"
 #define PFNAME "lpp"
 
@@ -245,9 +246,11 @@ static int hf_lpp_responseTime = -1;              /* ResponseTime */
 static int hf_lpp_velocityRequest = -1;           /* BOOLEAN */
 static int hf_lpp_accuracy = -1;                  /* INTEGER_0_127 */
 static int hf_lpp_time = -1;                      /* T_time */
+static int hf_lpp_responseTimeEarlyFix_r12 = -1;  /* T_responseTimeEarlyFix_r12 */
 static int hf_lpp_locationEstimate = -1;          /* LocationCoordinates */
 static int hf_lpp_velocityEstimate = -1;          /* Velocity */
 static int hf_lpp_locationError = -1;             /* LocationError */
+static int hf_lpp_earlyFixReport_r12 = -1;        /* EarlyFixReport_r12 */
 static int hf_lpp_ellipsoidPoint_01 = -1;         /* Ellipsoid_Point */
 static int hf_lpp_ellipsoidPointWithUncertaintyCircle_01 = -1;  /* Ellipsoid_PointWithUncertaintyCircle */
 static int hf_lpp_ellipsoidPointWithUncertaintyEllipse_01 = -1;  /* EllipsoidPointWithUncertaintyEllipse */
@@ -297,7 +300,7 @@ static int hf_lpp_cellGlobalIdRef = -1;           /* ECGI */
 static int hf_lpp_referenceQuality = -1;          /* OTDOA_MeasQuality */
 static int hf_lpp_neighbourMeasurementList = -1;  /* NeighbourMeasurementList */
 static int hf_lpp_NeighbourMeasurementList_item = -1;  /* NeighbourMeasurementElement */
-static int hf_lpp_physCellIdNeighbor = -1;        /* INTEGER_0_503 */
+static int hf_lpp_physCellIdNeighbour = -1;       /* INTEGER_0_503 */
 static int hf_lpp_cellGlobalIdNeighbour = -1;     /* ECGI */
 static int hf_lpp_earfcnNeighbour = -1;           /* ARFCN_ValueEUTRA */
 static int hf_lpp_rstd = -1;                      /* INTEGER_0_12711 */
@@ -313,6 +316,7 @@ static int hf_lpp_supportedBandListEUTRA_item = -1;  /* SupportedBandEUTRA */
 static int hf_lpp_supportedBandListEUTRA_v9a0 = -1;  /* SEQUENCE_SIZE_1_maxBands_OF_SupportedBandEUTRA_v9a0 */
 static int hf_lpp_supportedBandListEUTRA_v9a0_item = -1;  /* SupportedBandEUTRA_v9a0 */
 static int hf_lpp_interFreqRSTDmeasurement_r10 = -1;  /* T_interFreqRSTDmeasurement_r10 */
+static int hf_lpp_additionalNeighbourCellInfoList_r10 = -1;  /* T_additionalNeighbourCellInfoList_r10 */
 static int hf_lpp_bandEUTRA = -1;                 /* INTEGER_1_maxFBI */
 static int hf_lpp_bandEUTRA_v9a0 = -1;            /* INTEGER_maxFBI_Plus1_maxFBI2 */
 static int hf_lpp_locationServerErrorCauses = -1;  /* OTDOA_LocationServerErrorCauses */
@@ -338,6 +342,8 @@ static int hf_lpp_gnss_AcquisitionAssistance = -1;  /* GNSS_AcquisitionAssistanc
 static int hf_lpp_gnss_Almanac = -1;              /* GNSS_Almanac */
 static int hf_lpp_gnss_UTC_Model = -1;            /* GNSS_UTC_Model */
 static int hf_lpp_gnss_AuxiliaryInformation = -1;  /* GNSS_AuxiliaryInformation */
+static int hf_lpp_bds_DifferentialCorrections_r12 = -1;  /* BDS_DifferentialCorrections_r12 */
+static int hf_lpp_bds_GridModel_r12 = -1;         /* BDS_GridModelParameter_r12 */
 static int hf_lpp_gnss_SystemTime = -1;           /* GNSS_SystemTime */
 static int hf_lpp_referenceTimeUnc = -1;          /* INTEGER_0_127 */
 static int hf_lpp_gnss_ReferenceTimeForCells = -1;  /* SEQUENCE_SIZE_1_16_OF_GNSS_ReferenceTimeForOneCell */
@@ -386,9 +392,9 @@ static int hf_lpp_beta0 = -1;                     /* INTEGER_M128_127 */
 static int hf_lpp_beta1 = -1;                     /* INTEGER_M128_127 */
 static int hf_lpp_beta2 = -1;                     /* INTEGER_M128_127 */
 static int hf_lpp_beta3 = -1;                     /* INTEGER_M128_127 */
-static int hf_lpp_ai0 = -1;                       /* INTEGER_0_4095 */
-static int hf_lpp_ai1 = -1;                       /* INTEGER_0_4095 */
-static int hf_lpp_ai2 = -1;                       /* INTEGER_0_4095 */
+static int hf_lpp_ai0 = -1;                       /* INTEGER_0_2047 */
+static int hf_lpp_ai1 = -1;                       /* INTEGER_M1024_1023 */
+static int hf_lpp_ai2 = -1;                       /* INTEGER_M8192_8191 */
 static int hf_lpp_ionoStormFlag1 = -1;            /* INTEGER_0_1 */
 static int hf_lpp_ionoStormFlag2 = -1;            /* INTEGER_0_1 */
 static int hf_lpp_ionoStormFlag3 = -1;            /* INTEGER_0_1 */
@@ -429,22 +435,26 @@ static int hf_lpp_GNSS_NavModelSatelliteList_item = -1;  /* GNSS_NavModelSatelli
 static int hf_lpp_svHealth = -1;                  /* BIT_STRING_SIZE_8 */
 static int hf_lpp_gnss_ClockModel = -1;           /* GNSS_ClockModel */
 static int hf_lpp_gnss_OrbitModel = -1;           /* GNSS_OrbitModel */
+static int hf_lpp_svHealthExt_v1240 = -1;         /* T_svHealthExt_v1240 */
 static int hf_lpp_standardClockModelList = -1;    /* StandardClockModelList */
 static int hf_lpp_nav_ClockModel = -1;            /* NAV_ClockModel */
 static int hf_lpp_cnav_ClockModel = -1;           /* CNAV_ClockModel */
 static int hf_lpp_glonass_ClockModel = -1;        /* GLONASS_ClockModel */
 static int hf_lpp_sbas_ClockModel = -1;           /* SBAS_ClockModel */
+static int hf_lpp_bds_ClockModel_r12 = -1;        /* BDS_ClockModel_r12 */
 static int hf_lpp_keplerianSet = -1;              /* NavModelKeplerianSet */
 static int hf_lpp_nav_KeplerianSet = -1;          /* NavModelNAV_KeplerianSet */
 static int hf_lpp_cnav_KeplerianSet = -1;         /* NavModelCNAV_KeplerianSet */
 static int hf_lpp_glonass_ECEF = -1;              /* NavModel_GLONASS_ECEF */
 static int hf_lpp_sbas_ECEF = -1;                 /* NavModel_SBAS_ECEF */
+static int hf_lpp_bds_KeplerianSet_r12 = -1;      /* NavModel_BDS_KeplerianSet_r12 */
 static int hf_lpp_StandardClockModelList_item = -1;  /* StandardClockModelElement */
 static int hf_lpp_stanClockToc = -1;              /* INTEGER_0_16383 */
-static int hf_lpp_stanClockAF2 = -1;              /* INTEGER_M2048_2047 */
-static int hf_lpp_stanClockAF1 = -1;              /* INTEGER_M131072_131071 */
-static int hf_lpp_stanClockAF0 = -1;              /* INTEGER_M134217728_134217727 */
+static int hf_lpp_stanClockAF2 = -1;              /* INTEGER_M32_31 */
+static int hf_lpp_stanClockAF1 = -1;              /* INTEGER_M1048576_1048575 */
+static int hf_lpp_stanClockAF0 = -1;              /* INTEGER_M1073741824_1073741823 */
 static int hf_lpp_stanClockTgd = -1;              /* INTEGER_M512_511 */
+static int hf_lpp_sisa = -1;                      /* INTEGER_0_255 */
 static int hf_lpp_stanModelID = -1;               /* INTEGER_0_1 */
 static int hf_lpp_navToc = -1;                    /* INTEGER_0_37799 */
 static int hf_lpp_navaf2 = -1;                    /* INTEGER_M128_127 */
@@ -472,6 +482,12 @@ static int hf_lpp_gloDeltaTau = -1;               /* INTEGER_M16_15 */
 static int hf_lpp_sbasTo = -1;                    /* INTEGER_0_5399 */
 static int hf_lpp_sbasAgfo = -1;                  /* INTEGER_M2048_2047 */
 static int hf_lpp_sbasAgf1 = -1;                  /* INTEGER_M128_127 */
+static int hf_lpp_bdsAODC_r12 = -1;               /* INTEGER_0_31 */
+static int hf_lpp_bdsToc_r12 = -1;                /* INTEGER_0_131071 */
+static int hf_lpp_bdsA0_r12 = -1;                 /* INTEGER_M8388608_8388607 */
+static int hf_lpp_bdsA1_r12 = -1;                 /* INTEGER_M2097152_2097151 */
+static int hf_lpp_bdsA2_r12 = -1;                 /* INTEGER_M1024_1023 */
+static int hf_lpp_bdsTgd1_r12 = -1;               /* INTEGER_M512_511 */
 static int hf_lpp_keplerToe = -1;                 /* INTEGER_0_16383 */
 static int hf_lpp_keplerW = -1;                   /* INTEGER_M2147483648_2147483647 */
 static int hf_lpp_keplerDeltaN = -1;              /* INTEGER_M32768_32767 */
@@ -556,6 +572,24 @@ static int hf_lpp_sbasZgDot = -1;                 /* INTEGER_M131072_131071 */
 static int hf_lpp_sbasXgDotDot = -1;              /* INTEGER_M512_511 */
 static int hf_lpp_sbagYgDotDot = -1;              /* INTEGER_M512_511 */
 static int hf_lpp_sbasZgDotDot = -1;              /* INTEGER_M512_511 */
+static int hf_lpp_bdsAODE_r12 = -1;               /* INTEGER_0_31 */
+static int hf_lpp_bdsURAI_r12 = -1;               /* T_bdsURAI_r12 */
+static int hf_lpp_bdsToe_r12 = -1;                /* INTEGER_0_131071 */
+static int hf_lpp_bdsAPowerHalf_r12 = -1;         /* INTEGER_0_4294967295 */
+static int hf_lpp_bdsE_r12 = -1;                  /* INTEGER_0_4294967295 */
+static int hf_lpp_bdsW_r12 = -1;                  /* INTEGER_M2147483648_2147483647 */
+static int hf_lpp_bdsDeltaN_r12 = -1;             /* INTEGER_M32768_32767 */
+static int hf_lpp_bdsM0_r12 = -1;                 /* INTEGER_M2147483648_2147483647 */
+static int hf_lpp_bdsOmega0_r12 = -1;             /* INTEGER_M2147483648_2147483647 */
+static int hf_lpp_bdsOmegaDot_r12 = -1;           /* INTEGER_M8388608_8388607 */
+static int hf_lpp_bdsI0_r12 = -1;                 /* INTEGER_M2147483648_2147483647 */
+static int hf_lpp_bdsIDot_r12 = -1;               /* INTEGER_M8192_8191 */
+static int hf_lpp_bdsCuc_r12 = -1;                /* INTEGER_M131072_131071 */
+static int hf_lpp_bdsCus_r12 = -1;                /* INTEGER_M131072_131071 */
+static int hf_lpp_bdsCrc_r12 = -1;                /* INTEGER_M131072_131071 */
+static int hf_lpp_bdsCrs_r12 = -1;                /* INTEGER_M131072_131071 */
+static int hf_lpp_bdsCic_r12 = -1;                /* INTEGER_M131072_131071 */
+static int hf_lpp_bdsCis_r12 = -1;                /* INTEGER_M131072_131071 */
 static int hf_lpp_gnss_BadSignalList = -1;        /* GNSS_BadSignalList */
 static int hf_lpp_GNSS_BadSignalList_item = -1;   /* BadSignalElement */
 static int hf_lpp_badSVID = -1;                   /* SV_ID */
@@ -582,10 +616,12 @@ static int hf_lpp_elevation = -1;                 /* INTEGER_0_127 */
 static int hf_lpp_codePhase1023 = -1;             /* BOOLEAN */
 static int hf_lpp_dopplerUncertaintyExt_r10 = -1;  /* T_dopplerUncertaintyExt_r10 */
 static int hf_lpp_weekNumber_01 = -1;             /* INTEGER_0_255 */
-static int hf_lpp_toa = -1;                       /* INTEGER_0_255 */
+static int hf_lpp_toa = -1;                       /* T_toa */
 static int hf_lpp_ioda = -1;                      /* INTEGER_0_3 */
 static int hf_lpp_completeAlmanacProvided = -1;   /* BOOLEAN */
 static int hf_lpp_gnss_AlmanacList = -1;          /* GNSS_AlmanacList */
+static int hf_lpp_toa_ext_v1240 = -1;             /* T_toa_ext_v1240 */
+static int hf_lpp_ioda_ext_v1240 = -1;            /* INTEGER_4_15 */
 static int hf_lpp_GNSS_AlmanacList_item = -1;     /* GNSS_AlmanacElement */
 static int hf_lpp_keplerianAlmanacSet = -1;       /* AlmanacKeplerianSet */
 static int hf_lpp_keplerianNAV_Almanac = -1;      /* AlmanacNAV_KeplerianSet */
@@ -593,16 +629,18 @@ static int hf_lpp_keplerianReducedAlmanac = -1;   /* AlmanacReducedKeplerianSet 
 static int hf_lpp_keplerianMidiAlmanac = -1;      /* AlmanacMidiAlmanacSet */
 static int hf_lpp_keplerianGLONASS = -1;          /* AlmanacGLONASS_AlmanacSet */
 static int hf_lpp_ecef_SBAS_Almanac = -1;         /* AlmanacECEF_SBAS_AlmanacSet */
+static int hf_lpp_keplerianBDS_Almanac_r12 = -1;  /* AlmanacBDS_AlmanacSet_r12 */
 static int hf_lpp_kepAlmanacE = -1;               /* INTEGER_0_2047 */
 static int hf_lpp_kepAlmanacDeltaI = -1;          /* INTEGER_M1024_1023 */
 static int hf_lpp_kepAlmanacOmegaDot = -1;        /* INTEGER_M1024_1023 */
-static int hf_lpp_kepSVHealth = -1;               /* INTEGER_0_15 */
-static int hf_lpp_kepAlmanacAPowerHalf = -1;      /* INTEGER_M65536_65535 */
+static int hf_lpp_kepSV_StatusINAV = -1;          /* T_kepSV_StatusINAV */
+static int hf_lpp_kepSV_StatusFNAV = -1;          /* T_kepSV_StatusFNAV */
+static int hf_lpp_kepAlmanacAPowerHalf = -1;      /* INTEGER_M4096_4095 */
 static int hf_lpp_kepAlmanacOmega0 = -1;          /* INTEGER_M32768_32767 */
 static int hf_lpp_kepAlmanacW = -1;               /* INTEGER_M32768_32767 */
 static int hf_lpp_kepAlmanacM0 = -1;              /* INTEGER_M32768_32767 */
-static int hf_lpp_kepAlmanacAF0 = -1;             /* INTEGER_M8192_8191 */
-static int hf_lpp_kepAlmanacAF1 = -1;             /* INTEGER_M1024_1023 */
+static int hf_lpp_kepAlmanacAF0 = -1;             /* INTEGER_M32768_32767 */
+static int hf_lpp_kepAlmanacAF1 = -1;             /* INTEGER_M4096_4095 */
 static int hf_lpp_navAlmE = -1;                   /* INTEGER_0_65535 */
 static int hf_lpp_navAlmDeltaI = -1;              /* INTEGER_M32768_32767 */
 static int hf_lpp_navAlmOMEGADOT = -1;            /* INTEGER_M32768_32767 */
@@ -653,10 +691,22 @@ static int hf_lpp_sbasAlmXgdot = -1;              /* INTEGER_M4_3 */
 static int hf_lpp_sbasAlmYgDot = -1;              /* INTEGER_M4_3 */
 static int hf_lpp_sbasAlmZgDot = -1;              /* INTEGER_M8_7 */
 static int hf_lpp_sbasAlmTo = -1;                 /* INTEGER_0_2047 */
+static int hf_lpp_bdsAlmToa_r12 = -1;             /* INTEGER_0_255 */
+static int hf_lpp_bdsAlmSqrtA_r12 = -1;           /* INTEGER_0_16777215 */
+static int hf_lpp_bdsAlmE_r12 = -1;               /* INTEGER_0_131071 */
+static int hf_lpp_bdsAlmW_r12 = -1;               /* INTEGER_M8388608_8388607 */
+static int hf_lpp_bdsAlmM0_r12 = -1;              /* INTEGER_M8388608_8388607 */
+static int hf_lpp_bdsAlmOmega0_r12 = -1;          /* INTEGER_M8388608_8388607 */
+static int hf_lpp_bdsAlmOmegaDot_r12 = -1;        /* INTEGER_M65536_65535 */
+static int hf_lpp_bdsAlmDeltaI_r12 = -1;          /* INTEGER_M32768_32767 */
+static int hf_lpp_bdsAlmA0_r12 = -1;              /* INTEGER_M1024_1023 */
+static int hf_lpp_bdsAlmA1_r12 = -1;              /* INTEGER_M1024_1023 */
+static int hf_lpp_bdsSvHealth_r12 = -1;           /* T_bdsSvHealth_r12 */
 static int hf_lpp_utcModel1 = -1;                 /* UTC_ModelSet1 */
 static int hf_lpp_utcModel2 = -1;                 /* UTC_ModelSet2 */
 static int hf_lpp_utcModel3 = -1;                 /* UTC_ModelSet3 */
 static int hf_lpp_utcModel4 = -1;                 /* UTC_ModelSet4 */
+static int hf_lpp_utcModel5_r12 = -1;             /* UTC_ModelSet5_r12 */
 static int hf_lpp_gnss_Utc_A1 = -1;               /* INTEGER_M8388608_8388607 */
 static int hf_lpp_gnss_Utc_A0 = -1;               /* INTEGER_M2147483648_2147483647 */
 static int hf_lpp_gnss_Utc_Tot = -1;              /* INTEGER_0_255 */
@@ -688,12 +738,32 @@ static int hf_lpp_utcWNlsf_01 = -1;               /* T_utcWNlsf_01 */
 static int hf_lpp_utcDN_01 = -1;                  /* T_utcDN_01 */
 static int hf_lpp_utcDeltaTlsf_01 = -1;           /* T_utcDeltaTlsf_01 */
 static int hf_lpp_utcStandardID = -1;             /* INTEGER_0_7 */
+static int hf_lpp_utcA0_r12 = -1;                 /* INTEGER_M2147483648_2147483647 */
+static int hf_lpp_utcA1_r12 = -1;                 /* INTEGER_M8388608_8388607 */
+static int hf_lpp_utcDeltaTls_r12 = -1;           /* T_utcDeltaTls_r12 */
+static int hf_lpp_utcWNlsf_r12 = -1;              /* T_utcWNlsf_r12 */
+static int hf_lpp_utcDN_r12 = -1;                 /* T_utcDN_r12 */
+static int hf_lpp_utcDeltaTlsf_r12 = -1;          /* T_utcDeltaTlsf_r12 */
 static int hf_lpp_gnss_ID_GPS = -1;               /* GNSS_ID_GPS */
 static int hf_lpp_gnss_ID_GLONASS = -1;           /* GNSS_ID_GLONASS */
 static int hf_lpp_GNSS_ID_GPS_item = -1;          /* GNSS_ID_GPS_SatElement */
 static int hf_lpp_signalsAvailable = -1;          /* GNSS_SignalIDs */
 static int hf_lpp_GNSS_ID_GLONASS_item = -1;      /* GNSS_ID_GLONASS_SatElement */
 static int hf_lpp_channelNumber = -1;             /* INTEGER_M7_13 */
+static int hf_lpp_dbds_RefTime_r12 = -1;          /* T_dbds_RefTime_r12 */
+static int hf_lpp_bds_SgnTypeList_r12 = -1;       /* BDS_SgnTypeList_r12 */
+static int hf_lpp_BDS_SgnTypeList_r12_item = -1;  /* BDS_SgnTypeElement_r12 */
+static int hf_lpp_dbds_CorrectionList_r12 = -1;   /* DBDS_CorrectionList_r12 */
+static int hf_lpp_DBDS_CorrectionList_r12_item = -1;  /* DBDS_CorrectionElement_r12 */
+static int hf_lpp_bds_UDREI_r12 = -1;             /* INTEGER_0_15 */
+static int hf_lpp_bds_RURAI_r12 = -1;             /* INTEGER_0_15 */
+static int hf_lpp_bds_ECC_DeltaT_r12 = -1;        /* INTEGER_M4096_4095 */
+static int hf_lpp_bds_RefTime_r12 = -1;           /* T_bds_RefTime_r12 */
+static int hf_lpp_gridIonList_r12 = -1;           /* GridIonList_r12 */
+static int hf_lpp_GridIonList_r12_item = -1;      /* GridIonElement_r12 */
+static int hf_lpp_igp_ID_r12 = -1;                /* INTEGER_1_320 */
+static int hf_lpp_dt_r12 = -1;                    /* INTEGER_0_511 */
+static int hf_lpp_givei_r12 = -1;                 /* INTEGER_0_15 */
 static int hf_lpp_gnss_CommonAssistDataReq = -1;  /* GNSS_CommonAssistDataReq */
 static int hf_lpp_gnss_GenericAssistDataReq = -1;  /* GNSS_GenericAssistDataReq */
 static int hf_lpp_gnss_ReferenceTimeReq = -1;     /* GNSS_ReferenceTimeReq */
@@ -710,6 +780,8 @@ static int hf_lpp_gnss_AcquisitionAssistanceReq = -1;  /* GNSS_AcquisitionAssist
 static int hf_lpp_gnss_AlmanacReq = -1;           /* GNSS_AlmanacReq */
 static int hf_lpp_gnss_UTCModelReq = -1;          /* GNSS_UTC_ModelReq */
 static int hf_lpp_gnss_AuxiliaryInformationReq = -1;  /* GNSS_AuxiliaryInformationReq */
+static int hf_lpp_bds_DifferentialCorrectionsReq_r12 = -1;  /* BDS_DifferentialCorrectionsReq_r12 */
+static int hf_lpp_bds_GridModelReq_r12 = -1;      /* BDS_GridModelReq_r12 */
 static int hf_lpp_gnss_TimeReqPrefList = -1;      /* SEQUENCE_SIZE_1_8_OF_GNSS_ID */
 static int hf_lpp_gnss_TimeReqPrefList_item = -1;  /* GNSS_ID */
 static int hf_lpp_gps_TOW_assistReq = -1;         /* BOOLEAN */
@@ -815,6 +887,8 @@ static int hf_lpp_gnss_AcquisitionAssistanceSupport = -1;  /* GNSS_AcquisitionAs
 static int hf_lpp_gnss_AlmanacSupport = -1;       /* GNSS_AlmanacSupport */
 static int hf_lpp_gnss_UTC_ModelSupport = -1;     /* GNSS_UTC_ModelSupport */
 static int hf_lpp_gnss_AuxiliaryInformationSupport = -1;  /* GNSS_AuxiliaryInformationSupport */
+static int hf_lpp_bds_DifferentialCorrectionsSupport_r12 = -1;  /* BDS_DifferentialCorrectionsSupport_r12 */
+static int hf_lpp_bds_GridModelSupport_r12 = -1;  /* BDS_GridModelSupport_r12 */
 static int hf_lpp_gnssSignalIDs = -1;             /* GNSS_SignalIDs */
 static int hf_lpp_dgnss_ValidityTimeSup = -1;     /* BOOLEAN */
 static int hf_lpp_clockModel = -1;                /* T_clockModel */
@@ -874,26 +948,31 @@ static int hf_lpp_T_clockModel_model_2 = -1;
 static int hf_lpp_T_clockModel_model_3 = -1;
 static int hf_lpp_T_clockModel_model_4 = -1;
 static int hf_lpp_T_clockModel_model_5 = -1;
+static int hf_lpp_T_clockModel_model_6 = -1;
 static int hf_lpp_T_orbitModel_model_1 = -1;
 static int hf_lpp_T_orbitModel_model_2 = -1;
 static int hf_lpp_T_orbitModel_model_3 = -1;
 static int hf_lpp_T_orbitModel_model_4 = -1;
 static int hf_lpp_T_orbitModel_model_5 = -1;
+static int hf_lpp_T_orbitModel_model_6 = -1;
 static int hf_lpp_T_almanacModel_model_1 = -1;
 static int hf_lpp_T_almanacModel_model_2 = -1;
 static int hf_lpp_T_almanacModel_model_3 = -1;
 static int hf_lpp_T_almanacModel_model_4 = -1;
 static int hf_lpp_T_almanacModel_model_5 = -1;
 static int hf_lpp_T_almanacModel_model_6 = -1;
+static int hf_lpp_T_almanacModel_model_7 = -1;
 static int hf_lpp_T_utc_Model_model_1 = -1;
 static int hf_lpp_T_utc_Model_model_2 = -1;
 static int hf_lpp_T_utc_Model_model_3 = -1;
 static int hf_lpp_T_utc_Model_model_4 = -1;
+static int hf_lpp_T_utc_Model_model_5 = -1;
 static int hf_lpp_T_gnss_ids_gps = -1;
 static int hf_lpp_T_gnss_ids_sbas = -1;
 static int hf_lpp_T_gnss_ids_qzss = -1;
 static int hf_lpp_T_gnss_ids_galileo = -1;
 static int hf_lpp_T_gnss_ids_glonass = -1;
+static int hf_lpp_T_gnss_ids_bds = -1;
 static int hf_lpp_T_sbas_IDs_waas = -1;
 static int hf_lpp_T_sbas_IDs_egnos = -1;
 static int hf_lpp_T_sbas_IDs_msas = -1;
@@ -904,10 +983,19 @@ static int hf_lpp_T_requestedMeasurements_ueRxTxReq = -1;
 static int hf_lpp_T_ecid_MeasSupported_rsrpSup = -1;
 static int hf_lpp_T_ecid_MeasSupported_rsrqSup = -1;
 static int hf_lpp_T_ecid_MeasSupported_ueRxTxSup = -1;
-static int hf_lpp_dummy_eag_field = -1; /* never registered */
+static int dummy_hf_lpp_eag_field = -1; /* never registered */
 
 /*--- End of included file: packet-lpp-hf.c ---*/
-#line 48 "../../asn1/lpp/packet-lpp-template.c"
+#line 49 "../../asn1/lpp/packet-lpp-template.c"
+static int hf_lpp_svHealthExt_v1240_e5bhs = -1;
+static int hf_lpp_svHealthExt_v1240_e1_bhs = -1;
+static int hf_lpp_kepSV_StatusINAV_e5bhs = -1;
+static int hf_lpp_kepSV_StatusINAV_e1_bhs = -1;
+static int hf_lpp_kepSV_StatusFNAV_e5ahs = -1;
+static int hf_lpp_bdsSvHealth_r12_sat_clock = -1;
+static int hf_lpp_bdsSvHealth_r12_b1i = -1;
+static int hf_lpp_bdsSvHealth_r12_b2i = -1;
+static int hf_lpp_bdsSvHealth_r12_nav = -1;
 
 static dissector_handle_t lppe_handle = NULL;
 
@@ -916,6 +1004,10 @@ static guint32 lpp_epdu_id = -1;
 /* Initialize the subtree pointers */
 static gint ett_lpp = -1;
 static gint ett_lpp_bitmap = -1;
+static gint ett_lpp_svHealthExt_v1240 = -1;
+static gint ett_kepSV_StatusINAV = -1;
+static gint ett_kepSV_StatusFNAV = -1;
+static gint ett_lpp_bdsSvHealth_r12 = -1;
 
 /*--- Included file: packet-lpp-ett.c ---*/
 #line 1 "../../asn1/lpp/packet-lpp-ett.c"
@@ -1078,6 +1170,7 @@ static gint ett_lpp_NAV_ClockModel = -1;
 static gint ett_lpp_CNAV_ClockModel = -1;
 static gint ett_lpp_GLONASS_ClockModel = -1;
 static gint ett_lpp_SBAS_ClockModel = -1;
+static gint ett_lpp_BDS_ClockModel_r12 = -1;
 static gint ett_lpp_NavModelKeplerianSet = -1;
 static gint ett_lpp_NavModelNAV_KeplerianSet = -1;
 static gint ett_lpp_T_addNAVparam = -1;
@@ -1085,6 +1178,7 @@ static gint ett_lpp_T_ephemSF1Rsvd = -1;
 static gint ett_lpp_NavModelCNAV_KeplerianSet = -1;
 static gint ett_lpp_NavModel_GLONASS_ECEF = -1;
 static gint ett_lpp_NavModel_SBAS_ECEF = -1;
+static gint ett_lpp_NavModel_BDS_KeplerianSet_r12 = -1;
 static gint ett_lpp_GNSS_RealTimeIntegrity = -1;
 static gint ett_lpp_GNSS_BadSignalList = -1;
 static gint ett_lpp_BadSignalElement = -1;
@@ -1105,16 +1199,26 @@ static gint ett_lpp_AlmanacReducedKeplerianSet = -1;
 static gint ett_lpp_AlmanacMidiAlmanacSet = -1;
 static gint ett_lpp_AlmanacGLONASS_AlmanacSet = -1;
 static gint ett_lpp_AlmanacECEF_SBAS_AlmanacSet = -1;
+static gint ett_lpp_AlmanacBDS_AlmanacSet_r12 = -1;
 static gint ett_lpp_GNSS_UTC_Model = -1;
 static gint ett_lpp_UTC_ModelSet1 = -1;
 static gint ett_lpp_UTC_ModelSet2 = -1;
 static gint ett_lpp_UTC_ModelSet3 = -1;
 static gint ett_lpp_UTC_ModelSet4 = -1;
+static gint ett_lpp_UTC_ModelSet5_r12 = -1;
 static gint ett_lpp_GNSS_AuxiliaryInformation = -1;
 static gint ett_lpp_GNSS_ID_GPS = -1;
 static gint ett_lpp_GNSS_ID_GPS_SatElement = -1;
 static gint ett_lpp_GNSS_ID_GLONASS = -1;
 static gint ett_lpp_GNSS_ID_GLONASS_SatElement = -1;
+static gint ett_lpp_BDS_DifferentialCorrections_r12 = -1;
+static gint ett_lpp_BDS_SgnTypeList_r12 = -1;
+static gint ett_lpp_BDS_SgnTypeElement_r12 = -1;
+static gint ett_lpp_DBDS_CorrectionList_r12 = -1;
+static gint ett_lpp_DBDS_CorrectionElement_r12 = -1;
+static gint ett_lpp_BDS_GridModelParameter_r12 = -1;
+static gint ett_lpp_GridIonList_r12 = -1;
+static gint ett_lpp_GridIonElement_r12 = -1;
 static gint ett_lpp_A_GNSS_RequestAssistanceData = -1;
 static gint ett_lpp_GNSS_CommonAssistDataReq = -1;
 static gint ett_lpp_GNSS_GenericAssistDataReq = -1;
@@ -1142,6 +1246,8 @@ static gint ett_lpp_GNSS_AcquisitionAssistanceReq = -1;
 static gint ett_lpp_GNSS_AlmanacReq = -1;
 static gint ett_lpp_GNSS_UTC_ModelReq = -1;
 static gint ett_lpp_GNSS_AuxiliaryInformationReq = -1;
+static gint ett_lpp_BDS_DifferentialCorrectionsReq_r12 = -1;
+static gint ett_lpp_BDS_GridModelReq_r12 = -1;
 static gint ett_lpp_A_GNSS_ProvideLocationInformation = -1;
 static gint ett_lpp_GNSS_SignalMeasurementInformation = -1;
 static gint ett_lpp_MeasurementReferenceTime = -1;
@@ -1188,6 +1294,8 @@ static gint ett_lpp_T_almanacModel = -1;
 static gint ett_lpp_GNSS_UTC_ModelSupport = -1;
 static gint ett_lpp_T_utc_Model = -1;
 static gint ett_lpp_GNSS_AuxiliaryInformationSupport = -1;
+static gint ett_lpp_BDS_DifferentialCorrectionsSupport_r12 = -1;
+static gint ett_lpp_BDS_GridModelSupport_r12 = -1;
 static gint ett_lpp_A_GNSS_RequestCapabilities = -1;
 static gint ett_lpp_A_GNSS_Error = -1;
 static gint ett_lpp_GNSS_LocationServerErrorCauses = -1;
@@ -1215,7 +1323,7 @@ static gint ett_lpp_ECID_LocationServerErrorCauses = -1;
 static gint ett_lpp_ECID_TargetDeviceErrorCauses = -1;
 
 /*--- End of included file: packet-lpp-ett.c ---*/
-#line 57 "../../asn1/lpp/packet-lpp-template.c"
+#line 71 "../../asn1/lpp/packet-lpp-template.c"
 
 /* Include constants */
 
@@ -1231,8 +1339,17 @@ static gint ett_lpp_ECID_TargetDeviceErrorCauses = -1;
 #define maxFBI_Plus1                   65
 #define maxFBI2                        256
 
+typedef enum _T_GNSS_ID_enum {
+  T_GNSS_ID_GPS =   0,
+  T_GNSS_ID_SBAS =   1,
+  T_GNSS_ID_QZSS =   2,
+  T_GNSS_ID_GALILEO =   3,
+  T_GNSS_ID_GLONASS =   4,
+  T_GNSS_ID_BDS =   5
+} T_GNSS_ID_enum;
+
 /*--- End of included file: packet-lpp-val.h ---*/
-#line 60 "../../asn1/lpp/packet-lpp-template.c"
+#line 74 "../../asn1/lpp/packet-lpp-template.c"
 
 static const value_string lpp_ePDU_ID_vals[] = {
   { 1, "OMA LPP extensions (LPPe)"},
@@ -1422,11 +1539,12 @@ lpp_frameDrift_fmt(gchar *s, guint32 v)
 {
   double drift = (double)((gint32)v)*pow(2, -30);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", drift, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", drift, (gint32)v);
 }
 
 static const value_string lpp_dataID_vals[] = {
   { 0, "Parameters are applicable worldwide"},
+  { 1, "Parameters have been generated by BDS"},
   { 3, "Parameters have been generated by QZSS"},
   { 0, NULL}
 };
@@ -1436,7 +1554,7 @@ lpp_alpha0_fmt(gchar *s, guint32 v)
 {
   double alpha = (double)((gint32)v)*pow(2, -30);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", alpha, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", alpha, (gint32)v);
 }
 
 static void
@@ -1444,7 +1562,7 @@ lpp_alpha1_fmt(gchar *s, guint32 v)
 {
   double alpha = (double)((gint32)v)*pow(2, -27);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/semi-circle (%d)", alpha, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/semi-circle (%d)", alpha, (gint32)v);
 }
 
 static void
@@ -1452,7 +1570,7 @@ lpp_alpha2_3_fmt(gchar *s, guint32 v)
 {
   double alpha = (double)((gint32)v)*pow(2, -24);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/semi-circle (%d)", alpha, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/semi-circle (%d)", alpha, (gint32)v);
 }
 
 static void
@@ -1460,7 +1578,7 @@ lpp_beta0_fmt(gchar *s, guint32 v)
 {
   double beta = (double)((gint32)v)*pow(2, 11);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", beta, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", beta, (gint32)v);
 }
 
 static void
@@ -1468,7 +1586,7 @@ lpp_beta1_fmt(gchar *s, guint32 v)
 {
   double beta = (double)((gint32)v)*pow(2, 14);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/semi-circle (%d)", beta, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/semi-circle (%d)", beta, (gint32)v);
 }
 
 static void
@@ -1476,7 +1594,7 @@ lpp_beta2_3_fmt(gchar *s, guint32 v)
 {
   double beta = (double)((gint32)v)*pow(2, 16);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/semi-circle (%d)", beta, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/semi-circle (%d)", beta, (gint32)v);
 }
 
 static void
@@ -1484,7 +1602,7 @@ lpp_ai0_fmt(gchar *s, guint32 v)
 {
   double ai = (double)v*pow(2, -2);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e sfu (%u)", ai, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g sfu (%u)", ai, v);
 }
 
 static void
@@ -1492,7 +1610,7 @@ lpp_ai1_fmt(gchar *s, guint32 v)
 {
   double ai = (double)v*pow(2, -8);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e sfu/degree (%u)", ai, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g sfu/degree (%u)", ai, v);
 }
 
 static void
@@ -1500,7 +1618,7 @@ lpp_ai2_fmt(gchar *s, guint32 v)
 {
   double ai = (double)v*pow(2, -15);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e sfu/degree (%u)", ai, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g sfu/degree2 (%u)", ai, v);
 }
 
 static void
@@ -1514,7 +1632,7 @@ lpp_pmX_Y_fmt(gchar *s, guint32 v)
 {
   double pm = (double)((gint32)v)*pow(2, -20);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e arc-seconds (%d)", pm, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g arc-seconds (%d)", pm, (gint32)v);
 }
 
 static void
@@ -1522,7 +1640,7 @@ lpp_pmX_Ydot_fmt(gchar *s, guint32 v)
 {
   double pmDot = (double)((gint32)v)*pow(2, -21);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e arc-seconds/day (%d)", pmDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g arc-seconds/day (%d)", pmDot, (gint32)v);
 }
 
 static void
@@ -1530,7 +1648,7 @@ lpp_deltaUT1_fmt(gchar *s, guint32 v)
 {
   double deltaUT1 = (double)((gint32)v)*pow(2, -24);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", deltaUT1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", deltaUT1, (gint32)v);
 }
 
 static void
@@ -1538,7 +1656,7 @@ lpp_deltaUT1dot_fmt(gchar *s, guint32 v)
 {
   double deltaUT1dot = (double)((gint32)v)*pow(2, -25);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/day (%d)", deltaUT1dot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/day (%d)", deltaUT1dot, (gint32)v);
 }
 
 static void
@@ -1552,7 +1670,7 @@ lpp_tA0_fmt(gchar *s, guint32 v)
 {
   double tA0 = (double)((gint32)v)*pow(2, -35);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", tA0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", tA0, (gint32)v);
 }
 
 static void
@@ -1560,7 +1678,7 @@ lpp_tA1_fmt(gchar *s, guint32 v)
 {
   double tA1 = (double)((gint32)v)*pow(2, -51);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", tA1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", tA1, (gint32)v);
 }
 
 static void
@@ -1568,7 +1686,7 @@ lpp_tA2_fmt(gchar *s, guint32 v)
 {
   double tA2 = (double)((gint32)v)*pow(2, -68);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s2 (%d)", tA2, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s2 (%d)", tA2, (gint32)v);
 }
 
 static const value_string lpp_gnss_TO_ID_vals[] = {
@@ -1639,6 +1757,13 @@ static const value_string lpp_udreValidityTime_vals[] = {
   { 0, NULL}
 };
 
+static const value_string lpp_signal_health_status_vals[] = {
+  { 0, "Signal OK"},
+  { 1, "Signal out of service"},
+  { 2, "Signal will be out of service"},
+  { 3, "Signal Component currently in Test"},
+  { 0, NULL}
+};
 static void
 lpp_stanClockToc_fmt(gchar *s, guint32 v)
 {
@@ -1648,25 +1773,25 @@ lpp_stanClockToc_fmt(gchar *s, guint32 v)
 static void
 lpp_stanClockAF2_fmt(gchar *s, guint32 v)
 {
-  double stanClockAF2 = (double)((gint32)v)*pow(2, -65);
+  double stanClockAF2 = (double)((gint32)v)*pow(2, -59);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s2 (%d)", stanClockAF2, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s2 (%d)", stanClockAF2, (gint32)v);
 }
 
 static void
 lpp_stanClockAF1_fmt(gchar *s, guint32 v)
 {
-  double stanClockAF1 = (double)((gint32)v)*pow(2, -45);
+  double stanClockAF1 = (double)((gint32)v)*pow(2, -46);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", stanClockAF1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", stanClockAF1, (gint32)v);
 }
 
 static void
 lpp_stanClockAF0_fmt(gchar *s, guint32 v)
 {
-  double stanClockAF0 = (double)((gint32)v)*pow(2, -33);
+  double stanClockAF0 = (double)((gint32)v)*pow(2, -34);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", stanClockAF0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", stanClockAF0, (gint32)v);
 }
 
 static void
@@ -1674,7 +1799,25 @@ lpp_stanClockTgd_fmt(gchar *s, guint32 v)
 {
   double stanClockTgd = (double)((gint32)v)*pow(2, -32);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", stanClockTgd, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", stanClockTgd, (gint32)v);
+}
+
+static void
+lpp_sisa_fmt(gchar *s, guint32 v)
+{
+  if (v < 50) {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "%u cm (%u)", v, v);
+  } else if (v < 75) {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "%u cm (%u)", 50+((v-50)*2), v);
+  } else if (v < 100) {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "%u cm (%u)", 100+((v-75)*4), v);
+  } else if (v < 126) {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "%u cm (%u)", 200+((v-100)*16), v);
+  } else if (v < 255) {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "Spare (%u)", v);
+  } else {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "No Accuracy Prediction Available (255)");
+  }
 }
 
 static const value_string lpp_stanModelID_vals[] = {
@@ -1694,7 +1837,7 @@ lpp_navaf2_fmt(gchar *s, guint32 v)
 {
   double navaf2 = (double)((gint32)v)*pow(2, -55);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s2 (%d)", navaf2, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s2 (%d)", navaf2, (gint32)v);
 }
 
 static void
@@ -1702,7 +1845,7 @@ lpp_navaf1_fmt(gchar *s, guint32 v)
 {
   double navaf1 = (double)((gint32)v)*pow(2, -43);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", navaf1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", navaf1, (gint32)v);
 }
 
 static void
@@ -1710,7 +1853,7 @@ lpp_navaf0_navTgd_fmt(gchar *s, guint32 v)
 {
   double navaf0_navTgd = (double)((gint32)v)*pow(2, -31);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", navaf0_navTgd, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", navaf0_navTgd, (gint32)v);
 }
 
 static void
@@ -1724,7 +1867,7 @@ lpp_cnavAf2_fmt(gchar *s, guint32 v)
 {
   double cnavAf2 = (double)((gint32)v)*pow(2, -60);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s2 (%d)", cnavAf2, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s2 (%d)", cnavAf2, (gint32)v);
 }
 
 static void
@@ -1732,7 +1875,7 @@ lpp_cnavAf1_fmt(gchar *s, guint32 v)
 {
   double cnavAf1 = (double)((gint32)v)*pow(2, -48);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", cnavAf1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", cnavAf1, (gint32)v);
 }
 
 static void
@@ -1740,7 +1883,7 @@ lpp_cnavX_fmt(gchar *s, guint32 v)
 {
   double cnavX = (double)((gint32)v)*pow(2, -35);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", cnavX, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", cnavX, (gint32)v);
 }
 
 static void
@@ -1748,7 +1891,7 @@ lpp_gloTau_gloDeltaTau_fmt(gchar *s, guint32 v)
 {
   double gloTau_gloDeltaTau = (double)((gint32)v)*pow(2, -30);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", gloTau_gloDeltaTau, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", gloTau_gloDeltaTau, (gint32)v);
 }
 
 static void
@@ -1756,7 +1899,7 @@ lpp_gloGamma_fmt(gchar *s, guint32 v)
 {
   double gloGamma = (double)((gint32)v)*pow(2, -40);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e (%d)", gloGamma, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g (%d)", gloGamma, (gint32)v);
 }
 
 static void
@@ -1770,7 +1913,7 @@ lpp_sbasAgfo_fmt(gchar *s, guint32 v)
 {
   double sbasAgfo = (double)((gint32)v)*pow(2, -31);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", sbasAgfo, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", sbasAgfo, (gint32)v);
 }
 
 static void
@@ -1778,7 +1921,58 @@ lpp_sbasAgf1_fmt(gchar *s, guint32 v)
 {
   double sbasAgf1 = (double)((gint32)v)*pow(2, -40);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", sbasAgf1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", sbasAgf1, (gint32)v);
+}
+
+static void
+lpp_bdsAODC_AODE_r12_fmt(gchar *s, guint32 v)
+{
+  if (v < 25) {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "Age of the satellite clock correction parameters is %u hours (%u)", v, v);
+  } else if (v < 31) {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "Age of the satellite clock correction parameters is %u days (%u)", v-23, v);
+  } else {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "Age of the satellite clock correction parameters is over 7 days (%u)", v);
+  }
+}
+
+
+static void
+lpp_bdsToc_Toe_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsToc = (double)((gint32)v)*pow(2, 3);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", bdsToc, (gint32)v);
+}
+
+static void
+lpp_bdsA0_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsA0 = (double)((gint32)v)*pow(2, -33);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", bdsA0, (gint32)v);
+}
+
+static void
+lpp_bdsA1_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsA1 = (double)((gint32)v)*pow(2, -50);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", bdsA1, (gint32)v);
+}
+
+static void
+lpp_bdsA2_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsA2 = (double)((gint32)v)*pow(2, -66);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s2 (%d)", bdsA2, (gint32)v);
+}
+
+static void
+lpp_bdsTgd1_r12_fmt(gchar *s, guint32 v)
+{
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g ns (%d)", (float)((gint32)v)*0.1, (gint32)v);
 }
 
 static void
@@ -1792,7 +1986,7 @@ lpp_keplerW_M0_I0_Omega0_fmt(gchar *s, guint32 v)
 {
   double keplerW_M0_I0_Omega0 = (double)((gint32)v)*pow(2, -31);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", keplerW_M0_I0_Omega0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", keplerW_M0_I0_Omega0, (gint32)v);
 }
 
 static void
@@ -1800,7 +1994,7 @@ lpp_keplerDeltaN_OmegaDot_IDot_fmt(gchar *s, guint32 v)
 {
   double keplerDeltaN_OmegaDot_IDot = (double)((gint32)v)*pow(2, -43);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles/s (%d)", keplerDeltaN_OmegaDot_IDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", keplerDeltaN_OmegaDot_IDot, (gint32)v);
 }
 
 static void
@@ -1808,7 +2002,7 @@ lpp_keplerE_fmt(gchar *s, guint32 v)
 {
   double keplerE = (double)v*pow(2, -33);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e (%u)", keplerE, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g (%u)", keplerE, v);
 }
 
 static void
@@ -1816,7 +2010,7 @@ lpp_keplerAPowerHalf_fmt(gchar *s, guint32 v)
 {
   double keplerAPowerHalf = (double)v*pow(2, -19);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m1/2 (%u)", keplerAPowerHalf, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m1/2 (%u)", keplerAPowerHalf, v);
 }
 
 static void
@@ -1824,7 +2018,7 @@ lpp_keplerCrs_Crc_fmt(gchar *s, guint32 v)
 {
   double keplerCrs_Crc = (double)((gint32)v)*pow(2, -5);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m (%d)", keplerCrs_Crc, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m (%d)", keplerCrs_Crc, (gint32)v);
 }
 
 static void
@@ -1832,7 +2026,7 @@ lpp_keplerCx_fmt(gchar *s, guint32 v)
 {
   double keplerCx = (double)((gint32)v)*pow(2, -29);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e rad (%d)", keplerCx, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g rad (%d)", keplerCx, (gint32)v);
 }
 
 static void
@@ -1846,7 +2040,7 @@ lpp_navOmega_M0_I0_OmegaA0_fmt(gchar *s, guint32 v)
 {
   double navOmega_M0_I0_OmegaA0 = (double)((gint32)v)*pow(2, -31);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", navOmega_M0_I0_OmegaA0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", navOmega_M0_I0_OmegaA0, (gint32)v);
 }
 
 static void
@@ -1854,7 +2048,7 @@ lpp_navDeltaN_OmegaADot_IDot_fmt(gchar *s, guint32 v)
 {
   double navDeltaN_OmegaADot_IDot = (double)((gint32)v)*pow(2, -43);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles/s (%d)", navDeltaN_OmegaADot_IDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", navDeltaN_OmegaADot_IDot, (gint32)v);
 }
 
 static void
@@ -1862,7 +2056,7 @@ lpp_navE_fmt(gchar *s, guint32 v)
 {
   double navE = (double)v*pow(2, -33);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e (%u)", navE, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g (%u)", navE, v);
 }
 
 static void
@@ -1870,7 +2064,7 @@ lpp_navAPowerHalf_fmt(gchar *s, guint32 v)
 {
   double navAPowerHalf = (double)v*pow(2, -19);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m1/2 (%u)", navAPowerHalf, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m1/2 (%u)", navAPowerHalf, v);
 }
 
 static void
@@ -1878,7 +2072,7 @@ lpp_navCrs_Crc_fmt(gchar *s, guint32 v)
 {
   double navCrs_Crc = (double)((gint32)v)*pow(2, -5);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m (%d)", navCrs_Crc, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m (%d)", navCrs_Crc, (gint32)v);
 }
 
 static void
@@ -1886,7 +2080,7 @@ lpp_navCx_fmt(gchar *s, guint32 v)
 {
   double navCx = (double)((gint32)v)*pow(2, -29);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e rad (%d)", navCx, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g rad (%d)", navCx, (gint32)v);
 }
 
 static void
@@ -1894,7 +2088,7 @@ lpp_cnavDeltaA_fmt(gchar *s, guint32 v)
 {
   double cnavDeltaA = (double)((gint32)v)*pow(2, -9);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m (%d)", cnavDeltaA, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m (%d)", cnavDeltaA, (gint32)v);
 }
 
 static void
@@ -1902,7 +2096,7 @@ lpp_cnavAdot_fmt(gchar *s, guint32 v)
 {
   double cnavAdot = (double)((gint32)v)*pow(2, -21);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m/s (%d)", cnavAdot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m/s (%d)", cnavAdot, (gint32)v);
 }
 
 static void
@@ -1910,7 +2104,7 @@ lpp_cnavDeltaNo_fmt(gchar *s, guint32 v)
 {
   double cnavDeltaNo = (double)((gint32)v)*pow(2, -44);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles/s (%d)", cnavDeltaNo, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", cnavDeltaNo, (gint32)v);
 }
 
 static void
@@ -1918,7 +2112,7 @@ lpp_cnavDeltaNoDot_fmt(gchar *s, guint32 v)
 {
   double cnavDeltaNoDot = (double)((gint32)v)*pow(2, -57);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles/s2 (%d)", cnavDeltaNoDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s2 (%d)", cnavDeltaNoDot, (gint32)v);
 }
 
 static void
@@ -1926,7 +2120,7 @@ lpp_cnavDeltaOmegaDot_IoDot_fmt(gchar *s, guint32 v)
 {
   double cnavDeltaOmegaDot_IoDot = (double)((gint32)v)*pow(2, -44);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles/s (%d)", cnavDeltaOmegaDot_IoDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", cnavDeltaOmegaDot_IoDot, (gint32)v);
 }
 
 static void
@@ -1934,7 +2128,7 @@ lpp_cnavCx_fmt(gchar *s, guint32 v)
 {
   double cnavCx = (double)((gint32)v)*pow(2, -30);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e rad (%d)", cnavCx, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g rad (%d)", cnavCx, (gint32)v);
 }
 
 static void
@@ -1942,7 +2136,7 @@ lpp_cnavCrs_Crc_fmt(gchar *s, guint32 v)
 {
   double cnavCrs_Crc = (double)((gint32)v)*pow(2, -8);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m (%d)", cnavCrs_Crc, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m (%d)", cnavCrs_Crc, (gint32)v);
 }
 
 static void
@@ -1950,7 +2144,7 @@ lpp_gloX_Y_Z_fmt(gchar *s, guint32 v)
 {
   double gloX_Y_Z = (double)((gint32)v)*pow(2, -11);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e km (%d)", gloX_Y_Z, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g km (%d)", gloX_Y_Z, (gint32)v);
 }
 
 static void
@@ -1958,7 +2152,7 @@ lpp_gloXdot_Ydot_Zdot_fmt(gchar *s, guint32 v)
 {
   double gloXdot_Ydot_Zdot = (double)((gint32)v)*pow(2, -20);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e km/s (%d)", gloXdot_Ydot_Zdot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g km/s (%d)", gloXdot_Ydot_Zdot, (gint32)v);
 }
 
 static void
@@ -1966,7 +2160,7 @@ lpp_gloXdotdot_Ydotdot_Zdotdot_fmt(gchar *s, guint32 v)
 {
   double gloXdotdot_Ydotdot_Zdotdot = (double)((gint32)v)*pow(2, -30);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e km/s2 (%d)", gloXdotdot_Ydotdot_Zdotdot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g km/s2 (%d)", gloXdotdot_Ydotdot_Zdotdot, (gint32)v);
 }
 
 static void
@@ -2006,7 +2200,7 @@ lpp_sbasXgDotDot_YgDotDot_fmt(gchar *s, guint32 v)
 {
   double sbasXgDotDot_YgDotDot = (double)((gint32)v)*0.0000125;
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m/s2 (%d)", sbasXgDotDot_YgDotDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m/s2 (%d)", sbasXgDotDot_YgDotDot, (gint32)v);
 }
 
 static void
@@ -2014,7 +2208,55 @@ lpp_sbasZgDotDot_fmt(gchar *s, guint32 v)
 {
   double sbasZgDotDot = (double)((gint32)v)*0.0000625;
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m/s2 (%d)", sbasZgDotDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m/s2 (%d)", sbasZgDotDot, (gint32)v);
+}
+
+static void
+lpp_bdsAPowerHalf_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsAPowerHalf = (double)v*pow(2, -19);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m1/2 (%u)", bdsAPowerHalf, v);
+}
+
+static void
+lpp_bdsE_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsE = (double)v*pow(2, -33);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g (%u)", bdsE, v);
+}
+
+static void
+lpp_bdsW_M0_Omega0_I0_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsW_M0_Omega0_I0 = (double)((gint32)v)*pow(2, -31);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", bdsW_M0_Omega0_I0, (gint32)v);
+}
+
+static void
+lpp_bdsDeltaN_OmegaDot_IDot_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsDeltaN_OmegaDot_IDot = (double)((gint32)v)*pow(2, -43);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", bdsDeltaN_OmegaDot_IDot, (gint32)v);
+}
+
+static void
+lpp_bdsCuc_Cus_Cic_Cis_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsCuc_Cus_Cic_Cis = (double)((gint32)v)*pow(2, -31);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g rad (%d)", bdsCuc_Cus_Cic_Cis, (gint32)v);
+}
+
+static void
+lpp_bdsCrc_Crs_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsCrc_Crs = (double)((gint32)v)*pow(2, -6);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g rad (%d)", bdsCrc_Crs, (gint32)v);
 }
 
 static void
@@ -2047,7 +2289,7 @@ lpp_codePhase_fmt(gchar *s, guint32 v)
 {
   double codePhase = (double)v*pow(2, -10);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e ms (%u)", codePhase, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g ms (%u)", codePhase, v);
 }
 
 static const value_string lpp_codePhaseSearchWindow_vals[] = {
@@ -2094,17 +2336,11 @@ lpp_azimuth_elevation_fmt(gchar *s, guint32 v)
 }
 
 static void
-lpp_toa_fmt(gchar *s, guint32 v)
-{
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%u s (%u)", 4096*v, v);
-}
-
-static void
 lpp_kepAlmanacE_fmt(gchar *s, guint32 v)
 {
   double kepAlmanacE = (double)v*pow(2, -16);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e (%u)", kepAlmanacE, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g (%u)", kepAlmanacE, v);
 }
 
 static void
@@ -2112,7 +2348,7 @@ lpp_kepAlmanacDeltaI_fmt(gchar *s, guint32 v)
 {
   double kepAlmanacDeltaI = (double)((gint32)v)*pow(2, -14);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", kepAlmanacDeltaI, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", kepAlmanacDeltaI, (gint32)v);
 }
 
 static void
@@ -2120,7 +2356,7 @@ lpp_kepAlmanacOmegaDot_fmt(gchar *s, guint32 v)
 {
   double kepAlmanacOmegaDot = (double)((gint32)v)*pow(2, -33);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles/s (%d)", kepAlmanacOmegaDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", kepAlmanacOmegaDot, (gint32)v);
 }
 
 static void
@@ -2128,7 +2364,7 @@ lpp_kepAlmanacAPowerHalf_fmt(gchar *s, guint32 v)
 {
   double kepAlmanacAPowerHalf = (double)((gint32)v)*pow(2, -9);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m1/2 (%d)", kepAlmanacAPowerHalf, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m1/2 (%d)", kepAlmanacAPowerHalf, (gint32)v);
 }
 
 static void
@@ -2136,7 +2372,7 @@ lpp_kepAlmanacOmega0_W_M0_fmt(gchar *s, guint32 v)
 {
   double kepAlmanacOmega0_W_M0 = (double)((gint32)v)*pow(2, -15);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", kepAlmanacOmega0_W_M0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", kepAlmanacOmega0_W_M0, (gint32)v);
 }
 
 static void
@@ -2144,7 +2380,7 @@ lpp_kepAlmanacAF0_fmt(gchar *s, guint32 v)
 {
   double kepAlmanacAF0 = (double)((gint32)v)*pow(2, -19);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", kepAlmanacAF0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", kepAlmanacAF0, (gint32)v);
 }
 
 static void
@@ -2152,7 +2388,7 @@ lpp_kepAlmanacAF1_fmt(gchar *s, guint32 v)
 {
   double kepAlmanacAF1 = (double)((gint32)v)*pow(2, -38);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", kepAlmanacAF1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", kepAlmanacAF1, (gint32)v);
 }
 
 static void
@@ -2160,7 +2396,7 @@ lpp_navAlmE_fmt(gchar *s, guint32 v)
 {
   double navAlmE = (double)v*pow(2, -21);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e (%u)", navAlmE, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g (%u)", navAlmE, v);
 }
 
 static void
@@ -2168,7 +2404,7 @@ lpp_navAlmDeltaI_fmt(gchar *s, guint32 v)
 {
   double navAlmDeltaI = (double)((gint32)v)*pow(2, -19);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", navAlmDeltaI, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", navAlmDeltaI, (gint32)v);
 }
 
 static void
@@ -2176,7 +2412,7 @@ lpp_navAlmOMEGADOT_fmt(gchar *s, guint32 v)
 {
   double navAlmOMEGADOT = (double)((gint32)v)*pow(2, -38);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles/s (%d)", navAlmOMEGADOT, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", navAlmOMEGADOT, (gint32)v);
 }
 
 static void
@@ -2184,7 +2420,7 @@ lpp_navAlmSqrtA_fmt(gchar *s, guint32 v)
 {
   double navAlmSqrtA = (double)v*pow(2, -11);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m1/2 (%u)", navAlmSqrtA, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m1/2 (%u)", navAlmSqrtA, v);
 }
 
 static void
@@ -2192,7 +2428,7 @@ lpp_navAlmOMEGAo_Omega_Mo_fmt(gchar *s, guint32 v)
 {
   double navAlmOMEGAo_Omega_Mo = (double)((gint32)v)*pow(2, -23);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", navAlmOMEGAo_Omega_Mo, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", navAlmOMEGAo_Omega_Mo, (gint32)v);
 }
 
 static void
@@ -2200,7 +2436,7 @@ lpp_navAlmaf0_fmt(gchar *s, guint32 v)
 {
   double navAlmaf0 = (double)((gint32)v)*pow(2, -20);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", navAlmaf0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", navAlmaf0, (gint32)v);
 }
 
 static void
@@ -2208,7 +2444,7 @@ lpp_navAlmaf1_fmt(gchar *s, guint32 v)
 {
   double navAlmaf1 = (double)((gint32)v)*pow(2, -38);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", navAlmaf1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", navAlmaf1, (gint32)v);
 }
 
 static void
@@ -2222,7 +2458,7 @@ lpp_redAlmOmega0_Phi0_fmt(gchar *s, guint32 v)
 {
   double redAlmOmega0_Phi0 = (double)((gint32)v)*pow(2, -6);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", redAlmOmega0_Phi0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", redAlmOmega0_Phi0, (gint32)v);
 }
 
 static void
@@ -2230,7 +2466,7 @@ lpp_midiAlmE_fmt(gchar *s, guint32 v)
 {
   double midiAlmE = (double)v*pow(2, -16);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e (%u)", midiAlmE, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g (%u)", midiAlmE, v);
 }
 
 static void
@@ -2238,7 +2474,7 @@ lpp_midiAlmDeltaI_fmt(gchar *s, guint32 v)
 {
   double midiAlmDeltaI = (double)((gint32)v)*pow(2, -14);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", midiAlmDeltaI, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", midiAlmDeltaI, (gint32)v);
 }
 
 static void
@@ -2246,7 +2482,7 @@ lpp_midiAlmOmegaDot_fmt(gchar *s, guint32 v)
 {
   double midiAlmOmegaDot = (double)((gint32)v)*pow(2, -33);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles/s (%d)", midiAlmOmegaDot, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", midiAlmOmegaDot, (gint32)v);
 }
 
 static void
@@ -2260,7 +2496,7 @@ lpp_midiAlmOmega0_Omega_Mo_fmt(gchar *s, guint32 v)
 {
   double midiAlmOmega0_Omega_Mo = (double)((gint32)v)*pow(2, -15);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", midiAlmOmega0_Omega_Mo, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", midiAlmOmega0_Omega_Mo, (gint32)v);
 }
 
 static void
@@ -2268,7 +2504,7 @@ lpp_midiAlmaf0_fmt(gchar *s, guint32 v)
 {
   double midiAlmaf0 = (double)((gint32)v)*pow(2, -20);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", midiAlmaf0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", midiAlmaf0, (gint32)v);
 }
 
 static void
@@ -2276,7 +2512,7 @@ lpp_midiAlmaf1_fmt(gchar *s, guint32 v)
 {
   double midiAlmaf1 = (double)((gint32)v)*pow(2, -37);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", midiAlmaf1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", midiAlmaf1, (gint32)v);
 }
 
 static void
@@ -2284,7 +2520,7 @@ lpp_gloAlmLambdaA_DeltaIa_fmt(gchar *s, guint32 v)
 {
   double gloAlmLambdaA_DeltaIa = (double)((gint32)v)*pow(2, -20);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", gloAlmLambdaA_DeltaIa, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", gloAlmLambdaA_DeltaIa, (gint32)v);
 }
 
 static void
@@ -2298,7 +2534,7 @@ lpp_gloAlmDeltaTA_fmt(gchar *s, guint32 v)
 {
   double gloAlmDeltaTA = (double)((gint32)v)*pow(2, -9);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/orbit period (%d)", gloAlmDeltaTA, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/orbit period (%d)", gloAlmDeltaTA, (gint32)v);
 }
 
 static void
@@ -2306,7 +2542,7 @@ lpp_gloAlmDeltaTdotA_fmt(gchar *s, guint32 v)
 {
   double gloAlmDeltaTdotA = (double)((gint32)v)*pow(2, -14);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/orbit period (%d)", gloAlmDeltaTdotA, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/orbit period (%d)", gloAlmDeltaTdotA, (gint32)v);
 }
 
 static void
@@ -2314,7 +2550,7 @@ lpp_gloAlmEpsilonA_fmt(gchar *s, guint32 v)
 {
   double gloAlmEpsilonA = (double)v*pow(2, -20);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e (%u)", gloAlmEpsilonA, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g (%u)", gloAlmEpsilonA, (gint32)v);
 }
 
 static void
@@ -2322,7 +2558,7 @@ lpp_gloAlmOmegaA_fmt(gchar *s, guint32 v)
 {
   double gloAlmOmegaA = (double)((gint32)v)*pow(2, -15);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e semi-circles (%d)", gloAlmOmegaA, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", gloAlmOmegaA, (gint32)v);
 }
 
 static void
@@ -2330,7 +2566,7 @@ lpp_gloAlmTauA_fmt(gchar *s, guint32 v)
 {
   double gloAlmTauA = (double)((gint32)v)*pow(2, -18);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", gloAlmTauA, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", gloAlmTauA, (gint32)v);
 }
 
 static void
@@ -2364,11 +2600,83 @@ lpp_sbasAlmTo_fmt(gchar *s, guint32 v)
 }
 
 static void
+lpp_bdsAlmToa_r12_fmt(gchar *s, guint32 v)
+{
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%u s (%u)", v*4096, v);
+}
+
+static void
+lpp_bdsAlmSqrtA_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsAlmSqrtA = (double)v*pow(2, -11);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m1/2 (%u)", bdsAlmSqrtA, v);
+}
+
+static void
+lpp_bdsAlmE_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsAlmE = (double)v*pow(2, -21);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m1/2 (%u)", bdsAlmE, v);
+}
+
+static void
+lpp_bdsAlmW_M0_Omega0_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsAlmW_M0_Omega0 = (double)((gint32)v)*pow(2, -23);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", bdsAlmW_M0_Omega0, (gint32)v);
+}
+
+static void
+lpp_bdsAlmOmegaDot_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsAlmOmegaDot = (double)((gint32)v)*pow(2, -38);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles/s (%d)", bdsAlmOmegaDot, (gint32)v);
+}
+
+static void
+lpp_bdsAlmDeltaI_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsAlmDeltaI = (double)((gint32)v)*pow(2, -19);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g semi-circles (%d)", bdsAlmDeltaI, (gint32)v);
+}
+
+static void
+lpp_bdsAlmA0_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsAlmA0 = (double)((gint32)v)*pow(2, -20);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", bdsAlmA0, (gint32)v);
+}
+
+static void
+lpp_bdsAlmA1_r12_fmt(gchar *s, guint32 v)
+{
+  double bdsAlmA1 = (double)((gint32)v)*pow(2, -38);
+
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", bdsAlmA1, (gint32)v);
+}
+
+static const true_false_string lpp_bdsSvHealth_r12_b1i_b2i_value = {
+  "OK",
+  "Weak"
+};
+
+static const true_false_string lpp_bdsSvHealth_r12_nav_value = {
+  "OK",
+  "Bad (IOD over limit)"
+};
+
+static void
 lpp_gnss_Utc_A1_fmt(gchar *s, guint32 v)
 {
   double gnss_Utc_A1 = (double)((gint32)v)*pow(2, -50);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/s (%d)", gnss_Utc_A1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/s (%d)", gnss_Utc_A1, (gint32)v);
 }
 
 static void
@@ -2376,7 +2684,7 @@ lpp_gnss_Utc_A0_fmt(gchar *s, guint32 v)
 {
   double gnss_Utc_A0 = (double)((gint32)v)*pow(2, -30);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", gnss_Utc_A0, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", gnss_Utc_A0, (gint32)v);
 }
 
 static void
@@ -2385,12 +2693,91 @@ lpp_gnss_Utc_Tot_fmt(gchar *s, guint32 v)
   g_snprintf(s, ITEM_LABEL_LENGTH, "%u s (%u)", v*4096, v);
 }
 
+static const value_string lpp_bds_UDREI_vals[] = {
+  {  0, "1 meter"},
+  {  1, "1.5 meters"},
+  {  2, "2 meters"},
+  {  3, "3 meters"},
+  {  4, "4 meters"},
+  {  5, "5 meters"},
+  {  6, "6 meters"},
+  {  7, "8 meters"},
+  {  8, "10 meters"},
+  {  9, "15 meters"},
+  { 10, "20 meters"},
+  { 11, "50 meters"},
+  { 12, "100 meters"},
+  { 13, "150 meters"},
+  { 14, "Not monitored"},
+  { 15, "Not available"},
+  { 0, NULL}
+};
+static value_string_ext lpp_bds_UDREI_vals_ext = VALUE_STRING_EXT_INIT(lpp_bds_UDREI_vals);
+
+static const value_string lpp_bds_RURAI_vals[] = {
+  {  0, "0.75 meter"},
+  {  1, "1 meter"},
+  {  2, "1.25 meters"},
+  {  3, "1.75 meters"},
+  {  4, "2.25 meters"},
+  {  5, "3 meters"},
+  {  6, "3.75 meters"},
+  {  7, "4.5 meters"},
+  {  8, "5.25 meters"},
+  {  9, "6 meters"},
+  { 10, "7.5 meters"},
+  { 11, "15 meters"},
+  { 12, "50 meters"},
+  { 13, "150 meters"},
+  { 14, "300 meters"},
+  { 15, "> 300 meters"},
+  { 0, NULL}
+};
+static value_string_ext lpp_bds_RURAI_vals_ext = VALUE_STRING_EXT_INIT(lpp_bds_RURAI_vals);
+
+static void
+lpp_bds_ECC_DeltaT_r12_fmt(gchar *s, guint32 v)
+{
+  if ((gint32)v == -4096) {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "Not available (%d)", (gint32)v);
+  } else {
+    g_snprintf(s, ITEM_LABEL_LENGTH, "%g m (%d)", (float)((gint32)v)*0.1, (gint32)v);
+  }
+}
+
+static void
+lpp_bds_GridIonElement_dt_r12_fmt(gchar *s, guint32 v)
+{
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m (%d)", (float)((gint32)v)*0.125, (gint32)v);
+}
+
+static const value_string lpp_bds_givei_vals[] = {
+  {  0, "0.3 meter"},
+  {  1, "0.6 meter"},
+  {  2, "0.9 meter"},
+  {  3, "1.2 meters"},
+  {  4, "1.5 meters"},
+  {  5, "1.8 meters"},
+  {  6, "2.1 meters"},
+  {  7, "2.4 meters"},
+  {  8, "2.7 meters"},
+  {  9, "3 meters"},
+  { 10, "3.6 meters"},
+  { 11, "4.5 meters"},
+  { 12, "6 meters"},
+  { 13, "9 meters"},
+  { 14, "15 meters"},
+  { 15, "45 meters"},
+  { 0, NULL}
+};
+static value_string_ext lpp_bds_givei_vals_ext = VALUE_STRING_EXT_INIT(lpp_bds_givei_vals);
+
 static void
 lpp_tauC_fmt(gchar *s, guint32 v)
 {
   double tauC = (double)((gint32)v)*pow(2, -31);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", tauC, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", tauC, (gint32)v);
 }
 
 static void
@@ -2398,7 +2785,7 @@ lpp_b1_fmt(gchar *s, guint32 v)
 {
   double b1 = (double)((gint32)v)*pow(2, -10);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s (%d)", b1, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s (%d)", b1, (gint32)v);
 }
 
 static void
@@ -2406,7 +2793,7 @@ lpp_b2_fmt(gchar *s, guint32 v)
 {
   double b2 = (double)((gint32)v)*pow(2, -16);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e s/msd (%d)", b2, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g s/msd (%d)", b2, (gint32)v);
 }
 
 static const value_string lpp_utcStandardID_vals[] = {
@@ -2451,7 +2838,7 @@ lpp_GNSS_SatMeas_codePhase_fmt(gchar *s, guint32 v)
 {
   double codePhase = (double)v*pow(2, -21);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e ms (%u)", codePhase, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g ms (%u)", codePhase, v);
 }
 
 static void
@@ -2475,7 +2862,7 @@ lpp_codePhaseRMSError_fmt(gchar *s, guint32 v)
 static void
 lpp_doppler_fmt(gchar *s, guint32 v)
 {
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m/s (%d)", (gint32)v*0.04, (gint32)v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m/s (%d)", (gint32)v*0.04, (gint32)v);
 }
 
 static void
@@ -2483,7 +2870,7 @@ lpp_adr_fmt(gchar *s, guint32 v)
 {
   double adr = (double)v*pow(2, -10);
 
-  g_snprintf(s, ITEM_LABEL_LENGTH, "%e m (%u)", adr, v);
+  g_snprintf(s, ITEM_LABEL_LENGTH, "%g m (%u)", adr, v);
 }
 
 static void
@@ -2655,7 +3042,7 @@ dissect_lpp_ECID_RequestCapabilities(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
 
 static int
 dissect_lpp_EPDU_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 81 "../../asn1/lpp/lpp.cnf"
+#line 84 "../../asn1/lpp/lpp.cnf"
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             1U, 256U, &lpp_epdu_id, FALSE);
 
@@ -2694,7 +3081,7 @@ dissect_lpp_EPDU_Identifier(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
 
 static int
 dissect_lpp_EPDU_Body(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 87 "../../asn1/lpp/lpp.cnf"
+#line 90 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *lppe_tvb = NULL;
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
                                        NO_BOUND, NO_BOUND, FALSE, &lppe_tvb);
@@ -2840,7 +3227,7 @@ static const per_sequence_t RequestCapabilities_sequence[] = {
 
 static int
 dissect_lpp_RequestCapabilities(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 57 "../../asn1/lpp/lpp.cnf"
+#line 60 "../../asn1/lpp/lpp.cnf"
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Request Capabilities");
 
 
@@ -2865,19 +3252,26 @@ dissect_lpp_CommonIEsProvideCapabilities(tvbuff_t *tvb _U_, int offset _U_, asn1
 
 
 static const value_string lpp_T_gnss_id_vals[] = {
-  {   0, "gps" },
-  {   1, "sbas" },
-  {   2, "qzss" },
-  {   3, "galileo" },
-  {   4, "glonass" },
+  { T_GNSS_ID_GPS, "gps" },
+  { T_GNSS_ID_SBAS, "sbas" },
+  { T_GNSS_ID_QZSS, "qzss" },
+  { T_GNSS_ID_GALILEO, "galileo" },
+  { T_GNSS_ID_GLONASS, "glonass" },
+  { T_GNSS_ID_BDS, "bds" },
   { 0, NULL }
 };
 
 
 static int
 dissect_lpp_T_gnss_id(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 1528 "../../asn1/lpp/lpp.cnf"
+  guint32 gnss_id;
   offset = dissect_per_enumerated(tvb, offset, actx, tree, hf_index,
-                                     5, NULL, TRUE, 0, NULL);
+                                     5, &gnss_id, TRUE, 1, NULL);
+
+  actx->private_data = GUINT_TO_POINTER(gnss_id);
+
+
 
   return offset;
 }
@@ -2900,7 +3294,7 @@ dissect_lpp_GNSS_ID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pro
 
 static int
 dissect_lpp_T_sbas_IDs(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1327 "../../asn1/lpp/lpp.cnf"
+#line 1562 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *sbas_IDs_tvb = NULL;
   int len;
 
@@ -2948,7 +3342,7 @@ dissect_lpp_SBAS_IDs(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
 
 static int
 dissect_lpp_T_posModes(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 244 "../../asn1/lpp/lpp.cnf"
+#line 247 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *posModes_tvb = NULL;
   int len;
 
@@ -3017,7 +3411,7 @@ dissect_lpp_GNSS_SignalIDs(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
 
 static int
 dissect_lpp_T_accessTypes(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 101 "../../asn1/lpp/lpp.cnf"
+#line 104 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *accessTypes_tvb = NULL;
   int len;
 
@@ -3111,7 +3505,7 @@ dissect_lpp_GNSS_SupportList(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
 
 static int
 dissect_lpp_T_gnss_ids(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1301 "../../asn1/lpp/lpp.cnf"
+#line 1533 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *gnss_ids_tvb = NULL;
   int len;
 
@@ -3136,6 +3530,9 @@ dissect_lpp_T_gnss_ids(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
     }
     if (len >= 5) {
       proto_tree_add_item(subtree, hf_lpp_T_gnss_ids_glonass, gnss_ids_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
+    if (len >= 6) {
+      proto_tree_add_item(subtree, hf_lpp_T_gnss_ids_bds, gnss_ids_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
   }
 
@@ -3190,7 +3587,7 @@ dissect_lpp_GNSS_ReferenceLocationSupport(tvbuff_t *tvb _U_, int offset _U_, asn
 
 static int
 dissect_lpp_T_ionoModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1180 "../../asn1/lpp/lpp.cnf"
+#line 1395 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *ionoModel_tvb = NULL;
   int len;
 
@@ -3322,7 +3719,7 @@ dissect_lpp_GNSS_DifferentialCorrectionsSupport(tvbuff_t *tvb _U_, int offset _U
 
 static int
 dissect_lpp_T_clockModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1197 "../../asn1/lpp/lpp.cnf"
+#line 1412 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *clockModel_tvb = NULL;
   int len;
 
@@ -3348,6 +3745,9 @@ dissect_lpp_T_clockModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
     if (len >= 5) {
       proto_tree_add_item(subtree, hf_lpp_T_clockModel_model_5, clockModel_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
+    if (len >= 6) {
+      proto_tree_add_item(subtree, hf_lpp_T_clockModel_model_6, clockModel_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
   }
 
 
@@ -3359,7 +3759,7 @@ dissect_lpp_T_clockModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 static int
 dissect_lpp_T_orbitModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1223 "../../asn1/lpp/lpp.cnf"
+#line 1441 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *orbitModel_tvb = NULL;
   int len;
 
@@ -3384,6 +3784,9 @@ dissect_lpp_T_orbitModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
     }
     if (len >= 5) {
       proto_tree_add_item(subtree, hf_lpp_T_orbitModel_model_5, orbitModel_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
+    if (len >= 6) {
+      proto_tree_add_item(subtree, hf_lpp_T_orbitModel_model_6, orbitModel_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
   }
 
@@ -3482,7 +3885,7 @@ dissect_lpp_GNSS_AcquisitionAssistanceSupport(tvbuff_t *tvb _U_, int offset _U_,
 
 static int
 dissect_lpp_T_almanacModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1249 "../../asn1/lpp/lpp.cnf"
+#line 1470 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *almanacModel_tvb = NULL;
   int len;
 
@@ -3511,6 +3914,9 @@ dissect_lpp_T_almanacModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
     if (len >= 6) {
       proto_tree_add_item(subtree, hf_lpp_T_almanacModel_model_6, almanacModel_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
+    if (len >= 7) {
+      proto_tree_add_item(subtree, hf_lpp_T_almanacModel_model_7, almanacModel_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
   }
 
 
@@ -3536,7 +3942,7 @@ dissect_lpp_GNSS_AlmanacSupport(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 
 static int
 dissect_lpp_T_utc_Model(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1278 "../../asn1/lpp/lpp.cnf"
+#line 1502 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *utc_Model_tvb = NULL;
   int len;
 
@@ -3558,6 +3964,9 @@ dissect_lpp_T_utc_Model(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_,
     }
     if (len >= 4) {
       proto_tree_add_item(subtree, hf_lpp_T_utc_Model_model_4, utc_Model_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
+    if (len >= 5) {
+      proto_tree_add_item(subtree, hf_lpp_T_utc_Model_model_5, utc_Model_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
   }
 
@@ -3594,6 +4003,47 @@ dissect_lpp_GNSS_AuxiliaryInformationSupport(tvbuff_t *tvb _U_, int offset _U_, 
 }
 
 
+static const per_sequence_t BDS_DifferentialCorrectionsSupport_r12_sequence[] = {
+  { &hf_lpp_gnssSignalIDs   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_SignalIDs },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_BDS_DifferentialCorrectionsSupport_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_BDS_DifferentialCorrectionsSupport_r12, BDS_DifferentialCorrectionsSupport_r12_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t BDS_GridModelSupport_r12_sequence[] = {
+  { NULL, ASN1_EXTENSION_ROOT, 0, NULL }
+};
+
+static int
+dissect_lpp_BDS_GridModelSupport_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_BDS_GridModelSupport_r12, BDS_GridModelSupport_r12_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t GNSS_GenericAssistDataSupportElement_eag_1_sequence[] = {
+  { &hf_lpp_bds_DifferentialCorrectionsSupport_r12, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_BDS_DifferentialCorrectionsSupport_r12 },
+  { &hf_lpp_bds_GridModelSupport_r12, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_BDS_GridModelSupport_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_GNSS_GenericAssistDataSupportElement_eag_1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence_eag(tvb, offset, actx, tree, GNSS_GenericAssistDataSupportElement_eag_1_sequence);
+
+  return offset;
+}
+
+
 static const per_sequence_t GNSS_GenericAssistDataSupportElement_sequence[] = {
   { &hf_lpp_gnss_ID         , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_ID },
   { &hf_lpp_sbas_ID         , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_SBAS_ID },
@@ -3606,6 +4056,7 @@ static const per_sequence_t GNSS_GenericAssistDataSupportElement_sequence[] = {
   { &hf_lpp_gnss_AlmanacSupport, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_AlmanacSupport },
   { &hf_lpp_gnss_UTC_ModelSupport, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_UTC_ModelSupport },
   { &hf_lpp_gnss_AuxiliaryInformationSupport, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_AuxiliaryInformationSupport },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_GenericAssistDataSupportElement_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -3704,7 +4155,7 @@ dissect_lpp_A_GNSS_ProvideCapabilities(tvbuff_t *tvb _U_, int offset _U_, asn1_c
 
 static int
 dissect_lpp_T_otdoa_Mode(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 345 "../../asn1/lpp/lpp.cnf"
+#line 351 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *otdoa_Mode_tvb = NULL;
   int len;
 
@@ -3817,11 +4268,27 @@ dissect_lpp_T_interFreqRSTDmeasurement_r10(tvbuff_t *tvb _U_, int offset _U_, as
 }
 
 
+static const value_string lpp_T_additionalNeighbourCellInfoList_r10_vals[] = {
+  {   0, "supported" },
+  { 0, NULL }
+};
+
+
+static int
+dissect_lpp_T_additionalNeighbourCellInfoList_r10(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_enumerated(tvb, offset, actx, tree, hf_index,
+                                     1, NULL, FALSE, 0, NULL);
+
+  return offset;
+}
+
+
 static const per_sequence_t OTDOA_ProvideCapabilities_sequence[] = {
   { &hf_lpp_otdoa_Mode      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_otdoa_Mode },
   { &hf_lpp_supportedBandListEUTRA, ASN1_NOT_EXTENSION_ROOT, ASN1_OPTIONAL    , dissect_lpp_SEQUENCE_SIZE_1_maxBands_OF_SupportedBandEUTRA },
   { &hf_lpp_supportedBandListEUTRA_v9a0, ASN1_NOT_EXTENSION_ROOT, ASN1_OPTIONAL    , dissect_lpp_SEQUENCE_SIZE_1_maxBands_OF_SupportedBandEUTRA_v9a0 },
   { &hf_lpp_interFreqRSTDmeasurement_r10, ASN1_NOT_EXTENSION_ROOT, ASN1_OPTIONAL    , dissect_lpp_T_interFreqRSTDmeasurement_r10 },
+  { &hf_lpp_additionalNeighbourCellInfoList_r10, ASN1_NOT_EXTENSION_ROOT, ASN1_OPTIONAL    , dissect_lpp_T_additionalNeighbourCellInfoList_r10 },
   { NULL, 0, 0, NULL }
 };
 
@@ -3837,7 +4304,7 @@ dissect_lpp_OTDOA_ProvideCapabilities(tvbuff_t *tvb _U_, int offset _U_, asn1_ct
 
 static int
 dissect_lpp_T_ecid_MeasSupported(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1379 "../../asn1/lpp/lpp.cnf"
+#line 1614 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *ecid_MeasSupported_tvb = NULL;
   int len;
 
@@ -3964,7 +4431,7 @@ static const per_sequence_t ProvideCapabilities_sequence[] = {
 
 static int
 dissect_lpp_ProvideCapabilities(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 60 "../../asn1/lpp/lpp.cnf"
+#line 63 "../../asn1/lpp/lpp.cnf"
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Provide Capabilities");
 
 
@@ -4211,7 +4678,7 @@ dissect_lpp_T_gnss_WeekOrDay(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 4095U, NULL, FALSE);
 
-#line 1126 "../../asn1/lpp/lpp.cnf"
+#line 1341 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " (days for glonass, weeks otherwise)");
 
 
@@ -4225,7 +4692,7 @@ dissect_lpp_T_gnss_Toe(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 1129 "../../asn1/lpp/lpp.cnf"
+#line 1344 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " (units of 15 mns for glonass, hours otherwise)");
 
 
@@ -4239,7 +4706,7 @@ dissect_lpp_T_t_toeLimit(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 15U, NULL, FALSE);
 
-#line 1132 "../../asn1/lpp/lpp.cnf"
+#line 1347 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " (units of 30 mns for glonass, hours otherwise)");
 
 
@@ -4435,7 +4902,7 @@ dissect_lpp_T_gnss_TOD_Req(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 3599U, NULL, FALSE);
 
-#line 1135 "../../asn1/lpp/lpp.cnf"
+#line 1350 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -4449,7 +4916,7 @@ dissect_lpp_T_gnss_TOD_FracReq(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 999U, NULL, FALSE);
 
-#line 1138 "../../asn1/lpp/lpp.cnf"
+#line 1353 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " ms");
 
 
@@ -4592,6 +5059,47 @@ dissect_lpp_GNSS_AuxiliaryInformationReq(tvbuff_t *tvb _U_, int offset _U_, asn1
 }
 
 
+static const per_sequence_t BDS_DifferentialCorrectionsReq_r12_sequence[] = {
+  { &hf_lpp_dgnss_SignalsReq, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_SignalIDs },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_BDS_DifferentialCorrectionsReq_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_BDS_DifferentialCorrectionsReq_r12, BDS_DifferentialCorrectionsReq_r12_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t BDS_GridModelReq_r12_sequence[] = {
+  { NULL, ASN1_EXTENSION_ROOT, 0, NULL }
+};
+
+static int
+dissect_lpp_BDS_GridModelReq_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_BDS_GridModelReq_r12, BDS_GridModelReq_r12_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t GNSS_GenericAssistDataReqElement_eag_1_sequence[] = {
+  { &hf_lpp_bds_DifferentialCorrectionsReq_r12, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_BDS_DifferentialCorrectionsReq_r12 },
+  { &hf_lpp_bds_GridModelReq_r12, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_BDS_GridModelReq_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_GNSS_GenericAssistDataReqElement_eag_1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence_eag(tvb, offset, actx, tree, GNSS_GenericAssistDataReqElement_eag_1_sequence);
+
+  return offset;
+}
+
+
 static const per_sequence_t GNSS_GenericAssistDataReqElement_sequence[] = {
   { &hf_lpp_gnss_ID         , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_ID },
   { &hf_lpp_sbas_ID         , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_SBAS_ID },
@@ -4604,6 +5112,7 @@ static const per_sequence_t GNSS_GenericAssistDataReqElement_sequence[] = {
   { &hf_lpp_gnss_AlmanacReq , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_AlmanacReq },
   { &hf_lpp_gnss_UTCModelReq, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_UTC_ModelReq },
   { &hf_lpp_gnss_AuxiliaryInformationReq, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_AuxiliaryInformationReq },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_GenericAssistDataReqElement_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -4754,7 +5263,7 @@ static const per_sequence_t RequestAssistanceData_sequence[] = {
 
 static int
 dissect_lpp_RequestAssistanceData(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 63 "../../asn1/lpp/lpp.cnf"
+#line 66 "../../asn1/lpp/lpp.cnf"
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Request Assistance Data");
 
 
@@ -4811,7 +5320,7 @@ dissect_lpp_INTEGER_0_999(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 
 static int
 dissect_lpp_T_notificationOfLeapSecond(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 365 "../../asn1/lpp/lpp.cnf"
+#line 371 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *notificationOfLeapSecond_tvb = NULL;
   offset = dissect_per_bit_string(tvb, offset, actx, tree, -1,
                                      2, 2, FALSE, &notificationOfLeapSecond_tvb, NULL);
@@ -4819,7 +5328,7 @@ dissect_lpp_T_notificationOfLeapSecond(tvbuff_t *tvb _U_, int offset _U_, asn1_c
 
 
 
-#line 369 "../../asn1/lpp/lpp.cnf"
+#line 375 "../../asn1/lpp/lpp.cnf"
   if (notificationOfLeapSecond_tvb) {
     actx->created_item = proto_tree_add_uint(tree, hf_index, notificationOfLeapSecond_tvb, 0, 1, tvb_get_bits8(notificationOfLeapSecond_tvb, 0, 2));
   }
@@ -5087,7 +5596,7 @@ static const per_sequence_t T_eUTRA_sequence[] = {
   { &hf_lpp_physCellId      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_503 },
   { &hf_lpp_cellGlobalIdEUTRA, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_CellGlobalIdEUTRA_AndUTRA },
   { &hf_lpp_earfcn          , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_ARFCN_ValueEUTRA },
-  { &hf_lpp_dummy_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_T_eag_1 },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_T_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -5495,7 +6004,7 @@ dissect_lpp_GNSS_ReferenceLocation(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t
 
 static int
 dissect_lpp_T_dataID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 383 "../../asn1/lpp/lpp.cnf"
+#line 389 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *dataID_tvb = NULL;
   offset = dissect_per_bit_string(tvb, offset, actx, tree, -1,
                                      2, 2, FALSE, &dataID_tvb, NULL);
@@ -5503,7 +6012,7 @@ dissect_lpp_T_dataID(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
 
 
 
-#line 387 "../../asn1/lpp/lpp.cnf"
+#line 393 "../../asn1/lpp/lpp.cnf"
   if (dataID_tvb) {
     actx->created_item = proto_tree_add_uint(tree, hf_index, dataID_tvb, 0, 1, tvb_get_bits8(dataID_tvb, 0, 2));
   }
@@ -5547,18 +6056,38 @@ dissect_lpp_KlobucharModelParameter(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_
 
 
 static int
-dissect_lpp_INTEGER_0_4095(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+dissect_lpp_INTEGER_0_2047(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            0U, 4095U, NULL, FALSE);
+                                                            0U, 2047U, NULL, FALSE);
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_INTEGER_M1024_1023(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            -1024, 1023U, NULL, FALSE);
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_INTEGER_M8192_8191(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            -8192, 8191U, NULL, FALSE);
 
   return offset;
 }
 
 
 static const per_sequence_t NeQuickModelParameter_sequence[] = {
-  { &hf_lpp_ai0             , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_4095 },
-  { &hf_lpp_ai1             , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_4095 },
-  { &hf_lpp_ai2             , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_4095 },
+  { &hf_lpp_ai0             , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_2047 },
+  { &hf_lpp_ai1             , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1024_1023 },
+  { &hf_lpp_ai2             , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8192_8191 },
   { &hf_lpp_ionoStormFlag1  , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_1 },
   { &hf_lpp_ionoStormFlag2  , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_1 },
   { &hf_lpp_ionoStormFlag3  , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_1 },
@@ -5714,7 +6243,7 @@ dissect_lpp_T_deltaT(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 464 "../../asn1/lpp/lpp.cnf"
+#line 470 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -5762,7 +6291,7 @@ dissect_lpp_T_dgnss_RefTime(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 3599U, NULL, FALSE);
 
-#line 467 "../../asn1/lpp/lpp.cnf"
+#line 473 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -5871,29 +6400,9 @@ dissect_lpp_GNSS_DifferentialCorrections(tvbuff_t *tvb _U_, int offset _U_, asn1
 
 
 static int
-dissect_lpp_INTEGER_M2048_2047(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+dissect_lpp_INTEGER_M32_31(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            -2048, 2047U, NULL, FALSE);
-
-  return offset;
-}
-
-
-
-static int
-dissect_lpp_INTEGER_M131072_131071(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            -131072, 131071U, NULL, FALSE);
-
-  return offset;
-}
-
-
-
-static int
-dissect_lpp_INTEGER_M134217728_134217727(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            -134217728, 134217727U, NULL, FALSE);
+                                                            -32, 31U, NULL, FALSE);
 
   return offset;
 }
@@ -5909,12 +6418,23 @@ dissect_lpp_INTEGER_M512_511(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
 }
 
 
+
+static int
+dissect_lpp_INTEGER_0_255(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 255U, NULL, FALSE);
+
+  return offset;
+}
+
+
 static const per_sequence_t StandardClockModelElement_sequence[] = {
   { &hf_lpp_stanClockToc    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_16383 },
-  { &hf_lpp_stanClockAF2    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2048_2047 },
-  { &hf_lpp_stanClockAF1    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M131072_131071 },
-  { &hf_lpp_stanClockAF0    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M134217728_134217727 },
+  { &hf_lpp_stanClockAF2    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M32_31 },
+  { &hf_lpp_stanClockAF1    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1048576_1048575 },
+  { &hf_lpp_stanClockAF0    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1073741824_1073741823 },
   { &hf_lpp_stanClockTgd    , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_M512_511 },
+  { &hf_lpp_sisa            , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_255 },
   { &hf_lpp_stanModelID     , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_1 },
   { NULL, 0, 0, NULL }
 };
@@ -6058,16 +6578,6 @@ dissect_lpp_CNAV_ClockModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
 }
 
 
-
-static int
-dissect_lpp_INTEGER_M1024_1023(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            -1024, 1023U, NULL, FALSE);
-
-  return offset;
-}
-
-
 static const per_sequence_t GLONASS_ClockModel_sequence[] = {
   { &hf_lpp_gloTau          , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2097152_2097151 },
   { &hf_lpp_gloGamma        , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1024_1023 },
@@ -6094,6 +6604,16 @@ dissect_lpp_INTEGER_0_5399(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
 }
 
 
+
+static int
+dissect_lpp_INTEGER_M2048_2047(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            -2048, 2047U, NULL, FALSE);
+
+  return offset;
+}
+
+
 static const per_sequence_t SBAS_ClockModel_sequence[] = {
   { &hf_lpp_sbasTo          , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_5399 },
   { &hf_lpp_sbasAgfo        , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2048_2047 },
@@ -6110,12 +6630,52 @@ dissect_lpp_SBAS_ClockModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
 }
 
 
+
+static int
+dissect_lpp_INTEGER_0_31(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 31U, NULL, FALSE);
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_INTEGER_0_131071(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 131071U, NULL, FALSE);
+
+  return offset;
+}
+
+
+static const per_sequence_t BDS_ClockModel_r12_sequence[] = {
+  { &hf_lpp_bdsAODC_r12     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_31 },
+  { &hf_lpp_bdsToc_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_131071 },
+  { &hf_lpp_bdsA0_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8388608_8388607 },
+  { &hf_lpp_bdsA1_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2097152_2097151 },
+  { &hf_lpp_bdsA2_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1024_1023 },
+  { &hf_lpp_bdsTgd1_r12     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M512_511 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_BDS_ClockModel_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_BDS_ClockModel_r12, BDS_ClockModel_r12_sequence);
+
+  return offset;
+}
+
+
 static const value_string lpp_GNSS_ClockModel_vals[] = {
   {   0, "standardClockModelList" },
   {   1, "nav-ClockModel" },
   {   2, "cnav-ClockModel" },
   {   3, "glonass-ClockModel" },
   {   4, "sbas-ClockModel" },
+  {   5, "bds-ClockModel-r12" },
   { 0, NULL }
 };
 
@@ -6125,6 +6685,7 @@ static const per_choice_t GNSS_ClockModel_choice[] = {
   {   2, &hf_lpp_cnav_ClockModel , ASN1_EXTENSION_ROOT    , dissect_lpp_CNAV_ClockModel },
   {   3, &hf_lpp_glonass_ClockModel, ASN1_EXTENSION_ROOT    , dissect_lpp_GLONASS_ClockModel },
   {   4, &hf_lpp_sbas_ClockModel , ASN1_EXTENSION_ROOT    , dissect_lpp_SBAS_ClockModel },
+  {   5, &hf_lpp_bds_ClockModel_r12, ASN1_NOT_EXTENSION_ROOT, dissect_lpp_BDS_ClockModel_r12 },
   { 0, NULL, 0, NULL }
 };
 
@@ -6153,16 +6714,6 @@ static int
 dissect_lpp_INTEGER_0_4294967295(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 4294967295U, NULL, FALSE);
-
-  return offset;
-}
-
-
-
-static int
-dissect_lpp_INTEGER_M8192_8191(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            -8192, 8191U, NULL, FALSE);
 
   return offset;
 }
@@ -6219,16 +6770,6 @@ static int
 dissect_lpp_T_ephemSF1Rsvd(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
   offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
                                    ett_lpp_T_ephemSF1Rsvd, T_ephemSF1Rsvd_sequence);
-
-  return offset;
-}
-
-
-
-static int
-dissect_lpp_INTEGER_0_31(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            0U, 31U, NULL, FALSE);
 
   return offset;
 }
@@ -6316,7 +6857,7 @@ dissect_lpp_INTEGER_M4194304_4194303(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx
 
 static int
 dissect_lpp_T_cnavMo(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 686 "../../asn1/lpp/lpp.cnf"
+#line 725 "../../asn1/lpp/lpp.cnf"
   gint64 cnavMo;
   int curr_offset = offset;
   offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index,
@@ -6325,10 +6866,10 @@ dissect_lpp_T_cnavMo(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
 
 
 
-#line 691 "../../asn1/lpp/lpp.cnf"
+#line 730 "../../asn1/lpp/lpp.cnf"
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_int64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                         cnavMo, "%e semi-circles (%"G_GINT64_MODIFIER"d)",
+                                                         cnavMo, "%g semi-circles (%"G_GINT64_MODIFIER"d)",
                                                          (double)cnavMo*pow(2, -32), cnavMo);
 
 
@@ -6339,7 +6880,7 @@ dissect_lpp_T_cnavMo(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
 
 static int
 dissect_lpp_T_cnavE(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 700 "../../asn1/lpp/lpp.cnf"
+#line 736 "../../asn1/lpp/lpp.cnf"
   guint64 cnavE;
   int curr_offset = offset;
   offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index,
@@ -6348,10 +6889,10 @@ dissect_lpp_T_cnavE(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pro
 
 
 
-#line 705 "../../asn1/lpp/lpp.cnf"
+#line 741 "../../asn1/lpp/lpp.cnf"
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_uint64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                          cnavE, "%e (%"G_GINT64_MODIFIER"u)",
+                                                          cnavE, "%g (%"G_GINT64_MODIFIER"u)",
                                                           (double)cnavE*pow(2, -34), cnavE);
 
 
@@ -6362,7 +6903,7 @@ dissect_lpp_T_cnavE(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pro
 
 static int
 dissect_lpp_T_cnavOmega(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 714 "../../asn1/lpp/lpp.cnf"
+#line 747 "../../asn1/lpp/lpp.cnf"
   gint64 cnavOmega;
   int curr_offset = offset;
   offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index,
@@ -6371,10 +6912,10 @@ dissect_lpp_T_cnavOmega(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_,
 
 
 
-#line 719 "../../asn1/lpp/lpp.cnf"
+#line 752 "../../asn1/lpp/lpp.cnf"
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_int64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                         cnavOmega, "%e semi-circles (%"G_GINT64_MODIFIER"d)",
+                                                         cnavOmega, "%g semi-circles (%"G_GINT64_MODIFIER"d)",
                                                          (double)cnavOmega*pow(2, -32), cnavOmega);
 
 
@@ -6385,7 +6926,7 @@ dissect_lpp_T_cnavOmega(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_,
 
 static int
 dissect_lpp_T_cnavOMEGA0(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 728 "../../asn1/lpp/lpp.cnf"
+#line 758 "../../asn1/lpp/lpp.cnf"
   gint64 cnavOMEGA0;
   int curr_offset = offset;
   offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index,
@@ -6394,10 +6935,10 @@ dissect_lpp_T_cnavOMEGA0(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 
 
-#line 733 "../../asn1/lpp/lpp.cnf"
+#line 763 "../../asn1/lpp/lpp.cnf"
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_int64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                         cnavOMEGA0, "%e semi-circles (%"G_GINT64_MODIFIER"d)",
+                                                         cnavOMEGA0, "%g semi-circles (%"G_GINT64_MODIFIER"d)",
                                                          (double)cnavOMEGA0*pow(2, -32), cnavOMEGA0);
 
 
@@ -6408,7 +6949,7 @@ dissect_lpp_T_cnavOMEGA0(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
 
 static int
 dissect_lpp_T_cnavIo(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 745 "../../asn1/lpp/lpp.cnf"
+#line 772 "../../asn1/lpp/lpp.cnf"
   gint64 cnavIo;
   int curr_offset = offset;
   offset = dissect_per_constrained_integer_64b(tvb, offset, actx, tree, hf_index,
@@ -6417,10 +6958,10 @@ dissect_lpp_T_cnavIo(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
 
 
 
-#line 750 "../../asn1/lpp/lpp.cnf"
+#line 777 "../../asn1/lpp/lpp.cnf"
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_int64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                         cnavIo, "%e semi-circles (%"G_GINT64_MODIFIER"d)",
+                                                         cnavIo, "%g semi-circles (%"G_GINT64_MODIFIER"d)",
                                                          (double)cnavIo*pow(2, -32), cnavIo);
 
 
@@ -6466,7 +7007,7 @@ dissect_lpp_T_gloEn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pro
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 31U, NULL, FALSE);
 
-#line 780 "../../asn1/lpp/lpp.cnf"
+#line 804 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " days");
 
 
@@ -6477,7 +7018,7 @@ dissect_lpp_T_gloEn(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pro
 
 static int
 dissect_lpp_T_gloP1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 783 "../../asn1/lpp/lpp.cnf"
+#line 807 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *gloP1_tvb = NULL;
   offset = dissect_per_bit_string(tvb, offset, actx, tree, -1,
                                      2, 2, FALSE, &gloP1_tvb, NULL);
@@ -6485,7 +7026,7 @@ dissect_lpp_T_gloP1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pro
 
 
 
-#line 787 "../../asn1/lpp/lpp.cnf"
+#line 811 "../../asn1/lpp/lpp.cnf"
   if (gloP1_tvb) {
     actx->created_item = proto_tree_add_uint(tree, hf_index, gloP1_tvb, 0, 1, tvb_get_bits8(gloP1_tvb, 0, 2));
     proto_item_append_text(actx->created_item, " mn");
@@ -6542,6 +7083,16 @@ dissect_lpp_INTEGER_M536870912_536870911(tvbuff_t *tvb _U_, int offset _U_, asn1
 }
 
 
+
+static int
+dissect_lpp_INTEGER_M131072_131071(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            -131072, 131071U, NULL, FALSE);
+
+  return offset;
+}
+
+
 static const per_sequence_t NavModel_SBAS_ECEF_sequence[] = {
   { &hf_lpp_sbasTo          , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_5399 },
   { &hf_lpp_sbasAccuracy    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_BIT_STRING_SIZE_4 },
@@ -6566,12 +7117,58 @@ dissect_lpp_NavModel_SBAS_ECEF(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 }
 
 
+
+static int
+dissect_lpp_T_bdsURAI_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 15U, NULL, FALSE);
+
+#line 880 "../../asn1/lpp/lpp.cnf"
+  proto_item_append_text(actx->created_item, " m");
+
+
+  return offset;
+}
+
+
+static const per_sequence_t NavModel_BDS_KeplerianSet_r12_sequence[] = {
+  { &hf_lpp_bdsAODE_r12     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_31 },
+  { &hf_lpp_bdsURAI_r12     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_bdsURAI_r12 },
+  { &hf_lpp_bdsToe_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_131071 },
+  { &hf_lpp_bdsAPowerHalf_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_4294967295 },
+  { &hf_lpp_bdsE_r12        , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_4294967295 },
+  { &hf_lpp_bdsW_r12        , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2147483648_2147483647 },
+  { &hf_lpp_bdsDeltaN_r12   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M32768_32767 },
+  { &hf_lpp_bdsM0_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2147483648_2147483647 },
+  { &hf_lpp_bdsOmega0_r12   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2147483648_2147483647 },
+  { &hf_lpp_bdsOmegaDot_r12 , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8388608_8388607 },
+  { &hf_lpp_bdsI0_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2147483648_2147483647 },
+  { &hf_lpp_bdsIDot_r12     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8192_8191 },
+  { &hf_lpp_bdsCuc_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M131072_131071 },
+  { &hf_lpp_bdsCus_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M131072_131071 },
+  { &hf_lpp_bdsCrc_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M131072_131071 },
+  { &hf_lpp_bdsCrs_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M131072_131071 },
+  { &hf_lpp_bdsCic_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M131072_131071 },
+  { &hf_lpp_bdsCis_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M131072_131071 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_NavModel_BDS_KeplerianSet_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_NavModel_BDS_KeplerianSet_r12, NavModel_BDS_KeplerianSet_r12_sequence);
+
+  return offset;
+}
+
+
 static const value_string lpp_GNSS_OrbitModel_vals[] = {
   {   0, "keplerianSet" },
   {   1, "nav-KeplerianSet" },
   {   2, "cnav-KeplerianSet" },
   {   3, "glonass-ECEF" },
   {   4, "sbas-ECEF" },
+  {   5, "bds-KeplerianSet-r12" },
   { 0, NULL }
 };
 
@@ -6581,6 +7178,7 @@ static const per_choice_t GNSS_OrbitModel_choice[] = {
   {   2, &hf_lpp_cnav_KeplerianSet, ASN1_EXTENSION_ROOT    , dissect_lpp_NavModelCNAV_KeplerianSet },
   {   3, &hf_lpp_glonass_ECEF    , ASN1_EXTENSION_ROOT    , dissect_lpp_NavModel_GLONASS_ECEF },
   {   4, &hf_lpp_sbas_ECEF       , ASN1_EXTENSION_ROOT    , dissect_lpp_NavModel_SBAS_ECEF },
+  {   5, &hf_lpp_bds_KeplerianSet_r12, ASN1_NOT_EXTENSION_ROOT, dissect_lpp_NavModel_BDS_KeplerianSet_r12 },
   { 0, NULL, 0, NULL }
 };
 
@@ -6594,12 +7192,50 @@ dissect_lpp_GNSS_OrbitModel(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
 }
 
 
+
+static int
+dissect_lpp_T_svHealthExt_v1240(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 494 "../../asn1/lpp/lpp.cnf"
+  tvbuff_t *svHealthExt_tvb = NULL;
+  proto_tree *subtree;
+  offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
+                                     4, 4, FALSE, &svHealthExt_tvb, NULL);
+
+
+
+
+#line 499 "../../asn1/lpp/lpp.cnf"
+  if (svHealthExt_tvb) {
+    subtree = proto_item_add_subtree(actx->created_item, ett_lpp_svHealthExt_v1240);
+    proto_tree_add_bits_item(subtree, hf_lpp_svHealthExt_v1240_e5bhs, svHealthExt_tvb, 0, 2, ENC_BIG_ENDIAN);
+    proto_tree_add_bits_item(subtree, hf_lpp_svHealthExt_v1240_e1_bhs, svHealthExt_tvb, 2, 2, ENC_BIG_ENDIAN);
+  }
+
+
+  return offset;
+}
+
+
+static const per_sequence_t GNSS_NavModelSatelliteElement_eag_1_sequence[] = {
+  { &hf_lpp_svHealthExt_v1240, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_T_svHealthExt_v1240 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_GNSS_NavModelSatelliteElement_eag_1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence_eag(tvb, offset, actx, tree, GNSS_NavModelSatelliteElement_eag_1_sequence);
+
+  return offset;
+}
+
+
 static const per_sequence_t GNSS_NavModelSatelliteElement_sequence[] = {
   { &hf_lpp_svID            , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_SV_ID },
   { &hf_lpp_svHealth        , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_BIT_STRING_SIZE_8 },
   { &hf_lpp_iod             , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_BIT_STRING_SIZE_11 },
   { &hf_lpp_gnss_ClockModel , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_ClockModel },
   { &hf_lpp_gnss_OrbitModel , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_OrbitModel },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_NavModelSatelliteElement_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -6690,7 +7326,7 @@ dissect_lpp_T_gnss_TOD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 3599U, NULL, FALSE);
 
-#line 853 "../../asn1/lpp/lpp.cnf"
+#line 931 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -6704,7 +7340,7 @@ dissect_lpp_T_gnss_TODfrac(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 999U, NULL, FALSE);
 
-#line 856 "../../asn1/lpp/lpp.cnf"
+#line 934 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " ms");
 
 
@@ -6822,7 +7458,7 @@ dissect_lpp_T_intCodePhase(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 127U, NULL, FALSE);
 
-#line 874 "../../asn1/lpp/lpp.cnf"
+#line 952 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " ms");
 
 
@@ -6893,7 +7529,7 @@ dissect_lpp_T_confidence_r10(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 100U, NULL, FALSE);
 
-#line 859 "../../asn1/lpp/lpp.cnf"
+#line 937 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " %%");
 
 
@@ -6919,9 +7555,23 @@ dissect_lpp_GNSS_AcquisitionAssistance(tvbuff_t *tvb _U_, int offset _U_, asn1_c
 
 
 static int
-dissect_lpp_INTEGER_0_255(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+dissect_lpp_T_toa(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 964 "../../asn1/lpp/lpp.cnf"
+  guint32 toa, val;
+  int len, old_offset = offset;
+  T_GNSS_ID_enum gnss_id = (T_GNSS_ID_enum)GPOINTER_TO_UINT(actx->private_data);
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            0U, 255U, NULL, FALSE);
+                                                            0U, 255U, &toa, FALSE);
+
+
+
+
+#line 970 "../../asn1/lpp/lpp.cnf"
+  len = (offset-old_offset) >> 3 ? (offset-old_offset) >> 3 : 1;
+  val = (gnss_id == T_GNSS_ID_GALILEO) ? 600*toa : 4096*toa;
+  actx->created_item = proto_tree_add_uint_format_value(tree, hf_lpp_toa, tvb, old_offset, len,
+                                                        toa, "%u s (%u)", val, toa);
+
 
   return offset;
 }
@@ -6929,9 +7579,46 @@ dissect_lpp_INTEGER_0_255(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 
 
 static int
-dissect_lpp_INTEGER_0_2047(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            0U, 2047U, NULL, FALSE);
+dissect_lpp_T_kepSV_StatusINAV(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 997 "../../asn1/lpp/lpp.cnf"
+  tvbuff_t *statusINAV_tvb = NULL;
+  proto_tree *subtree;
+  offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
+                                     4, 4, FALSE, &statusINAV_tvb, NULL);
+
+
+
+
+#line 1002 "../../asn1/lpp/lpp.cnf"
+  if (statusINAV_tvb) {
+    subtree = proto_item_add_subtree(actx->created_item, ett_kepSV_StatusINAV);
+    proto_tree_add_bits_item(subtree, hf_lpp_kepSV_StatusINAV_e5bhs, statusINAV_tvb, 0, 2, ENC_BIG_ENDIAN);
+    proto_tree_add_bits_item(subtree, hf_lpp_kepSV_StatusINAV_e1_bhs, statusINAV_tvb, 2, 2, ENC_BIG_ENDIAN);
+  }
+
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_T_kepSV_StatusFNAV(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 1009 "../../asn1/lpp/lpp.cnf"
+  tvbuff_t *statusFNAV_tvb = NULL;
+  proto_tree *subtree;
+  offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
+                                     2, 2, FALSE, &statusFNAV_tvb, NULL);
+
+
+
+
+#line 1014 "../../asn1/lpp/lpp.cnf"
+  if (statusFNAV_tvb) {
+    subtree = proto_item_add_subtree(actx->created_item, ett_kepSV_StatusFNAV);
+    proto_tree_add_bits_item(subtree, hf_lpp_kepSV_StatusFNAV_e5ahs, statusFNAV_tvb, 0, 2, ENC_BIG_ENDIAN);
+  }
+
 
   return offset;
 }
@@ -6942,13 +7629,14 @@ static const per_sequence_t AlmanacKeplerianSet_sequence[] = {
   { &hf_lpp_kepAlmanacE     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_2047 },
   { &hf_lpp_kepAlmanacDeltaI, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1024_1023 },
   { &hf_lpp_kepAlmanacOmegaDot, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1024_1023 },
-  { &hf_lpp_kepSVHealth     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_15 },
-  { &hf_lpp_kepAlmanacAPowerHalf, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M65536_65535 },
+  { &hf_lpp_kepSV_StatusINAV, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_kepSV_StatusINAV },
+  { &hf_lpp_kepSV_StatusFNAV, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_T_kepSV_StatusFNAV },
+  { &hf_lpp_kepAlmanacAPowerHalf, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M4096_4095 },
   { &hf_lpp_kepAlmanacOmega0, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M32768_32767 },
   { &hf_lpp_kepAlmanacW     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M32768_32767 },
   { &hf_lpp_kepAlmanacM0    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M32768_32767 },
-  { &hf_lpp_kepAlmanacAF0   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8192_8191 },
-  { &hf_lpp_kepAlmanacAF1   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1024_1023 },
+  { &hf_lpp_kepAlmanacAF0   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M32768_32767 },
+  { &hf_lpp_kepAlmanacAF1   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M4096_4095 },
   { NULL, 0, 0, NULL }
 };
 
@@ -7005,16 +7693,6 @@ dissect_lpp_AlmanacReducedKeplerianSet(tvbuff_t *tvb _U_, int offset _U_, asn1_c
 }
 
 
-
-static int
-dissect_lpp_INTEGER_0_131071(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
-                                                            0U, 131071U, NULL, FALSE);
-
-  return offset;
-}
-
-
 static const per_sequence_t AlmanacMidiAlmanacSet_sequence[] = {
   { &hf_lpp_svID            , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_SV_ID },
   { &hf_lpp_midiAlmE        , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_2047 },
@@ -7047,7 +7725,7 @@ dissect_lpp_T_gloAlm_NA(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_,
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             1U, 1461U, NULL, FALSE);
 
-#line 976 "../../asn1/lpp/lpp.cnf"
+#line 1098 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " days");
 
 
@@ -7154,6 +7832,67 @@ dissect_lpp_AlmanacECEF_SBAS_AlmanacSet(tvbuff_t *tvb _U_, int offset _U_, asn1_
 }
 
 
+
+static int
+dissect_lpp_T_bdsSvHealth_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 1176 "../../asn1/lpp/lpp.cnf"
+  tvbuff_t *bdsSvHealth_tvb = NULL;
+  proto_tree *subtree;
+  offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
+                                     9, 9, FALSE, &bdsSvHealth_tvb, NULL);
+
+
+
+
+#line 1181 "../../asn1/lpp/lpp.cnf"
+  if (bdsSvHealth_tvb) {
+    guint16 bits;
+    subtree = proto_item_add_subtree(actx->created_item, ett_lpp_bdsSvHealth_r12);
+    bits = tvb_get_bits16(bdsSvHealth_tvb, 0, 9,ENC_BIG_ENDIAN);
+    if (bits == 0x1ff) {
+      proto_tree_add_boolean_bits_format_value(subtree, hf_lpp_bdsSvHealth_r12_sat_clock, bdsSvHealth_tvb, 0, 1, 1,
+                                               "Satellite is in failure or permanently shut off (1)");
+    } else if (bits == 0x100) {
+      proto_tree_add_boolean_bits_format_value(subtree, hf_lpp_bdsSvHealth_r12_sat_clock, bdsSvHealth_tvb, 0, 1, 1,
+                                               "Satellite clock is unavailable (1)");
+    } else {
+      proto_tree_add_bits_item(subtree, hf_lpp_bdsSvHealth_r12_sat_clock, bdsSvHealth_tvb, 0, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_bits_item(subtree, hf_lpp_bdsSvHealth_r12_b1i, bdsSvHealth_tvb, 1, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_bits_item(subtree, hf_lpp_bdsSvHealth_r12_b2i, bdsSvHealth_tvb, 2, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_bits_item(subtree, hf_lpp_bdsSvHealth_r12_nav, bdsSvHealth_tvb, 7, 1, ENC_BIG_ENDIAN);
+    }
+  }
+
+
+  return offset;
+}
+
+
+static const per_sequence_t AlmanacBDS_AlmanacSet_r12_sequence[] = {
+  { &hf_lpp_svID            , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_SV_ID },
+  { &hf_lpp_bdsAlmToa_r12   , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_255 },
+  { &hf_lpp_bdsAlmSqrtA_r12 , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_16777215 },
+  { &hf_lpp_bdsAlmE_r12     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_131071 },
+  { &hf_lpp_bdsAlmW_r12     , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8388608_8388607 },
+  { &hf_lpp_bdsAlmM0_r12    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8388608_8388607 },
+  { &hf_lpp_bdsAlmOmega0_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8388608_8388607 },
+  { &hf_lpp_bdsAlmOmegaDot_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M65536_65535 },
+  { &hf_lpp_bdsAlmDeltaI_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M32768_32767 },
+  { &hf_lpp_bdsAlmA0_r12    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1024_1023 },
+  { &hf_lpp_bdsAlmA1_r12    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M1024_1023 },
+  { &hf_lpp_bdsSvHealth_r12 , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_T_bdsSvHealth_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_AlmanacBDS_AlmanacSet_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_AlmanacBDS_AlmanacSet_r12, AlmanacBDS_AlmanacSet_r12_sequence);
+
+  return offset;
+}
+
+
 static const value_string lpp_GNSS_AlmanacElement_vals[] = {
   {   0, "keplerianAlmanacSet" },
   {   1, "keplerianNAV-Almanac" },
@@ -7161,6 +7900,7 @@ static const value_string lpp_GNSS_AlmanacElement_vals[] = {
   {   3, "keplerianMidiAlmanac" },
   {   4, "keplerianGLONASS" },
   {   5, "ecef-SBAS-Almanac" },
+  {   6, "keplerianBDS-Almanac-r12" },
   { 0, NULL }
 };
 
@@ -7171,6 +7911,7 @@ static const per_choice_t GNSS_AlmanacElement_choice[] = {
   {   3, &hf_lpp_keplerianMidiAlmanac, ASN1_EXTENSION_ROOT    , dissect_lpp_AlmanacMidiAlmanacSet },
   {   4, &hf_lpp_keplerianGLONASS, ASN1_EXTENSION_ROOT    , dissect_lpp_AlmanacGLONASS_AlmanacSet },
   {   5, &hf_lpp_ecef_SBAS_Almanac, ASN1_EXTENSION_ROOT    , dissect_lpp_AlmanacECEF_SBAS_AlmanacSet },
+  {   6, &hf_lpp_keplerianBDS_Almanac_r12, ASN1_NOT_EXTENSION_ROOT, dissect_lpp_AlmanacBDS_AlmanacSet_r12 },
   { 0, NULL, 0, NULL }
 };
 
@@ -7198,12 +7939,61 @@ dissect_lpp_GNSS_AlmanacList(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
 }
 
 
+
+static int
+dissect_lpp_T_toa_ext_v1240(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+#line 976 "../../asn1/lpp/lpp.cnf"
+  guint32 toa_ext, val;
+  int len, old_offset = offset;
+  T_GNSS_ID_enum gnss_id = (T_GNSS_ID_enum)GPOINTER_TO_UINT(actx->private_data);
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            256U, 1023U, &toa_ext, FALSE);
+
+
+
+
+#line 982 "../../asn1/lpp/lpp.cnf"
+  len = (offset-old_offset) >> 3 ? (offset-old_offset) >> 3 : 1;
+  val = (gnss_id == T_GNSS_ID_GALILEO) ? 600*toa_ext : 4096*toa_ext;
+  actx->created_item = proto_tree_add_uint_format_value(tree, hf_lpp_toa_ext_v1240, tvb, old_offset, len,
+                                                        toa_ext, "%u s (%u)", val, toa_ext);
+
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_INTEGER_4_15(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            4U, 15U, NULL, FALSE);
+
+  return offset;
+}
+
+
+static const per_sequence_t GNSS_Almanac_eag_1_sequence[] = {
+  { &hf_lpp_toa_ext_v1240   , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_T_toa_ext_v1240 },
+  { &hf_lpp_ioda_ext_v1240  , ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_INTEGER_4_15 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_GNSS_Almanac_eag_1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence_eag(tvb, offset, actx, tree, GNSS_Almanac_eag_1_sequence);
+
+  return offset;
+}
+
+
 static const per_sequence_t GNSS_Almanac_sequence[] = {
   { &hf_lpp_weekNumber_01   , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_255 },
-  { &hf_lpp_toa             , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_255 },
+  { &hf_lpp_toa             , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_T_toa },
   { &hf_lpp_ioda            , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_3 },
   { &hf_lpp_completeAlmanacProvided, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_BOOLEAN },
   { &hf_lpp_gnss_AlmanacList, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_AlmanacList },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_Almanac_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -7222,7 +8012,7 @@ dissect_lpp_T_gnss_Utc_WNt(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 1033 "../../asn1/lpp/lpp.cnf"
+#line 1209 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " weeks");
 
 
@@ -7236,7 +8026,7 @@ dissect_lpp_T_gnss_Utc_DeltaTls(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 1036 "../../asn1/lpp/lpp.cnf"
+#line 1212 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -7250,7 +8040,7 @@ dissect_lpp_T_gnss_Utc_WNlsf(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 1039 "../../asn1/lpp/lpp.cnf"
+#line 1215 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " weeks");
 
 
@@ -7264,7 +8054,7 @@ dissect_lpp_T_gnss_Utc_DN(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 1042 "../../asn1/lpp/lpp.cnf"
+#line 1218 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " days");
 
 
@@ -7278,7 +8068,7 @@ dissect_lpp_T_gnss_Utc_DeltaTlsf(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 1045 "../../asn1/lpp/lpp.cnf"
+#line 1221 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -7313,7 +8103,7 @@ dissect_lpp_T_utcDeltaTls(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 1057 "../../asn1/lpp/lpp.cnf"
+#line 1233 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -7327,7 +8117,7 @@ dissect_lpp_T_utcWNot(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 8191U, NULL, FALSE);
 
-#line 1063 "../../asn1/lpp/lpp.cnf"
+#line 1239 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " weeks");
 
 
@@ -7341,7 +8131,7 @@ dissect_lpp_T_utcWNlsf(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 1066 "../../asn1/lpp/lpp.cnf"
+#line 1242 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " weeks");
 
 
@@ -7355,7 +8145,7 @@ dissect_lpp_T_utcDN(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pro
   offset = dissect_per_bit_string(tvb, offset, actx, tree, hf_index,
                                      4, 4, FALSE, NULL, NULL);
 
-#line 1069 "../../asn1/lpp/lpp.cnf"
+#line 1245 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " days");
 
 
@@ -7369,7 +8159,7 @@ dissect_lpp_T_utcDeltaTlsf(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 1072 "../../asn1/lpp/lpp.cnf"
+#line 1248 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -7405,7 +8195,7 @@ dissect_lpp_T_nA(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             1U, 1461U, NULL, FALSE);
 
-#line 1075 "../../asn1/lpp/lpp.cnf"
+#line 1251 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " days");
 
 
@@ -7416,7 +8206,7 @@ dissect_lpp_T_nA(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_
 
 static int
 dissect_lpp_T_kp(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1087 "../../asn1/lpp/lpp.cnf"
+#line 1263 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *kp_tvb = NULL;
   offset = dissect_per_bit_string(tvb, offset, actx, tree, -1,
                                      2, 2, FALSE, &kp_tvb, NULL);
@@ -7424,7 +8214,7 @@ dissect_lpp_T_kp(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_
 
 
 
-#line 1091 "../../asn1/lpp/lpp.cnf"
+#line 1267 "../../asn1/lpp/lpp.cnf"
   if (kp_tvb) {
     actx->created_item = proto_tree_add_uint(tree, hf_index, kp_tvb, 0, 1, tvb_get_bits8(kp_tvb, 0, 2));
   }
@@ -7458,7 +8248,7 @@ dissect_lpp_T_utcWNt(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, pr
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 1108 "../../asn1/lpp/lpp.cnf"
+#line 1284 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " weeks");
 
 
@@ -7472,7 +8262,7 @@ dissect_lpp_T_utcDeltaTls_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 1111 "../../asn1/lpp/lpp.cnf"
+#line 1287 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -7486,7 +8276,7 @@ dissect_lpp_T_utcWNlsf_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 1114 "../../asn1/lpp/lpp.cnf"
+#line 1290 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " weeks");
 
 
@@ -7500,7 +8290,7 @@ dissect_lpp_T_utcDN_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 1117 "../../asn1/lpp/lpp.cnf"
+#line 1293 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " days");
 
 
@@ -7514,7 +8304,7 @@ dissect_lpp_T_utcDeltaTlsf_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             -128, 127U, NULL, FALSE);
 
-#line 1120 "../../asn1/lpp/lpp.cnf"
+#line 1296 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -7544,11 +8334,87 @@ dissect_lpp_UTC_ModelSet4(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 }
 
 
+
+static int
+dissect_lpp_T_utcDeltaTls_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            -128, 127U, NULL, FALSE);
+
+#line 1308 "../../asn1/lpp/lpp.cnf"
+  proto_item_append_text(actx->created_item, " s");
+
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_T_utcWNlsf_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 255U, NULL, FALSE);
+
+#line 1311 "../../asn1/lpp/lpp.cnf"
+  proto_item_append_text(actx->created_item, " weeks");
+
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_T_utcDN_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 255U, NULL, FALSE);
+
+#line 1314 "../../asn1/lpp/lpp.cnf"
+  proto_item_append_text(actx->created_item, " days");
+
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_T_utcDeltaTlsf_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            -128, 127U, NULL, FALSE);
+
+#line 1317 "../../asn1/lpp/lpp.cnf"
+  proto_item_append_text(actx->created_item, " s");
+
+
+  return offset;
+}
+
+
+static const per_sequence_t UTC_ModelSet5_r12_sequence[] = {
+  { &hf_lpp_utcA0_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M2147483648_2147483647 },
+  { &hf_lpp_utcA1_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M8388608_8388607 },
+  { &hf_lpp_utcDeltaTls_r12 , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_utcDeltaTls_r12 },
+  { &hf_lpp_utcWNlsf_r12    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_utcWNlsf_r12 },
+  { &hf_lpp_utcDN_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_utcDN_r12 },
+  { &hf_lpp_utcDeltaTlsf_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_utcDeltaTlsf_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_UTC_ModelSet5_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_UTC_ModelSet5_r12, UTC_ModelSet5_r12_sequence);
+
+  return offset;
+}
+
+
 static const value_string lpp_GNSS_UTC_Model_vals[] = {
   {   0, "utcModel1" },
   {   1, "utcModel2" },
   {   2, "utcModel3" },
   {   3, "utcModel4" },
+  {   4, "utcModel5-r12" },
   { 0, NULL }
 };
 
@@ -7557,6 +8423,7 @@ static const per_choice_t GNSS_UTC_Model_choice[] = {
   {   1, &hf_lpp_utcModel2       , ASN1_EXTENSION_ROOT    , dissect_lpp_UTC_ModelSet2 },
   {   2, &hf_lpp_utcModel3       , ASN1_EXTENSION_ROOT    , dissect_lpp_UTC_ModelSet3 },
   {   3, &hf_lpp_utcModel4       , ASN1_EXTENSION_ROOT    , dissect_lpp_UTC_ModelSet4 },
+  {   4, &hf_lpp_utcModel5_r12   , ASN1_NOT_EXTENSION_ROOT, dissect_lpp_UTC_ModelSet5_r12 },
   { 0, NULL, 0, NULL }
 };
 
@@ -7661,6 +8528,178 @@ dissect_lpp_GNSS_AuxiliaryInformation(tvbuff_t *tvb _U_, int offset _U_, asn1_ct
 }
 
 
+
+static int
+dissect_lpp_T_dbds_RefTime_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 3599U, NULL, FALSE);
+
+#line 1320 "../../asn1/lpp/lpp.cnf"
+  proto_item_append_text(actx->created_item, " s");
+
+
+  return offset;
+}
+
+
+static const per_sequence_t DBDS_CorrectionElement_r12_sequence[] = {
+  { &hf_lpp_svID            , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_SV_ID },
+  { &hf_lpp_bds_UDREI_r12   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_15 },
+  { &hf_lpp_bds_RURAI_r12   , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_15 },
+  { &hf_lpp_bds_ECC_DeltaT_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_M4096_4095 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_DBDS_CorrectionElement_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_DBDS_CorrectionElement_r12, DBDS_CorrectionElement_r12_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t DBDS_CorrectionList_r12_sequence_of[1] = {
+  { &hf_lpp_DBDS_CorrectionList_r12_item, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_lpp_DBDS_CorrectionElement_r12 },
+};
+
+static int
+dissect_lpp_DBDS_CorrectionList_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_sequence_of(tvb, offset, actx, tree, hf_index,
+                                                  ett_lpp_DBDS_CorrectionList_r12, DBDS_CorrectionList_r12_sequence_of,
+                                                  1, 64, FALSE);
+
+  return offset;
+}
+
+
+static const per_sequence_t BDS_SgnTypeElement_r12_sequence[] = {
+  { &hf_lpp_gnss_SignalID   , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_SignalID },
+  { &hf_lpp_dbds_CorrectionList_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_DBDS_CorrectionList_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_BDS_SgnTypeElement_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_BDS_SgnTypeElement_r12, BDS_SgnTypeElement_r12_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t BDS_SgnTypeList_r12_sequence_of[1] = {
+  { &hf_lpp_BDS_SgnTypeList_r12_item, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_lpp_BDS_SgnTypeElement_r12 },
+};
+
+static int
+dissect_lpp_BDS_SgnTypeList_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_sequence_of(tvb, offset, actx, tree, hf_index,
+                                                  ett_lpp_BDS_SgnTypeList_r12, BDS_SgnTypeList_r12_sequence_of,
+                                                  1, 3, FALSE);
+
+  return offset;
+}
+
+
+static const per_sequence_t BDS_DifferentialCorrections_r12_sequence[] = {
+  { &hf_lpp_dbds_RefTime_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_dbds_RefTime_r12 },
+  { &hf_lpp_bds_SgnTypeList_r12, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_BDS_SgnTypeList_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_BDS_DifferentialCorrections_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_BDS_DifferentialCorrections_r12, BDS_DifferentialCorrections_r12_sequence);
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_T_bds_RefTime_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 3599U, NULL, FALSE);
+
+#line 1332 "../../asn1/lpp/lpp.cnf"
+  proto_item_append_text(actx->created_item, " s");
+
+
+  return offset;
+}
+
+
+
+static int
+dissect_lpp_INTEGER_1_320(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            1U, 320U, NULL, FALSE);
+
+  return offset;
+}
+
+
+static const per_sequence_t GridIonElement_r12_sequence[] = {
+  { &hf_lpp_igp_ID_r12      , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_1_320 },
+  { &hf_lpp_dt_r12          , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_511 },
+  { &hf_lpp_givei_r12       , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_15 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_GridIonElement_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_GridIonElement_r12, GridIonElement_r12_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t GridIonList_r12_sequence_of[1] = {
+  { &hf_lpp_GridIonList_r12_item, ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_lpp_GridIonElement_r12 },
+};
+
+static int
+dissect_lpp_GridIonList_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_sequence_of(tvb, offset, actx, tree, hf_index,
+                                                  ett_lpp_GridIonList_r12, GridIonList_r12_sequence_of,
+                                                  1, 320, FALSE);
+
+  return offset;
+}
+
+
+static const per_sequence_t BDS_GridModelParameter_r12_sequence[] = {
+  { &hf_lpp_bds_RefTime_r12 , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_bds_RefTime_r12 },
+  { &hf_lpp_gridIonList_r12 , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GridIonList_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_BDS_GridModelParameter_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence(tvb, offset, actx, tree, hf_index,
+                                   ett_lpp_BDS_GridModelParameter_r12, BDS_GridModelParameter_r12_sequence);
+
+  return offset;
+}
+
+
+static const per_sequence_t GNSS_GenericAssistDataElement_eag_1_sequence[] = {
+  { &hf_lpp_bds_DifferentialCorrections_r12, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_BDS_DifferentialCorrections_r12 },
+  { &hf_lpp_bds_GridModel_r12, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_BDS_GridModelParameter_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_GNSS_GenericAssistDataElement_eag_1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence_eag(tvb, offset, actx, tree, GNSS_GenericAssistDataElement_eag_1_sequence);
+
+  return offset;
+}
+
+
 static const per_sequence_t GNSS_GenericAssistDataElement_sequence[] = {
   { &hf_lpp_gnss_ID         , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_ID },
   { &hf_lpp_sbas_ID         , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_SBAS_ID },
@@ -7673,6 +8712,7 @@ static const per_sequence_t GNSS_GenericAssistDataElement_sequence[] = {
   { &hf_lpp_gnss_Almanac    , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_Almanac },
   { &hf_lpp_gnss_UTC_Model  , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_UTC_Model },
   { &hf_lpp_gnss_AuxiliaryInformation, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_GNSS_AuxiliaryInformation },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_GNSS_GenericAssistDataElement_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -7856,6 +8896,16 @@ dissect_lpp_T_prs_Bandwidth(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
 }
 
 
+
+static int
+dissect_lpp_INTEGER_0_4095(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            0U, 4095U, NULL, FALSE);
+
+  return offset;
+}
+
+
 static const value_string lpp_T_numDL_Frames_vals[] = {
   {   0, "sf-1" },
   {   1, "sf-2" },
@@ -7937,7 +8987,7 @@ static const per_sequence_t OTDOA_ReferenceCellInfo_sequence[] = {
   { &hf_lpp_antennaPortConfig, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_T_antennaPortConfig },
   { &hf_lpp_cpLength        , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_cpLength },
   { &hf_lpp_prsInfo         , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_PRS_Info },
-  { &hf_lpp_dummy_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_OTDOA_ReferenceCellInfo_eag_1 },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_OTDOA_ReferenceCellInfo_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -8026,7 +9076,7 @@ static const per_sequence_t OTDOA_NeighbourCellInfoElement_sequence[] = {
   { &hf_lpp_prs_SubframeOffset, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_1279 },
   { &hf_lpp_expectedRSTD    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_16383 },
   { &hf_lpp_expectedRSTD_Uncertainty, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_1023 },
-  { &hf_lpp_dummy_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_OTDOA_NeighbourCellInfoElement_eag_1 },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_OTDOA_NeighbourCellInfoElement_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -8254,7 +9304,7 @@ static const per_sequence_t ProvideAssistanceData_sequence[] = {
 
 static int
 dissect_lpp_ProvideAssistanceData(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 66 "../../asn1/lpp/lpp.cnf"
+#line 69 "../../asn1/lpp/lpp.cnf"
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Provide Assistance Data");
 
 
@@ -8286,7 +9336,7 @@ dissect_lpp_LocationInformationType(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_
 
 static int
 dissect_lpp_ReportingDuration(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 276 "../../asn1/lpp/lpp.cnf"
+#line 279 "../../asn1/lpp/lpp.cnf"
   guint32 duration;
 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
@@ -8357,7 +9407,7 @@ static const value_string lpp_T_reportingInterval_vals[] = {
 
 static int
 dissect_lpp_T_reportingInterval(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 264 "../../asn1/lpp/lpp.cnf"
+#line 267 "../../asn1/lpp/lpp.cnf"
   guint32 idx;
   const gchar *interval[10] = {"", ": 1 s", ": 2 s", ": 4 s", ": 8 s", ": 10 s",
                                ": 16 s", ": 20 s", ": 32 s", ": 64 s"};
@@ -8368,7 +9418,7 @@ dissect_lpp_T_reportingInterval(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *a
 
 
 
-#line 271 "../../asn1/lpp/lpp.cnf"
+#line 274 "../../asn1/lpp/lpp.cnf"
   if (idx < 10) {
     proto_item_append_text(actx->created_item, "%s", interval[idx]);
   }
@@ -8445,7 +9495,7 @@ dissect_lpp_T_time(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, prot
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             1U, 128U, NULL, FALSE);
 
-#line 297 "../../asn1/lpp/lpp.cnf"
+#line 300 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " s");
 
 
@@ -8453,8 +9503,36 @@ dissect_lpp_T_time(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, prot
 }
 
 
+
+static int
+dissect_lpp_T_responseTimeEarlyFix_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
+                                                            1U, 128U, NULL, FALSE);
+
+#line 303 "../../asn1/lpp/lpp.cnf"
+  proto_item_append_text(actx->created_item, " s");
+
+
+  return offset;
+}
+
+
+static const per_sequence_t ResponseTime_eag_1_sequence[] = {
+  { &hf_lpp_responseTimeEarlyFix_r12, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_T_responseTimeEarlyFix_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_ResponseTime_eag_1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence_eag(tvb, offset, actx, tree, ResponseTime_eag_1_sequence);
+
+  return offset;
+}
+
+
 static const per_sequence_t ResponseTime_sequence[] = {
   { &hf_lpp_time            , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_T_time },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_ResponseTime_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -8572,7 +9650,7 @@ dissect_lpp_OTDOA_RequestLocationInformation(tvbuff_t *tvb _U_, int offset _U_, 
 
 static int
 dissect_lpp_T_requestedMeasurements(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1359 "../../asn1/lpp/lpp.cnf"
+#line 1594 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *requestedMeasurements_tvb = NULL;
   int len;
 
@@ -8700,7 +9778,7 @@ static const per_sequence_t RequestLocationInformation_sequence[] = {
 
 static int
 dissect_lpp_RequestLocationInformation(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 69 "../../asn1/lpp/lpp.cnf"
+#line 72 "../../asn1/lpp/lpp.cnf"
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Request Location Information");
 
 
@@ -8983,7 +10061,7 @@ dissect_lpp_T_bearing(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, p
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 359U, NULL, FALSE);
 
-#line 208 "../../asn1/lpp/lpp.cnf"
+#line 211 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " degrees");
 
 
@@ -8997,7 +10075,7 @@ dissect_lpp_T_horizontalSpeed(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *act
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 2047U, NULL, FALSE);
 
-#line 211 "../../asn1/lpp/lpp.cnf"
+#line 214 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " km/h");
 
 
@@ -9069,7 +10147,7 @@ dissect_lpp_T_bearing_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 359U, NULL, FALSE);
 
-#line 214 "../../asn1/lpp/lpp.cnf"
+#line 217 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " degrees");
 
 
@@ -9083,7 +10161,7 @@ dissect_lpp_T_horizontalSpeed_01(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 2047U, NULL, FALSE);
 
-#line 217 "../../asn1/lpp/lpp.cnf"
+#line 220 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " km/h");
 
 
@@ -9097,7 +10175,7 @@ dissect_lpp_T_uncertaintySpeed(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 220 "../../asn1/lpp/lpp.cnf"
+#line 223 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " km/h");
 
 
@@ -9127,7 +10205,7 @@ dissect_lpp_T_bearing_02(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 359U, NULL, FALSE);
 
-#line 223 "../../asn1/lpp/lpp.cnf"
+#line 226 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " degrees");
 
 
@@ -9141,7 +10219,7 @@ dissect_lpp_T_horizontalSpeed_02(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 2047U, NULL, FALSE);
 
-#line 226 "../../asn1/lpp/lpp.cnf"
+#line 229 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " km/h");
 
 
@@ -9171,7 +10249,7 @@ dissect_lpp_T_verticalSpeed(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 229 "../../asn1/lpp/lpp.cnf"
+#line 232 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " km/h");
 
 
@@ -9185,7 +10263,7 @@ dissect_lpp_T_horizontalUncertaintySpeed(tvbuff_t *tvb _U_, int offset _U_, asn1
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 232 "../../asn1/lpp/lpp.cnf"
+#line 235 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " km/h");
 
 
@@ -9199,7 +10277,7 @@ dissect_lpp_T_verticalUncertaintySpeed(tvbuff_t *tvb _U_, int offset _U_, asn1_c
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 255U, NULL, FALSE);
 
-#line 235 "../../asn1/lpp/lpp.cnf"
+#line 238 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " km/h");
 
 
@@ -9284,10 +10362,40 @@ dissect_lpp_LocationError(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 }
 
 
+static const value_string lpp_EarlyFixReport_r12_vals[] = {
+  {   0, "noMoreMessages" },
+  {   1, "moreMessagesOnTheWay" },
+  { 0, NULL }
+};
+
+
+static int
+dissect_lpp_EarlyFixReport_r12(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_enumerated(tvb, offset, actx, tree, hf_index,
+                                     2, NULL, FALSE, 0, NULL);
+
+  return offset;
+}
+
+
+static const per_sequence_t CommonIEsProvideLocationInformation_eag_1_sequence[] = {
+  { &hf_lpp_earlyFixReport_r12, ASN1_NO_EXTENSIONS     , ASN1_OPTIONAL    , dissect_lpp_EarlyFixReport_r12 },
+  { NULL, 0, 0, NULL }
+};
+
+static int
+dissect_lpp_CommonIEsProvideLocationInformation_eag_1(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
+  offset = dissect_per_sequence_eag(tvb, offset, actx, tree, CommonIEsProvideLocationInformation_eag_1_sequence);
+
+  return offset;
+}
+
+
 static const per_sequence_t CommonIEsProvideLocationInformation_sequence[] = {
   { &hf_lpp_locationEstimate, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_LocationCoordinates },
   { &hf_lpp_velocityEstimate, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_Velocity },
   { &hf_lpp_locationError   , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_LocationError },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_CommonIEsProvideLocationInformation_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -9306,7 +10414,7 @@ dissect_lpp_T_gnss_TOD_msec(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 3599999U, NULL, FALSE);
 
-#line 1144 "../../asn1/lpp/lpp.cnf"
+#line 1359 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " ms");
 
 
@@ -9437,7 +10545,7 @@ dissect_lpp_T_deltaGNSS_TOD(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx 
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 127U, NULL, FALSE);
 
-#line 1153 "../../asn1/lpp/lpp.cnf"
+#line 1368 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " ms");
 
 
@@ -9511,7 +10619,7 @@ dissect_lpp_T_gnss_CodePhaseAmbiguity(tvbuff_t *tvb _U_, int offset _U_, asn1_ct
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 127U, NULL, FALSE);
 
-#line 1156 "../../asn1/lpp/lpp.cnf"
+#line 1371 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " ms");
 
 
@@ -9525,7 +10633,7 @@ dissect_lpp_T_cNo(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 63U, NULL, FALSE);
 
-#line 1159 "../../asn1/lpp/lpp.cnf"
+#line 1374 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " dB-Hz");
 
 
@@ -9557,7 +10665,7 @@ dissect_lpp_T_integerCodePhase(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
   offset = dissect_per_constrained_integer(tvb, offset, actx, tree, hf_index,
                                                             0U, 127U, NULL, FALSE);
 
-#line 1168 "../../asn1/lpp/lpp.cnf"
+#line 1383 "../../asn1/lpp/lpp.cnf"
   proto_item_append_text(actx->created_item, " ms");
 
 
@@ -9719,7 +10827,7 @@ dissect_lpp_A_GNSS_ProvideLocationInformation(tvbuff_t *tvb _U_, int offset _U_,
 
 static int
 dissect_lpp_T_error_Resolution(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 309 "../../asn1/lpp/lpp.cnf"
+#line 315 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *error_Resolution_tvb = NULL;
   offset = dissect_per_bit_string(tvb, offset, actx, tree, -1,
                                      2, 2, FALSE, &error_Resolution_tvb, NULL);
@@ -9727,7 +10835,7 @@ dissect_lpp_T_error_Resolution(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
 
 
-#line 313 "../../asn1/lpp/lpp.cnf"
+#line 319 "../../asn1/lpp/lpp.cnf"
   if (error_Resolution_tvb) {
     actx->created_item = proto_tree_add_uint(tree, hf_index, error_Resolution_tvb, 0, 1, tvb_get_bits8(error_Resolution_tvb, 0, 2));
   }
@@ -9740,7 +10848,7 @@ dissect_lpp_T_error_Resolution(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
 static int
 dissect_lpp_T_error_Value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 321 "../../asn1/lpp/lpp.cnf"
+#line 327 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *error_Value_tvb = NULL;
   offset = dissect_per_bit_string(tvb, offset, actx, tree, -1,
                                      5, 5, FALSE, &error_Value_tvb, NULL);
@@ -9748,7 +10856,7 @@ dissect_lpp_T_error_Value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 
 
 
-#line 325 "../../asn1/lpp/lpp.cnf"
+#line 331 "../../asn1/lpp/lpp.cnf"
   if (error_Value_tvb) {
     actx->created_item = proto_tree_add_uint(tree, hf_index, error_Value_tvb, 0, 1, tvb_get_bits8(error_Value_tvb, 0, 5));
   }
@@ -9761,7 +10869,7 @@ dissect_lpp_T_error_Value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 
 static int
 dissect_lpp_T_error_NumSamples(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 333 "../../asn1/lpp/lpp.cnf"
+#line 339 "../../asn1/lpp/lpp.cnf"
   tvbuff_t *error_NumSamples_tvb = NULL;
   offset = dissect_per_bit_string(tvb, offset, actx, tree, -1,
                                      3, 3, FALSE, &error_NumSamples_tvb, NULL);
@@ -9769,7 +10877,7 @@ dissect_lpp_T_error_NumSamples(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *ac
 
 
 
-#line 337 "../../asn1/lpp/lpp.cnf"
+#line 343 "../../asn1/lpp/lpp.cnf"
   if (error_NumSamples_tvb) {
     actx->created_item = proto_tree_add_uint(tree, hf_index, error_NumSamples_tvb, 0, 1, tvb_get_bits8(error_NumSamples_tvb, 0, 3));
   }
@@ -9819,12 +10927,12 @@ dissect_lpp_NeighbourMeasurementElement_eag_1(tvbuff_t *tvb _U_, int offset _U_,
 
 
 static const per_sequence_t NeighbourMeasurementElement_sequence[] = {
-  { &hf_lpp_physCellIdNeighbor, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_503 },
+  { &hf_lpp_physCellIdNeighbour, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_503 },
   { &hf_lpp_cellGlobalIdNeighbour, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_ECGI },
   { &hf_lpp_earfcnNeighbour , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_ARFCN_ValueEUTRA },
   { &hf_lpp_rstd            , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_INTEGER_0_12711 },
   { &hf_lpp_rstd_Quality    , ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_OTDOA_MeasQuality },
-  { &hf_lpp_dummy_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_NeighbourMeasurementElement_eag_1 },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_NeighbourMeasurementElement_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -9871,7 +10979,7 @@ static const per_sequence_t OTDOA_SignalMeasurementInformation_sequence[] = {
   { &hf_lpp_earfcnRef       , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_ARFCN_ValueEUTRA },
   { &hf_lpp_referenceQuality, ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_OTDOA_MeasQuality },
   { &hf_lpp_neighbourMeasurementList, ASN1_EXTENSION_ROOT    , ASN1_NOT_OPTIONAL, dissect_lpp_NeighbourMeasurementList },
-  { &hf_lpp_dummy_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_OTDOA_SignalMeasurementInformation_eag_1 },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_OTDOA_SignalMeasurementInformation_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -9940,7 +11048,7 @@ static const per_sequence_t MeasuredResultsElement_sequence[] = {
   { &hf_lpp_rsrp_Result     , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_97 },
   { &hf_lpp_rsrq_Result     , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_34 },
   { &hf_lpp_ue_RxTxTimeDiff , ASN1_EXTENSION_ROOT    , ASN1_OPTIONAL    , dissect_lpp_INTEGER_0_4095 },
-  { &hf_lpp_dummy_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_MeasuredResultsElement_eag_1 },
+  { &dummy_hf_lpp_eag_field , ASN1_NOT_EXTENSION_ROOT, ASN1_NOT_OPTIONAL, dissect_lpp_MeasuredResultsElement_eag_1 },
   { NULL, 0, 0, NULL }
 };
 
@@ -10168,7 +11276,7 @@ static const per_sequence_t ProvideLocationInformation_sequence[] = {
 
 static int
 dissect_lpp_ProvideLocationInformation(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 72 "../../asn1/lpp/lpp.cnf"
+#line 75 "../../asn1/lpp/lpp.cnf"
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Provide Location Information");
 
 
@@ -10294,7 +11402,7 @@ static const per_sequence_t Abort_sequence[] = {
 
 static int
 dissect_lpp_Abort(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 75 "../../asn1/lpp/lpp.cnf"
+#line 78 "../../asn1/lpp/lpp.cnf"
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Abort");
 
 
@@ -10380,7 +11488,7 @@ static const per_choice_t Error_choice[] = {
 
 static int
 dissect_lpp_Error(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 78 "../../asn1/lpp/lpp.cnf"
+#line 81 "../../asn1/lpp/lpp.cnf"
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Error");
 
 
@@ -10571,7 +11679,7 @@ int dissect_lpp_Polygon_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tre
 
 
 /*--- End of included file: packet-lpp-fn.c ---*/
-#line 1346 "../../asn1/lpp/packet-lpp-template.c"
+#line 1630 "../../asn1/lpp/packet-lpp-template.c"
 
 static int dissect_lpp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_) {
   proto_tree *subtree;
@@ -11059,11 +12167,11 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_degreesLatitude,
       { "degreesLatitude", "lpp.degreesLatitude",
-        FT_UINT32, BASE_CUSTOM, &lpp_degreesLatitude_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_degreesLatitude_fmt), 0,
         "INTEGER_0_8388607", HFILL }},
     { &hf_lpp_degreesLongitude,
       { "degreesLongitude", "lpp.degreesLongitude",
-        FT_INT32, BASE_CUSTOM, &lpp_degreesLongitude_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_degreesLongitude_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_latitudeSign_01,
       { "latitudeSign", "lpp.latitudeSign",
@@ -11071,7 +12179,7 @@ void proto_register_lpp(void) {
         "T_latitudeSign_01", HFILL }},
     { &hf_lpp_uncertainty,
       { "uncertainty", "lpp.uncertainty",
-        FT_UINT32, BASE_CUSTOM, &lpp_uncertainty_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_uncertainty_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_latitudeSign_02,
       { "latitudeSign", "lpp.latitudeSign",
@@ -11079,19 +12187,19 @@ void proto_register_lpp(void) {
         "T_latitudeSign_02", HFILL }},
     { &hf_lpp_uncertaintySemiMajor,
       { "uncertaintySemiMajor", "lpp.uncertaintySemiMajor",
-        FT_UINT32, BASE_CUSTOM, &lpp_uncertainty_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_uncertainty_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_uncertaintySemiMinor,
       { "uncertaintySemiMinor", "lpp.uncertaintySemiMinor",
-        FT_UINT32, BASE_CUSTOM, &lpp_uncertainty_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_uncertainty_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_orientationMajorAxis,
       { "orientationMajorAxis", "lpp.orientationMajorAxis",
-        FT_UINT32, BASE_CUSTOM, &lpp_angle_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_angle_fmt), 0,
         "INTEGER_0_179", HFILL }},
     { &hf_lpp_confidence,
       { "confidence", "lpp.confidence",
-        FT_UINT32, BASE_CUSTOM, &lpp_confidence_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_confidence_fmt), 0,
         "INTEGER_0_100", HFILL }},
     { &hf_lpp_latitudeSign_03,
       { "latitudeSign", "lpp.latitudeSign",
@@ -11103,7 +12211,7 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_altitude,
       { "altitude", "lpp.altitude",
-        FT_UINT32, BASE_CUSTOM, &lpp_altitude_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_altitude_fmt), 0,
         "INTEGER_0_32767", HFILL }},
     { &hf_lpp_latitudeSign_04,
       { "latitudeSign", "lpp.latitudeSign",
@@ -11115,7 +12223,7 @@ void proto_register_lpp(void) {
         "T_altitudeDirection_01", HFILL }},
     { &hf_lpp_uncertaintyAltitude,
       { "uncertaintyAltitude", "lpp.uncertaintyAltitude",
-        FT_UINT32, BASE_CUSTOM, &lpp_uncertaintyAltitude_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_uncertaintyAltitude_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_latitudeSign_05,
       { "latitudeSign", "lpp.latitudeSign",
@@ -11123,19 +12231,19 @@ void proto_register_lpp(void) {
         "T_latitudeSign_05", HFILL }},
     { &hf_lpp_innerRadius,
       { "innerRadius", "lpp.innerRadius",
-        FT_UINT32, BASE_CUSTOM, &lpp_radius_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_radius_fmt), 0,
         "INTEGER_0_65535", HFILL }},
     { &hf_lpp_uncertaintyRadius,
       { "uncertaintyRadius", "lpp.uncertaintyRadius",
-        FT_UINT32, BASE_CUSTOM, &lpp_uncertainty_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_uncertainty_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_offsetAngle,
       { "offsetAngle", "lpp.offsetAngle",
-        FT_UINT32, BASE_CUSTOM, &lpp_angle_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_angle_fmt), 0,
         "INTEGER_0_179", HFILL }},
     { &hf_lpp_includedAngle,
       { "includedAngle", "lpp.includedAngle",
-        FT_UINT32, BASE_CUSTOM, &lpp_angle_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_angle_fmt), 0,
         "INTEGER_0_179", HFILL }},
     { &hf_lpp_EPDU_Sequence_item,
       { "EPDU", "lpp.EPDU_element",
@@ -11347,10 +12455,14 @@ void proto_register_lpp(void) {
         "BOOLEAN", HFILL }},
     { &hf_lpp_accuracy,
       { "accuracy", "lpp.accuracy",
-        FT_UINT32, BASE_CUSTOM, &lpp_uncertainty_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_uncertainty_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_time,
       { "time", "lpp.time",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_responseTimeEarlyFix_r12,
+      { "responseTimeEarlyFix-r12", "lpp.responseTimeEarlyFix_r12",
         FT_UINT32, BASE_DEC, NULL, 0,
         NULL, HFILL }},
     { &hf_lpp_locationEstimate,
@@ -11364,6 +12476,10 @@ void proto_register_lpp(void) {
     { &hf_lpp_locationError,
       { "locationError", "lpp.locationError_element",
         FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_earlyFixReport_r12,
+      { "earlyFixReport-r12", "lpp.earlyFixReport_r12",
+        FT_UINT32, BASE_DEC, VALS(lpp_EarlyFixReport_r12_vals), 0,
         NULL, HFILL }},
     { &hf_lpp_ellipsoidPoint_01,
       { "ellipsoidPoint", "lpp.ellipsoidPoint_element",
@@ -11523,11 +12639,11 @@ void proto_register_lpp(void) {
         "INTEGER_0_1279", HFILL }},
     { &hf_lpp_expectedRSTD,
       { "expectedRSTD", "lpp.expectedRSTD",
-        FT_UINT32, BASE_CUSTOM, &lpp_expectedRSTD_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_expectedRSTD_fmt), 0,
         "INTEGER_0_16383", HFILL }},
     { &hf_lpp_expectedRSTD_Uncertainty,
       { "expectedRSTD-Uncertainty", "lpp.expectedRSTD_Uncertainty",
-        FT_UINT32, BASE_CUSTOM, &lpp_expectedRSTD_Uncertainty_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_expectedRSTD_Uncertainty_fmt), 0,
         "INTEGER_0_1023", HFILL }},
     { &hf_lpp_earfcn_v9a0,
       { "earfcn-v9a0", "lpp.earfcn_v9a0",
@@ -11561,8 +12677,8 @@ void proto_register_lpp(void) {
       { "NeighbourMeasurementElement", "lpp.NeighbourMeasurementElement_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
-    { &hf_lpp_physCellIdNeighbor,
-      { "physCellIdNeighbor", "lpp.physCellIdNeighbor",
+    { &hf_lpp_physCellIdNeighbour,
+      { "physCellIdNeighbour", "lpp.physCellIdNeighbour",
         FT_UINT32, BASE_DEC, NULL, 0,
         "INTEGER_0_503", HFILL }},
     { &hf_lpp_cellGlobalIdNeighbour,
@@ -11575,7 +12691,7 @@ void proto_register_lpp(void) {
         "ARFCN_ValueEUTRA", HFILL }},
     { &hf_lpp_rstd,
       { "rstd", "lpp.rstd",
-        FT_UINT32, BASE_CUSTOM, &lpp_rstd_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_rstd_fmt), 0,
         "INTEGER_0_12711", HFILL }},
     { &hf_lpp_rstd_Quality,
       { "rstd-Quality", "lpp.rstd_Quality_element",
@@ -11625,6 +12741,10 @@ void proto_register_lpp(void) {
       { "interFreqRSTDmeasurement-r10", "lpp.interFreqRSTDmeasurement_r10",
         FT_UINT32, BASE_DEC, VALS(lpp_T_interFreqRSTDmeasurement_r10_vals), 0,
         "T_interFreqRSTDmeasurement_r10", HFILL }},
+    { &hf_lpp_additionalNeighbourCellInfoList_r10,
+      { "additionalNeighbourCellInfoList-r10", "lpp.additionalNeighbourCellInfoList_r10",
+        FT_UINT32, BASE_DEC, VALS(lpp_T_additionalNeighbourCellInfoList_r10_vals), 0,
+        "T_additionalNeighbourCellInfoList_r10", HFILL }},
     { &hf_lpp_bandEUTRA,
       { "bandEUTRA", "lpp.bandEUTRA",
         FT_UINT32, BASE_DEC, NULL, 0,
@@ -11725,13 +12845,21 @@ void proto_register_lpp(void) {
       { "gnss-AuxiliaryInformation", "lpp.gnss_AuxiliaryInformation",
         FT_UINT32, BASE_DEC, VALS(lpp_GNSS_AuxiliaryInformation_vals), 0,
         NULL, HFILL }},
+    { &hf_lpp_bds_DifferentialCorrections_r12,
+      { "bds-DifferentialCorrections-r12", "lpp.bds_DifferentialCorrections_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_bds_GridModel_r12,
+      { "bds-GridModel-r12", "lpp.bds_GridModel_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        "BDS_GridModelParameter_r12", HFILL }},
     { &hf_lpp_gnss_SystemTime,
       { "gnss-SystemTime", "lpp.gnss_SystemTime_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_lpp_referenceTimeUnc,
       { "referenceTimeUnc", "lpp.referenceTimeUnc",
-        FT_UINT32, BASE_CUSTOM, &lpp_referenceTimeUnc_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_referenceTimeUnc_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_gnss_ReferenceTimeForCells,
       { "gnss-ReferenceTimeForCells", "lpp.gnss_ReferenceTimeForCells",
@@ -11803,11 +12931,11 @@ void proto_register_lpp(void) {
         "INTEGER_0_12533", HFILL }},
     { &hf_lpp_fractionalSecondsFromFrameStructureStart,
       { "fractionalSecondsFromFrameStructureStart", "lpp.fractionalSecondsFromFrameStructureStart",
-        FT_UINT32, BASE_CUSTOM, &lpp_fractionalSecondsFromFrameStructureStart_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_fractionalSecondsFromFrameStructureStart_fmt), 0,
         "INTEGER_0_3999999", HFILL }},
     { &hf_lpp_frameDrift,
       { "frameDrift", "lpp.frameDrift",
-        FT_INT32, BASE_CUSTOM, &lpp_frameDrift_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_frameDrift_fmt), 0,
         "INTEGER_M64_63", HFILL }},
     { &hf_lpp_cellID,
       { "cellID", "lpp.cellID",
@@ -11887,48 +13015,48 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_alfa0,
       { "alfa0", "lpp.alfa0",
-        FT_INT32, BASE_CUSTOM, &lpp_alpha0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_alpha0_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_alfa1,
       { "alfa1", "lpp.alfa1",
-        FT_INT32, BASE_CUSTOM, &lpp_alpha1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_alpha1_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_alfa2,
       { "alfa2", "lpp.alfa2",
-        FT_INT32, BASE_CUSTOM, &lpp_alpha2_3_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_alpha2_3_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_alfa3,
       { "alfa3", "lpp.alfa3",
-        FT_INT32, BASE_CUSTOM, &lpp_alpha2_3_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_alpha2_3_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_beta0,
       { "beta0", "lpp.beta0",
-        FT_INT32, BASE_CUSTOM, &lpp_beta0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_beta0_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_beta1,
       { "beta1", "lpp.beta1",
-        FT_INT32, BASE_CUSTOM, &lpp_beta1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_beta1_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_beta2,
       { "beta2", "lpp.beta2",
-        FT_INT32, BASE_CUSTOM, &lpp_beta2_3_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_beta2_3_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_beta3,
       { "beta3", "lpp.beta3",
-        FT_INT32, BASE_CUSTOM, &lpp_beta2_3_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_beta2_3_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_ai0,
       { "ai0", "lpp.ai0",
-        FT_UINT32, BASE_CUSTOM, &lpp_ai0_fmt, 0,
-        "INTEGER_0_4095", HFILL }},
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_ai0_fmt), 0,
+        "INTEGER_0_2047", HFILL }},
     { &hf_lpp_ai1,
       { "ai1", "lpp.ai1",
-        FT_UINT32, BASE_CUSTOM, &lpp_ai1_fmt, 0,
-        "INTEGER_0_4095", HFILL }},
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_ai1_fmt), 0,
+        "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_ai2,
       { "ai2", "lpp.ai2",
-        FT_UINT32, BASE_CUSTOM, &lpp_ai2_fmt, 0,
-        "INTEGER_0_4095", HFILL }},
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_ai2_fmt), 0,
+        "INTEGER_M8192_8191", HFILL }},
     { &hf_lpp_ionoStormFlag1,
       { "ionoStormFlag1", "lpp.ionoStormFlag1",
         FT_UINT32, BASE_DEC, NULL, 0,
@@ -11951,31 +13079,31 @@ void proto_register_lpp(void) {
         "INTEGER_0_1", HFILL }},
     { &hf_lpp_teop,
       { "teop", "lpp.teop",
-        FT_UINT32, BASE_CUSTOM, &lpp_teop_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_teop_fmt), 0,
         "INTEGER_0_65535", HFILL }},
     { &hf_lpp_pmX,
       { "pmX", "lpp.pmX",
-        FT_INT32, BASE_CUSTOM, &lpp_pmX_Y_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_pmX_Y_fmt), 0,
         "INTEGER_M1048576_1048575", HFILL }},
     { &hf_lpp_pmXdot,
       { "pmXdot", "lpp.pmXdot",
-        FT_INT32, BASE_CUSTOM, &lpp_pmX_Ydot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_pmX_Ydot_fmt), 0,
         "INTEGER_M16384_16383", HFILL }},
     { &hf_lpp_pmY,
       { "pmY", "lpp.pmY",
-        FT_INT32, BASE_CUSTOM, &lpp_pmX_Y_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_pmX_Y_fmt), 0,
         "INTEGER_M1048576_1048575", HFILL }},
     { &hf_lpp_pmYdot,
       { "pmYdot", "lpp.pmYdot",
-        FT_INT32, BASE_CUSTOM, &lpp_pmX_Ydot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_pmX_Ydot_fmt), 0,
         "INTEGER_M16384_16383", HFILL }},
     { &hf_lpp_deltaUT1,
       { "deltaUT1", "lpp.deltaUT1",
-        FT_INT32, BASE_CUSTOM, &lpp_deltaUT1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_deltaUT1_fmt), 0,
         "INTEGER_M1073741824_1073741823", HFILL }},
     { &hf_lpp_deltaUT1dot,
       { "deltaUT1dot", "lpp.deltaUT1dot",
-        FT_INT32, BASE_CUSTOM, &lpp_deltaUT1dot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_deltaUT1dot_fmt), 0,
         "INTEGER_M262144_262143", HFILL }},
     { &hf_lpp_GNSS_TimeModelList_item,
       { "GNSS-TimeModelElement", "lpp.GNSS_TimeModelElement_element",
@@ -11983,19 +13111,19 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_gnss_TimeModelRefTime,
       { "gnss-TimeModelRefTime", "lpp.gnss_TimeModelRefTime",
-        FT_UINT32, BASE_CUSTOM, &lpp_gnss_TimeModelRefTime_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_TimeModelRefTime_fmt), 0,
         "INTEGER_0_65535", HFILL }},
     { &hf_lpp_tA0,
       { "tA0", "lpp.tA0",
-        FT_INT32, BASE_CUSTOM, &lpp_tA0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_tA0_fmt), 0,
         "INTEGER_M67108864_67108863", HFILL }},
     { &hf_lpp_tA1,
       { "tA1", "lpp.tA1",
-        FT_INT32, BASE_CUSTOM, &lpp_tA1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_tA1_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_tA2,
       { "tA2", "lpp.tA2",
-        FT_INT32, BASE_CUSTOM, &lpp_tA2_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_tA2_fmt), 0,
         "INTEGER_M64_63", HFILL }},
     { &hf_lpp_gnss_TO_ID,
       { "gnss-TO-ID", "lpp.gnss_TO_ID",
@@ -12051,11 +13179,11 @@ void proto_register_lpp(void) {
         "INTEGER_0_3", HFILL }},
     { &hf_lpp_pseudoRangeCor,
       { "pseudoRangeCor", "lpp.pseudoRangeCor",
-        FT_INT32, BASE_CUSTOM, &lpp_pseudoRangeCor_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_pseudoRangeCor_fmt), 0,
         "INTEGER_M2047_2047", HFILL }},
     { &hf_lpp_rangeRateCor,
       { "rangeRateCor", "lpp.rangeRateCor",
-        FT_INT32, BASE_CUSTOM, &lpp_rangeRateCor_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_rangeRateCor_fmt), 0,
         "INTEGER_M127_127", HFILL }},
     { &hf_lpp_udreGrowthRate,
       { "udreGrowthRate", "lpp.udreGrowthRate",
@@ -12089,6 +13217,10 @@ void proto_register_lpp(void) {
       { "gnss-OrbitModel", "lpp.gnss_OrbitModel",
         FT_UINT32, BASE_DEC, VALS(lpp_GNSS_OrbitModel_vals), 0,
         NULL, HFILL }},
+    { &hf_lpp_svHealthExt_v1240,
+      { "svHealthExt-v1240", "lpp.svHealthExt_v1240",
+        FT_BYTES, BASE_NONE, NULL, 0,
+        "T_svHealthExt_v1240", HFILL }},
     { &hf_lpp_standardClockModelList,
       { "standardClockModelList", "lpp.standardClockModelList",
         FT_UINT32, BASE_DEC, NULL, 0,
@@ -12107,6 +13239,10 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_sbas_ClockModel,
       { "sbas-ClockModel", "lpp.sbas_ClockModel_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_bds_ClockModel_r12,
+      { "bds-ClockModel-r12", "lpp.bds_ClockModel_r12_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_lpp_keplerianSet,
@@ -12129,61 +13265,69 @@ void proto_register_lpp(void) {
       { "sbas-ECEF", "lpp.sbas_ECEF_element",
         FT_NONE, BASE_NONE, NULL, 0,
         "NavModel_SBAS_ECEF", HFILL }},
+    { &hf_lpp_bds_KeplerianSet_r12,
+      { "bds-KeplerianSet-r12", "lpp.bds_KeplerianSet_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        "NavModel_BDS_KeplerianSet_r12", HFILL }},
     { &hf_lpp_StandardClockModelList_item,
       { "StandardClockModelElement", "lpp.StandardClockModelElement_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_lpp_stanClockToc,
       { "stanClockToc", "lpp.stanClockToc",
-        FT_UINT32, BASE_CUSTOM, &lpp_stanClockToc_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_stanClockToc_fmt), 0,
         "INTEGER_0_16383", HFILL }},
     { &hf_lpp_stanClockAF2,
       { "stanClockAF2", "lpp.stanClockAF2",
-        FT_INT32, BASE_CUSTOM, &lpp_stanClockAF2_fmt, 0,
-        "INTEGER_M2048_2047", HFILL }},
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_stanClockAF2_fmt), 0,
+        "INTEGER_M32_31", HFILL }},
     { &hf_lpp_stanClockAF1,
       { "stanClockAF1", "lpp.stanClockAF1",
-        FT_INT32, BASE_CUSTOM, &lpp_stanClockAF1_fmt, 0,
-        "INTEGER_M131072_131071", HFILL }},
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_stanClockAF1_fmt), 0,
+        "INTEGER_M1048576_1048575", HFILL }},
     { &hf_lpp_stanClockAF0,
       { "stanClockAF0", "lpp.stanClockAF0",
-        FT_INT32, BASE_CUSTOM, &lpp_stanClockAF0_fmt, 0,
-        "INTEGER_M134217728_134217727", HFILL }},
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_stanClockAF0_fmt), 0,
+        "INTEGER_M1073741824_1073741823", HFILL }},
     { &hf_lpp_stanClockTgd,
       { "stanClockTgd", "lpp.stanClockTgd",
-        FT_INT32, BASE_CUSTOM, &lpp_stanClockTgd_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_stanClockTgd_fmt), 0,
         "INTEGER_M512_511", HFILL }},
+    { &hf_lpp_sisa,
+      { "sisa", "lpp.sisa",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_sisa_fmt), 0,
+        "INTEGER_0_255", HFILL }},
     { &hf_lpp_stanModelID,
       { "stanModelID", "lpp.stanModelID",
         FT_UINT32, BASE_DEC, VALS(lpp_stanModelID_vals), 0,
         "INTEGER_0_1", HFILL }},
     { &hf_lpp_navToc,
       { "navToc", "lpp.navToc",
-        FT_UINT32, BASE_CUSTOM, &lpp_navToc_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_navToc_fmt), 0,
         "INTEGER_0_37799", HFILL }},
     { &hf_lpp_navaf2,
       { "navaf2", "lpp.navaf2",
-        FT_INT32, BASE_CUSTOM, &lpp_navaf2_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navaf2_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_navaf1,
       { "navaf1", "lpp.navaf1",
-        FT_INT32, BASE_CUSTOM, &lpp_navaf1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navaf1_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navaf0,
       { "navaf0", "lpp.navaf0",
-        FT_INT32, BASE_CUSTOM, &lpp_navaf0_navTgd_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navaf0_navTgd_fmt), 0,
         "INTEGER_M2097152_2097151", HFILL }},
     { &hf_lpp_navTgd,
       { "navTgd", "lpp.navTgd",
-        FT_INT32, BASE_CUSTOM, &lpp_navaf0_navTgd_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navaf0_navTgd_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_cnavToc,
       { "cnavToc", "lpp.cnavToc",
-        FT_UINT32, BASE_CUSTOM, &lpp_cnavToc_cnavTop_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_cnavToc_cnavTop_fmt), 0,
         "INTEGER_0_2015", HFILL }},
     { &hf_lpp_cnavTop,
       { "cnavTop", "lpp.cnavTop",
-        FT_UINT32, BASE_CUSTOM, &lpp_cnavToc_cnavTop_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_cnavToc_cnavTop_fmt), 0,
         "INTEGER_0_2015", HFILL }},
     { &hf_lpp_cnavURA0,
       { "cnavURA0", "lpp.cnavURA0",
@@ -12199,131 +13343,155 @@ void proto_register_lpp(void) {
         "INTEGER_0_7", HFILL }},
     { &hf_lpp_cnavAf2,
       { "cnavAf2", "lpp.cnavAf2",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavAf2_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavAf2_fmt), 0,
         "INTEGER_M512_511", HFILL }},
     { &hf_lpp_cnavAf1,
       { "cnavAf1", "lpp.cnavAf1",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavAf1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavAf1_fmt), 0,
         "INTEGER_M524288_524287", HFILL }},
     { &hf_lpp_cnavAf0,
       { "cnavAf0", "lpp.cnavAf0",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavX_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavX_fmt), 0,
         "INTEGER_M33554432_33554431", HFILL }},
     { &hf_lpp_cnavTgd,
       { "cnavTgd", "lpp.cnavTgd",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavX_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavX_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_cnavISCl1cp,
       { "cnavISCl1cp", "lpp.cnavISCl1cp",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavX_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavX_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_cnavISCl1cd,
       { "cnavISCl1cd", "lpp.cnavISCl1cd",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavX_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavX_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_cnavISCl1ca,
       { "cnavISCl1ca", "lpp.cnavISCl1ca",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavX_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavX_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_cnavISCl2c,
       { "cnavISCl2c", "lpp.cnavISCl2c",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavX_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavX_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_cnavISCl5i5,
       { "cnavISCl5i5", "lpp.cnavISCl5i5",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavX_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavX_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_cnavISCl5q5,
       { "cnavISCl5q5", "lpp.cnavISCl5q5",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavX_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavX_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_gloTau,
       { "gloTau", "lpp.gloTau",
-        FT_INT32, BASE_CUSTOM, &lpp_gloTau_gloDeltaTau_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloTau_gloDeltaTau_fmt), 0,
         "INTEGER_M2097152_2097151", HFILL }},
     { &hf_lpp_gloGamma,
       { "gloGamma", "lpp.gloGamma",
-        FT_INT32, BASE_CUSTOM, &lpp_gloGamma_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloGamma_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_gloDeltaTau,
       { "gloDeltaTau", "lpp.gloDeltaTau",
-        FT_INT32, BASE_CUSTOM, &lpp_gloTau_gloDeltaTau_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloTau_gloDeltaTau_fmt), 0,
         "INTEGER_M16_15", HFILL }},
     { &hf_lpp_sbasTo,
       { "sbasTo", "lpp.sbasTo",
-        FT_UINT32, BASE_CUSTOM, &lpp_sbasTo_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_sbasTo_fmt), 0,
         "INTEGER_0_5399", HFILL }},
     { &hf_lpp_sbasAgfo,
       { "sbasAgfo", "lpp.sbasAgfo",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasAgfo_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAgfo_fmt), 0,
         "INTEGER_M2048_2047", HFILL }},
     { &hf_lpp_sbasAgf1,
       { "sbasAgf1", "lpp.sbasAgf1",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasAgf1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAgf1_fmt), 0,
         "INTEGER_M128_127", HFILL }},
+    { &hf_lpp_bdsAODC_r12,
+      { "bdsAODC-r12", "lpp.bdsAODC_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAODC_AODE_r12_fmt), 0,
+        "INTEGER_0_31", HFILL }},
+    { &hf_lpp_bdsToc_r12,
+      { "bdsToc-r12", "lpp.bdsToc_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsToc_Toe_r12_fmt), 0,
+        "INTEGER_0_131071", HFILL }},
+    { &hf_lpp_bdsA0_r12,
+      { "bdsA0-r12", "lpp.bdsA0_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsA0_r12_fmt), 0,
+        "INTEGER_M8388608_8388607", HFILL }},
+    { &hf_lpp_bdsA1_r12,
+      { "bdsA1-r12", "lpp.bdsA1_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsA1_r12_fmt), 0,
+        "INTEGER_M2097152_2097151", HFILL }},
+    { &hf_lpp_bdsA2_r12,
+      { "bdsA2-r12", "lpp.bdsA2_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsA2_r12_fmt), 0,
+        "INTEGER_M1024_1023", HFILL }},
+    { &hf_lpp_bdsTgd1_r12,
+      { "bdsTgd1-r12", "lpp.bdsTgd1_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsTgd1_r12_fmt), 0,
+        "INTEGER_M512_511", HFILL }},
     { &hf_lpp_keplerToe,
       { "keplerToe", "lpp.keplerToe",
-        FT_UINT32, BASE_CUSTOM, &lpp_keplerToe_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_keplerToe_fmt), 0,
         "INTEGER_0_16383", HFILL }},
     { &hf_lpp_keplerW,
       { "keplerW", "lpp.keplerW",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerW_M0_I0_Omega0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerW_M0_I0_Omega0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_keplerDeltaN,
       { "keplerDeltaN", "lpp.keplerDeltaN",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerDeltaN_OmegaDot_IDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerDeltaN_OmegaDot_IDot_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_keplerM0,
       { "keplerM0", "lpp.keplerM0",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerW_M0_I0_Omega0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerW_M0_I0_Omega0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_keplerOmegaDot,
       { "keplerOmegaDot", "lpp.keplerOmegaDot",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerDeltaN_OmegaDot_IDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerDeltaN_OmegaDot_IDot_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_keplerE,
       { "keplerE", "lpp.keplerE",
-        FT_UINT32, BASE_CUSTOM, &lpp_keplerE_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_keplerE_fmt), 0,
         "INTEGER_0_4294967295", HFILL }},
     { &hf_lpp_keplerIDot,
       { "keplerIDot", "lpp.keplerIDot",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerDeltaN_OmegaDot_IDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerDeltaN_OmegaDot_IDot_fmt), 0,
         "INTEGER_M8192_8191", HFILL }},
     { &hf_lpp_keplerAPowerHalf,
       { "keplerAPowerHalf", "lpp.keplerAPowerHalf",
-        FT_UINT32, BASE_CUSTOM, &lpp_keplerAPowerHalf_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_keplerAPowerHalf_fmt), 0,
         "INTEGER_0_4294967295", HFILL }},
     { &hf_lpp_keplerI0,
       { "keplerI0", "lpp.keplerI0",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerW_M0_I0_Omega0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerW_M0_I0_Omega0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_keplerOmega0,
       { "keplerOmega0", "lpp.keplerOmega0",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerW_M0_I0_Omega0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerW_M0_I0_Omega0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_keplerCrs,
       { "keplerCrs", "lpp.keplerCrs",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerCrs_Crc_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerCrs_Crc_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_keplerCis,
       { "keplerCis", "lpp.keplerCis",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_keplerCus,
       { "keplerCus", "lpp.keplerCus",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_keplerCrc,
       { "keplerCrc", "lpp.keplerCrc",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerCrs_Crc_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerCrs_Crc_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_keplerCic,
       { "keplerCic", "lpp.keplerCic",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_keplerCuc,
       { "keplerCuc", "lpp.keplerCuc",
-        FT_INT32, BASE_CUSTOM, &lpp_keplerCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_keplerCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navURA,
       { "navURA", "lpp.navURA",
@@ -12335,67 +13503,67 @@ void proto_register_lpp(void) {
         "INTEGER_0_1", HFILL }},
     { &hf_lpp_navToe,
       { "navToe", "lpp.navToe",
-        FT_UINT32, BASE_CUSTOM, &lpp_navToe_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_navToe_fmt), 0,
         "INTEGER_0_37799", HFILL }},
     { &hf_lpp_navOmega,
       { "navOmega", "lpp.navOmega",
-        FT_INT32, BASE_CUSTOM, &lpp_navOmega_M0_I0_OmegaA0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navOmega_M0_I0_OmegaA0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_navDeltaN,
       { "navDeltaN", "lpp.navDeltaN",
-        FT_INT32, BASE_CUSTOM, &lpp_navDeltaN_OmegaADot_IDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navDeltaN_OmegaADot_IDot_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navM0,
       { "navM0", "lpp.navM0",
-        FT_INT32, BASE_CUSTOM, &lpp_navOmega_M0_I0_OmegaA0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navOmega_M0_I0_OmegaA0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_navOmegaADot,
       { "navOmegaADot", "lpp.navOmegaADot",
-        FT_INT32, BASE_CUSTOM, &lpp_navDeltaN_OmegaADot_IDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navDeltaN_OmegaADot_IDot_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_navE,
       { "navE", "lpp.navE",
-        FT_UINT32, BASE_CUSTOM, &lpp_navE_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_navE_fmt), 0,
         "INTEGER_0_4294967295", HFILL }},
     { &hf_lpp_navIDot,
       { "navIDot", "lpp.navIDot",
-        FT_INT32, BASE_CUSTOM, &lpp_navDeltaN_OmegaADot_IDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navDeltaN_OmegaADot_IDot_fmt), 0,
         "INTEGER_M8192_8191", HFILL }},
     { &hf_lpp_navAPowerHalf,
       { "navAPowerHalf", "lpp.navAPowerHalf",
-        FT_UINT32, BASE_CUSTOM, &lpp_navAPowerHalf_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_navAPowerHalf_fmt), 0,
         "INTEGER_0_4294967295", HFILL }},
     { &hf_lpp_navI0,
       { "navI0", "lpp.navI0",
-        FT_INT32, BASE_CUSTOM, &lpp_navOmega_M0_I0_OmegaA0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navOmega_M0_I0_OmegaA0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_navOmegaA0,
       { "navOmegaA0", "lpp.navOmegaA0",
-        FT_INT32, BASE_CUSTOM, &lpp_navOmega_M0_I0_OmegaA0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navOmega_M0_I0_OmegaA0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_navCrs,
       { "navCrs", "lpp.navCrs",
-        FT_INT32, BASE_CUSTOM, &lpp_navCrs_Crc_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navCrs_Crc_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navCis,
       { "navCis", "lpp.navCis",
-        FT_INT32, BASE_CUSTOM, &lpp_navCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navCus,
       { "navCus", "lpp.navCus",
-        FT_INT32, BASE_CUSTOM, &lpp_navCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navCrc,
       { "navCrc", "lpp.navCrc",
-        FT_INT32, BASE_CUSTOM, &lpp_navCrs_Crc_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navCrs_Crc_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navCic,
       { "navCic", "lpp.navCic",
-        FT_INT32, BASE_CUSTOM, &lpp_navCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navCuc,
       { "navCuc", "lpp.navCuc",
-        FT_INT32, BASE_CUSTOM, &lpp_navCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_addNAVparam,
       { "addNAVparam", "lpp.addNAVparam_element",
@@ -12439,19 +13607,19 @@ void proto_register_lpp(void) {
         "INTEGER_M16_15", HFILL }},
     { &hf_lpp_cnavDeltaA,
       { "cnavDeltaA", "lpp.cnavDeltaA",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavDeltaA_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavDeltaA_fmt), 0,
         "INTEGER_M33554432_33554431", HFILL }},
     { &hf_lpp_cnavAdot,
       { "cnavAdot", "lpp.cnavAdot",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavAdot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavAdot_fmt), 0,
         "INTEGER_M16777216_16777215", HFILL }},
     { &hf_lpp_cnavDeltaNo,
       { "cnavDeltaNo", "lpp.cnavDeltaNo",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavDeltaNo_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavDeltaNo_fmt), 0,
         "INTEGER_M65536_65535", HFILL }},
     { &hf_lpp_cnavDeltaNoDot,
       { "cnavDeltaNoDot", "lpp.cnavDeltaNoDot",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavDeltaNoDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavDeltaNoDot_fmt), 0,
         "INTEGER_M4194304_4194303", HFILL }},
     { &hf_lpp_cnavMo,
       { "cnavMo", "lpp.cnavMo",
@@ -12471,7 +13639,7 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_cnavDeltaOmegaDot,
       { "cnavDeltaOmegaDot", "lpp.cnavDeltaOmegaDot",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavDeltaOmegaDot_IoDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavDeltaOmegaDot_IoDot_fmt), 0,
         "INTEGER_M65536_65535", HFILL }},
     { &hf_lpp_cnavIo,
       { "cnavIo", "lpp.cnavIo",
@@ -12479,31 +13647,31 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_cnavIoDot,
       { "cnavIoDot", "lpp.cnavIoDot",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavDeltaOmegaDot_IoDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavDeltaOmegaDot_IoDot_fmt), 0,
         "INTEGER_M16384_16383", HFILL }},
     { &hf_lpp_cnavCis,
       { "cnavCis", "lpp.cnavCis",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_cnavCic,
       { "cnavCic", "lpp.cnavCic",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavCx_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_cnavCrs,
       { "cnavCrs", "lpp.cnavCrs",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavCrs_Crc_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavCrs_Crc_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_cnavCrc,
       { "cnavCrc", "lpp.cnavCrc",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavCrs_Crc_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavCrs_Crc_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_cnavCus,
       { "cnavCus", "lpp.cnavCus",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavCx_fmt), 0,
         "INTEGER_M1048576_1048575", HFILL }},
     { &hf_lpp_cnavCuc,
       { "cnavCuc", "lpp.cnavCuc",
-        FT_INT32, BASE_CUSTOM, &lpp_cnavCx_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_cnavCx_fmt), 0,
         "INTEGER_M1048576_1048575", HFILL }},
     { &hf_lpp_gloEn,
       { "gloEn", "lpp.gloEn",
@@ -12523,39 +13691,39 @@ void proto_register_lpp(void) {
         "INTEGER_0_3", HFILL }},
     { &hf_lpp_gloX,
       { "gloX", "lpp.gloX",
-        FT_INT32, BASE_CUSTOM, &lpp_gloX_Y_Z_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloX_Y_Z_fmt), 0,
         "INTEGER_M67108864_67108863", HFILL }},
     { &hf_lpp_gloXdot,
       { "gloXdot", "lpp.gloXdot",
-        FT_INT32, BASE_CUSTOM, &lpp_gloXdot_Ydot_Zdot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloXdot_Ydot_Zdot_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_gloXdotdot,
       { "gloXdotdot", "lpp.gloXdotdot",
-        FT_INT32, BASE_CUSTOM, &lpp_gloXdotdot_Ydotdot_Zdotdot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloXdotdot_Ydotdot_Zdotdot_fmt), 0,
         "INTEGER_M16_15", HFILL }},
     { &hf_lpp_gloY,
       { "gloY", "lpp.gloY",
-        FT_INT32, BASE_CUSTOM, &lpp_gloX_Y_Z_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloX_Y_Z_fmt), 0,
         "INTEGER_M67108864_67108863", HFILL }},
     { &hf_lpp_gloYdot,
       { "gloYdot", "lpp.gloYdot",
-        FT_INT32, BASE_CUSTOM, &lpp_gloXdot_Ydot_Zdot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloXdot_Ydot_Zdot_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_gloYdotdot,
       { "gloYdotdot", "lpp.gloYdotdot",
-        FT_INT32, BASE_CUSTOM, &lpp_gloXdotdot_Ydotdot_Zdotdot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloXdotdot_Ydotdot_Zdotdot_fmt), 0,
         "INTEGER_M16_15", HFILL }},
     { &hf_lpp_gloZ,
       { "gloZ", "lpp.gloZ",
-        FT_INT32, BASE_CUSTOM, &lpp_gloX_Y_Z_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloX_Y_Z_fmt), 0,
         "INTEGER_M67108864_67108863", HFILL }},
     { &hf_lpp_gloZdot,
       { "gloZdot", "lpp.gloZdot",
-        FT_INT32, BASE_CUSTOM, &lpp_gloXdot_Ydot_Zdot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloXdot_Ydot_Zdot_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_gloZdotdot,
       { "gloZdotdot", "lpp.gloZdotdot",
-        FT_INT32, BASE_CUSTOM, &lpp_gloXdotdot_Ydotdot_Zdotdot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloXdotdot_Ydotdot_Zdotdot_fmt), 0,
         "INTEGER_M16_15", HFILL }},
     { &hf_lpp_sbasAccuracy,
       { "sbasAccuracy", "lpp.sbasAccuracy",
@@ -12563,31 +13731,31 @@ void proto_register_lpp(void) {
         "BIT_STRING_SIZE_4", HFILL }},
     { &hf_lpp_sbasXg,
       { "sbasXg", "lpp.sbasXg",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasXg_Yg_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasXg_Yg_fmt), 0,
         "INTEGER_M536870912_536870911", HFILL }},
     { &hf_lpp_sbasYg,
       { "sbasYg", "lpp.sbasYg",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasXg_Yg_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasXg_Yg_fmt), 0,
         "INTEGER_M536870912_536870911", HFILL }},
     { &hf_lpp_sbasZg,
       { "sbasZg", "lpp.sbasZg",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasZg_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasZg_fmt), 0,
         "INTEGER_M16777216_16777215", HFILL }},
     { &hf_lpp_sbasXgDot,
       { "sbasXgDot", "lpp.sbasXgDot",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasXgDot_YgDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasXgDot_YgDot_fmt), 0,
         "INTEGER_M65536_65535", HFILL }},
     { &hf_lpp_sbasYgDot,
       { "sbasYgDot", "lpp.sbasYgDot",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasXgDot_YgDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasXgDot_YgDot_fmt), 0,
         "INTEGER_M65536_65535", HFILL }},
     { &hf_lpp_sbasZgDot,
       { "sbasZgDot", "lpp.sbasZgDot",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasZgDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasZgDot_fmt), 0,
         "INTEGER_M131072_131071", HFILL }},
     { &hf_lpp_sbasXgDotDot,
       { "sbasXgDotDot", "lpp.sbasXgDotDot",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasXgDotDot_YgDotDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasXgDotDot_YgDotDot_fmt), 0,
         "INTEGER_M512_511", HFILL }},
     { &hf_lpp_sbagYgDotDot,
       { "sbagYgDotDot", "lpp.sbagYgDotDot",
@@ -12595,8 +13763,80 @@ void proto_register_lpp(void) {
         "INTEGER_M512_511", HFILL }},
     { &hf_lpp_sbasZgDotDot,
       { "sbasZgDotDot", "lpp.sbasZgDotDot",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasZgDotDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasZgDotDot_fmt), 0,
         "INTEGER_M512_511", HFILL }},
+    { &hf_lpp_bdsAODE_r12,
+      { "bdsAODE-r12", "lpp.bdsAODE_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAODC_AODE_r12_fmt), 0,
+        "INTEGER_0_31", HFILL }},
+    { &hf_lpp_bdsURAI_r12,
+      { "bdsURAI-r12", "lpp.bdsURAI_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_bdsToe_r12,
+      { "bdsToe-r12", "lpp.bdsToe_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsToc_Toe_r12_fmt), 0,
+        "INTEGER_0_131071", HFILL }},
+    { &hf_lpp_bdsAPowerHalf_r12,
+      { "bdsAPowerHalf-r12", "lpp.bdsAPowerHalf_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAPowerHalf_r12_fmt), 0,
+        "INTEGER_0_4294967295", HFILL }},
+    { &hf_lpp_bdsE_r12,
+      { "bdsE-r12", "lpp.bdsE_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsE_r12_fmt), 0,
+        "INTEGER_0_4294967295", HFILL }},
+    { &hf_lpp_bdsW_r12,
+      { "bdsW-r12", "lpp.bdsW_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsW_M0_Omega0_I0_r12_fmt), 0,
+        "INTEGER_M2147483648_2147483647", HFILL }},
+    { &hf_lpp_bdsDeltaN_r12,
+      { "bdsDeltaN-r12", "lpp.bdsDeltaN_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsDeltaN_OmegaDot_IDot_r12_fmt), 0,
+        "INTEGER_M32768_32767", HFILL }},
+    { &hf_lpp_bdsM0_r12,
+      { "bdsM0-r12", "lpp.bdsM0_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsW_M0_Omega0_I0_r12_fmt), 0,
+        "INTEGER_M2147483648_2147483647", HFILL }},
+    { &hf_lpp_bdsOmega0_r12,
+      { "bdsOmega0-r12", "lpp.bdsOmega0_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsW_M0_Omega0_I0_r12_fmt), 0,
+        "INTEGER_M2147483648_2147483647", HFILL }},
+    { &hf_lpp_bdsOmegaDot_r12,
+      { "bdsOmegaDot-r12", "lpp.bdsOmegaDot_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsDeltaN_OmegaDot_IDot_r12_fmt), 0,
+        "INTEGER_M8388608_8388607", HFILL }},
+    { &hf_lpp_bdsI0_r12,
+      { "bdsI0-r12", "lpp.bdsI0_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsW_M0_Omega0_I0_r12_fmt), 0,
+        "INTEGER_M2147483648_2147483647", HFILL }},
+    { &hf_lpp_bdsIDot_r12,
+      { "bdsIDot-r12", "lpp.bdsIDot_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsDeltaN_OmegaDot_IDot_r12_fmt), 0,
+        "INTEGER_M8192_8191", HFILL }},
+    { &hf_lpp_bdsCuc_r12,
+      { "bdsCuc-r12", "lpp.bdsCuc_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsCuc_Cus_Cic_Cis_r12_fmt), 0,
+        "INTEGER_M131072_131071", HFILL }},
+    { &hf_lpp_bdsCus_r12,
+      { "bdsCus-r12", "lpp.bdsCus_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsCuc_Cus_Cic_Cis_r12_fmt), 0,
+        "INTEGER_M131072_131071", HFILL }},
+    { &hf_lpp_bdsCrc_r12,
+      { "bdsCrc-r12", "lpp.bdsCrc_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsCrc_Crs_r12_fmt), 0,
+        "INTEGER_M131072_131071", HFILL }},
+    { &hf_lpp_bdsCrs_r12,
+      { "bdsCrs-r12", "lpp.bdsCrs_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsCrc_Crs_r12_fmt), 0,
+        "INTEGER_M131072_131071", HFILL }},
+    { &hf_lpp_bdsCic_r12,
+      { "bdsCic-r12", "lpp.bdsCic_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsCuc_Cus_Cic_Cis_r12_fmt), 0,
+        "INTEGER_M131072_131071", HFILL }},
+    { &hf_lpp_bdsCis_r12,
+      { "bdsCis-r12", "lpp.bdsCis_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsCuc_Cus_Cic_Cis_r12_fmt), 0,
+        "INTEGER_M131072_131071", HFILL }},
     { &hf_lpp_gnss_BadSignalList,
       { "gnss-BadSignalList", "lpp.gnss_BadSignalList",
         FT_UINT32, BASE_DEC, NULL, 0,
@@ -12659,11 +13899,11 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_doppler0,
       { "doppler0", "lpp.doppler0",
-        FT_INT32, BASE_CUSTOM, &lpp_doppler0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_doppler0_fmt), 0,
         "INTEGER_M2048_2047", HFILL }},
     { &hf_lpp_doppler1,
       { "doppler1", "lpp.doppler1",
-        FT_UINT32, BASE_CUSTOM, &lpp_doppler1_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_doppler1_fmt), 0,
         "INTEGER_0_63", HFILL }},
     { &hf_lpp_dopplerUncertainty,
       { "dopplerUncertainty", "lpp.dopplerUncertainty",
@@ -12671,7 +13911,7 @@ void proto_register_lpp(void) {
         "INTEGER_0_4", HFILL }},
     { &hf_lpp_codePhase,
       { "codePhase", "lpp.codePhase",
-        FT_UINT32, BASE_CUSTOM, &lpp_codePhase_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_codePhase_fmt), 0,
         "INTEGER_0_1022", HFILL }},
     { &hf_lpp_intCodePhase,
       { "intCodePhase", "lpp.intCodePhase",
@@ -12683,11 +13923,11 @@ void proto_register_lpp(void) {
         "INTEGER_0_31", HFILL }},
     { &hf_lpp_azimuth,
       { "azimuth", "lpp.azimuth",
-        FT_UINT32, BASE_CUSTOM, &lpp_azimuth_elevation_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_azimuth_elevation_fmt), 0,
         "INTEGER_0_511", HFILL }},
     { &hf_lpp_elevation,
       { "elevation", "lpp.elevation",
-        FT_UINT32, BASE_CUSTOM, &lpp_azimuth_elevation_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_azimuth_elevation_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_codePhase1023,
       { "codePhase1023", "lpp.codePhase1023",
@@ -12703,8 +13943,8 @@ void proto_register_lpp(void) {
         "INTEGER_0_255", HFILL }},
     { &hf_lpp_toa,
       { "toa", "lpp.toa",
-        FT_UINT32, BASE_CUSTOM, &lpp_toa_fmt, 0,
-        "INTEGER_0_255", HFILL }},
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
     { &hf_lpp_ioda,
       { "ioda", "lpp.ioda",
         FT_UINT32, BASE_DEC, NULL, 0,
@@ -12717,6 +13957,14 @@ void proto_register_lpp(void) {
       { "gnss-AlmanacList", "lpp.gnss_AlmanacList",
         FT_UINT32, BASE_DEC, NULL, 0,
         NULL, HFILL }},
+    { &hf_lpp_toa_ext_v1240,
+      { "toa-ext-v1240", "lpp.toa_ext_v1240",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        "T_toa_ext_v1240", HFILL }},
+    { &hf_lpp_ioda_ext_v1240,
+      { "ioda-ext-v1240", "lpp.ioda_ext_v1240",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        "INTEGER_4_15", HFILL }},
     { &hf_lpp_GNSS_AlmanacList_item,
       { "GNSS-AlmanacElement", "lpp.GNSS_AlmanacElement",
         FT_UINT32, BASE_DEC, VALS(lpp_GNSS_AlmanacElement_vals), 0,
@@ -12745,57 +13993,65 @@ void proto_register_lpp(void) {
       { "ecef-SBAS-Almanac", "lpp.ecef_SBAS_Almanac_element",
         FT_NONE, BASE_NONE, NULL, 0,
         "AlmanacECEF_SBAS_AlmanacSet", HFILL }},
+    { &hf_lpp_keplerianBDS_Almanac_r12,
+      { "keplerianBDS-Almanac-r12", "lpp.keplerianBDS_Almanac_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        "AlmanacBDS_AlmanacSet_r12", HFILL }},
     { &hf_lpp_kepAlmanacE,
       { "kepAlmanacE", "lpp.kepAlmanacE",
-        FT_UINT32, BASE_CUSTOM, &lpp_kepAlmanacE_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacE_fmt), 0,
         "INTEGER_0_2047", HFILL }},
     { &hf_lpp_kepAlmanacDeltaI,
       { "kepAlmanacDeltaI", "lpp.kepAlmanacDeltaI",
-        FT_INT32, BASE_CUSTOM, &lpp_kepAlmanacDeltaI_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacDeltaI_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_kepAlmanacOmegaDot,
       { "kepAlmanacOmegaDot", "lpp.kepAlmanacOmegaDot",
-        FT_INT32, BASE_CUSTOM, &lpp_kepAlmanacOmegaDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacOmegaDot_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
-    { &hf_lpp_kepSVHealth,
-      { "kepSVHealth", "lpp.kepSVHealth",
-        FT_UINT32, BASE_DEC, NULL, 0,
-        "INTEGER_0_15", HFILL }},
+    { &hf_lpp_kepSV_StatusINAV,
+      { "kepSV-StatusINAV", "lpp.kepSV_StatusINAV",
+        FT_BYTES, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_kepSV_StatusFNAV,
+      { "kepSV-StatusFNAV", "lpp.kepSV_StatusFNAV",
+        FT_BYTES, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
     { &hf_lpp_kepAlmanacAPowerHalf,
       { "kepAlmanacAPowerHalf", "lpp.kepAlmanacAPowerHalf",
-        FT_INT32, BASE_CUSTOM, &lpp_kepAlmanacAPowerHalf_fmt, 0,
-        "INTEGER_M65536_65535", HFILL }},
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacAPowerHalf_fmt), 0,
+        "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_kepAlmanacOmega0,
       { "kepAlmanacOmega0", "lpp.kepAlmanacOmega0",
-        FT_INT32, BASE_CUSTOM, &lpp_kepAlmanacOmega0_W_M0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacOmega0_W_M0_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_kepAlmanacW,
       { "kepAlmanacW", "lpp.kepAlmanacW",
-        FT_INT32, BASE_CUSTOM, &lpp_kepAlmanacOmega0_W_M0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacOmega0_W_M0_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_kepAlmanacM0,
       { "kepAlmanacM0", "lpp.kepAlmanacM0",
-        FT_INT32, BASE_CUSTOM, &lpp_kepAlmanacOmega0_W_M0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacOmega0_W_M0_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_kepAlmanacAF0,
       { "kepAlmanacAF0", "lpp.kepAlmanacAF0",
-        FT_INT32, BASE_CUSTOM, &lpp_kepAlmanacAF0_fmt, 0,
-        "INTEGER_M8192_8191", HFILL }},
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacAF0_fmt), 0,
+        "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_kepAlmanacAF1,
       { "kepAlmanacAF1", "lpp.kepAlmanacAF1",
-        FT_INT32, BASE_CUSTOM, &lpp_kepAlmanacAF1_fmt, 0,
-        "INTEGER_M1024_1023", HFILL }},
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_kepAlmanacAF1_fmt), 0,
+        "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_navAlmE,
       { "navAlmE", "lpp.navAlmE",
-        FT_UINT32, BASE_CUSTOM, &lpp_navAlmE_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmE_fmt), 0,
         "INTEGER_0_65535", HFILL }},
     { &hf_lpp_navAlmDeltaI,
       { "navAlmDeltaI", "lpp.navAlmDeltaI",
-        FT_INT32, BASE_CUSTOM, &lpp_navAlmDeltaI_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmDeltaI_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navAlmOMEGADOT,
       { "navAlmOMEGADOT", "lpp.navAlmOMEGADOT",
-        FT_INT32, BASE_CUSTOM, &lpp_navAlmOMEGADOT_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmOMEGADOT_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_navAlmSVHealth,
       { "navAlmSVHealth", "lpp.navAlmSVHealth",
@@ -12803,35 +14059,35 @@ void proto_register_lpp(void) {
         "INTEGER_0_255", HFILL }},
     { &hf_lpp_navAlmSqrtA,
       { "navAlmSqrtA", "lpp.navAlmSqrtA",
-        FT_UINT32, BASE_CUSTOM, &lpp_navAlmSqrtA_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmSqrtA_fmt), 0,
         "INTEGER_0_16777215", HFILL }},
     { &hf_lpp_navAlmOMEGAo,
       { "navAlmOMEGAo", "lpp.navAlmOMEGAo",
-        FT_INT32, BASE_CUSTOM, &lpp_navAlmOMEGAo_Omega_Mo_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmOMEGAo_Omega_Mo_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_navAlmOmega,
       { "navAlmOmega", "lpp.navAlmOmega",
-        FT_INT32, BASE_CUSTOM, &lpp_navAlmOMEGAo_Omega_Mo_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmOMEGAo_Omega_Mo_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_navAlmMo,
       { "navAlmMo", "lpp.navAlmMo",
-        FT_INT32, BASE_CUSTOM, &lpp_navAlmOMEGAo_Omega_Mo_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmOMEGAo_Omega_Mo_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_navAlmaf0,
       { "navAlmaf0", "lpp.navAlmaf0",
-        FT_INT32, BASE_CUSTOM, &lpp_navAlmaf0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmaf0_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_navAlmaf1,
       { "navAlmaf1", "lpp.navAlmaf1",
-        FT_INT32, BASE_CUSTOM, &lpp_navAlmaf1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_navAlmaf1_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_redAlmDeltaA,
       { "redAlmDeltaA", "lpp.redAlmDeltaA",
-        FT_INT32, BASE_CUSTOM, &lpp_redAlmDeltaA_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_redAlmDeltaA_fmt), 0,
         "INTEGER_M128_127", HFILL }},
     { &hf_lpp_redAlmOmega0,
       { "redAlmOmega0", "lpp.redAlmOmega0",
-        FT_INT32, BASE_CUSTOM, &lpp_redAlmOmega0_Phi0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_redAlmOmega0_Phi0_fmt), 0,
         "INTEGER_M64_63", HFILL }},
     { &hf_lpp_redAlmPhi0,
       { "redAlmPhi0", "lpp.redAlmPhi0",
@@ -12851,39 +14107,39 @@ void proto_register_lpp(void) {
         "BOOLEAN", HFILL }},
     { &hf_lpp_midiAlmE,
       { "midiAlmE", "lpp.midiAlmE",
-        FT_UINT32, BASE_CUSTOM, &lpp_midiAlmE_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmE_fmt), 0,
         "INTEGER_0_2047", HFILL }},
     { &hf_lpp_midiAlmDeltaI,
       { "midiAlmDeltaI", "lpp.midiAlmDeltaI",
-        FT_INT32, BASE_CUSTOM, &lpp_midiAlmDeltaI_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmDeltaI_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_midiAlmOmegaDot,
       { "midiAlmOmegaDot", "lpp.midiAlmOmegaDot",
-        FT_INT32, BASE_CUSTOM, &lpp_midiAlmOmegaDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmOmegaDot_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_midiAlmSqrtA,
       { "midiAlmSqrtA", "lpp.midiAlmSqrtA",
-        FT_UINT32, BASE_CUSTOM, &lpp_midiAlmSqrtA_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmSqrtA_fmt), 0,
         "INTEGER_0_131071", HFILL }},
     { &hf_lpp_midiAlmOmega0,
       { "midiAlmOmega0", "lpp.midiAlmOmega0",
-        FT_INT32, BASE_CUSTOM, &lpp_midiAlmOmega0_Omega_Mo_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmOmega0_Omega_Mo_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_midiAlmOmega,
       { "midiAlmOmega", "lpp.midiAlmOmega",
-        FT_INT32, BASE_CUSTOM, &lpp_midiAlmOmega0_Omega_Mo_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmOmega0_Omega_Mo_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_midiAlmMo,
       { "midiAlmMo", "lpp.midiAlmMo",
-        FT_INT32, BASE_CUSTOM, &lpp_midiAlmOmega0_Omega_Mo_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmOmega0_Omega_Mo_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_midiAlmaf0,
       { "midiAlmaf0", "lpp.midiAlmaf0",
-        FT_INT32, BASE_CUSTOM, &lpp_midiAlmaf0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmaf0_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_midiAlmaf1,
       { "midiAlmaf1", "lpp.midiAlmaf1",
-        FT_INT32, BASE_CUSTOM, &lpp_midiAlmaf1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_midiAlmaf1_fmt), 0,
         "INTEGER_M512_511", HFILL }},
     { &hf_lpp_midiAlmL1Health,
       { "midiAlmL1Health", "lpp.midiAlmL1Health",
@@ -12911,35 +14167,35 @@ void proto_register_lpp(void) {
         "INTEGER_0_31", HFILL }},
     { &hf_lpp_gloAlmLambdaA,
       { "gloAlmLambdaA", "lpp.gloAlmLambdaA",
-        FT_INT32, BASE_CUSTOM, &lpp_gloAlmLambdaA_DeltaIa_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloAlmLambdaA_DeltaIa_fmt), 0,
         "INTEGER_M1048576_1048575", HFILL }},
     { &hf_lpp_gloAlmtlambdaA,
       { "gloAlmtlambdaA", "lpp.gloAlmtlambdaA",
-        FT_UINT32, BASE_CUSTOM, &lpp_gloAlmtlambdaA_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_gloAlmtlambdaA_fmt), 0,
         "INTEGER_0_2097151", HFILL }},
     { &hf_lpp_gloAlmDeltaIa,
       { "gloAlmDeltaIa", "lpp.gloAlmDeltaIa",
-        FT_INT32, BASE_CUSTOM, &lpp_gloAlmLambdaA_DeltaIa_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloAlmLambdaA_DeltaIa_fmt), 0,
         "INTEGER_M131072_131071", HFILL }},
     { &hf_lpp_gloAlmDeltaTA,
       { "gloAlmDeltaTA", "lpp.gloAlmDeltaTA",
-        FT_INT32, BASE_CUSTOM, &lpp_gloAlmDeltaTA_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloAlmDeltaTA_fmt), 0,
         "INTEGER_M2097152_2097151", HFILL }},
     { &hf_lpp_gloAlmDeltaTdotA,
       { "gloAlmDeltaTdotA", "lpp.gloAlmDeltaTdotA",
-        FT_INT32, BASE_CUSTOM, &lpp_gloAlmDeltaTdotA_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloAlmDeltaTdotA_fmt), 0,
         "INTEGER_M64_63", HFILL }},
     { &hf_lpp_gloAlmEpsilonA,
       { "gloAlmEpsilonA", "lpp.gloAlmEpsilonA",
-        FT_UINT32, BASE_CUSTOM, &lpp_gloAlmEpsilonA_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_gloAlmEpsilonA_fmt), 0,
         "INTEGER_0_32767", HFILL }},
     { &hf_lpp_gloAlmOmegaA,
       { "gloAlmOmegaA", "lpp.gloAlmOmegaA",
-        FT_INT32, BASE_CUSTOM, &lpp_gloAlmOmegaA_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloAlmOmegaA_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_gloAlmTauA,
       { "gloAlmTauA", "lpp.gloAlmTauA",
-        FT_INT32, BASE_CUSTOM, &lpp_gloAlmTauA_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gloAlmTauA_fmt), 0,
         "INTEGER_M512_511", HFILL }},
     { &hf_lpp_gloAlmCA,
       { "gloAlmCA", "lpp.gloAlmCA",
@@ -12959,32 +14215,76 @@ void proto_register_lpp(void) {
         "BIT_STRING_SIZE_8", HFILL }},
     { &hf_lpp_sbasAlmXg,
       { "sbasAlmXg", "lpp.sbasAlmXg",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasAlmXg_Yg_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAlmXg_Yg_fmt), 0,
         "INTEGER_M16384_16383", HFILL }},
     { &hf_lpp_sbasAlmYg,
       { "sbasAlmYg", "lpp.sbasAlmYg",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasAlmXg_Yg_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAlmXg_Yg_fmt), 0,
         "INTEGER_M16384_16383", HFILL }},
     { &hf_lpp_sbasAlmZg,
       { "sbasAlmZg", "lpp.sbasAlmZg",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasAlmZg_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAlmZg_fmt), 0,
         "INTEGER_M256_255", HFILL }},
     { &hf_lpp_sbasAlmXgdot,
       { "sbasAlmXgdot", "lpp.sbasAlmXgdot",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasAlmXgdot_YgDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAlmXgdot_YgDot_fmt), 0,
         "INTEGER_M4_3", HFILL }},
     { &hf_lpp_sbasAlmYgDot,
       { "sbasAlmYgDot", "lpp.sbasAlmYgDot",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasAlmXgdot_YgDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAlmXgdot_YgDot_fmt), 0,
         "INTEGER_M4_3", HFILL }},
     { &hf_lpp_sbasAlmZgDot,
       { "sbasAlmZgDot", "lpp.sbasAlmZgDot",
-        FT_INT32, BASE_CUSTOM, &lpp_sbasAlmZgDot_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAlmZgDot_fmt), 0,
         "INTEGER_M8_7", HFILL }},
     { &hf_lpp_sbasAlmTo,
       { "sbasAlmTo", "lpp.sbasAlmTo",
-        FT_UINT32, BASE_CUSTOM, &lpp_sbasAlmTo_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_sbasAlmTo_fmt), 0,
         "INTEGER_0_2047", HFILL }},
+    { &hf_lpp_bdsAlmToa_r12,
+      { "bdsAlmToa-r12", "lpp.bdsAlmToa_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmToa_r12_fmt), 0,
+        "INTEGER_0_255", HFILL }},
+    { &hf_lpp_bdsAlmSqrtA_r12,
+      { "bdsAlmSqrtA-r12", "lpp.bdsAlmSqrtA_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmSqrtA_r12_fmt), 0,
+        "INTEGER_0_16777215", HFILL }},
+    { &hf_lpp_bdsAlmE_r12,
+      { "bdsAlmE-r12", "lpp.bdsAlmE_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmE_r12_fmt), 0,
+        "INTEGER_0_131071", HFILL }},
+    { &hf_lpp_bdsAlmW_r12,
+      { "bdsAlmW-r12", "lpp.bdsAlmW_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmW_M0_Omega0_r12_fmt), 0,
+        "INTEGER_M8388608_8388607", HFILL }},
+    { &hf_lpp_bdsAlmM0_r12,
+      { "bdsAlmM0-r12", "lpp.bdsAlmM0_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmW_M0_Omega0_r12_fmt), 0,
+        "INTEGER_M8388608_8388607", HFILL }},
+    { &hf_lpp_bdsAlmOmega0_r12,
+      { "bdsAlmOmega0-r12", "lpp.bdsAlmOmega0_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmW_M0_Omega0_r12_fmt), 0,
+        "INTEGER_M8388608_8388607", HFILL }},
+    { &hf_lpp_bdsAlmOmegaDot_r12,
+      { "bdsAlmOmegaDot-r12", "lpp.bdsAlmOmegaDot_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmOmegaDot_r12_fmt), 0,
+        "INTEGER_M65536_65535", HFILL }},
+    { &hf_lpp_bdsAlmDeltaI_r12,
+      { "bdsAlmDeltaI-r12", "lpp.bdsAlmDeltaI_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmDeltaI_r12_fmt), 0,
+        "INTEGER_M32768_32767", HFILL }},
+    { &hf_lpp_bdsAlmA0_r12,
+      { "bdsAlmA0-r12", "lpp.bdsAlmA0_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmA0_r12_fmt), 0,
+        "INTEGER_M1024_1023", HFILL }},
+    { &hf_lpp_bdsAlmA1_r12,
+      { "bdsAlmA1-r12", "lpp.bdsAlmA1_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bdsAlmA1_r12_fmt), 0,
+        "INTEGER_M1024_1023", HFILL }},
+    { &hf_lpp_bdsSvHealth_r12,
+      { "bdsSvHealth-r12", "lpp.bdsSvHealth_r12",
+        FT_BYTES, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
     { &hf_lpp_utcModel1,
       { "utcModel1", "lpp.utcModel1_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -13001,17 +14301,21 @@ void proto_register_lpp(void) {
       { "utcModel4", "lpp.utcModel4_element",
         FT_NONE, BASE_NONE, NULL, 0,
         "UTC_ModelSet4", HFILL }},
+    { &hf_lpp_utcModel5_r12,
+      { "utcModel5-r12", "lpp.utcModel5_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        "UTC_ModelSet5_r12", HFILL }},
     { &hf_lpp_gnss_Utc_A1,
       { "gnss-Utc-A1", "lpp.gnss_Utc_A1",
-        FT_INT32, BASE_CUSTOM, &lpp_gnss_Utc_A1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_Utc_A1_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_gnss_Utc_A0,
       { "gnss-Utc-A0", "lpp.gnss_Utc_A0",
-        FT_INT32, BASE_CUSTOM, &lpp_gnss_Utc_A0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_Utc_A0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_gnss_Utc_Tot,
       { "gnss-Utc-Tot", "lpp.gnss_Utc_Tot",
-        FT_UINT32, BASE_CUSTOM, &lpp_gnss_Utc_Tot_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_Utc_Tot_fmt), 0,
         "INTEGER_0_255", HFILL }},
     { &hf_lpp_gnss_Utc_WNt,
       { "gnss-Utc-WNt", "lpp.gnss_Utc_WNt",
@@ -13035,15 +14339,15 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_utcA0,
       { "utcA0", "lpp.utcA0",
-        FT_INT32, BASE_CUSTOM, &lpp_tA0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_tA0_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_utcA1,
       { "utcA1", "lpp.utcA1",
-        FT_INT32, BASE_CUSTOM, &lpp_tA1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_tA1_fmt), 0,
         "INTEGER_M4096_4095", HFILL }},
     { &hf_lpp_utcA2,
       { "utcA2", "lpp.utcA2",
-        FT_INT32, BASE_CUSTOM, &lpp_tA2_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_tA2_fmt), 0,
         "INTEGER_M64_63", HFILL }},
     { &hf_lpp_utcDeltaTls,
       { "utcDeltaTls", "lpp.utcDeltaTls",
@@ -13051,7 +14355,7 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_utcTot,
       { "utcTot", "lpp.utcTot",
-        FT_UINT32, BASE_CUSTOM, &lpp_gnss_TimeModelRefTime_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_TimeModelRefTime_fmt), 0,
         "INTEGER_0_65535", HFILL }},
     { &hf_lpp_utcWNot,
       { "utcWNot", "lpp.utcWNot",
@@ -13075,15 +14379,15 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_tauC,
       { "tauC", "lpp.tauC",
-        FT_INT32, BASE_CUSTOM, &lpp_tauC_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_tauC_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_b1,
       { "b1", "lpp.b1",
-        FT_INT32, BASE_CUSTOM, &lpp_b1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_b1_fmt), 0,
         "INTEGER_M1024_1023", HFILL }},
     { &hf_lpp_b2,
       { "b2", "lpp.b2",
-        FT_INT32, BASE_CUSTOM, &lpp_b2_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_b2_fmt), 0,
         "INTEGER_M512_511", HFILL }},
     { &hf_lpp_kp,
       { "kp", "lpp.kp",
@@ -13091,15 +14395,15 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_utcA1wnt,
       { "utcA1wnt", "lpp.utcA1wnt",
-        FT_INT32, BASE_CUSTOM, &lpp_gnss_Utc_A1_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_Utc_A1_fmt), 0,
         "INTEGER_M8388608_8388607", HFILL }},
     { &hf_lpp_utcA0wnt,
       { "utcA0wnt", "lpp.utcA0wnt",
-        FT_INT32, BASE_CUSTOM, &lpp_gnss_Utc_A0_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_Utc_A0_fmt), 0,
         "INTEGER_M2147483648_2147483647", HFILL }},
     { &hf_lpp_utcTot_01,
       { "utcTot", "lpp.utcTot",
-        FT_UINT32, BASE_CUSTOM, &lpp_gnss_Utc_Tot_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_Utc_Tot_fmt), 0,
         "INTEGER_0_255", HFILL }},
     { &hf_lpp_utcWNt,
       { "utcWNt", "lpp.utcWNt",
@@ -13125,6 +14429,30 @@ void proto_register_lpp(void) {
       { "utcStandardID", "lpp.utcStandardID",
         FT_UINT8, BASE_DEC, VALS(lpp_utcStandardID_vals), 0,
         "INTEGER_0_7", HFILL }},
+    { &hf_lpp_utcA0_r12,
+      { "utcA0-r12", "lpp.utcA0_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_Utc_A0_fmt), 0,
+        "INTEGER_M2147483648_2147483647", HFILL }},
+    { &hf_lpp_utcA1_r12,
+      { "utcA1-r12", "lpp.utcA1_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_gnss_Utc_A1_fmt), 0,
+        "INTEGER_M8388608_8388607", HFILL }},
+    { &hf_lpp_utcDeltaTls_r12,
+      { "utcDeltaTls-r12", "lpp.utcDeltaTls_r12",
+        FT_INT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_utcWNlsf_r12,
+      { "utcWNlsf-r12", "lpp.utcWNlsf_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_utcDN_r12,
+      { "utcDN-r12", "lpp.utcDN_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_utcDeltaTlsf_r12,
+      { "utcDeltaTlsf-r12", "lpp.utcDeltaTlsf_r12",
+        FT_INT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
     { &hf_lpp_gnss_ID_GPS,
       { "gnss-ID-GPS", "lpp.gnss_ID_GPS",
         FT_UINT32, BASE_DEC, NULL, 0,
@@ -13149,6 +14477,62 @@ void proto_register_lpp(void) {
       { "channelNumber", "lpp.channelNumber",
         FT_INT32, BASE_DEC, NULL, 0,
         "INTEGER_M7_13", HFILL }},
+    { &hf_lpp_dbds_RefTime_r12,
+      { "dbds-RefTime-r12", "lpp.dbds_RefTime_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_bds_SgnTypeList_r12,
+      { "bds-SgnTypeList-r12", "lpp.bds_SgnTypeList_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_BDS_SgnTypeList_r12_item,
+      { "BDS-SgnTypeElement-r12", "lpp.BDS_SgnTypeElement_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_dbds_CorrectionList_r12,
+      { "dbds-CorrectionList-r12", "lpp.dbds_CorrectionList_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_DBDS_CorrectionList_r12_item,
+      { "DBDS-CorrectionElement-r12", "lpp.DBDS_CorrectionElement_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_bds_UDREI_r12,
+      { "bds-UDREI-r12", "lpp.bds_UDREI_r12",
+        FT_UINT8, BASE_DEC|BASE_EXT_STRING, &lpp_bds_UDREI_vals_ext, 0,
+        "INTEGER_0_15", HFILL }},
+    { &hf_lpp_bds_RURAI_r12,
+      { "bds-RURAI-r12", "lpp.bds_RURAI_r12",
+        FT_UINT8, BASE_DEC|BASE_EXT_STRING, &lpp_bds_RURAI_vals_ext, 0,
+        "INTEGER_0_15", HFILL }},
+    { &hf_lpp_bds_ECC_DeltaT_r12,
+      { "bds-ECC-DeltaT-r12", "lpp.bds_ECC_DeltaT_r12",
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_bds_ECC_DeltaT_r12_fmt), 0,
+        "INTEGER_M4096_4095", HFILL }},
+    { &hf_lpp_bds_RefTime_r12,
+      { "bds-RefTime-r12", "lpp.bds_RefTime_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_gridIonList_r12,
+      { "gridIonList-r12", "lpp.gridIonList_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_GridIonList_r12_item,
+      { "GridIonElement-r12", "lpp.GridIonElement_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_igp_ID_r12,
+      { "igp-ID-r12", "lpp.igp_ID_r12",
+        FT_UINT32, BASE_DEC, NULL, 0,
+        "INTEGER_1_320", HFILL }},
+    { &hf_lpp_dt_r12,
+      { "dt-r12", "lpp.dt_r12",
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_bds_GridIonElement_dt_r12_fmt), 0,
+        "INTEGER_0_511", HFILL }},
+    { &hf_lpp_givei_r12,
+      { "givei-r12", "lpp.givei_r12",
+        FT_UINT8, BASE_DEC|BASE_EXT_STRING, &lpp_bds_givei_vals_ext, 0,
+        "INTEGER_0_15", HFILL }},
     { &hf_lpp_gnss_CommonAssistDataReq,
       { "gnss-CommonAssistDataReq", "lpp.gnss_CommonAssistDataReq_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -13211,6 +14595,14 @@ void proto_register_lpp(void) {
         "GNSS_UTC_ModelReq", HFILL }},
     { &hf_lpp_gnss_AuxiliaryInformationReq,
       { "gnss-AuxiliaryInformationReq", "lpp.gnss_AuxiliaryInformationReq_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_bds_DifferentialCorrectionsReq_r12,
+      { "bds-DifferentialCorrectionsReq-r12", "lpp.bds_DifferentialCorrectionsReq_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_bds_GridModelReq_r12,
+      { "bds-GridModelReq-r12", "lpp.bds_GridModelReq_r12_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
     { &hf_lpp_gnss_TimeReqPrefList,
@@ -13371,11 +14763,11 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_gnss_TOD_frac,
       { "gnss-TOD-frac", "lpp.gnss_TOD_frac",
-        FT_UINT32, BASE_CUSTOM, &lpp_fractionalSecondsFromFrameStructureStart_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_fractionalSecondsFromFrameStructureStart_fmt), 0,
         "INTEGER_0_3999", HFILL }},
     { &hf_lpp_gnss_TOD_unc,
       { "gnss-TOD-unc", "lpp.gnss_TOD_unc",
-        FT_UINT32, BASE_CUSTOM, &lpp_referenceTimeUnc_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_referenceTimeUnc_fmt), 0,
         "INTEGER_0_127", HFILL }},
     { &hf_lpp_networkTime_01,
       { "networkTime", "lpp.networkTime",
@@ -13471,7 +14863,7 @@ void proto_register_lpp(void) {
         "INTEGER_0_3", HFILL }},
     { &hf_lpp_codePhase_01,
       { "codePhase", "lpp.codePhase",
-        FT_UINT32, BASE_CUSTOM, &lpp_GNSS_SatMeas_codePhase_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_GNSS_SatMeas_codePhase_fmt), 0,
         "INTEGER_0_2097151", HFILL }},
     { &hf_lpp_integerCodePhase,
       { "integerCodePhase", "lpp.integerCodePhase",
@@ -13479,15 +14871,15 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
     { &hf_lpp_codePhaseRMSError,
       { "codePhaseRMSError", "lpp.codePhaseRMSError",
-        FT_UINT32, BASE_CUSTOM, &lpp_codePhaseRMSError_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_codePhaseRMSError_fmt), 0,
         "INTEGER_0_63", HFILL }},
     { &hf_lpp_doppler,
       { "doppler", "lpp.doppler",
-        FT_INT32, BASE_CUSTOM, &lpp_doppler_fmt, 0,
+        FT_INT32, BASE_CUSTOM, CF_FUNC(lpp_doppler_fmt), 0,
         "INTEGER_M32768_32767", HFILL }},
     { &hf_lpp_adr,
       { "adr", "lpp.adr",
-        FT_UINT32, BASE_CUSTOM, &lpp_adr_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_adr_fmt), 0,
         "INTEGER_0_33554431", HFILL }},
     { &hf_lpp_agnss_List,
       { "agnss-List", "lpp.agnss_List_element",
@@ -13633,6 +15025,14 @@ void proto_register_lpp(void) {
       { "gnss-AuxiliaryInformationSupport", "lpp.gnss_AuxiliaryInformationSupport_element",
         FT_NONE, BASE_NONE, NULL, 0,
         NULL, HFILL }},
+    { &hf_lpp_bds_DifferentialCorrectionsSupport_r12,
+      { "bds-DifferentialCorrectionsSupport-r12", "lpp.bds_DifferentialCorrectionsSupport_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
+    { &hf_lpp_bds_GridModelSupport_r12,
+      { "bds-GridModelSupport-r12", "lpp.bds_GridModelSupport_r12_element",
+        FT_NONE, BASE_NONE, NULL, 0,
+        NULL, HFILL }},
     { &hf_lpp_gnssSignalIDs,
       { "gnssSignalIDs", "lpp.gnssSignalIDs_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -13759,15 +15159,15 @@ void proto_register_lpp(void) {
         "ARFCN_ValueEUTRA", HFILL }},
     { &hf_lpp_rsrp_Result,
       { "rsrp-Result", "lpp.rsrp_Result",
-        FT_UINT32, BASE_CUSTOM, &lpp_rsrp_Result_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_rsrp_Result_fmt), 0,
         "INTEGER_0_97", HFILL }},
     { &hf_lpp_rsrq_Result,
       { "rsrq-Result", "lpp.rsrq_Result",
-        FT_UINT32, BASE_CUSTOM, &lpp_rsrq_Result_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_rsrq_Result_fmt), 0,
         "INTEGER_0_34", HFILL }},
     { &hf_lpp_ue_RxTxTimeDiff,
       { "ue-RxTxTimeDiff", "lpp.ue_RxTxTimeDiff",
-        FT_UINT32, BASE_CUSTOM, &lpp_ue_RxTxTimeDiff_fmt, 0,
+        FT_UINT32, BASE_CUSTOM, CF_FUNC(lpp_ue_RxTxTimeDiff_fmt), 0,
         "INTEGER_0_4095", HFILL }},
     { &hf_lpp_arfcnEUTRA_v9a0,
       { "arfcnEUTRA-v9a0", "lpp.arfcnEUTRA_v9a0",
@@ -13865,6 +15265,10 @@ void proto_register_lpp(void) {
       { "model-5", "lpp.model-5",
         FT_BOOLEAN, 8, NULL, 0x08,
         NULL, HFILL }},
+    { &hf_lpp_T_clockModel_model_6,
+      { "model-6", "lpp.model-6",
+        FT_BOOLEAN, 8, NULL, 0x04,
+        NULL, HFILL }},
     { &hf_lpp_T_orbitModel_model_1,
       { "model-1", "lpp.model-1",
         FT_BOOLEAN, 8, NULL, 0x80,
@@ -13884,6 +15288,10 @@ void proto_register_lpp(void) {
     { &hf_lpp_T_orbitModel_model_5,
       { "model-5", "lpp.model-5",
         FT_BOOLEAN, 8, NULL, 0x08,
+        NULL, HFILL }},
+    { &hf_lpp_T_orbitModel_model_6,
+      { "model-6", "lpp.model-6",
+        FT_BOOLEAN, 8, NULL, 0x04,
         NULL, HFILL }},
     { &hf_lpp_T_almanacModel_model_1,
       { "model-1", "lpp.model-1",
@@ -13909,6 +15317,10 @@ void proto_register_lpp(void) {
       { "model-6", "lpp.model-6",
         FT_BOOLEAN, 8, NULL, 0x04,
         NULL, HFILL }},
+    { &hf_lpp_T_almanacModel_model_7,
+      { "model-7", "lpp.model-7",
+        FT_BOOLEAN, 8, NULL, 0x02,
+        NULL, HFILL }},
     { &hf_lpp_T_utc_Model_model_1,
       { "model-1", "lpp.model-1",
         FT_BOOLEAN, 8, NULL, 0x80,
@@ -13924,6 +15336,10 @@ void proto_register_lpp(void) {
     { &hf_lpp_T_utc_Model_model_4,
       { "model-4", "lpp.model-4",
         FT_BOOLEAN, 8, NULL, 0x10,
+        NULL, HFILL }},
+    { &hf_lpp_T_utc_Model_model_5,
+      { "model-5", "lpp.model-5",
+        FT_BOOLEAN, 8, NULL, 0x08,
         NULL, HFILL }},
     { &hf_lpp_T_gnss_ids_gps,
       { "gps", "lpp.gps",
@@ -13944,6 +15360,10 @@ void proto_register_lpp(void) {
     { &hf_lpp_T_gnss_ids_glonass,
       { "glonass", "lpp.glonass",
         FT_BOOLEAN, 8, NULL, 0x08,
+        NULL, HFILL }},
+    { &hf_lpp_T_gnss_ids_bds,
+      { "bds", "lpp.bds",
+        FT_BOOLEAN, 8, NULL, 0x04,
         NULL, HFILL }},
     { &hf_lpp_T_sbas_IDs_waas,
       { "waas", "lpp.waas",
@@ -13987,13 +15407,53 @@ void proto_register_lpp(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-lpp-hfarr.c ---*/
-#line 1365 "../../asn1/lpp/packet-lpp-template.c"
+#line 1649 "../../asn1/lpp/packet-lpp-template.c"
+    { &hf_lpp_svHealthExt_v1240_e5bhs,
+      { "E5b Signal Health Status", "lpp.svHealthExt_v1240.e5bhs",
+        FT_UINT8, BASE_DEC, VALS(lpp_signal_health_status_vals), 0,
+        NULL, HFILL }},
+    { &hf_lpp_svHealthExt_v1240_e1_bhs,
+      { "E1-B Signal Health Status", "lpp.svHealthExt_v1240.e1_bhs",
+        FT_UINT8, BASE_DEC, VALS(lpp_signal_health_status_vals), 0,
+        NULL, HFILL }},
+    { &hf_lpp_kepSV_StatusINAV_e5bhs,
+      { "E5b Signal Health Status", "lpp.kepSV_StatusINAV.e5bhs",
+        FT_UINT8, BASE_DEC, VALS(lpp_signal_health_status_vals), 0,
+        NULL, HFILL }},
+    { &hf_lpp_kepSV_StatusINAV_e1_bhs,
+      { "E1-B Signal Health Status", "lpp.kepSV_StatusINAV.e1_bhs",
+        FT_UINT8, BASE_DEC, VALS(lpp_signal_health_status_vals), 0,
+        NULL, HFILL }},
+    { &hf_lpp_kepSV_StatusFNAV_e5ahs,
+      { "E5a Signal Health Status", "lpp.kepSV_StatusFNAV.e5ahs",
+        FT_UINT8, BASE_DEC, VALS(lpp_signal_health_status_vals), 0,
+        NULL, HFILL }},
+    { &hf_lpp_bdsSvHealth_r12_sat_clock,
+      { "Satellite Clock", "lpp.bdsSvHealth_r12.sat_clock",
+        FT_BOOLEAN, BASE_NONE, TFS(&tfs_ok_error), 0,
+        NULL, HFILL }},
+    { &hf_lpp_bdsSvHealth_r12_b1i,
+      { "B1I Signal", "lpp.bdsSvHealth_r12.b1i",
+        FT_BOOLEAN, BASE_NONE, TFS(&lpp_bdsSvHealth_r12_b1i_b2i_value), 0,
+        NULL, HFILL }},
+    { &hf_lpp_bdsSvHealth_r12_b2i,
+      { "B2I Signal", "lpp.bdsSvHealth_r12.b2i",
+        FT_BOOLEAN, BASE_NONE, TFS(&lpp_bdsSvHealth_r12_b1i_b2i_value), 0,
+        NULL, HFILL }},
+    { &hf_lpp_bdsSvHealth_r12_nav,
+      { "NAV Message", "lpp.bdsSvHealth_r12.nav",
+        FT_BOOLEAN, BASE_NONE, TFS(&lpp_bdsSvHealth_r12_nav_value), 0,
+        NULL, HFILL }}
   };
 
   /* List of subtrees */
   static gint *ett[] = {
     &ett_lpp,
     &ett_lpp_bitmap,
+    &ett_lpp_svHealthExt_v1240,
+    &ett_kepSV_StatusINAV,
+    &ett_kepSV_StatusFNAV,
+    &ett_lpp_bdsSvHealth_r12,
 
 /*--- Included file: packet-lpp-ettarr.c ---*/
 #line 1 "../../asn1/lpp/packet-lpp-ettarr.c"
@@ -14156,6 +15616,7 @@ void proto_register_lpp(void) {
     &ett_lpp_CNAV_ClockModel,
     &ett_lpp_GLONASS_ClockModel,
     &ett_lpp_SBAS_ClockModel,
+    &ett_lpp_BDS_ClockModel_r12,
     &ett_lpp_NavModelKeplerianSet,
     &ett_lpp_NavModelNAV_KeplerianSet,
     &ett_lpp_T_addNAVparam,
@@ -14163,6 +15624,7 @@ void proto_register_lpp(void) {
     &ett_lpp_NavModelCNAV_KeplerianSet,
     &ett_lpp_NavModel_GLONASS_ECEF,
     &ett_lpp_NavModel_SBAS_ECEF,
+    &ett_lpp_NavModel_BDS_KeplerianSet_r12,
     &ett_lpp_GNSS_RealTimeIntegrity,
     &ett_lpp_GNSS_BadSignalList,
     &ett_lpp_BadSignalElement,
@@ -14183,16 +15645,26 @@ void proto_register_lpp(void) {
     &ett_lpp_AlmanacMidiAlmanacSet,
     &ett_lpp_AlmanacGLONASS_AlmanacSet,
     &ett_lpp_AlmanacECEF_SBAS_AlmanacSet,
+    &ett_lpp_AlmanacBDS_AlmanacSet_r12,
     &ett_lpp_GNSS_UTC_Model,
     &ett_lpp_UTC_ModelSet1,
     &ett_lpp_UTC_ModelSet2,
     &ett_lpp_UTC_ModelSet3,
     &ett_lpp_UTC_ModelSet4,
+    &ett_lpp_UTC_ModelSet5_r12,
     &ett_lpp_GNSS_AuxiliaryInformation,
     &ett_lpp_GNSS_ID_GPS,
     &ett_lpp_GNSS_ID_GPS_SatElement,
     &ett_lpp_GNSS_ID_GLONASS,
     &ett_lpp_GNSS_ID_GLONASS_SatElement,
+    &ett_lpp_BDS_DifferentialCorrections_r12,
+    &ett_lpp_BDS_SgnTypeList_r12,
+    &ett_lpp_BDS_SgnTypeElement_r12,
+    &ett_lpp_DBDS_CorrectionList_r12,
+    &ett_lpp_DBDS_CorrectionElement_r12,
+    &ett_lpp_BDS_GridModelParameter_r12,
+    &ett_lpp_GridIonList_r12,
+    &ett_lpp_GridIonElement_r12,
     &ett_lpp_A_GNSS_RequestAssistanceData,
     &ett_lpp_GNSS_CommonAssistDataReq,
     &ett_lpp_GNSS_GenericAssistDataReq,
@@ -14220,6 +15692,8 @@ void proto_register_lpp(void) {
     &ett_lpp_GNSS_AlmanacReq,
     &ett_lpp_GNSS_UTC_ModelReq,
     &ett_lpp_GNSS_AuxiliaryInformationReq,
+    &ett_lpp_BDS_DifferentialCorrectionsReq_r12,
+    &ett_lpp_BDS_GridModelReq_r12,
     &ett_lpp_A_GNSS_ProvideLocationInformation,
     &ett_lpp_GNSS_SignalMeasurementInformation,
     &ett_lpp_MeasurementReferenceTime,
@@ -14266,6 +15740,8 @@ void proto_register_lpp(void) {
     &ett_lpp_GNSS_UTC_ModelSupport,
     &ett_lpp_T_utc_Model,
     &ett_lpp_GNSS_AuxiliaryInformationSupport,
+    &ett_lpp_BDS_DifferentialCorrectionsSupport_r12,
+    &ett_lpp_BDS_GridModelSupport_r12,
     &ett_lpp_A_GNSS_RequestCapabilities,
     &ett_lpp_A_GNSS_Error,
     &ett_lpp_GNSS_LocationServerErrorCauses,
@@ -14293,7 +15769,7 @@ void proto_register_lpp(void) {
     &ett_lpp_ECID_TargetDeviceErrorCauses,
 
 /*--- End of included file: packet-lpp-ettarr.c ---*/
-#line 1372 "../../asn1/lpp/packet-lpp-template.c"
+#line 1696 "../../asn1/lpp/packet-lpp-template.c"
   };
 
 

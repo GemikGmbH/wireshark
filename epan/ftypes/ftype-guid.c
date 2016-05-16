@@ -84,12 +84,13 @@ get_guid(const char *s, e_guid_t *guid)
 }
 
 static gboolean
-guid_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, LogFunc logfunc)
+guid_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, gchar **err_msg)
 {
      e_guid_t guid;
 
     if (!get_guid(s, &guid)) {
-        logfunc("\"%s\" is not a valid GUID.", s);
+        if (err_msg != NULL)
+            *err_msg = g_strdup_printf("\"%s\" is not a valid GUID.", s);
         return FALSE;
     }
 
@@ -98,13 +99,13 @@ guid_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_
 }
 
 static int
-guid_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_)
+guid_repr_len(fvalue_t *fv _U_, ftrepr_t rtype _U_, int field_display _U_)
 {
     return GUID_STR_LEN;
 }
 
 static void
-guid_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, char *buf)
+guid_to_repr(fvalue_t *fv, ftrepr_t rtype _U_, int field_display _U_, char *buf)
 {
     guid_to_str_buf(&fv->value.guid, buf, GUID_STR_LEN);
 }
@@ -145,13 +146,15 @@ ftype_register_guid(void)
         NULL,                /* set_value_tvbuff */
         NULL,                /* set_value_uinteger */
         NULL,                /* set_value_sinteger */
-        NULL,                /* set_value_integer64 */
+        NULL,                /* set_value_uinteger64 */
+        NULL,                /* set_value_sinteger64 */
         NULL,                /* set_value_floating */
 
         value_get,           /* get_value */
         NULL,                /* get_value_uinteger */
         NULL,                /* get_value_sinteger */
-        NULL,                /* get_value_integer64 */
+        NULL,                /* get_value_uinteger64 */
+        NULL,                /* get_value_sinteger64 */
         NULL,                /* get_value_floating */
 
         cmp_eq,
@@ -170,3 +173,16 @@ ftype_register_guid(void)
 
     ftype_register(FT_GUID, &guid_type);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

@@ -26,14 +26,9 @@
 
 #include "config.h"
 
-#include <string.h>
-
-#include <glib.h>
 
 #include <epan/packet.h>
-#include <epan/strutil.h>
 #include <epan/conversation.h>
-#include <epan/wmem/wmem.h>
 #include <epan/prefs.h>
 
 void proto_register_rsync(void);
@@ -130,12 +125,18 @@ dissect_rsync_version_header(tvbuff_t *tvb, packet_info *pinfo, proto_tree *rsyn
 {
     int   offset = 0;
     guint8 *version;
+    guint len;
 
     proto_tree_add_item(rsync_tree, &hfi_rsync_hdr_magic, tvb, offset, RSYNCD_MAGIC_HEADER_LEN, ENC_ASCII|ENC_NA);
     offset += RSYNCD_MAGIC_HEADER_LEN;
     offset += 1; /* skip the space */
-    proto_tree_add_item(rsync_tree, &hfi_rsync_hdr_version, tvb, offset, VERSION_LEN, ENC_ASCII|ENC_NA);
-    version = tvb_get_string_enc(wmem_packet_scope(),tvb, offset, VERSION_LEN, ENC_ASCII|ENC_NA);
+    proto_tree_add_item(rsync_tree, &hfi_rsync_hdr_version, tvb, offset, -1, ENC_ASCII|ENC_NA);
+    len = tvb_reported_length_remaining(tvb, offset);
+    version = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, len, ENC_ASCII|ENC_NA);
+
+    /* VERSION string can contain undesirable char (like \n) at the end. Trim it. */
+    if (len > 0 && version[len - 1] == '\n')
+        version[len - 1] = 0x0;
 
     col_add_fstr(pinfo->cinfo, COL_INFO, "%s Initialisation (Version %s)", (me == SERVER ? "Server" : "Client"), version);
 }
@@ -206,7 +207,7 @@ dissect_rsync_encap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         case RSYNC_MODULE_LIST:
             /* there are two cases - file list, or authentication */
             if (0 == tvb_strneql(tvb, offset, RSYNCD_AUTHREQD, RSYNCD_AUTHREQD_LEN)) {
-                /* matches, so we assume its an authentication message */
+                /* matches, so we assume it's an authentication message */
                 proto_tree_add_item(rsync_tree, &hfi_rsync_rsyncdok_string, tvb, offset, -1, ENC_ASCII|ENC_NA);
 
                 col_set_str(pinfo->cinfo, COL_INFO, "Authentication");
@@ -217,7 +218,7 @@ dissect_rsync_encap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                 proto_tree_add_item(rsync_tree, &hfi_rsync_module_list_string, tvb, offset, -1, ENC_ASCII|ENC_NA);
 
                 /* we need to check the end of the buffer for magic string */
-                buff_length = tvb_length_remaining(tvb, offset);
+                buff_length = tvb_captured_length_remaining(tvb, offset);
                 if (buff_length > RSYNCD_EXIT_LEN &&
                     0 == tvb_strneql(tvb, buff_length-RSYNCD_EXIT_LEN-1, RSYNCD_EXIT, RSYNCD_EXIT_LEN)) {
             /* that's all, folks */
@@ -260,9 +261,9 @@ dissect_rsync_encap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 
             conversation_data->client_state = RSYNC_COMMAND;
 
-            if (tvb_length(tvb) == RSYNC_MODULE_LIST_QUERY_LEN &&
+            if (tvb_captured_length(tvb) == RSYNC_MODULE_LIST_QUERY_LEN &&
                 0 == tvb_strneql(tvb, offset, RSYNC_MODULE_LIST_QUERY, RSYNC_MODULE_LIST_QUERY_LEN)) {
-        conversation_data->server_state = RSYNC_MODULE_LIST;
+                conversation_data->server_state = RSYNC_MODULE_LIST;
             } else {
                 conversation_data->server_state = RSYNC_DATA;
             }
@@ -294,7 +295,7 @@ dissect_rsync_encap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         break;
         }
     }
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 /* Packet dissection routine called by tcp (& udp) when port 873 detected */

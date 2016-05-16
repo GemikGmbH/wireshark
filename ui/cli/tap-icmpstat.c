@@ -34,7 +34,7 @@
 
 #include "epan/packet_info.h"
 #include <epan/tap.h>
-#include <epan/stat_cmd_args.h>
+#include <epan/stat_tap_ui.h>
 #include <epan/dissectors/packet-icmp.h>
 #include <math.h>
 
@@ -110,10 +110,10 @@ static gint compare_doubles(gconstpointer a, gconstpointer b)
  * "icmp" tap, the third parameter type is icmp_transaction_t.
  *
  * function returns :
- *  0: no updates, no need to call (*draw) later
- * !0: state has changed, call (*draw) sometime later
+ *  FALSE: no updates, no need to call (*draw) later
+ *  TRUE: state has changed, call (*draw) sometime later
  */
-static int
+static gboolean
 icmpstat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *data)
 {
     icmpstat_t *icmpstat = (icmpstat_t *)tapdata;
@@ -121,13 +121,13 @@ icmpstat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, 
     double resp_time, *rt;
 
     if (trans == NULL)
-        return 0;
+        return FALSE;
 
     if (trans->resp_frame) {
         resp_time = nstime_to_msec(&trans->resp_time);
-        rt = g_new(double,1);
+        rt = g_new(double, 1);
         if (rt == NULL)
-            return 0;
+            return FALSE;
         *rt = resp_time;
         icmpstat->rt_list = g_slist_prepend(icmpstat->rt_list, rt);
         icmpstat->num_resps++;
@@ -143,9 +143,9 @@ icmpstat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, 
     } else if (trans->rqst_frame)
         icmpstat->num_rqsts++;
     else
-        return 0;
+        return FALSE;
 
-    return 1;
+    return TRUE;
 }
 
 
@@ -264,7 +264,7 @@ icmpstat_draw(void *tapdata)
  * instance for the icmp tap.
  */
 static void
-icmpstat_init(const char *opt_arg, void* userdata _U_)
+icmpstat_init(const char *opt_arg, void *userdata _U_)
 {
     icmpstat_t *icmpstat;
     const char *filter = NULL;
@@ -309,10 +309,30 @@ icmpstat_init(const char *opt_arg, void* userdata _U_)
     }
 }
 
+static stat_tap_ui icmpstat_ui = {
+    REGISTER_STAT_GROUP_GENERIC,
+    NULL,
+    "icmp,srt",
+    icmpstat_init,
+    0,
+    NULL
+};
 
 void
 register_tap_listener_icmpstat(void)
 {
-    register_stat_cmd_arg("icmp,srt", icmpstat_init, NULL);
+    register_stat_tap_ui(&icmpstat_ui, NULL);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

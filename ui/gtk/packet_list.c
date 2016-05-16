@@ -25,46 +25,34 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <gtk/gtk.h>
-#include <glib.h>
 
-#include <epan/column-info.h>
 #include <epan/prefs.h>
 #include <epan/packet.h>
-#include <epan/epan_dissect.h>
 #include <epan/column.h>
 #include <epan/strutil.h>
-#include <epan/emem.h>
+#include <epan/plugin_if.h>
 
 #include "ui/main_statusbar.h"
 #include "ui/packet_list_utils.h"
 #include "ui/preference_utils.h"
-#include "ui/progress_dlg.h"
 #include "ui/recent.h"
 #include "ui/recent_utils.h"
-#include "ui/ui_util.h"
 
-#include "gui_utils.h"
 #include "packet_list_store.h"
 #include "ui/gtk/packet_list.h"
-#include "globals.h"
 #include "ui/gtk/gtkglobals.h"
 #include "ui/gtk/font_utils.h"
 #include "ui/gtk/packet_history.h"
 #include "ui/gtk/keys.h"
 #include "ui/gtk/menus.h"
-#include "color.h"
 #include "color_filters.h"
 #include "ui/gtk/color_utils.h"
-#include "ui/gtk/capture_file_dlg.h"
 #include "ui/gtk/packet_win.h"
 #include "ui/gtk/main.h"
-#include "ui/gtk/prefs_column.h"
-#include "ui/gtk/prefs_dlg.h"
 #include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/filter_dlg.h"
 #include "ui/gtk/filter_autocomplete.h"
@@ -190,7 +178,8 @@ col_title_change_ok (GtkWidget *w, gpointer parent_w)
 	}
 
 	if (cur_fmt == COL_CUSTOM) {
-		if (strcmp (name, get_column_custom_field(col_id)) != 0) {
+		const gchar *custom_field = get_column_custom_field(col_id);
+		if ((custom_field && strcmp (name, custom_field) != 0) || (custom_field == NULL)) {
 			set_column_custom_field (col_id, name);
 			recreate = TRUE;
 		}
@@ -310,12 +299,12 @@ col_details_edit_dlg (gint col_id, GtkTreeViewColumn *col)
 			      "This string has the same syntax as a display filter string.");
 	field_te = gtk_entry_new();
 	ws_gtk_grid_attach_defaults(GTK_GRID(main_grid), field_te, 1, 2, 1, 1);
-	g_object_set_data (G_OBJECT(field_te), E_FILT_FIELD_NAME_ONLY_KEY, (gpointer)"");
+	g_object_set_data (G_OBJECT(field_te), E_FILT_MULTI_FIELD_NAME_ONLY_KEY, (gpointer)"");
 	g_signal_connect(field_te, "changed", G_CALLBACK(filter_te_syntax_check_cb), NULL);
 	g_signal_connect(field_te, "key-press-event", G_CALLBACK (filter_string_te_key_pressed_cb), NULL);
 	g_signal_connect(win, "key-press-event", G_CALLBACK (filter_parent_dlg_key_pressed_cb), NULL);
 	gtk_widget_set_tooltip_text(field_te,
-			      "Field name used when field type is \"Custom\". "
+			      "Field names used when field type is \"Custom\". "
 			      "This string has the same syntax as a display filter string.");
 
 	occurrence_lb = gtk_label_new("Occurrence:");
@@ -613,6 +602,12 @@ packet_list_column_button_pressed_cb (GtkWidget *widget, GdkEvent *event, gpoint
 	return popup_menu_handler (widget, event, menu);
 }
 
+static gboolean packet_list_recreate_delayed(gpointer user_data _U_)
+{
+	packet_list_recreate();
+	return FALSE;
+}
+
 static void
 column_dnd_changed_cb(GtkTreeView *tree_view, gpointer data _U_)
 {
@@ -648,7 +643,9 @@ column_dnd_changed_cb(GtkTreeView *tree_view, gpointer data _U_)
 		prefs_main_write();
 	}
 
-	packet_list_recreate();
+	/* The columns widget is part of the packets list, delay destruction to
+	 * avoid triggering a use-after-free (maybe a GTK3 bug?) */
+	g_idle_add(packet_list_recreate_delayed, NULL);
 }
 
 static GtkWidget *
@@ -659,9 +656,9 @@ create_view_and_model(void)
 	gint i, col_width;
 	gdouble value;
 	gchar *tooltip_text;
-	header_field_info *hfi;
 	gint col_min_width;
 	gchar *escaped_title;
+	col_item_t* col_item;
 
 	packetlist = packet_list_new();
 
@@ -691,6 +688,7 @@ create_view_and_model(void)
 
 	/* We need one extra column to store the entire PacketListRecord */
 	for(i = 0; i < cfile.cinfo.num_cols; i++) {
+		col_item = &cfile.cinfo.columns[i];
 		renderer = gtk_cell_renderer_text_new();
 		col = gtk_tree_view_column_new();
 		gtk_tree_view_column_pack_start(col, renderer, TRUE);
@@ -706,27 +704,8 @@ create_view_and_model(void)
 							show_cell_data_func,
 							GINT_TO_POINTER(i),
 							NULL);
-		if (cfile.cinfo.col_fmt[i] == COL_CUSTOM) {
-			hfi = proto_registrar_get_byname(cfile.cinfo.col_custom_field[i]);
-			/* Check if this is a valid custom_field */
-			if (hfi != NULL) {
-				if (hfi->parent != -1) {
-					/* Prefix with protocol name */
-					if (cfile.cinfo.col_custom_occurrence[i] != 0) {
-						tooltip_text = g_strdup_printf("%s\n%s (%s#%d)", proto_get_protocol_name(hfi->parent), hfi->name, hfi->abbrev, cfile.cinfo.col_custom_occurrence[i]);
-					} else {
-						tooltip_text = g_strdup_printf("%s\n%s (%s)", proto_get_protocol_name(hfi->parent), hfi->name, hfi->abbrev);
-					}
-				} else {
-					tooltip_text = g_strdup_printf("%s (%s)", hfi->name, hfi->abbrev);
-				}
-			} else {
-				tooltip_text = g_strdup_printf("Unknown Field: %s", get_column_custom_field(i));
-			}
-		} else {
-			tooltip_text = g_strdup(col_format_desc(cfile.cinfo.col_fmt[i]));
-		}
-		escaped_title = ws_strdup_escape_char(cfile.cinfo.col_title[i], '_');
+
+		escaped_title = ws_strdup_escape_char(col_item->col_title, '_');
 		gtk_tree_view_column_set_title(col, escaped_title);
 		g_free (escaped_title);
 		gtk_tree_view_column_set_clickable(col, TRUE);
@@ -743,7 +722,7 @@ create_view_and_model(void)
 		 * XXX The minimum size will be the size of the title
 		 * should that be limited for long titles?
 		 */
-		col_min_width = get_default_col_size (packetlist->view, cfile.cinfo.col_title[i]);
+		col_min_width = get_default_col_size (packetlist->view, cfile.cinfo.columns[i].col_title);
 		if(col_min_width<COLUMN_WIDTH_MIN){
 			gtk_tree_view_column_set_min_width(col, COLUMN_WIDTH_MIN);
 		}else{
@@ -770,6 +749,7 @@ create_view_and_model(void)
 
 		gtk_tree_view_append_column(GTK_TREE_VIEW(packetlist->view), col);
 
+		tooltip_text = get_column_tooltip(i);
 		gtk_widget_set_tooltip_text(gtk_tree_view_column_get_button(col), tooltip_text);
 		g_free(tooltip_text);
 		g_signal_connect(gtk_tree_view_column_get_button(col), "button_press_event",
@@ -1233,6 +1213,7 @@ packet_list_get_row_data(gint row)
 	GtkTreeIter iter;
 	frame_data *fdata;
 
+	g_assert(row > 0);
 	gtk_tree_path_append_index(path, row-1);
 	gtk_tree_model_get_iter(GTK_TREE_MODEL(packetlist), &iter, path);
 
@@ -1732,3 +1713,16 @@ query_packet_list_tooltip_cb(GtkWidget *widget, gint x, gint y, gboolean keyboar
 
 	return result;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

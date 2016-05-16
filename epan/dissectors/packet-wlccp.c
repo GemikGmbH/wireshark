@@ -59,8 +59,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/etypes.h>
 #include <epan/oui.h>
@@ -362,8 +360,8 @@ static const value_string wlccp_status_vs[] = {
 };
 
 static const value_string cisco_pid_vals[] = {
-        { 0x0000, "WLCCP" },
-        { 0, NULL         }
+	{ 0x0000, "WLCCP" },
+	{ 0, NULL         }
 };
 
 static const value_string wlccp_mode_vs[] = {
@@ -1009,7 +1007,7 @@ dissect_wlccp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			if(get_tlv_flag() || get_mic_flag())
 			{
 
-				if (tvb_length_remaining(tvb,offset) < 4)
+				if (tvb_reported_length_remaining(tvb,offset) < 4)
 				{
 				/* something is wrong if the TLV flag is set and there's not enough left in the buffer */
 
@@ -1019,7 +1017,7 @@ dissect_wlccp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				else
 				{
 
-					while (tvb_length_remaining(tvb,offset) >= 4)
+					while (tvb_reported_length_remaining(tvb,offset) >= 4)
 					{
 						old_offset = offset;
 						offset = dissect_wlccp_tlvs(wlccp_tree, tvb, offset, 0);
@@ -4129,3 +4127,16 @@ proto_register_wlccp_oui(void)
 	llc_add_oui(OUI_CISCOWL, "llc.wlccp_pid", "LLC Cisco WLCCP OUI PID", hf);
 
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

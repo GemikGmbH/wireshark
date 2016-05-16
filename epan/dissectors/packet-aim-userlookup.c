@@ -23,10 +23,7 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/strutil.h>
 
 #include "packet-aim.h"
 
@@ -44,8 +41,8 @@ static gint ett_aim_userlookup = -1;
 
 static int dissect_aim_userlookup_search(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *lookup_tree)
 {
-	proto_tree_add_item(lookup_tree, hf_aim_userlookup_email, tvb, 0, tvb_length(tvb), ENC_UTF_8|ENC_NA);
-	return tvb_length(tvb);
+	proto_tree_add_item(lookup_tree, hf_aim_userlookup_email, tvb, 0, tvb_reported_length(tvb), ENC_UTF_8|ENC_NA);
+	return tvb_reported_length(tvb);
 }
 
 
@@ -90,3 +87,16 @@ proto_reg_handoff_aim_userlookup(void)
 {
 	aim_init_family(proto_aim_userlookup, ett_aim_userlookup, FAMILY_USERLOOKUP, aim_fnac_family_userlookup);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -22,7 +22,7 @@
  *
  * See
  *
- *	http://h71000.www7.hp.com/wizard/decnet/
+ *    http://h71000.www7.hp.com/wizard/decnet/
  *
  * for some DECnet specifications.
  *
@@ -47,9 +47,7 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include <epan/etypes.h>
 #include <epan/ppptypes.h>
 
@@ -625,7 +623,7 @@ do_hello_test_msg(
     proto_tree_add_item(tree, hf_dec_rt_src_node, tvb,
         my_offset, 2, ENC_LITTLE_ENDIAN);
     my_offset += 2;
-    remainder_count = tvb_length_remaining(tvb, my_offset);
+    remainder_count = tvb_reported_length_remaining(tvb, my_offset);
     if (remainder_count != 0) {
         proto_tree_add_item(tree, hf_dec_rt_test_data, tvb,
             my_offset, remainder_count, ENC_NA);
@@ -652,7 +650,7 @@ do_routing_msg(
         my_offset, 2, ENC_LITTLE_ENDIAN);
     /* Skip the 1-byte reserved field */
     my_offset += 3;
-    remainder_count = tvb_length_remaining(tvb, my_offset);
+    remainder_count = tvb_reported_length_remaining(tvb, my_offset);
     do {
         /* if the remainder_count == 1, only the checksum remains */
         count = tvb_get_letohs(tvb, my_offset);
@@ -704,11 +702,19 @@ do_hello_msg(
     guint msg)
 {
     guint   my_offset = offset;
-    guint8  iinfo, priority;
+    guint8  priority;
     guint16 version, eco_nr, user_eco;
     proto_item *ti;
-    proto_tree *iinfo_tree;
     char *addr;
+    static const int * info_flags[] = {
+        &hf_dec_rt_iinfo_node_type,
+        &hf_dec_rt_iinfo_vrf,
+        &hf_dec_rt_iinfo_rej,
+        &hf_dec_rt_iinfo_verf,
+        &hf_dec_rt_iinfo_mta,
+        &hf_dec_rt_iinfo_blkreq,
+        NULL
+    };
 
     version = tvb_get_guint8(tvb, my_offset);
     eco_nr = tvb_get_guint8(tvb, my_offset + 1);
@@ -724,23 +730,9 @@ do_hello_msg(
         proto_item_append_text(ti, " (%s)", addr);
     }
     my_offset += 6;
-    iinfo = tvb_get_guint8(tvb, my_offset);
-    ti = proto_tree_add_uint(
-        tree, hf_dec_rt_iinfo, tvb, my_offset, 1, iinfo);
-    iinfo_tree = proto_item_add_subtree(ti, ett_dec_rt_info_flags);
-    proto_tree_add_uint(
-        iinfo_tree, hf_dec_rt_iinfo_node_type, tvb, my_offset, 1, iinfo);
-    proto_tree_add_boolean(iinfo_tree, hf_dec_rt_iinfo_vrf,
-        tvb, my_offset, 1, iinfo);
-    proto_tree_add_boolean(iinfo_tree, hf_dec_rt_iinfo_rej,
-        tvb, my_offset, 1, iinfo);
-    proto_tree_add_boolean(iinfo_tree, hf_dec_rt_iinfo_verf,
-        tvb, my_offset, 1, iinfo);
-    proto_tree_add_boolean(iinfo_tree, hf_dec_rt_iinfo_mta,
-        tvb, my_offset, 1, iinfo);
-    proto_tree_add_boolean(iinfo_tree, hf_dec_rt_iinfo_blkreq,
-        tvb, my_offset, 1, iinfo);
+    proto_tree_add_bitmask(tree, tvb, my_offset, hf_dec_rt_iinfo, ett_dec_rt_info_flags, info_flags, ENC_NA);
     my_offset++;
+
     proto_tree_add_item(tree, hf_dec_rt_blk_size, tvb,
         my_offset, 2, ENC_LITTLE_ENDIAN);
     my_offset += 2;
@@ -1035,7 +1027,7 @@ handle_nsp_msg(
                     (ack_num & 0x1000) ? "NAK" : "ACK",
                     ack_num & 0xfff);
 
-            if (tvb_length_remaining(tvb, my_offset) > 0) {
+            if (tvb_reported_length_remaining(tvb, my_offset) > 0) {
                 ack_oth = tvb_get_letohs(tvb, my_offset);
                 if (ack_oth & 0x8000) {
                     /* There is an ack_oth field */
@@ -1059,7 +1051,7 @@ handle_nsp_msg(
                 ack_num & 0xfff);
             my_offset += 2;
             /* There may be an optional ack_dat field */
-            if (tvb_length_remaining(tvb, my_offset) > 0) {
+            if (tvb_reported_length_remaining(tvb, my_offset) > 0) {
                 ack_dat = tvb_get_letohs(tvb, my_offset);
                 if (ack_dat & 0x8000) {
                     /* There is an ack_dat field */
@@ -1306,7 +1298,7 @@ proto_register_dec_rt(void)
           { "Nodes visited ty this package", "dec_dna.vst_node",
             FT_UINT8,    BASE_DEC,    NULL,   0x0,
             "Nodes visited", HFILL }},
-        /* Control messsage items */
+        /* Control message items */
         { &hf_dec_ctl_msgs,
           { "Routing control message",        "dec_dna.rt.msg_type",
             FT_UINT8,    BASE_HEX,    VALS(rt_msg_type_vals),    0xe,
@@ -1494,3 +1486,16 @@ proto_reg_handoff_dec_rt(void)
     dissector_add_uint("ppp.protocol", PPP_DEC4, dec_rt_handle);
 /*  dissector_add_uint("ppp.protocol", PPP_DECNETCP, dec_rt_handle);*/
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

@@ -23,42 +23,32 @@
 
 #include <gtk/gtk.h>
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include <wsutil/u3.h>
 
 #include <epan/packet.h>
-#include <epan/addr_resolv.h>
 #include <epan/prefs.h>
 #include <epan/prefs-int.h>
-#include <epan/tap.h>
-#include <epan/timestamp.h>
-#include <epan/etypes.h>
 #include <epan/dissector_filters.h>
-#include <epan/strutil.h>
 #include <epan/epan_dissect.h>
 #include <epan/column.h>
 #include <epan/stats_tree_priv.h>
-#include <wsutil/filesystem.h>
-#include <epan/print.h>
+#include <epan/plugin_if.h>
 
-#include "cfile.h"
 #include "globals.h"
 #include "color_filters.h"
-#include "stat_menu.h"
 
-#include "ui/iface_lists.h"
 #include "ui/main_statusbar.h"
 #include "ui/preference_utils.h"
 #include "ui/recent.h"
 #include "ui/recent_utils.h"
 #include "ui/simple_dialog.h"
 #include "ui/software_update.h"
-#include "ui/ui_util.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
+#include "ui/gtk/gui_stat_menu.h"
 #include "ui/gtk/about_dlg.h"
 #include "ui/gtk/capture_dlg.h"
 #include "ui/gtk/capture_if_dlg.h"
@@ -90,11 +80,9 @@
 #include "ui/gtk/conversations_table.h"
 #include "ui/gtk/hostlist_table.h"
 #include "ui/gtk/packet_history.h"
-#include "ui/tap-sctp-analysis.h"
 #include "ui/gtk/sctp_stat_gtk.h"
 #include "ui/gtk/firewall_dlg.h"
 #include "ui/gtk/macros_dlg.h"
-#include "epan/dissectors/packet-ssl-utils.h"
 #include "ui/gtk/export_sslkeys.h"
 #include "ui/gtk/gui_stat_menu.h"
 #include "ui/gtk/main.h"
@@ -105,7 +93,6 @@
 #include "ui/gtk/uat_gui.h"
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/manual_addr_resolv.h"
-#include "ui/gtk/proto_help.h"
 #include "ui/gtk/dissector_tables_dlg.h"
 #include "ui/gtk/expert_comp_dlg.h"
 #include "ui/gtk/time_shift_dlg.h"
@@ -113,6 +100,7 @@
 #include "ui/gtk/addr_resolution_dlg.h"
 #include "ui/gtk/export_pdu_dlg.h"
 #include "ui/gtk/conversation_hastables_dlg.h"
+#include "ui/gtk/webbrowser.h"
 
 #include "ui/gtk/packet_list.h"
 #include "ui/gtk/lbm_stream_dlg.h"
@@ -153,6 +141,7 @@ static void add_tap_plugins (guint merge_id, GtkUIManager *ui_manager);
 
 static void menus_init(void);
 static void merge_menu_items(GList *node);
+static void ws_menubar_external_menus(void);
 static void ws_menubar_build_external_menus(void);
 static void set_menu_sensitivity (GtkUIManager *ui_manager, const gchar *, gint);
 static void menu_name_resolution_update_cb(GtkAction *action, gpointer data);
@@ -160,6 +149,8 @@ static void name_resolution_cb(GtkWidget *w, gpointer d, gboolean* res_flag);
 static void colorize_cb(GtkWidget *w, gpointer d);
 static void rebuild_protocol_prefs_menu (module_t *prefs_module_p, gboolean preferences,
         GtkUIManager *ui_menu, const char *path);
+
+static void plugin_if_menubar_preference(gconstpointer user_data);
 
 
 /*  As a general GUI guideline, we try to follow the Gnome Human Interface Guidelines, which can be found at:
@@ -176,178 +167,6 @@ File/Close:         the Gnome HIG suggests putting this item just above the Quit
                     By putting the Close item near the open item(s), it better suggests that it will close the
                     currently opened/captured file only.
 */
-
-typedef enum {
-    CONV_ETHER = 1,
-    CONV_IP,
-    CONV_TCP,
-    CONV_UDP,
-    CONV_CBA
-} conv_values_e;
-
-static char *
-build_conversation_filter(int action, gboolean show_dialog)
-{
-    packet_info *pi = &cfile.edt->pi;
-    char        *buf;
-    gboolean is_ip = FALSE, is_tcp = FALSE, is_udp = FALSE;
-
-    proto_get_frame_protocols(pi->layers, &is_ip, &is_tcp, &is_udp, NULL, NULL);
-
-    switch(action) {
-    case(CONV_CBA):
-        if (pi->profinet_type == 0) {
-            if (show_dialog) {
-                simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-                    "Error filtering conversation.  Please make\n"
-                    "sure you have a PROFINET CBA packet selected.");
-            }
-            return NULL;
-        }
-
-        if( pi->net_src.type == AT_IPv4 && pi->net_dst.type == AT_IPv4
-        && is_tcp ) {
-            /* IPv4 */
-            switch(pi->profinet_type) {
-            case(1):
-                buf = g_strdup_printf("(ip.src eq %s and ip.dst eq %s and cba.acco.dcom == 1) || (ip.src eq %s and ip.dst eq %s and cba.acco.dcom == 0)",
-                    ip_to_str( (const guint8 *)pi->net_dst.data),
-                    ip_to_str( (const guint8 *)pi->net_src.data),
-                    ip_to_str( (const guint8 *)pi->net_src.data),
-                    ip_to_str( (const guint8 *)pi->net_dst.data));
-                break;
-            case(2):
-                buf = g_strdup_printf("(ip.src eq %s and ip.dst eq %s and cba.acco.dcom == 1) || (ip.src eq %s and ip.dst eq %s and cba.acco.dcom == 0)",
-                    ip_to_str( (const guint8 *)pi->net_src.data),
-                    ip_to_str( (const guint8 *)pi->net_dst.data),
-                    ip_to_str( (const guint8 *)pi->net_dst.data),
-                    ip_to_str( (const guint8 *)pi->net_src.data));
-                break;
-            case(3):
-                buf = g_strdup_printf("(ip.src eq %s and ip.dst eq %s and cba.acco.srt == 1) || (ip.src eq %s and ip.dst eq %s and cba.acco.srt == 0)",
-                    ip_to_str( (const guint8 *)pi->net_dst.data),
-                    ip_to_str( (const guint8 *)pi->net_src.data),
-                    ip_to_str( (const guint8 *)pi->net_src.data),
-                    ip_to_str( (const guint8 *)pi->net_dst.data));
-                break;
-            case(4):
-                buf = g_strdup_printf("(ip.src eq %s and ip.dst eq %s and cba.acco.srt == 1) || (ip.src eq %s and ip.dst eq %s and cba.acco.srt == 0)",
-                    ip_to_str( (const guint8 *)pi->net_src.data),
-                    ip_to_str( (const guint8 *)pi->net_dst.data),
-                    ip_to_str( (const guint8 *)pi->net_dst.data),
-                    ip_to_str( (const guint8 *)pi->net_src.data));
-                break;
-            default:
-                return NULL;
-            }
-        } else {
-            return NULL;
-        }
-        break;
-    case(CONV_TCP):
-        if (is_tcp == FALSE) {
-            if (show_dialog) {
-                simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-                    "Error filtering conversation.  Please make\n"
-                    "sure you have a TCP packet selected.");
-            }
-            return NULL;
-        }
-
-        if( pi->net_src.type == AT_IPv4 && pi->net_dst.type == AT_IPv4 ) {
-            /* TCP over IPv4 */
-            buf = g_strdup_printf("(ip.addr eq %s and ip.addr eq %s) and (tcp.port eq %d and tcp.port eq %d)",
-                ip_to_str( (const guint8 *)pi->net_src.data),
-                ip_to_str( (const guint8 *)pi->net_dst.data),
-                pi->srcport, pi->destport );
-        } else if( pi->net_src.type == AT_IPv6 && pi->net_dst.type == AT_IPv6 ) {
-            /* TCP over IPv6 */
-            buf = g_strdup_printf("(ipv6.addr eq %s and ipv6.addr eq %s) and (tcp.port eq %d and tcp.port eq %d)",
-                ip6_to_str((const struct e_in6_addr *)pi->net_src.data),
-                ip6_to_str((const struct e_in6_addr *)pi->net_dst.data),
-                pi->srcport, pi->destport );
-        } else {
-            return NULL;
-        }
-        break;
-    case(CONV_UDP):
-        if (is_udp == FALSE) {
-            if (show_dialog) {
-                simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-                    "Error filtering conversation.  Please make\n"
-                    "sure you have a UDP packet selected.");
-            }
-            return NULL;
-        }
-
-        if( pi->net_src.type == AT_IPv4 && pi->net_dst.type == AT_IPv4 ) {
-            /* UDP over IPv4 */
-            buf = g_strdup_printf("(ip.addr eq %s and ip.addr eq %s) and (udp.port eq %d and udp.port eq %d)",
-                ip_to_str( (const guint8 *)pi->net_src.data),
-                ip_to_str( (const guint8 *)pi->net_dst.data),
-                pi->srcport, pi->destport );
-        } else if( pi->net_src.type == AT_IPv6 && pi->net_dst.type == AT_IPv6 ) {
-            /* UDP over IPv6 */
-            buf = g_strdup_printf("(ipv6.addr eq %s and ipv6.addr eq %s) and (udp.port eq %d and udp.port eq %d)",
-                ip6_to_str((const struct e_in6_addr *)pi->net_src.data),
-                ip6_to_str((const struct e_in6_addr *)pi->net_dst.data),
-                pi->srcport, pi->destport );
-        } else {
-            return NULL;
-        }
-        break;
-    case(CONV_IP):
-        if (is_ip == FALSE) {
-            if (show_dialog) {
-                simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-                    "Error filtering conversation.  Please make\n"
-                    "sure you have a IP packet selected.");
-            }
-            return NULL;
-        }
-
-        if( pi->net_src.type == AT_IPv4 && pi->net_dst.type == AT_IPv4 ) {
-            /* IPv4 */
-            buf = g_strdup_printf("ip.addr eq %s and ip.addr eq %s",
-                ip_to_str( (const guint8 *)pi->net_src.data),
-                ip_to_str( (const guint8 *)pi->net_dst.data));
-        } else if( pi->net_src.type == AT_IPv6 && pi->net_dst.type == AT_IPv6 ) {
-            /* IPv6 */
-            buf = g_strdup_printf("ipv6.addr eq %s and ipv6.addr eq %s",
-                ip6_to_str((const struct e_in6_addr *)pi->net_src.data),
-                ip6_to_str((const struct e_in6_addr *)pi->net_dst.data));
-        } else {
-            return NULL;
-        }
-        break;
-    case(CONV_ETHER):
-        /* XXX - is this the right way to check for Ethernet? */
-        /* check for the data link address type */
-        /* (ethertype will be 0 when used as length field) */
-        if (pi->dl_src.type != AT_ETHER) {
-            if (show_dialog) {
-                simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
-                    "Error filtering conversation.  Please make\n"
-                    "sure you have a Ethernet packet selected.");
-            }
-            return NULL;
-        }
-
-        if( pi->dl_src.type == AT_ETHER && pi->dl_dst.type == AT_ETHER ) {
-            /* Ethernet */
-            buf = g_strdup_printf("eth.addr eq %s and eth.addr eq %s",
-                ether_to_str( (const guint8 *)pi->dl_src.data),
-                ether_to_str( (const guint8 *)pi->dl_dst.data));
-        } else {
-            return NULL;
-        }
-        break;
-    default:
-        return NULL;
-    }
-
-    return buf;
-}
 
 static void
 new_window_cb(GtkWidget *widget)
@@ -370,62 +189,57 @@ edit_window_cb(GtkWidget *widget _U_)
 #endif
 
 static void
-conversation_cb(GtkAction *a _U_, gpointer data _U_, int action)
-{
-    gchar     *filter;
-    GtkWidget *filter_te;
-
-    if (cfile.current_frame) {
-        /* create a filter-string based on the selected packet and action */
-        filter = build_conversation_filter(action, TRUE);
-
-        /* Run the display filter so it goes in effect - even if it's the
-        same as the previous display filter. */
-        filter_te = gtk_bin_get_child(GTK_BIN(g_object_get_data(G_OBJECT(top_level), E_DFILTER_CM_KEY)));
-
-        gtk_entry_set_text(GTK_ENTRY(filter_te), filter);
-        main_filter_packets(&cfile, filter, TRUE);
-
-        g_free(filter);
-    }
-}
-
-static void
-colorize_conversation_cb(GtkAction *action _U_, gpointer data _U_, int action_num)
+colorize_conversation_cb(conversation_filter_t* color_filter, int action_num)
 {
     gchar *filter = NULL;
+    packet_info *pi = &cfile.edt->pi;
 
-    if( (action_num>>8) == 255 ) {
+    if (action_num == 255) {
         color_filters_reset_tmp();
         packet_list_colorize_packets();
     } else if (cfile.current_frame) {
-        if( (action_num&0xff) == 0 ) {
+        if (color_filter == NULL) {
             /* colorize_conversation_cb was called from the window-menu
-             * or through an accelerator key. Try to build a conversation
-             * filter in the order TCP, UDP, IP, Ethernet and apply the
-             * coloring */
-            filter = build_conversation_filter(CONV_TCP,FALSE);
-            if( filter == NULL )
-                filter = build_conversation_filter(CONV_UDP,FALSE);
-            if( filter == NULL )
-                filter = build_conversation_filter(CONV_IP,FALSE);
-            if( filter == NULL )
-                filter = build_conversation_filter(CONV_ETHER,FALSE);
+                * or through an accelerator key. Try to build a conversation
+                * filter in the order TCP, UDP, IP, Ethernet and apply the
+                * coloring */
+            color_filter = find_conversation_filter("tcp");
+            if ((color_filter != NULL) && (color_filter->is_filter_valid(pi)))
+                filter = color_filter->build_filter_string(pi);
+            if (filter == NULL) {
+                color_filter = find_conversation_filter("udp");
+                if ((color_filter != NULL) && (color_filter->is_filter_valid(pi)))
+                    filter = color_filter->build_filter_string(pi);
+            }
+            if (filter == NULL) {
+                color_filter = find_conversation_filter("ip");
+                if ((color_filter != NULL) && (color_filter->is_filter_valid(pi)))
+                    filter = color_filter->build_filter_string(pi);
+            }
+            if (filter == NULL) {
+                color_filter = find_conversation_filter("ipv6");
+                if ((color_filter != NULL) && (color_filter->is_filter_valid(pi)))
+                    filter = color_filter->build_filter_string(pi);
+            }
+            if (filter == NULL) {
+                color_filter = find_conversation_filter("eth");
+                if ((color_filter != NULL) && (color_filter->is_filter_valid(pi)))
+                    filter = color_filter->build_filter_string(pi);
+            }
             if( filter == NULL ) {
                 simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "Unable to build conversation filter.");
                 return;
             }
         } else {
-            /* create a filter-string based on the selected packet and action_num */
-            filter = build_conversation_filter(action_num&0xff, TRUE);
+            filter = color_filter->build_filter_string(pi);
         }
 
-        if( (action_num>>8) == 0) {
+        if (action_num == 0) {
             /* Open the "new coloring filter" dialog with the filter */
             color_display_with_filter(filter);
         } else {
             /* Set one of the temporary coloring filters */
-            color_filters_set_tmp((guint8)(action_num>>8),filter,FALSE);
+            color_filters_set_tmp(action_num, filter, FALSE);
             packet_list_colorize_packets();
         }
 
@@ -436,22 +250,35 @@ colorize_conversation_cb(GtkAction *action _U_, gpointer data _U_, int action_nu
 static void
 goto_conversation_frame(gboolean dir)
 {
-    gchar     *filter;
+    gchar     *filter       = NULL;
     dfilter_t *dfcode       = NULL;
     gboolean   found_packet = FALSE;
+    packet_info *pi = &cfile.edt->pi;
+    conversation_filter_t* conv_filter;
 
-    filter = build_conversation_filter(CONV_TCP,FALSE);
-    if( filter == NULL )
-        filter = build_conversation_filter(CONV_UDP,FALSE);
-    if( filter == NULL )
-        filter = build_conversation_filter(CONV_IP,FALSE);
+    /* Try to build a conversation
+     * filter in the order TCP, UDP, IP, Ethernet and apply the
+     * coloring */
+    conv_filter = find_conversation_filter("tcp");
+    if ((conv_filter != NULL) && (conv_filter->is_filter_valid(pi)))
+        filter = conv_filter->build_filter_string(pi);
+    conv_filter = find_conversation_filter("udp");
+    if ((conv_filter != NULL) && (conv_filter->is_filter_valid(pi)))
+        filter = conv_filter->build_filter_string(pi);
+    conv_filter = find_conversation_filter("ip");
+    if ((conv_filter != NULL) && (conv_filter->is_filter_valid(pi)))
+        filter = conv_filter->build_filter_string(pi);
+    conv_filter = find_conversation_filter("ipv6");
+    if ((conv_filter != NULL) && (conv_filter->is_filter_valid(pi)))
+        filter = conv_filter->build_filter_string(pi);
+
     if( filter == NULL ) {
         statusbar_push_temporary_msg("Unable to build conversation filter.");
         g_free(filter);
         return;
     }
 
-    if (!dfilter_compile(filter, &dfcode)) {
+    if (!dfilter_compile(filter, &dfcode, NULL)) {
         /* The attempt failed; report an error. */
         statusbar_push_temporary_msg("Error compiling filter for this conversation.");
         g_free(filter);
@@ -638,11 +465,7 @@ timestamp_precision_new_cb (GtkRadioAction *action, GtkRadioAction *current _U_,
     value = gtk_radio_action_get_current_value (action);
     if (recent.gui_time_precision != value) {
         /* the actual precision will be set in packet_list_queue_draw() below */
-        if (value == TS_PREC_AUTO) {
-            timestamp_set_precision(TS_PREC_AUTO_SEC);
-        } else {
-            timestamp_set_precision(value);
-        }
+        timestamp_set_precision(value);
         recent.gui_time_precision  = value;
         /* This call adjusts column width */
         cf_timestamp_auto_precision(&cfile);
@@ -726,75 +549,75 @@ view_menu_auto_scroll_live_cb(GtkAction *action _U_, gpointer user_data _U_)
 #endif
 
 static void
-view_menu_color_conv_color1_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color1_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 1*256);
+    colorize_conversation_cb(NULL, 1);
 }
 
 static void
-view_menu_color_conv_color2_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color2_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 2*256);
+    colorize_conversation_cb(NULL, 2);
 }
 
 static void
-view_menu_color_conv_color3_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color3_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 3*256);
+    colorize_conversation_cb(NULL, 3);
 }
 
 static void
-view_menu_color_conv_color4_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color4_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 4*256);
+    colorize_conversation_cb(NULL, 4);
 }
 
 static void
-view_menu_color_conv_color5_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color5_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 5*256);
+    colorize_conversation_cb(NULL, 5);
 }
 
 static void
-view_menu_color_conv_color6_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color6_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 6*256);
+    colorize_conversation_cb(NULL, 6);
 }
 
 static void
-view_menu_color_conv_color7_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color7_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 7*256);
+    colorize_conversation_cb(NULL, 7);
 }
 
 static void
-view_menu_color_conv_color8_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color8_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 8*256);
+    colorize_conversation_cb(NULL, 8);
 }
 
 static void
-view_menu_color_conv_color9_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color9_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 9*256);
+    colorize_conversation_cb(NULL, 9);
 }
 
 static void
-view_menu_color_conv_color10_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_color10_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 10*256);
+    colorize_conversation_cb(NULL, 10);
 }
 
 static void
-view_menu_color_conv_new_rule_cb(GtkAction *action, gpointer user_data)
+view_menu_color_conv_new_rule_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 0);
+    colorize_conversation_cb(NULL, 0);
 }
 
 static void
-view_menu_reset_coloring_cb(GtkAction *action, gpointer user_data)
+view_menu_reset_coloring_cb(GtkAction *action _U_, gpointer user_data _U_)
 {
-    colorize_conversation_cb(action, user_data, 255*256);
+    colorize_conversation_cb(NULL, 255);
 }
 
 /*
@@ -996,6 +819,7 @@ static const char *ui_desc_menubar =
 "        <menuitem name='HTTP' action='/File/ExportObjects/HTTP'/>\n"
 "        <menuitem name='DICOM' action='/File/ExportObjects/DICOM'/>\n"
 "        <menuitem name='SMB' action='/File/ExportObjects/SMB'/>\n"
+"        <menuitem name='TFTP' action='/File/ExportObjects/TFTP'/>\n"
 "      </menu>\n"
 "      <separator/>\n"
 "      <menuitem name='Print' action='/File/Print'/>\n"
@@ -1186,38 +1010,10 @@ static const char *ui_desc_menubar =
 "      <menuitem name='IOGraphs' action='/Statistics/IOGraphs'/>\n"
 "      <separator/>\n"
 "      <menu name= 'ConversationListMenu' action='/Statistics/ConversationList'>\n"
-"        <menuitem name='Ethernet' action='/Statistics/ConversationList/Ethernet'/>\n"
-"        <menuitem name='FibreChannel' action='/Statistics/ConversationList/FibreChannel'/>\n"
-"        <menuitem name='FDDI' action='/Statistics/ConversationList/FDDI'/>\n"
-"        <menuitem name='IP' action='/Statistics/ConversationList/IP'/>\n"
-"        <menuitem name='IPv6' action='/Statistics/ConversationList/IPv6'/>\n"
-"        <menuitem name='IPX' action='/Statistics/ConversationList/IPX'/>\n"
-"        <menuitem name='JXTA' action='/Statistics/ConversationList/JXTA'/>\n"
-"        <menuitem name='NCP' action='/Statistics/ConversationList/NCP'/>\n"
-"        <menuitem name='RSVP' action='/Statistics/ConversationList/RSVP'/>\n"
-"        <menuitem name='SCTP' action='/Statistics/ConversationList/SCTP'/>\n"
-"        <menuitem name='TCPIP' action='/Statistics/ConversationList/TCPIP'/>\n"
-"        <menuitem name='TR' action='/Statistics/ConversationList/TR'/>\n"
-"        <menuitem name='UDPIP' action='/Statistics/ConversationList/UDPIP'/>\n"
-"        <menuitem name='USB' action='/Statistics/ConversationList/USB'/>\n"
-"        <menuitem name='WLAN' action='/Statistics/ConversationList/WLAN'/>\n"
+"        <placeholder name='Conversations'/>\n"
 "      </menu>\n"
 "      <menu name= 'EndpointListMenu' action='/Statistics/EndpointList'>\n"
-"        <menuitem name='Ethernet' action='/Statistics/EndpointList/Ethernet'/>\n"
-"        <menuitem name='FibreChannel' action='/Statistics/EndpointList/FibreChannel'/>\n"
-"        <menuitem name='FDDI' action='/Statistics/EndpointList/FDDI'/>\n"
-"        <menuitem name='IP' action='/Statistics/EndpointList/IP'/>\n"
-"        <menuitem name='IPv6' action='/Statistics/EndpointList/IPv6'/>\n"
-"        <menuitem name='IPX' action='/Statistics/EndpointList/IPX'/>\n"
-"        <menuitem name='JXTA' action='/Statistics/EndpointList/JXTA'/>\n"
-"        <menuitem name='NCP' action='/Statistics/EndpointList/NCP'/>\n"
-"        <menuitem name='RSVP' action='/Statistics/EndpointList/RSVP'/>\n"
-"        <menuitem name='SCTP' action='/Statistics/EndpointList/SCTP'/>\n"
-"        <menuitem name='TCPIP' action='/Statistics/EndpointList/TCPIP'/>\n"
-"        <menuitem name='TR' action='/Statistics/EndpointList/TR'/>\n"
-"        <menuitem name='UDPIP' action='/Statistics/EndpointList/UDPIP'/>\n"
-"        <menuitem name='USB' action='/Statistics/EndpointList/USB'/>\n"
-"        <menuitem name='WLAN' action='/Statistics/EndpointList/WLAN'/>\n"
+"        <placeholder name='Endpoints'/>\n"
 "      </menu>\n"
 "      <menu name='ServiceResponseTimeMenu' action='/Statistics/ServiceResponseTime'>\n"
 "        <menuitem name='DCE-RPC' action='/Statistics/ServiceResponseTime/DCE-RPC'/>\n"
@@ -1254,14 +1050,16 @@ static const char *ui_desc_menubar =
 "      </menu>\n"
 "      <menuitem name='Collectd' action='/Statistics/collectd'/>\n"
 "      <menuitem name='Compare' action='/Statistics/compare'/>\n"
+"      <menuitem name= 'DNS' action='/Statistics/dns'/>\n"
 "      <menuitem name='FlowGraph' action='/Statistics/FlowGraph'/>\n"
 "      <menuitem name='HART-IP' action='/Statistics/hart_ip'/>\n"
+"      <menuitem name= 'Hpfeeds' action='/Statistics/hpfeeds'/>\n"
 "      <menu name= 'HTTPMenu' action='/Statistics/HTTP'>\n"
 "        <menuitem name='http' action='/Statistics/HTTP/http'/>\n"
 "        <menuitem name='http_req' action='/Statistics/HTTP/http_req'/>\n"
 "        <menuitem name='http_srv' action='/Statistics/HTTP/http_srv'/>\n"
 "      </menu>\n"
-"      <menuitem name='ONC-RPC-Programs' action='/Statistics/ONC-RPC-Programs'/>\n"
+"      <menuitem name='HTTP2' action='/Statistics/http2'/>\n"
 "      <menu name= 'SametimeMenu' action='/Statistics/Sametime'>\n"
 "        <menuitem name='sametime' action='/Statistics/Sametime/sametime'/>\n"
 "      </menu>\n"
@@ -1277,25 +1075,9 @@ static const char *ui_desc_menubar =
 "      <separator/>\n"
 "    </menu>\n"
 "    <menu name= 'TelephonyMenu' action='/Telephony'>\n"
-"      <menu name= 'ANSI' action='/Telephony/ANSI'>\n"
-"        <menuitem name='BSMAP' action='/Telephony/ANSI/BSMAP'/>\n"
-"        <menuitem name='DTAP' action='/Telephony/ANSI/DTAP'/>\n"
-"        <menuitem name='MAP-OP' action='/Telephony/ANSI/MAP-OP'/>\n"
+"      <menu name= 'ANSImenu' action='/Telephony/ANSI'>\n"
 "      </menu>\n"
 "      <menu name= 'GSM' action='/Telephony/GSM'>\n"
-"        <menuitem name='BSSMAP' action='/Telephony/GSM/BSSMAP'/>\n"
-"        <menu name='GSM-DTAP' action='/Telephony/GSM/DTAP'>\n"
-"          <menuitem name='CallControl' action='/Telephony/GSM/DTAP/CC'/>\n"
-"          <menuitem name='GPRS-MM' action='/Telephony/GSM/DTAP/GMM'/>\n"
-"          <menuitem name='GPRS-SM' action='/Telephony/GSM/DTAP/SM'/>\n"
-"          <menuitem name='MM' action='/Telephony/GSM/DTAP/MM'/>\n"
-"          <menuitem name='RR' action='/Telephony/GSM/DTAP/RR'/>\n"
-"          <menuitem name='SMS' action='/Telephony/GSM/DTAP/SMS'/>\n"
-"          <menuitem name='TP' action='/Telephony/GSM/DTAP/TP'/>\n"
-"          <menuitem name='SS' action='/Telephony/GSM/DTAP/SS'/>\n"
-"        </menu>\n"
-"        <menuitem name='SACCH' action='/Telephony/GSM/SACCH'/>\n"
-"        <menuitem name='MAP-OP' action='/Telephony/GSM/MAP-OP'/>\n"
 "        <menuitem name='MAP-Summary' action='/Telephony/GSM/MAPSummary'/>\n"
 "      </menu>\n"
 "      <menu name= 'IAX2menu' action='/Telephony/IAX2'>\n"
@@ -1306,7 +1088,6 @@ static const char *ui_desc_menubar =
 "        <menuitem name='LTE_RLC_Graph' action='/Telephony/LTE/RLCGraph'/>\n"
 "      </menu>\n"
 "      <menu name= 'MTP3menu' action='/Telephony/MTP3'>\n"
-"        <menuitem name='MSUs' action='/Telephony/MTP3/MSUs'/>\n"
 "        <menuitem name='MSUSummary' action='/Telephony/MTP3/MSUSummary'/>\n"
 "      </menu>\n"
 "      <menu name= 'RTPmenu' action='/Telephony/RTP'>\n"
@@ -1323,6 +1104,7 @@ static const char *ui_desc_menubar =
 "      <menuitem name='SMPP' action='/Telephony/smpp_commands'/>\n"
 "      <menuitem name='UCP' action='/Telephony/ucp_messages'/>\n"
 "      <menuitem name='VoIPCalls' action='/Telephony/VoIPCalls'/>\n"
+"      <menuitem name='VoIPFlows' action='/Telephony/VoIPFlows'/>\n"
 "    </menu>\n"
 "    <menu name= 'ToolsMenu' action='/Tools'>\n"
 "      <menuitem name='FirewallACLRules' action='/Tools/FirewallACLRules'/>\n"
@@ -1491,7 +1273,7 @@ static const GtkActionEntry main_menu_bar_entries[] = {
   { "/File/ExportObjects/HTTP",           NULL,       "_HTTP",                           NULL,                   NULL,           G_CALLBACK(eo_http_cb) },
   { "/File/ExportObjects/DICOM",          NULL,       "_DICOM",                          NULL,                   NULL,           G_CALLBACK(eo_dicom_cb) },
   { "/File/ExportObjects/SMB",            NULL,       "_SMB/SMB2",                            NULL,                   NULL,           G_CALLBACK(eo_smb_cb) },
-
+  { "/File/ExportObjects/TFTP",            NULL,       "_TFTP",                          NULL,                   NULL,           G_CALLBACK(eo_tftp_cb) },
 
   { "/Edit/Copy",                         NULL,       "Copy",                            NULL,                   NULL,           NULL },
 
@@ -1652,38 +1434,8 @@ static const GtkActionEntry main_menu_bar_entries[] = {
 
 
    { "/Statistics/ConversationList",                           NULL,       "_Conversation List",                   NULL, NULL, NULL },
-   { "/Statistics/ConversationList/Ethernet",      WIRESHARK_STOCK_CONVERSATIONS,  "Ethernet",                     NULL, NULL, G_CALLBACK(eth_endpoints_cb) },
-   { "/Statistics/ConversationList/FibreChannel",  WIRESHARK_STOCK_CONVERSATIONS,  "Fibre Channel",                NULL, NULL, G_CALLBACK(fc_endpoints_cb) },
-   { "/Statistics/ConversationList/FDDI",          WIRESHARK_STOCK_CONVERSATIONS,  "FDDI",                         NULL, NULL, G_CALLBACK(fddi_endpoints_cb) },
-   { "/Statistics/ConversationList/IP",            WIRESHARK_STOCK_CONVERSATIONS,  "IPv4",                         NULL, NULL, G_CALLBACK(ip_endpoints_cb) },
-   { "/Statistics/ConversationList/IPv6",          WIRESHARK_STOCK_CONVERSATIONS,  "IPv6",                         NULL, NULL, G_CALLBACK(ipv6_endpoints_cb) },
-   { "/Statistics/ConversationList/IPX",           WIRESHARK_STOCK_CONVERSATIONS,  "IPX",                          NULL, NULL, G_CALLBACK(ipx_endpoints_cb) },
-   { "/Statistics/ConversationList/JXTA",          WIRESHARK_STOCK_CONVERSATIONS,  "JXTA",                         NULL, NULL, G_CALLBACK(jxta_conversation_cb) },
-   { "/Statistics/ConversationList/NCP",           WIRESHARK_STOCK_CONVERSATIONS,  "NCP",                          NULL, NULL, G_CALLBACK(ncp_endpoints_cb) },
-   { "/Statistics/ConversationList/RSVP",          WIRESHARK_STOCK_CONVERSATIONS,  "RSVP",                         NULL, NULL, G_CALLBACK(rsvp_endpoints_cb) },
-   { "/Statistics/ConversationList/SCTP",          WIRESHARK_STOCK_CONVERSATIONS,  "SCTP",                         NULL, NULL, G_CALLBACK(sctp_conversation_cb) },
-   { "/Statistics/ConversationList/TCPIP",         WIRESHARK_STOCK_CONVERSATIONS,  "TCP (IPv4 & IPv6)",            NULL, NULL, G_CALLBACK(tcpip_conversation_cb) },
-   { "/Statistics/ConversationList/TR",            WIRESHARK_STOCK_CONVERSATIONS,  "Token Ring",                   NULL, NULL, G_CALLBACK(tr_conversation_cb) },
-   { "/Statistics/ConversationList/UDPIP",         WIRESHARK_STOCK_CONVERSATIONS,  "UDP (IPv4 & IPv6)",            NULL, NULL, G_CALLBACK(udpip_conversation_cb) },
-   { "/Statistics/ConversationList/USB",           WIRESHARK_STOCK_CONVERSATIONS,  "USB",                          NULL, NULL, G_CALLBACK(usb_endpoints_cb) },
-   { "/Statistics/ConversationList/WLAN",          WIRESHARK_STOCK_CONVERSATIONS,  "WLAN",                         NULL, NULL, G_CALLBACK(wlan_endpoints_cb) },
 
    { "/Statistics/EndpointList",                                NULL,               "_Endpoint List",               NULL, NULL, NULL },
-   { "/Statistics/EndpointList/Ethernet",           WIRESHARK_STOCK_ENDPOINTS,      "Ethernet",                     NULL, NULL, G_CALLBACK(gtk_eth_hostlist_cb) },
-   { "/Statistics/EndpointList/FibreChannel",       WIRESHARK_STOCK_ENDPOINTS,      "Fibre Channel",                NULL, NULL, G_CALLBACK(gtk_fc_hostlist_cb) },
-   { "/Statistics/EndpointList/FDDI",               WIRESHARK_STOCK_ENDPOINTS,      "FDDI",                         NULL, NULL, G_CALLBACK(gtk_fddi_hostlist_cb) },
-   { "/Statistics/EndpointList/IP",                 WIRESHARK_STOCK_ENDPOINTS,      "IPv4",                         NULL, NULL, G_CALLBACK(gtk_ip_hostlist_cb) },
-   { "/Statistics/EndpointList/IPv6",               WIRESHARK_STOCK_ENDPOINTS,      "IPv6",                         NULL, NULL, G_CALLBACK(gtk_ipv6_hostlist_cb) },
-   { "/Statistics/EndpointList/IPX",                WIRESHARK_STOCK_ENDPOINTS,      "IPX",                          NULL, NULL, G_CALLBACK(gtk_ipx_hostlist_cb) },
-   { "/Statistics/EndpointList/JXTA",               WIRESHARK_STOCK_ENDPOINTS,      "JXTA",                         NULL, NULL, G_CALLBACK(gtk_jxta_hostlist_cb) },
-   { "/Statistics/EndpointList/NCP",                WIRESHARK_STOCK_ENDPOINTS,      "NCP",                          NULL, NULL, G_CALLBACK(gtk_ncp_hostlist_cb) },
-   { "/Statistics/EndpointList/RSVP",               WIRESHARK_STOCK_ENDPOINTS,      "RSVP",                         NULL, NULL, G_CALLBACK(gtk_rsvp_hostlist_cb) },
-   { "/Statistics/EndpointList/SCTP",               WIRESHARK_STOCK_ENDPOINTS,      "SCTP",                         NULL, NULL, G_CALLBACK(gtk_sctp_hostlist_cb) },
-   { "/Statistics/EndpointList/TCPIP",              WIRESHARK_STOCK_ENDPOINTS,      "TCP (IPv4 & IPv6)",            NULL, NULL, G_CALLBACK(gtk_tcpip_hostlist_cb) },
-   { "/Statistics/EndpointList/TR",                 WIRESHARK_STOCK_ENDPOINTS,      "Token Ring",                   NULL, NULL, G_CALLBACK(gtk_tr_hostlist_cb) },
-   { "/Statistics/EndpointList/UDPIP",              WIRESHARK_STOCK_ENDPOINTS,      "UDP (IPv4 & IPv6)",            NULL, NULL, G_CALLBACK(gtk_udpip_hostlist_cb) },
-   { "/Statistics/EndpointList/USB",                WIRESHARK_STOCK_ENDPOINTS,      "USB",                          NULL, NULL, G_CALLBACK(gtk_usb_hostlist_cb) },
-   { "/Statistics/EndpointList/WLAN",               WIRESHARK_STOCK_ENDPOINTS,      "WLAN",                         NULL, NULL, G_CALLBACK(gtk_wlan_hostlist_cb) },
 
    { "/Statistics/ServiceResponseTime",             NULL,           "Service _Response Time",       NULL, NULL, NULL },
    { "/Statistics/ServiceResponseTime/DCE-RPC",     WIRESHARK_STOCK_TIME,           "DCE-RPC...",                   NULL, NULL, G_CALLBACK(gtk_dcerpcstat_cb) },
@@ -1713,17 +1465,17 @@ static const GtkActionEntry main_menu_bar_entries[] = {
    { "/Statistics/BACnet/bacapp_ip",                NULL,       "Packets sorted by IP",             NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/BACnet/bacapp_objectid",          NULL,       "Packets sorted by Object Type",    NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/BACnet/bacapp_service",           NULL,       "Packets sorted by Service",        NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
-
    { "/Statistics/collectd",                        NULL,       "Collectd...",                      NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/compare",                         NULL,       "Compare...",                       NULL, NULL, G_CALLBACK(gtk_comparestat_cb) },
+   { "/Statistics/dns",                             NULL,       "DNS",                              NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/FlowGraph",       WIRESHARK_STOCK_FLOW_GRAPH, "Flo_w Graph...",                   NULL, NULL, G_CALLBACK(flow_graph_launch) },
    { "/Statistics/hart_ip",                         NULL,       "HART-IP",                          NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
+   { "/Statistics/hpfeeds",                         NULL,       "HPFEEDS",                          NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/HTTP",                            NULL,       "HTTP",                             NULL, NULL, NULL },
    { "/Statistics/HTTP/http",                       NULL,       "Packet Counter",                   NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/HTTP/http_req",                   NULL,       "Requests",                         NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/HTTP/http_srv",                   NULL,       "Load Distribution",                NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
-
-   { "/Statistics/ONC-RPC-Programs",                NULL,       "ONC-RPC Programs",                 NULL, NULL, G_CALLBACK(gtk_rpcprogs_cb) },
+   { "/Statistics/http2",                           NULL,       "HTTP2",                          NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/Sametime",                        NULL,       "Sametime",                         NULL, NULL, NULL },
    { "/Statistics/Sametime/sametime",               NULL,       "Messages",                         NULL, NULL, G_CALLBACK(gtk_stats_tree_cb) },
    { "/Statistics/TCPStreamGraphMenu",  NULL,           "TCP StreamGraph",                          NULL, NULL, NULL },
@@ -1746,25 +1498,7 @@ static const GtkActionEntry main_menu_bar_entries[] = {
    { "/Statistics/plen",                        NULL,               "Packet Lengths...",        NULL,                       NULL,               G_CALLBACK(gtk_stats_tree_cb) },
 
    { "/Telephony/ANSI",                 NULL,                       "_ANSI",                    NULL, NULL, NULL },
-   { "/Telephony/ANSI/BSMAP",           NULL,                       "A-Interface BSMAP",        NULL,                       NULL,               G_CALLBACK(ansi_a_stat_gtk_bsmap_cb) },
-   { "/Telephony/ANSI/DTAP",            NULL,                       "A-Interface DTAP",         NULL,                       NULL,               G_CALLBACK(ansi_a_stat_gtk_dtap_cb) },
-   { "/Telephony/ANSI/MAP-OP",          NULL,                       "MAP Operation",            NULL,                       NULL,               G_CALLBACK(ansi_map_stat_gtk_cb) },
-
    { "/Telephony/GSM",                  NULL,                       "_GSM",                     NULL, NULL, NULL },
-   { "/Telephony/GSM/BSSMAP",           NULL,                       "A-Interface BSSMAP",  NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_bssmap_cb) },
-
-   { "/Telephony/GSM/DTAP",             NULL,                       "A-Interface DTAP",    NULL, NULL, NULL },
-   { "/Telephony/GSM/DTAP/CC",          NULL,                       "Call Control",             NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_dtap_cc_cb) },
-   { "/Telephony/GSM/DTAP/GMM",         NULL,                       "GPRS Mobility Management", NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_dtap_gmm_cb) },
-   { "/Telephony/GSM/DTAP/SM",          NULL,                       "GPRS Session Management",  NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_dtap_sm_cb) },
-   { "/Telephony/GSM/DTAP/MM",          NULL,                       "Mobility Management",      NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_dtap_mm_cb) },
-   { "/Telephony/GSM/DTAP/RR",          NULL,                       "Radio Resource Management",NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_dtap_rr_cb) },
-   { "/Telephony/GSM/DTAP/SMS",         NULL,                       "Short Message Service",    NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_dtap_sms_cb) },
-   { "/Telephony/GSM/DTAP/TP",          NULL,       "Special Conformance Testing Functions",    NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_dtap_tp_cb) },
-   { "/Telephony/GSM/DTAP/SS",          NULL,                       "Supplementary Services",   NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_dtap_ss_cb) },
-
-   { "/Telephony/GSM/SACCH",            NULL,                       "A-Interface SACCH",   NULL,                       NULL,               G_CALLBACK(gsm_a_stat_gtk_sacch_rr_cb) },
-   { "/Telephony/GSM/MAP-OP",           NULL,                       "MAP Operation",       NULL,                       NULL,               G_CALLBACK(gsm_map_stat_gtk_cb) },
    { "/Telephony/GSM/MAPSummary",       NULL,                       "MAP Summary",              NULL,                       NULL,               G_CALLBACK(gsm_map_stat_gtk_sum_cb) },
 
    { "/Telephony/IAX2",                 NULL,                       "IA_X2",                    NULL, NULL, NULL },
@@ -1775,7 +1509,6 @@ static const GtkActionEntry main_menu_bar_entries[] = {
    { "/Telephony/LTE",                  NULL,                       "_LTE",                     NULL, NULL, NULL },
    { "/Telephony/LTE/RLCGraph",         NULL,                       "RLC _Graph...",            NULL,                       NULL,               G_CALLBACK(rlc_lte_graph_cb) },
    { "/Telephony/MTP3",                 NULL,                       "_MTP3",                    NULL, NULL, NULL },
-   { "/Telephony/MTP3/MSUs",            NULL,                       "MSUs",                     NULL,                       NULL,               G_CALLBACK(mtp3_stat_gtk_cb) },
    { "/Telephony/MTP3/MSUSummary",      NULL,                       "MSU Summary",              NULL,                       NULL,               G_CALLBACK(mtp3_sum_gtk_sum_cb) },
    { "/Telephony/RTP",                  NULL,                       "_RTP",                     NULL, NULL, NULL },
    { "/Telephony/RTP/StreamAnalysis",   NULL,                       "Stream Analysis...",       NULL,                       NULL,               G_CALLBACK(rtp_analysis_cb) },
@@ -1788,6 +1521,7 @@ static const GtkActionEntry main_menu_bar_entries[] = {
    { "/Telephony/smpp_commands",        NULL,                       "SM_PPOperations",          NULL,                       NULL,               G_CALLBACK(gtk_stats_tree_cb) },
    { "/Telephony/ucp_messages",         NULL,                       "_UCP Messages",            NULL,                       NULL,               G_CALLBACK(gtk_stats_tree_cb) },
    { "/Telephony/VoIPCalls",            WIRESHARK_STOCK_TELEPHONE,  "_VoIP Calls",              NULL,                       NULL,               G_CALLBACK(voip_calls_launch) },
+   { "/Telephony/VoIPFlows",            WIRESHARK_STOCK_TELEPHONE,  "SIP _Flows",               NULL,                       NULL,               G_CALLBACK(voip_flows_launch) },
 
    { "/Tools/FirewallACLRules",     NULL,                           "Firewall ACL Rules",       NULL,                       NULL,               G_CALLBACK(firewall_rule_cb) },
 
@@ -1853,13 +1587,13 @@ static const GtkRadioActionEntry main_menu_bar_radio_view_time_entries [] =
     { "/View/TimeDisplayFormat/SecondsSincePreviousDisplayedPacket",NULL, "Seconds Since Previous Displayed Packet:   1.123456", "<alt><control>6", NULL, TS_DELTA_DIS },
     { "/View/TimeDisplayFormat/UTCDateYMDandTimeofDay",             NULL, "UTC Date and Time of Day:   1970-01-01 01:02:03.123456", "<alt><control>7", NULL, TS_UTC_WITH_YMD },
     { "/View/TimeDisplayFormat/UTCDateYDOYandTimeofDay",            NULL, "UTC Date (with day of year) and Time of Day:   1970/001 01:02:03.123456", NULL, NULL, TS_UTC_WITH_YDOY },
-    { "/View/TimeDisplayFormat/UTCTimeofDay",                       NULL, "UTC Time of Day:   01:02:03.123456", "<alt><control>7", NULL, TS_UTC },
+    { "/View/TimeDisplayFormat/UTCTimeofDay",                       NULL, "UTC Time of Day:   01:02:03.123456", "<alt><control>8", NULL, TS_UTC },
 };
 
 static const GtkRadioActionEntry main_menu_bar_radio_view_time_fileformat_prec_entries [] =
 {
     /* name, stock id, label, accel, tooltip,  value */
-    { "/View/TimeDisplayFormat/FileFormatPrecision-Automatic",      NULL, "Automatic (File Format Precision)",  NULL, NULL, TS_PREC_AUTO },
+    { "/View/TimeDisplayFormat/FileFormatPrecision-Automatic",      NULL, "Automatic (use precision indicated in the file)",  NULL, NULL, TS_PREC_AUTO },
     { "/View/TimeDisplayFormat/FileFormatPrecision-Seconds",        NULL, "Seconds:   0",                       NULL, NULL, TS_PREC_FIXED_SEC },
     { "/View/TimeDisplayFormat/FileFormatPrecision-Deciseconds",    NULL, "Deciseconds:   0.1",                 NULL, NULL, TS_PREC_FIXED_DSEC },
     { "/View/TimeDisplayFormat/FileFormatPrecision-Centiseconds",   NULL, "Centiseconds:  0.12",                NULL, NULL, TS_PREC_FIXED_CSEC },
@@ -1872,9 +1606,9 @@ static const GtkRadioActionEntry main_menu_bar_radio_view_time_fileformat_prec_e
 static void
 select_bytes_view_cb (GtkRadioAction *action, GtkRadioAction *current _U_, gpointer user_data _U_)
 {
-    gint value;
+    bytes_view_type value;
 
-    value = gtk_radio_action_get_current_value (action);
+    value = (bytes_view_type)gtk_radio_action_get_current_value (action);
     /* Fix me */
     select_bytes_view( NULL, NULL, value);
 }
@@ -2147,374 +1881,83 @@ prepare_or_not_selected_cb(GtkAction *action, gpointer user_data)
     }
 }
 
+typedef void (*packet_list_menu_color_conv_color_cb_t)(GtkAction *action, gpointer user_data);
+
 static void
-packet_list_menu_conversation_ethernet_cb(GtkAction *action, gpointer user_data)
+packet_list_menu_color_conv_color1_cb(GtkAction *action _U_, gpointer user_data)
 {
-    conversation_cb(  action, user_data, CONV_ETHER);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 1);
 }
 
 static void
-packet_list_menu_conversation_ip_cb(GtkAction *action _U_, gpointer user_data)
+packet_list_menu_color_conv_color2_cb(GtkAction *action _U_, gpointer user_data)
 {
-    conversation_cb( action, user_data, CONV_IP);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 2);
 }
 
 static void
-packet_list_menu_conversation_tcp_cb(GtkAction *action _U_, gpointer user_data)
+packet_list_menu_color_conv_color3_cb(GtkAction *action _U_, gpointer user_data)
 {
-    conversation_cb(  action, user_data, CONV_TCP);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 3);
 }
 
 static void
-packet_list_menu_conversation_udp_cb(GtkAction *action _U_, gpointer user_data)
+packet_list_menu_color_conv_color4_cb(GtkAction *action _U_, gpointer user_data)
 {
-    conversation_cb(  action, user_data, CONV_UDP);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 4);
 }
 
 static void
-packet_list_menu_conversation_pn_cba_cb(GtkAction *action _U_, gpointer user_data)
+packet_list_menu_color_conv_color5_cb(GtkAction *action _U_, gpointer user_data)
 {
-    conversation_cb(  action, user_data, CONV_CBA);
-}
-
-/* Ethernet */
-
-static void
-packet_list_menu_color_conv_ethernet_color1_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_ETHER+1*256);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 5);
 }
 
 static void
-packet_list_menu_color_conv_ethernet_color2_cb(GtkAction *action, gpointer user_data)
+packet_list_menu_color_conv_color6_cb(GtkAction *action _U_, gpointer user_data)
 {
-    colorize_conversation_cb(action, user_data, CONV_ETHER+2*256);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 6);
 }
 
 static void
-packet_list_menu_color_conv_ethernet_color3_cb(GtkAction *action, gpointer user_data)
+packet_list_menu_color_conv_color7_cb(GtkAction *action _U_, gpointer user_data)
 {
-    colorize_conversation_cb(action, user_data, CONV_ETHER+3*256);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 7);
 }
 
 static void
-packet_list_menu_color_conv_ethernet_color4_cb(GtkAction *action, gpointer user_data)
+packet_list_menu_color_conv_color8_cb(GtkAction *action _U_, gpointer user_data)
 {
-    colorize_conversation_cb(action, user_data, CONV_ETHER+4*256);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 8);
 }
 
 static void
-packet_list_menu_color_conv_ethernet_color5_cb(GtkAction *action, gpointer user_data)
+packet_list_menu_color_conv_color9_cb(GtkAction *action _U_, gpointer user_data)
 {
-    colorize_conversation_cb(action, user_data, CONV_ETHER+5*256);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 9);
 }
 
 static void
-packet_list_menu_color_conv_ethernet_color6_cb(GtkAction *action, gpointer user_data)
+packet_list_menu_color_conv_color10_cb(GtkAction *action _U_, gpointer user_data)
 {
-    colorize_conversation_cb(action, user_data, CONV_ETHER+6*256);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 10);
 }
 
 static void
-packet_list_menu_color_conv_ethernet_color7_cb(GtkAction *action, gpointer user_data)
+packet_list_menu_color_conv_new_rule_cb(GtkAction *action _U_, gpointer user_data)
 {
-    colorize_conversation_cb(action, user_data, CONV_ETHER+7*256);
-}
-
-static void
-packet_list_menu_color_conv_ethernet_color8_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_ETHER+8*256);
-}
-
-static void
-packet_list_menu_color_conv_ethernet_color9_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_ETHER+9*256);
-}
-
-static void
-packet_list_menu_color_conv_ethernet_color10_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_ETHER+10*256);
-}
-
-static void
-packet_list_menu_color_conv_ethernet_new_rule_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_ETHER);
-}
-
-/* IP */
-
-static void
-packet_list_menu_color_conv_ip_color1_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+1*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color2_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+2*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color3_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+3*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color4_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+4*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color5_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+5*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color6_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+6*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color7_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+7*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color8_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+8*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color9_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+9*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_color10_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_IP+10*256);
-}
-
-static void
-packet_list_menu_color_conv_ip_new_rule_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP);
-}
-
-/* TCP */
-
-static void
-packet_list_menu_color_conv_tcp_color1_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+1*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color2_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+2*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color3_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+3*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color4_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+4*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color5_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+5*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color6_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+6*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color7_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+7*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color8_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+8*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color9_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+9*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_color10_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP+10*256);
-}
-
-static void
-packet_list_menu_color_conv_tcp_new_rule_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_TCP);
-}
-
-/* UDP */
-
-static void
-packet_list_menu_color_conv_udp_color1_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+1*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color2_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+2*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color3_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+3*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color4_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+4*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color5_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+5*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color6_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+6*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color7_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+7*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color8_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+8*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color9_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+9*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_color10_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP+10*256);
-}
-
-static void
-packet_list_menu_color_conv_udp_new_rule_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_UDP);
-}
-
-/* CONV_CBA */
-
-static void
-packet_list_menu_color_conv_cba_color1_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+1*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color2_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+2*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color3_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+3*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color4_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+4*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color5_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+5*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color6_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+6*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color7_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+7*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color8_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+8*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color9_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+9*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_color10_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA+10*256);
-}
-
-static void
-packet_list_menu_color_conv_cba_new_rule_cb(GtkAction *action, gpointer user_data)
-{
-    colorize_conversation_cb(action, user_data, CONV_CBA);
+    conversation_filter_t* color_filter = (conversation_filter_t*)user_data;
+    colorize_conversation_cb(color_filter, 0);
 }
 
 static void
@@ -2737,78 +2180,10 @@ static const char *ui_desc_packet_list_menu_popup =
 "       <menuitem name='OrNotSelected' action='/PrepareaFilter/OrNotSelected'/>\n"
 "     </menu>\n"
 "     <menu name= 'ConversationFilter' action='/Conversation Filter'>\n"
-"       <menuitem name='Ethernet' action='/Conversation Filter/Ethernet'/>\n"
-"       <menuitem name='IP' action='/Conversation Filter/IP'/>\n"
-"       <menuitem name='TCP' action='/Conversation Filter/TCP'/>\n"
-"       <menuitem name='UDP' action='/Conversation Filter/UDP'/>\n"
-"       <menuitem name='PN-CBA' action='/Conversation Filter/PN-CBA'/>\n"
+"       <placeholder name='Conversations'/>\n"
 "     </menu>\n"
 "     <menu name= 'ColorizeConversation' action='/Colorize Conversation'>\n"
-"        <menu name= 'Ethernet' action='/Colorize Conversation/Ethernet'>\n"
-"          <menuitem name='Color1' action='/Colorize Conversation/Ethernet/Color 1'/>\n"
-"          <menuitem name='Color2' action='/Colorize Conversation/Ethernet/Color 2'/>\n"
-"          <menuitem name='Color3' action='/Colorize Conversation/Ethernet/Color 3'/>\n"
-"          <menuitem name='Color4' action='/Colorize Conversation/Ethernet/Color 4'/>\n"
-"          <menuitem name='Color5' action='/Colorize Conversation/Ethernet/Color 5'/>\n"
-"          <menuitem name='Color6' action='/Colorize Conversation/Ethernet/Color 6'/>\n"
-"          <menuitem name='Color7' action='/Colorize Conversation/Ethernet/Color 7'/>\n"
-"          <menuitem name='Color8' action='/Colorize Conversation/Ethernet/Color 8'/>\n"
-"          <menuitem name='Color9' action='/Colorize Conversation/Ethernet/Color 9'/>\n"
-"          <menuitem name='Color10' action='/Colorize Conversation/Ethernet/Color 10'/>\n"
-"          <menuitem name='NewColoringRule' action='/Colorize Conversation/Ethernet/New Coloring Rule'/>\n"
-"        </menu>\n"
-"        <menu name= 'IP' action='/Colorize Conversation/IP'>\n"
-"          <menuitem name='Color1' action='/Colorize Conversation/IP/Color 1'/>\n"
-"          <menuitem name='Color2' action='/Colorize Conversation/IP/Color 2'/>\n"
-"          <menuitem name='Color3' action='/Colorize Conversation/IP/Color 3'/>\n"
-"          <menuitem name='Color4' action='/Colorize Conversation/IP/Color 4'/>\n"
-"          <menuitem name='Color5' action='/Colorize Conversation/IP/Color 5'/>\n"
-"          <menuitem name='Color6' action='/Colorize Conversation/IP/Color 6'/>\n"
-"          <menuitem name='Color7' action='/Colorize Conversation/IP/Color 7'/>\n"
-"          <menuitem name='Color8' action='/Colorize Conversation/IP/Color 8'/>\n"
-"          <menuitem name='Color9' action='/Colorize Conversation/IP/Color 9'/>\n"
-"          <menuitem name='Color10' action='/Colorize Conversation/IP/Color 10'/>\n"
-"          <menuitem name='NewColoringRule' action='/Colorize Conversation/IP/New Coloring Rule'/>\n"
-"        </menu>\n"
-"        <menu name= 'TCP' action='/Colorize Conversation/TCP'>\n"
-"          <menuitem name='Color1' action='/Colorize Conversation/TCP/Color 1'/>\n"
-"          <menuitem name='Color2' action='/Colorize Conversation/TCP/Color 2'/>\n"
-"          <menuitem name='Color3' action='/Colorize Conversation/TCP/Color 3'/>\n"
-"          <menuitem name='Color4' action='/Colorize Conversation/TCP/Color 4'/>\n"
-"          <menuitem name='Color5' action='/Colorize Conversation/TCP/Color 5'/>\n"
-"          <menuitem name='Color6' action='/Colorize Conversation/TCP/Color 6'/>\n"
-"          <menuitem name='Color7' action='/Colorize Conversation/TCP/Color 7'/>\n"
-"          <menuitem name='Color8' action='/Colorize Conversation/TCP/Color 8'/>\n"
-"          <menuitem name='Color9' action='/Colorize Conversation/TCP/Color 9'/>\n"
-"          <menuitem name='Color10' action='/Colorize Conversation/TCP/Color 10'/>\n"
-"          <menuitem name='NewColoringRule' action='/Colorize Conversation/TCP/New Coloring Rule'/>\n"
-"        </menu>\n"
-"        <menu name= 'UDP' action='/Colorize Conversation/UDP'>\n"
-"          <menuitem name='Color1' action='/Colorize Conversation/UDP/Color 1'/>\n"
-"          <menuitem name='Color2' action='/Colorize Conversation/UDP/Color 2'/>\n"
-"          <menuitem name='Color3' action='/Colorize Conversation/UDP/Color 3'/>\n"
-"          <menuitem name='Color4' action='/Colorize Conversation/UDP/Color 4'/>\n"
-"          <menuitem name='Color5' action='/Colorize Conversation/UDP/Color 5'/>\n"
-"          <menuitem name='Color6' action='/Colorize Conversation/UDP/Color 6'/>\n"
-"          <menuitem name='Color7' action='/Colorize Conversation/UDP/Color 7'/>\n"
-"          <menuitem name='Color8' action='/Colorize Conversation/UDP/Color 8'/>\n"
-"          <menuitem name='Color9' action='/Colorize Conversation/UDP/Color 9'/>\n"
-"          <menuitem name='Color10' action='/Colorize Conversation/UDP/Color 10'/>\n"
-"          <menuitem name='NewColoringRule' action='/Colorize Conversation/UDP/New Coloring Rule'/>\n"
-"        </menu>\n"
-"        <menu name= 'PN-CBA' action='/Colorize Conversation/PN-CBA'>\n"
-"          <menuitem name='Color1' action='/Colorize Conversation/PN-CBA/Color 1'/>\n"
-"          <menuitem name='Color2' action='/Colorize Conversation/PN-CBA/Color 2'/>\n"
-"          <menuitem name='Color3' action='/Colorize Conversation/PN-CBA/Color 3'/>\n"
-"          <menuitem name='Color4' action='/Colorize Conversation/PN-CBA/Color 4'/>\n"
-"          <menuitem name='Color5' action='/Colorize Conversation/PN-CBA/Color 5'/>\n"
-"          <menuitem name='Color6' action='/Colorize Conversation/PN-CBA/Color 6'/>\n"
-"          <menuitem name='Color7' action='/Colorize Conversation/PN-CBA/Color 7'/>\n"
-"          <menuitem name='Color8' action='/Colorize Conversation/PN-CBA/Color 8'/>\n"
-"          <menuitem name='Color9' action='/Colorize Conversation/PN-CBA/Color 9'/>\n"
-"          <menuitem name='Color10' action='/Colorize Conversation/PN-CBA/Color 10'/>\n"
-"          <menuitem name='NewColoringRule' action='/Colorize Conversation/PN-CBA/New Coloring Rule'/>\n"
-"        </menu>\n"
+"       <placeholder name='Colorize'/>\n"
 "     </menu>\n"
 "     <menu name= 'SCTP' action='/SCTP'>\n"
 "        <menuitem name='AnalysethisAssociation' action='/SCTP/Analyse this Association'/>\n"
@@ -2866,88 +2241,12 @@ static const GtkActionEntry packet_list_menu_popup_action_entries[] = {
   { "/TimeShift",                       WIRESHARK_STOCK_TIME,   "Time Shift...",                NULL,                   NULL,           G_CALLBACK(time_shift_cb) },
   { "/ManuallyResolveAddress",          NULL,                   "Manually Resolve Address",     NULL,                   NULL,           G_CALLBACK(manual_addr_resolv_dlg) },
 #ifdef WANT_PACKET_EDITOR
-   { "/Edit/EditPacket",                NULL,               "_Edit Packet",                         NULL,                       NULL,           G_CALLBACK(edit_window_cb) },//AL
+   { "/Edit/EditPacket",                NULL,               "_Edit Packet",                         NULL,                       NULL,           G_CALLBACK(edit_window_cb) },
 #endif
   { "/Edit/AddEditPktComment",          WIRESHARK_STOCK_EDIT,   "Packet Comment...",   NULL,                   NULL,           G_CALLBACK(edit_packet_comment_dlg) },
 
   { "/Conversation Filter",             NULL, "Conversation Filter",    NULL, NULL, NULL },
-  { "/Conversation Filter/Ethernet",    NULL, "Ethernet",               NULL, NULL, G_CALLBACK(packet_list_menu_conversation_ethernet_cb) },
-  { "/Conversation Filter/IP",          NULL, "IP",                     NULL, NULL, G_CALLBACK(packet_list_menu_conversation_ip_cb) },
-  { "/Conversation Filter/TCP",         NULL, "TCP",                    NULL, NULL, G_CALLBACK(packet_list_menu_conversation_tcp_cb) },
-  { "/Conversation Filter/UDP",         NULL, "UDP",                    NULL, NULL, G_CALLBACK(packet_list_menu_conversation_udp_cb) },
-  { "/Conversation Filter/PN-CBA",      NULL, "PN-CBA",                 NULL, NULL, G_CALLBACK(packet_list_menu_conversation_pn_cba_cb) },
-
   { "/Colorize Conversation",           NULL, "Colorize Conversation",  NULL, NULL, NULL },
-
-  { "/Colorize Conversation/Ethernet",  NULL, "Ethernet",               NULL, NULL, NULL },
-
-  { "/Colorize Conversation/Ethernet/Color 1",  WIRESHARK_STOCK_COLOR1, "Color 1",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color1_cb) },
-  { "/Colorize Conversation/Ethernet/Color 2",  WIRESHARK_STOCK_COLOR2, "Color 2",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color2_cb) },
-  { "/Colorize Conversation/Ethernet/Color 3",  WIRESHARK_STOCK_COLOR3, "Color 3",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color3_cb) },
-  { "/Colorize Conversation/Ethernet/Color 4",  WIRESHARK_STOCK_COLOR4, "Color 4",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color4_cb) },
-  { "/Colorize Conversation/Ethernet/Color 5",  WIRESHARK_STOCK_COLOR5, "Color 5",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color5_cb) },
-  { "/Colorize Conversation/Ethernet/Color 6",  WIRESHARK_STOCK_COLOR6, "Color 6",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color6_cb) },
-  { "/Colorize Conversation/Ethernet/Color 7",  WIRESHARK_STOCK_COLOR7, "Color 7",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color7_cb) },
-  { "/Colorize Conversation/Ethernet/Color 8",  WIRESHARK_STOCK_COLOR8, "Color 8",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color8_cb) },
-  { "/Colorize Conversation/Ethernet/Color 9",  WIRESHARK_STOCK_COLOR9, "Color 9",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color9_cb) },
-  { "/Colorize Conversation/Ethernet/Color 10", WIRESHARK_STOCK_COLOR0, "Color 10",                 NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_color10_cb) },
-  { "/Colorize Conversation/Ethernet/New Coloring Rule",    NULL,       "New Coloring Rule...",     NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ethernet_new_rule_cb) },
-
-  { "/Colorize Conversation/IP",        NULL, "IP",             NULL, NULL, NULL },
-
-  { "/Colorize Conversation/IP/Color 1",        WIRESHARK_STOCK_COLOR1, "Color 1",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color1_cb) },
-  { "/Colorize Conversation/IP/Color 2",        WIRESHARK_STOCK_COLOR2, "Color 2",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color2_cb) },
-  { "/Colorize Conversation/IP/Color 3",        WIRESHARK_STOCK_COLOR3, "Color 3",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color3_cb) },
-  { "/Colorize Conversation/IP/Color 4",        WIRESHARK_STOCK_COLOR4, "Color 4",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color4_cb) },
-  { "/Colorize Conversation/IP/Color 5",        WIRESHARK_STOCK_COLOR5, "Color 5",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color5_cb) },
-  { "/Colorize Conversation/IP/Color 6",        WIRESHARK_STOCK_COLOR6, "Color 6",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color6_cb) },
-  { "/Colorize Conversation/IP/Color 7",        WIRESHARK_STOCK_COLOR7, "Color 7",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color7_cb) },
-  { "/Colorize Conversation/IP/Color 8",        WIRESHARK_STOCK_COLOR8, "Color 8",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color8_cb) },
-  { "/Colorize Conversation/IP/Color 9",        WIRESHARK_STOCK_COLOR9, "Color 9",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color9_cb) },
-  { "/Colorize Conversation/IP/Color 10",       WIRESHARK_STOCK_COLOR0, "Color 10",                 NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_color10_cb) },
-  { "/Colorize Conversation/IP/New Coloring Rule",  NULL,       "New Coloring Rule...",             NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_ip_new_rule_cb) },
-
-  { "/Colorize Conversation/TCP",       NULL, "TCP",                NULL, NULL, NULL },
-
-  { "/Colorize Conversation/TCP/Color 1",       WIRESHARK_STOCK_COLOR1, "Color 1",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color1_cb) },
-  { "/Colorize Conversation/TCP/Color 2",       WIRESHARK_STOCK_COLOR2, "Color 2",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color2_cb) },
-  { "/Colorize Conversation/TCP/Color 3",       WIRESHARK_STOCK_COLOR3, "Color 3",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color3_cb) },
-  { "/Colorize Conversation/TCP/Color 4",       WIRESHARK_STOCK_COLOR4, "Color 4",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color4_cb) },
-  { "/Colorize Conversation/TCP/Color 5",       WIRESHARK_STOCK_COLOR5, "Color 5",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color5_cb) },
-  { "/Colorize Conversation/TCP/Color 6",       WIRESHARK_STOCK_COLOR6, "Color 6",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color6_cb) },
-  { "/Colorize Conversation/TCP/Color 7",       WIRESHARK_STOCK_COLOR7, "Color 7",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color7_cb) },
-  { "/Colorize Conversation/TCP/Color 8",       WIRESHARK_STOCK_COLOR8, "Color 8",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color8_cb) },
-  { "/Colorize Conversation/TCP/Color 9",       WIRESHARK_STOCK_COLOR9, "Color 9",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color9_cb) },
-  { "/Colorize Conversation/TCP/Color 10",      WIRESHARK_STOCK_COLOR0, "Color 10",                 NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_color10_cb) },
-  { "/Colorize Conversation/TCP/New Coloring Rule", NULL,       "New Coloring Rule...",             NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_tcp_new_rule_cb) },
-
-  { "/Colorize Conversation/UDP",       NULL, "UDP",                NULL, NULL, NULL },
-
-  { "/Colorize Conversation/UDP/Color 1",       WIRESHARK_STOCK_COLOR1, "Color 1",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color1_cb) },
-  { "/Colorize Conversation/UDP/Color 2",       WIRESHARK_STOCK_COLOR2, "Color 2",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color2_cb) },
-  { "/Colorize Conversation/UDP/Color 3",       WIRESHARK_STOCK_COLOR3, "Color 3",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color3_cb) },
-  { "/Colorize Conversation/UDP/Color 4",       WIRESHARK_STOCK_COLOR4, "Color 4",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color4_cb) },
-  { "/Colorize Conversation/UDP/Color 5",       WIRESHARK_STOCK_COLOR5, "Color 5",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color5_cb) },
-  { "/Colorize Conversation/UDP/Color 6",       WIRESHARK_STOCK_COLOR6, "Color 6",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color6_cb) },
-  { "/Colorize Conversation/UDP/Color 7",       WIRESHARK_STOCK_COLOR7, "Color 7",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color7_cb) },
-  { "/Colorize Conversation/UDP/Color 8",       WIRESHARK_STOCK_COLOR8, "Color 8",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color8_cb) },
-  { "/Colorize Conversation/UDP/Color 9",       WIRESHARK_STOCK_COLOR9, "Color 9",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color9_cb) },
-  { "/Colorize Conversation/UDP/Color 10",      WIRESHARK_STOCK_COLOR0, "Color 10",                 NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_color10_cb) },
-  { "/Colorize Conversation/UDP/New Coloring Rule", NULL,       "New Coloring Rule...",             NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_udp_new_rule_cb) },
-
-  { "/Colorize Conversation/PN-CBA",        NULL, "PN-CBA Server",              NULL, NULL, NULL },
-
-  { "/Colorize Conversation/PN-CBA/Color 1",        WIRESHARK_STOCK_COLOR1, "Color 1",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color1_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 2",        WIRESHARK_STOCK_COLOR2, "Color 2",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color2_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 3",        WIRESHARK_STOCK_COLOR3, "Color 3",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color3_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 4",        WIRESHARK_STOCK_COLOR4, "Color 4",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color4_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 5",        WIRESHARK_STOCK_COLOR5, "Color 5",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color5_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 6",        WIRESHARK_STOCK_COLOR6, "Color 6",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color6_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 7",        WIRESHARK_STOCK_COLOR7, "Color 7",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color7_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 8",        WIRESHARK_STOCK_COLOR8, "Color 8",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color8_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 9",        WIRESHARK_STOCK_COLOR9, "Color 9",                  NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color9_cb) },
-  { "/Colorize Conversation/PN-CBA/Color 10",       WIRESHARK_STOCK_COLOR0, "Color 10",                 NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_color10_cb) },
-  { "/Colorize Conversation/PN-CBA/New Coloring Rule",  NULL,       "New Coloring Rule...",             NULL, NULL, G_CALLBACK(packet_list_menu_color_conv_cba_new_rule_cb) },
 
   { "/SCTP",        NULL, "SCTP",               NULL, NULL, NULL },
   { "/SCTP/Analyse this Association",               NULL,       "Analyse this Association",             NULL, NULL, G_CALLBACK(sctp_analyse_start) },
@@ -3250,13 +2549,15 @@ main_menu_new(GtkAccelGroup ** table)
     if (table)
         *table = grp;
 
+    plugin_if_register_gui_cb(PLUGIN_IF_PREFERENCE_SAVE, plugin_if_menubar_preference);
+
     return menubar;
 }
 
 static void
 menu_dissector_filter_cb(GtkAction *action _U_,  gpointer callback_data)
 {
-    dissector_filter_t      *filter_entry = (dissector_filter_t *)callback_data;
+    conversation_filter_t  *filter_entry = (conversation_filter_t *)callback_data;
     GtkWidget               *filter_te;
     const char              *buf;
 
@@ -3279,7 +2580,7 @@ menu_dissector_filter_cb(GtkAction *action _U_,  gpointer callback_data)
 static gboolean
 menu_dissector_filter_spe_cb(frame_data *fd _U_, epan_dissect_t *edt, gpointer callback_data)
 {
-    dissector_filter_t *filter_entry = (dissector_filter_t *)callback_data;
+    conversation_filter_t *filter_entry = (conversation_filter_t*)callback_data;
 
     /* XXX - this gets the packet_info of the last dissected packet, */
     /* which is not necessarily the last selected packet */
@@ -3290,8 +2591,8 @@ menu_dissector_filter_spe_cb(frame_data *fd _U_, epan_dissect_t *edt, gpointer c
 static void
 menu_dissector_filter(capture_file *cf)
 {
-    GList *list_entry = dissector_filter_list;
-    dissector_filter_t *filter_entry;
+    GList *list_entry = conv_filter_list;
+    conversation_filter_t *filter_entry;
 
     guint merge_id;
     GtkActionGroup *action_group;
@@ -3307,12 +2608,12 @@ menu_dissector_filter(capture_file *cf)
 
     submenu_dissector_filters = gtk_ui_manager_get_widget(ui_manager_main_menubar, "/Menubar/AnalyzeMenu/ConversationFilterMenu");
     if(!submenu_dissector_filters){
-        g_warning("add_recent_items: No submenu_dissector_filters found, path= /Menubar/AnalyzeMenu/ConversationFilterMenu");
+        g_warning("menu_dissector_filter: No submenu_dissector_filters found, path= /Menubar/AnalyzeMenu/ConversationFilterMenu");
     }
 
     gtk_ui_manager_insert_action_group (ui_manager_main_menubar, action_group, 0);
     g_object_set_data (G_OBJECT (ui_manager_main_menubar),
-                     "diessector-filters-merge-id", GUINT_TO_POINTER (merge_id));
+                     "dissector-filters-merge-id", GUINT_TO_POINTER (merge_id));
 
     /* no items */
     if (!list_entry){
@@ -3337,12 +2638,12 @@ menu_dissector_filter(capture_file *cf)
     }
 
     while (list_entry != NULL) {
-        filter_entry = (dissector_filter_t *)list_entry->data;
+        filter_entry = (conversation_filter_t *)list_entry->data;
         action_name = g_strdup_printf ("filter-%u", i);
         /*g_warning("action_name %s, filter_entry->name %s",action_name,filter_entry->name);*/
         action = (GtkAction *)g_object_new (GTK_TYPE_ACTION,
                  "name", action_name,
-                 "label", filter_entry->name,
+                 "label", filter_entry->display_name,
                  "sensitive", menu_dissector_filter_spe_cb(/* frame_data *fd _U_*/ NULL, cf->edt, filter_entry),
                  NULL);
         g_signal_connect (action, "activate",
@@ -3358,6 +2659,311 @@ menu_dissector_filter(capture_file *cf)
                  FALSE);
         g_free(action_name);
         i++;
+        list_entry = g_list_next(list_entry);
+    }
+}
+
+static void
+menu_endpoints_cb(GtkAction *action _U_, gpointer user_data)
+{
+    register_ct_t *table = (register_ct_t*)user_data;
+
+    conversation_endpoint_cb(table);
+}
+
+typedef struct {
+    capture_file *cf;
+    guint merge_id;
+    GtkActionGroup *action_group;
+    int counter;
+} conv_menu_t;
+
+static void
+add_conversation_menuitem(gpointer data, gpointer user_data)
+{
+    register_ct_t *table = (register_ct_t*)data;
+    conv_menu_t *conv = (conv_menu_t*)user_data;
+    gchar *action_name;
+    GtkAction *action;
+
+    action_name = g_strdup_printf ("conversation-%u", conv->counter);
+    /*g_warning("action_name %s, filter_entry->name %s",action_name,filter_entry->name);*/
+    action = (GtkAction *)g_object_new (GTK_TYPE_ACTION,
+                "name", action_name,
+                "label", proto_get_protocol_short_name(find_protocol_by_id(get_conversation_proto_id(table))),
+                "sensitive", TRUE,
+                NULL);
+    g_signal_connect (action, "activate",
+                    G_CALLBACK (menu_endpoints_cb), table);
+    gtk_action_group_add_action (conv->action_group, action);
+    g_object_unref (action);
+
+    gtk_ui_manager_add_ui (ui_manager_main_menubar, conv->merge_id,
+                "/Menubar/StatisticsMenu/ConversationListMenu/Conversations",
+                action_name,
+                action_name,
+                GTK_UI_MANAGER_MENUITEM,
+                FALSE);
+    g_free(action_name);
+    conv->counter++;
+}
+
+static void
+menu_conversation_list(capture_file *cf)
+{
+    GtkWidget *submenu_conversation_list;
+    conv_menu_t conv_data;
+
+    conv_data.merge_id = gtk_ui_manager_new_merge_id (ui_manager_main_menubar);
+
+    conv_data.action_group = gtk_action_group_new ("conversation-list-group");
+
+    submenu_conversation_list = gtk_ui_manager_get_widget(ui_manager_main_menubar, "/Menubar/StatisticsMenu/ConversationListMenu");
+    if(!submenu_conversation_list){
+        g_warning("menu_conversation_list: No submenu_conversation_list found, path= /Menubar/StatisticsMenu/ConversationListMenu");
+    }
+
+    gtk_ui_manager_insert_action_group (ui_manager_main_menubar, conv_data.action_group, 0);
+    g_object_set_data (G_OBJECT (ui_manager_main_menubar),
+                     "conversation-list-merge-id", GUINT_TO_POINTER (conv_data.merge_id));
+
+    conv_data.cf = cf;
+    conv_data.counter = 0;
+    conversation_table_iterate_tables(add_conversation_menuitem, &conv_data);
+}
+
+static void
+menu_hostlist_cb(GtkAction *action _U_, gpointer user_data)
+{
+    register_ct_t *table = (register_ct_t*)user_data;
+
+    hostlist_endpoint_cb(table);
+}
+
+static void
+add_hostlist_menuitem(gpointer data, gpointer user_data)
+{
+    register_ct_t *table = (register_ct_t*)data;
+    conv_menu_t *conv = (conv_menu_t*)user_data;
+    gchar *action_name;
+    GtkAction *action;
+
+    action_name = g_strdup_printf ("hostlist-%u", conv->counter);
+    /*g_warning("action_name %s, filter_entry->name %s",action_name,filter_entry->name);*/
+    action = (GtkAction *)g_object_new (GTK_TYPE_ACTION,
+                "name", action_name,
+                "label", proto_get_protocol_short_name(find_protocol_by_id(get_conversation_proto_id(table))),
+                "sensitive", TRUE,
+                NULL);
+    g_signal_connect (action, "activate",
+                    G_CALLBACK (menu_hostlist_cb), table);
+    gtk_action_group_add_action (conv->action_group, action);
+    g_object_unref (action);
+
+    gtk_ui_manager_add_ui (ui_manager_main_menubar, conv->merge_id,
+                "/Menubar/StatisticsMenu/EndpointListMenu/Endpoints",
+                action_name,
+                action_name,
+                GTK_UI_MANAGER_MENUITEM,
+                FALSE);
+    g_free(action_name);
+    conv->counter++;
+}
+
+static void
+menu_hostlist_list(capture_file *cf)
+{
+    GtkWidget *submenu_hostlist;
+    conv_menu_t conv_data;
+
+    conv_data.merge_id = gtk_ui_manager_new_merge_id (ui_manager_main_menubar);
+
+    conv_data.action_group = gtk_action_group_new ("endpoint-list-group");
+
+    submenu_hostlist = gtk_ui_manager_get_widget(ui_manager_main_menubar, "/Menubar/StatisticsMenu/EndpointListMenu");
+    if(!submenu_hostlist){
+        g_warning("menu_hostlist_list: No submenu_conversation_list found, path= /Menubar/StatisticsMenu/EndpointListMenu");
+    }
+
+    gtk_ui_manager_insert_action_group (ui_manager_main_menubar, conv_data.action_group, 0);
+    g_object_set_data (G_OBJECT (ui_manager_main_menubar),
+                     "endpoint-list-merge-id", GUINT_TO_POINTER (conv_data.merge_id));
+
+    conv_data.cf = cf;
+    conv_data.counter = 0;
+    conversation_table_iterate_tables(add_hostlist_menuitem, &conv_data);
+}
+
+static void
+menu_conversation_display_filter_cb(GtkAction *action _U_, gpointer data)
+{
+    conversation_filter_t *filter_entry = (conversation_filter_t *)data;
+
+    gchar     *filter;
+    GtkWidget *filter_te;
+
+    if (cfile.current_frame) {
+        /* create a filter-string based on the selected packet and action */
+        filter = filter_entry->build_filter_string(&cfile.edt->pi);
+
+        /* Run the display filter so it goes in effect - even if it's the
+        same as the previous display filter. */
+        filter_te = gtk_bin_get_child(GTK_BIN(g_object_get_data(G_OBJECT(top_level), E_DFILTER_CM_KEY)));
+
+        gtk_entry_set_text(GTK_ENTRY(filter_te), filter);
+        main_filter_packets(&cfile, filter, TRUE);
+
+        g_free(filter);
+    }
+}
+
+static gboolean
+menu_color_dissector_filter_spe_cb(frame_data *fd _U_, epan_dissect_t *edt, gpointer callback_data)
+{
+    conversation_filter_t *filter_entry = (conversation_filter_t *)callback_data;
+
+    /* XXX - this gets the packet_info of the last dissected packet, */
+    /* which is not necessarily the last selected packet */
+    /* e.g. "Update list of packets in real time" won't work correct */
+    return (edt != NULL) ? filter_entry->is_filter_valid(&edt->pi) : FALSE;
+}
+
+#define MAX_NUM_COLOR_CONVERSATION_COLORS       10
+
+static void
+menu_color_conversation_filter(capture_file *cf)
+{
+    GtkWidget *submenu_conv_filters, *submenu_color_conv_filters;
+    guint merge_id, color_merge_id;
+    GtkActionGroup *action_group, *color_action_group;
+    GList *list_entry = conv_filter_list;
+    conversation_filter_t* color_filter;
+    int conv_counter = 0;
+
+    static packet_list_menu_color_conv_color_cb_t callbacks[MAX_NUM_COLOR_CONVERSATION_COLORS] = {
+        packet_list_menu_color_conv_color1_cb,
+        packet_list_menu_color_conv_color2_cb,
+        packet_list_menu_color_conv_color3_cb,
+        packet_list_menu_color_conv_color4_cb,
+        packet_list_menu_color_conv_color5_cb,
+        packet_list_menu_color_conv_color6_cb,
+        packet_list_menu_color_conv_color7_cb,
+        packet_list_menu_color_conv_color8_cb,
+        packet_list_menu_color_conv_color9_cb,
+        packet_list_menu_color_conv_color10_cb,
+    };
+
+    static const gchar *icons[MAX_NUM_COLOR_CONVERSATION_COLORS] = {
+        WIRESHARK_STOCK_COLOR1,
+        WIRESHARK_STOCK_COLOR2,
+        WIRESHARK_STOCK_COLOR3,
+        WIRESHARK_STOCK_COLOR4,
+        WIRESHARK_STOCK_COLOR5,
+        WIRESHARK_STOCK_COLOR6,
+        WIRESHARK_STOCK_COLOR7,
+        WIRESHARK_STOCK_COLOR8,
+        WIRESHARK_STOCK_COLOR9,
+        WIRESHARK_STOCK_COLOR0,
+    };
+
+    merge_id = gtk_ui_manager_new_merge_id (ui_manager_packet_list_menu);
+    action_group = gtk_action_group_new ("popup-conversation-filters-group");
+    color_merge_id = gtk_ui_manager_new_merge_id (ui_manager_packet_list_menu);
+    color_action_group = gtk_action_group_new ("popup-conv-color-filters-group");
+
+    submenu_conv_filters = gtk_ui_manager_get_widget(ui_manager_packet_list_menu, "/PacketListMenuPopup/ConversationFilter");
+    if(!submenu_conv_filters){
+        g_warning("menu_color_conversation_filter: No submenu_conversation_filters found, path= /PacketListMenuPopup/ConversationFilter");
+    }
+
+    submenu_color_conv_filters = gtk_ui_manager_get_widget(ui_manager_packet_list_menu, "/PacketListMenuPopup/ColorizeConversation");
+    if(!submenu_color_conv_filters){
+        g_warning("menu_color_conversation_filter: No submenu_color_conversation_filters found, path= /PacketListMenuPopup/ColorizeConversation");
+    }
+
+    gtk_ui_manager_insert_action_group (ui_manager_packet_list_menu, action_group, 0);
+    g_object_set_data (G_OBJECT (ui_manager_packet_list_menu),
+                     "popup-conversation-filters-merge-id", GUINT_TO_POINTER (merge_id));
+    gtk_ui_manager_insert_action_group (ui_manager_packet_list_menu, color_action_group, 0);
+    g_object_set_data (G_OBJECT (ui_manager_packet_list_menu),
+                     "popup-conv-color-filters-merge-id", GUINT_TO_POINTER (color_merge_id));
+
+    while (list_entry != NULL) {
+        gchar *action_name, *color_num_path_name;
+        GtkAction *action, *color_action;
+        GtkWidget *color_conv_filter_menuitem, *color_conv_filter_submenu, *color_conv_widget;
+
+        color_filter = (conversation_filter_t*)list_entry->data;
+
+        /* Create conversation filter menu item for each registered protocol */
+        action_name = g_strdup_printf ("color_conversation-%u", conv_counter);
+        conv_counter++;
+        action = (GtkAction *)g_object_new (GTK_TYPE_ACTION,
+                 "name", action_name,
+                 "label", color_filter->display_name,
+                 "sensitive", menu_color_dissector_filter_spe_cb(NULL, cf->edt, color_filter),
+                 NULL);
+        g_signal_connect (action, "activate", G_CALLBACK (menu_conversation_display_filter_cb), color_filter);
+        gtk_action_group_add_action (action_group, action);
+        g_object_unref (action);
+
+        gtk_ui_manager_add_ui (ui_manager_packet_list_menu, merge_id,
+                    "/PacketListMenuPopup/ConversationFilter/Conversations",
+                    action_name,
+                    action_name,
+                    GTK_UI_MANAGER_MENUITEM,
+                    FALSE);
+        g_free(action_name);
+
+        /* Create color filter menu item for each registered protocol */
+        color_action = (GtkAction *)g_object_new (GTK_TYPE_ACTION,
+                 "name", color_filter->display_name,
+                 "label", color_filter->display_name,
+                 "sensitive", menu_color_dissector_filter_spe_cb(NULL, cf->edt, color_filter),
+                 NULL);
+        gtk_action_group_add_action (color_action_group, color_action);
+        g_object_unref (color_action);
+
+        gtk_ui_manager_add_ui (ui_manager_packet_list_menu, color_merge_id,
+                    "/PacketListMenuPopup/ColorizeConversation/Colorize",
+                    color_filter->display_name,
+                    color_filter->display_name,
+                    GTK_UI_MANAGER_MENUITEM,
+                    FALSE);
+
+
+        /* Create each "numbered" color filter menu item for each registered protocol */
+        color_num_path_name = g_strdup_printf ("/PacketListMenuPopup/ColorizeConversation/Colorize/%s", color_filter->display_name);
+        color_conv_widget = gtk_ui_manager_get_widget(ui_manager_packet_list_menu, color_num_path_name);
+        if (color_conv_widget != NULL) {
+            guint i;
+            gchar *color_num_name;
+
+            color_conv_filter_submenu = gtk_menu_new();
+            for (i = 0; i < MAX_NUM_COLOR_CONVERSATION_COLORS; i++) {
+                color_num_name = g_strdup_printf ("Color %d", i+1);
+                color_conv_filter_menuitem = gtk_image_menu_item_new_with_label(color_num_name);
+                gtk_image_menu_item_set_image (GTK_IMAGE_MENU_ITEM(color_conv_filter_menuitem),
+                                       ws_gtk_image_new_from_stock(icons[i], GTK_ICON_SIZE_MENU));
+                g_signal_connect(color_conv_filter_menuitem, "activate", G_CALLBACK(callbacks[i]), color_filter);
+                gtk_menu_shell_append(GTK_MENU_SHELL(color_conv_filter_submenu), color_conv_filter_menuitem);
+
+                gtk_widget_show (color_conv_filter_menuitem);
+                g_free(color_num_name);
+            }
+
+            /* Create New Coloring Rule... menu item */
+            color_conv_filter_menuitem = gtk_menu_item_new_with_label("New Coloring Rule...");
+            g_signal_connect(color_conv_filter_menuitem, "activate", G_CALLBACK(packet_list_menu_color_conv_new_rule_cb), color_filter);
+            gtk_menu_shell_append(GTK_MENU_SHELL(color_conv_filter_submenu), color_conv_filter_menuitem);
+            gtk_widget_show (color_conv_filter_menuitem);
+
+            gtk_menu_item_set_submenu (GTK_MENU_ITEM(color_conv_widget), color_conv_filter_submenu);
+        } else {
+            g_warning("menu_color_conversation_filter: No submenu_color_conv_filters found, path= %s", color_num_path_name);
+        }
+        g_free(color_num_path_name);
+
         list_entry = g_list_next(list_entry);
     }
 }
@@ -3443,6 +3049,7 @@ menus_init(void)
 
         popup_menu_list = g_slist_append((GSList *)popup_menu_list, ui_manager_packet_list_menu);
 
+        menu_color_conversation_filter(&cfile);
 
         /* packet detail pop-up menu */
         packet_list_details_action_group = gtk_action_group_new ("PacketListDetailsMenuPopUpActionGroup");
@@ -3625,6 +3232,12 @@ menus_init(void)
         popup_menu_list = g_slist_append((GSList *)popup_menu_list, ui_manager_statusbar_profiles_menu);
 
         menu_dissector_filter(&cfile);
+        menu_conversation_list(&cfile);
+        menu_hostlist_list(&cfile);
+
+        /* Add additional entries which may have been introduced by dissectors and/or plugins */
+        ws_menubar_external_menus();
+
         merge_menu_items(merge_menu_items_list);
 
         /* Add external menus and items */
@@ -3732,65 +3345,19 @@ void register_menu_bar_menu_items(
 }
 
 #define XMENU_MAX_DEPTH         (1 + 32)        /* max number of menus in an xpath (+1 for Menubar) */
-#define XMENU_HEADER            "<ui><menubar name='Menubar'>\n"
-#define XMENU_FOOTER            "</menubar></ui>\n"
 
-/**
- * Creates an XML string, containing a UI definition that can be merged
- * with Wireshark's menu bar using gtk_ui_manager_add_ui_from_string().
- * Free the returned string with g_free() when no longer needed.
- *
- * The last item in the path is treated as the menu item; all preceding path
- * elements are the names of parent menus. Path elements are stripped of
- * leading/trailing spaces.
- *
- * |'s separate an existing menu's name from its action.
- * If the action has a / in it, it must have been "escaped" into a # before
- * entering this function; this function will translate it back to a /.
- * There must be an easier way!
- *
- * Examples:
- *      make_menu_xml("/Foo/Bar|/BarAction/I_tem");
- *   -->
- *              "<ui><menubar name='Menubar'>
- *              <menu action='Foo'>
- *              <menu name='Bar' action='/BarAction'>
- *              <menuitem action='I_tem'/>    <!-- puts shortcut on 't' -->
- *              </menu>
- *              </menu>
- *              <menubar></ui>"
- *
- *  make_menu_xml("/Foo/Bar|BarAction/-/Baz|BarAction#BazAction/Item");
- *    -->
- *      "<ui><menubar name='Menubar'>
- *      <menu action='Foo'>
- *      <menu name='Bar' action='/BarAction'>
- *      <separator/>
- *      <menu name='Baz' action='BarAction/BazAction'>
- *      <menuitem action='Item'/>
- *      </menu>
- *      </menu>
- *      </menu>
- *      <menubar></ui>"
- *
- * http://developer.gnome.org/gtk/2.24/GtkUIManager.html#XML-UI
- * http://developer.gnome.org/gtk/2.24/GtkUIManager.html#gtk-ui-manager-add-ui-from-string
- */
-static const gchar*
-make_menu_xml(const char *path)
+static void
+add_menu_item_to_main_menubar(const gchar *path, const gchar *name, const menu_item_t *menu_item_data)
 {
-    GString     *xml;
-    char        **p;
-    char        **tokens, **name_action_tokens;
-    const char  *tok = path;
-    gchar       *markup;
-    guint       num_menus;
-    size_t      len;
-    int i;
-
-    if (path == NULL) return NULL;
-
-    xml = g_string_new(XMENU_HEADER);
+    gchar           *xpath;
+    GString         *item_path;
+    guint            merge_id;
+    char           **p;
+    char           **tokens, **name_action_tokens;
+    char            *tok, *item_name, *action_name;
+    size_t           len;
+    int              i;
+    GtkAction       *action;
 
     /* no need to specify menu bar...skip it */
     len = strlen("/Menubar");
@@ -3798,187 +3365,164 @@ make_menu_xml(const char *path)
         path += len;
     }
 
-    /* open nested menu tag for each path token */
-    num_menus = 0;
-    tokens = g_strsplit(path, "/", XMENU_MAX_DEPTH);
-    for (p = tokens; (p != NULL) && (*p != NULL); p++) {
+    xpath = g_strdup_printf("%s/%s", path, name);
+    item_path = g_string_new("/Menubar");
 
-        tok = g_strstrip(*p);
-        if (tok[0] == '\0') continue;
+    merge_id = gtk_ui_manager_new_merge_id(ui_manager_main_menubar);
 
-        /* reserve last token for menu-item processing */
-        if (*(p+1) == NULL) break;
-
-        if (g_strcmp0(tok, "-") == 0) {
-            xml = g_string_append(xml, "<separator/>\n");
-        } else {
-            /* Split the name of the menu from its action (if any) */
-            name_action_tokens = g_strsplit(tok, "|", 2);
-
-            if (name_action_tokens[1]) {
-                i = -1;
-                /* Replace #'s with /'s.
-                 * Necessary for menus whose action includes a "/".
-                 * There MUST be an easier way...
-                 */
-                while (name_action_tokens[1][++i])
-                    if (name_action_tokens[1][i] == '#')
-                        name_action_tokens[1][i] = '/';
-            }
-
-            if (name_action_tokens[1])
-                markup = g_markup_printf_escaped("<menu name='%s' action='/%s'>\n", name_action_tokens[0], name_action_tokens[1]);
-            else
-                markup = g_markup_printf_escaped("<menu action='%s'>\n", tok);
-            xml = g_string_append(xml, markup);
-            g_free(markup);
-            g_strfreev(name_action_tokens);
-            num_menus++;
-        }
-    }
-
-    /* Use the last path element as the name of the menu item. Allow blank
-     * menu name or else the menu is hidden (and thus useless). Showing a
-     * blank menu allows the developer to see the problem and fix it.
+    /*
+     * The last item in the path is treated as the menu item; all preceding path
+     * elements are the names of parent menus. Path elements are stripped of
+     * leading/trailing spaces.
+     *
+     * |'s separate an existing menu's name from its action.
+     * If the action has a / in it, it must have been "escaped" into a # before
+     * entering this function; this function will translate it back to a /.
+     * There must be an easier way!
+     *
+     * Examples:
+     *
+     *   "/Foo/Bar|/BarAction/I_tem" creates a hierarchy of:
+     *
+     *     A menu with an action of "Foo"
+     *         A menu with a name of "Bar" and an action of "/BarAction"
+     *             A menu item with an action of "I_tem", which puts
+     *               the shortcut on "t".
+     *
+     *   "/Foo/Bar|BarAction/-/Baz|BarAction#BazAction/Item" creates
+     *     a hierarchy of:
+     *
+     *     A menu with an action of "Foo"
+     *         A menu with a name of "Bar" and an action of "/BarAction"
+     *         A separator
+     *             A menu with a name of "Baz" and an action of
+     *               "BarAction/BazAction"
+     *                 A menu item with an action of "Item"
      */
-    if ( (tok != NULL) /* && (tok[0] != '\0') */ ) {
-        if (g_strcmp0(tok, "-") == 0) {
-            xml = g_string_append(xml, "<separator/>\n");
-        } else {
-            /* append self-closing menu-item tag */
-            markup = g_markup_printf_escaped("<menuitem action='%s'/>\n", tok);
-            xml = g_string_append(xml, markup);
-            g_free(markup);
-        }
-    }
-
-    /* we just processed the last token, so free the list */
-    g_strfreev(tokens);
-
-    /* close all menu tags, and then append the footer */
-    for (; num_menus > 0; num_menus--) {
-        xml = g_string_append(xml, "</menu>");
-    }
-    xml = g_string_append(xml, XMENU_FOOTER);
-
-    /* free the GString object, return the allocated char buf which must be g_freed */
-    markup = g_string_free(xml, FALSE);
-
-    return markup;
-}
-
-/**
- * Creates an action group for the menu items in xpath, and returns it. The caller should
- * use g_object_unref() on the returned pointer if transferring scope.
- */
-static GtkActionGroup*
-make_menu_actions(char *path, const menu_item_t *menu_item_data)
-{
-    GtkActionGroup  *action_group;
-    GtkAction       *action;
-    char           **p;
-    char           **tokens;
-    char            *tok = path, *lbl;
-
-    action_group = gtk_action_group_new (path);
-
-    tokens = g_strsplit(path, "/", XMENU_MAX_DEPTH);
+    tokens = g_strsplit(xpath, "/", XMENU_MAX_DEPTH);
     for (p = tokens; (p != NULL) && (*p != NULL); p++) {
-
         tok = g_strstrip(*p);
+        if (g_strcmp0(tok, "-") == 0) {
+            /* Just a separator. */
+            gtk_ui_manager_add_ui(ui_manager_main_menubar, merge_id,
+                                  item_path->str,
+                                  NULL,
+                                  NULL,
+                                  GTK_UI_MANAGER_SEPARATOR,
+                                  FALSE);
+        } else {
+            if (*(p+1) == NULL) {
+                /*
+                 * This is the last token; it's the name of a menu item,
+                 * not of a menu.
+                 *
+                 * Allow a blank menu item name or else the item is hidden
+                 * (and thus useless). Showing a blank menu item allows the
+                 * developer to see the problem and fix it.
+                 */
+                item_name = tok;
+                action_name = g_strconcat("/", tok, NULL);
+                if (menu_item_data != NULL) {
+                    action = (GtkAction *)g_object_new (
+                            GTK_TYPE_ACTION,
+                            "name", action_name,
+                            "label", menu_item_data->label,
+                            "stock-id", menu_item_data->stock_id,
+                            "tooltip", menu_item_data->tooltip,
+                            "sensitive", menu_item_data->enabled,
+                            NULL
+                    );
+                    if (menu_item_data->callback != NULL) {
+                        g_signal_connect (
+                                action,
+                                "activate",
+                                G_CALLBACK (menu_item_data->callback),
+                                menu_item_data->callback_data
+                        );
+                    }
+                    gtk_action_group_add_action (main_menu_bar_action_group, action);
+                    g_object_unref (action);
+                }
+                gtk_ui_manager_add_ui(ui_manager_main_menubar, merge_id,
+                                      item_path->str,
+                                      item_name,
+                                      action_name,
+                                      GTK_UI_MANAGER_MENUITEM,
+                                      FALSE);
+                g_free(action_name);
+            } else {
+                /*
+                 * This is not the last token; it's the name of an
+                 * intermediate menu.
+                 *
+                 * If it's empty, just skip it.
+                 */
+                if (tok[0] == '\0')
+                    continue;
 
-        if (tok[0] == '\0') continue;
+                /* Split the name of the menu from its action (if any) */
+                name_action_tokens = g_strsplit(tok, "|", 2);
+                if (name_action_tokens[1]) {
+                    i = -1;
+                    /* Replace #'s with /'s.
+                     * Necessary for menus whose action includes a "/".
+                     * There MUST be an easier way...
+                     */
+                    while (name_action_tokens[1][++i])
+                        if (name_action_tokens[1][i] == '#')
+                            name_action_tokens[1][i] = '/';
+                    item_name = name_action_tokens[0];
+                    action_name = g_strconcat("/", name_action_tokens[1], NULL);
+                } else {
+                    item_name = tok;
+                    action_name = g_strconcat("/", tok, NULL);
+                }
 
-        /* reserve last token for item name */
-        if ( *(p+1) == NULL ) break;
+                if (menu_item_data != NULL) {
+                    /*
+                     * Add an action for this menu if it doesn't already
+                     * exist.
+                     */
+                    if (gtk_action_group_get_action(main_menu_bar_action_group, action_name) == NULL) {
+                        action = (GtkAction *)g_object_new (
+                                GTK_TYPE_ACTION,
+                                "name", action_name,
+                                "label", item_name,
+                                NULL
+                        );
+                        gtk_action_group_add_action (main_menu_bar_action_group, action);
+                        g_object_unref (action);
+                    }
+                }
+                gtk_ui_manager_add_ui(ui_manager_main_menubar, merge_id,
+                                      item_path->str,
+                                      item_name,
+                                      action_name,
+                                      GTK_UI_MANAGER_MENU,
+                                      FALSE);
+                g_free(action_name);
 
-        if (g_strcmp0(tok, "-") != 0) {
-
-            /* parse label from token */
-            lbl = strchr(tok, '|');
-            if (lbl != NULL) {
-                *lbl++ = '\0';
+                g_string_append_printf(item_path, "/%s", item_name);
+                g_strfreev(name_action_tokens);
             }
-            if ((lbl == NULL) || (*lbl == '\0')) {
-                lbl = tok;
-            }
-
-            action = (GtkAction *)g_object_new (
-                    GTK_TYPE_ACTION,
-                    "name", tok,
-                    "label", lbl,
-                    NULL
-            );
-            gtk_action_group_add_action (action_group, action);
-            g_object_unref (action);
         }
     }
 
-    /* handle menu item (blank names ok) */
-    if ( (tok != NULL) /* && (tok[0] != '\0') */ && (menu_item_data != NULL) ) {
-        action = (GtkAction *)g_object_new (
-                GTK_TYPE_ACTION,
-                "name", tok,
-                "label", menu_item_data->label,
-                "stock-id", menu_item_data->stock_id,
-                "tooltip", menu_item_data->tooltip,
-                "sensitive", menu_item_data->enabled,
-                NULL
-        );
-        if (menu_item_data->callback != NULL) {
-            g_signal_connect (
-                    action,
-                    "activate",
-                    G_CALLBACK (menu_item_data->callback),
-                    menu_item_data->callback_data
-            );
-        }
-        gtk_action_group_add_action (action_group, action);
-        g_object_unref (action);
-    }
-
-    /* we just processed the last token, so free the list */
+    /* we're finished processing the tokens so free the list */
     g_strfreev(tokens);
 
-    return action_group;
+    g_string_free(item_path, TRUE);
+    g_free(xpath);
 }
 
 static void
 merge_menu_items(GList *lcl_merge_menu_items_list)
 {
-    guint           merge_id;
-    GtkActionGroup *action_group;
     menu_item_t    *menu_item_data;
-    GError         *err;
-    const gchar    *xml;
-    gchar          *xpath;
 
     while (lcl_merge_menu_items_list != NULL) {
         menu_item_data = (menu_item_t *)lcl_merge_menu_items_list->data;
-        xpath = g_strdup_printf("%s/%s", menu_item_data->gui_path, menu_item_data->name);
-        xml = make_menu_xml(xpath);
-        if (xml != NULL) {
-            /* create action group for menu elements */
-            action_group = make_menu_actions(xpath, menu_item_data);
-            gtk_ui_manager_insert_action_group (ui_manager_main_menubar, action_group, 0);
-
-            /* add menu elements to menu bar */
-            err = NULL;
-            merge_id = gtk_ui_manager_add_ui_from_string (ui_manager_main_menubar, xml, -1, &err);
-            if (err != NULL) {
-                fprintf (stderr, "Warning: building menus failed: %s\n",
-                        err->message);
-                g_error_free (err);
-
-                /* undo the mess */
-                gtk_ui_manager_remove_ui (ui_manager_main_menubar, merge_id);
-                gtk_ui_manager_remove_action_group (ui_manager_main_menubar, action_group);
-            }
-            g_free ((gchar*)xml);
-            g_object_unref (action_group);
-        }
-
-        g_free(xpath);
+        add_menu_item_to_main_menubar(menu_item_data->gui_path, menu_item_data->name, menu_item_data);
         lcl_merge_menu_items_list = g_list_next(lcl_merge_menu_items_list);
     }
 }
@@ -3986,7 +3530,7 @@ merge_menu_items(GList *lcl_merge_menu_items_list)
 const char *
 stat_group_name(register_stat_group_t group)
 {
-    /* See make_menu_xml() for an explanation of the string format */
+    /* See add_menu_item_to_main_menubar() for an explanation of the string format */
     static const value_string group_name_vals[] = {
         {REGISTER_ANALYZE_GROUP_UNSORTED,            "/Menubar/AnalyzeMenu|Analyze"},                                                              /* unsorted analyze stuff */
         {REGISTER_ANALYZE_GROUP_CONVERSATION_FILTER, "/Menubar/AnalyzeMenu|Analyze/ConversationFilterMenu|Analyze#ConversationFilter"},            /* conversation filters */
@@ -3996,9 +3540,11 @@ stat_group_name(register_stat_group_t group)
         {REGISTER_STAT_GROUP_ENDPOINT_LIST,          "/Menubar/StatisticsMenu|Statistics/EndpointListMenu|Statistics#EndpointList"},               /* member of the endpoint list */
         {REGISTER_STAT_GROUP_RESPONSE_TIME,          "/Menubar/StatisticsMenu|Statistics/ServiceResponseTimeMenu|Statistics#ServiceResponseTime"}, /* member of the service response time list */
         {REGISTER_STAT_GROUP_TELEPHONY,              "/Menubar/TelephonyMenu|Telephony"},                                                          /* telephony specific */
-        {REGISTER_STAT_GROUP_TELEPHONY_GSM,          "/Menubar/TelephonyMenu|Telephony/GSM|Telephony#GSM"},                                                          /* GSM-specific */
-        {REGISTER_STAT_GROUP_TELEPHONY_LTE,          "/Menubar/TelephonyMenu|Telephony/LTEmenu|Telephony#LTE"},                                                          /* LTE-specific */
-        {REGISTER_STAT_GROUP_TELEPHONY_SCTP,         "/Menubar/TelephonyMenu|Telephony/SCTPmenu|Telephony#SCTP"},                                                          /* SCTP-specific */
+        {REGISTER_STAT_GROUP_TELEPHONY_ANSI,         "/Menubar/TelephonyMenu|Telephony/ANSI|Telephony#ANSI"},                                      /* ANSI-specific */
+        {REGISTER_STAT_GROUP_TELEPHONY_GSM,          "/Menubar/TelephonyMenu|Telephony/GSM|Telephony#GSM"},                                        /* GSM-specific */
+        {REGISTER_STAT_GROUP_TELEPHONY_LTE,          "/Menubar/TelephonyMenu|Telephony/LTEmenu|Telephony#LTE"},                                    /* LTE-specific */
+        {REGISTER_STAT_GROUP_TELEPHONY_MTP3,         "/Menubar/TelephonyMenu|Telephony/MTP3menu|Telephony#MTP3"},                                  /* MTP3-specific */
+        {REGISTER_STAT_GROUP_TELEPHONY_SCTP,         "/Menubar/TelephonyMenu|Telephony/SCTPmenu|Telephony#SCTP"},                                  /* SCTP-specific */
         {REGISTER_TOOLS_GROUP_UNSORTED,              "/Menubar/ToolsMenu|Tools"},                                                                  /* unsorted tools */
         {0, NULL}
     };
@@ -4066,11 +3612,12 @@ set_menu_object_data (const gchar *path, const gchar *key, gpointer data)
 static GList *
 remove_present_file_name(GList *recent_files_list, const gchar *cf_name)
 {
-    GList *li;
+    GList *li, *next;
     gchar *widget_cf_name;
 
-    for (li = g_list_first(recent_files_list); li; li = li->next) {
+    for (li = g_list_first(recent_files_list); li; li = next) {
         widget_cf_name = (gchar *)li->data;
+        next = li->next;
         if (
 #ifdef _WIN32
             /* do a case insensitive compare on win32 */
@@ -4146,8 +3693,10 @@ add_recent_items (guint merge_id, GtkUIManager *ui_manager)
     GtkActionGroup *action_group;
     GtkAction      *action;
     GtkWidget      *submenu_recent_files;
+    GtkWidget      *submenu_recent_file;
     GList          *items, *l;
     gchar          *action_name;
+    gchar          *recent_path;
     guint           i;
 
     /* Reset the recent files list in the welcome screen */
@@ -4214,9 +3763,15 @@ add_recent_items (guint merge_id, GtkUIManager *ui_manager)
                  GTK_UI_MANAGER_MENUITEM,
                  FALSE);
 
+      /* Disable mnemonic accelerator key for recent file name */
+      recent_path = g_strdup_printf ("/Menubar/FileMenu/OpenRecent/RecentFiles/recent-info-%u", i);
+      submenu_recent_file = gtk_ui_manager_get_widget(ui_manager, recent_path);
+      g_object_set(G_OBJECT (submenu_recent_file), "use-underline", 0, NULL);
+
       /* Add the file name to the recent files list on the Welcome screen */
       main_welcome_add_recent_capture_file(item_name, G_OBJECT(action));
 
+      g_free (recent_path);
       g_free (action_name);
     }
     /* Add a Separator */
@@ -4693,8 +4248,8 @@ menu_recent_read_finished(void)
     cf_timestamp_auto_precision(&cfile);
     packet_list_queue_draw();
     /* the actual precision will be set in packet_list_queue_draw() below */
-    if (recent.gui_time_precision == TS_PREC_AUTO) {
-        timestamp_set_precision(TS_PREC_AUTO_SEC);
+    if (recent.gui_time_precision > TS_PREC_FIXED_NSEC) {
+        timestamp_set_precision(TS_PREC_AUTO);
     } else {
         timestamp_set_precision(recent.gui_time_precision);
     }
@@ -4964,22 +4519,17 @@ set_menus_for_captured_packets(gboolean have_captured_packets)
 void
 set_menus_for_selected_packet(capture_file *cf)
 {
-    packet_info *pi;
-    wmem_list_frame_t* protos;
-    GList      *list_entry = dissector_filter_list;
+    GList      *conv_filter_list_entry;
     guint       i          = 0;
     gboolean    properties = FALSE;
     const char *abbrev     = NULL;
     char       *prev_abbrev;
-    int proto_id;
-    const char* proto_name;
-    gboolean is_ip = FALSE, is_tcp = FALSE, is_udp = FALSE, is_sctp = FALSE;
+    gboolean is_ip = FALSE, is_tcp = FALSE, is_udp = FALSE, is_sctp = FALSE, is_ssl = FALSE;
 
     /* Making the menu context-sensitive allows for easier selection of the
        desired item and has the added benefit, with large captures, of
        avoiding needless looping through huge lists for marked, ignored,
        or time-referenced packets. */
-    gboolean is_ssl = epan_dissect_packet_contains_field(cf->edt, "ssl");
     gboolean frame_selected = cf->current_frame != NULL;
         /* A frame is selected */
     gboolean have_marked = frame_selected && cf->marked_count > 0;
@@ -4996,33 +4546,8 @@ set_menus_for_selected_packet(capture_file *cf)
            we have at least one time reference frame, and either there's more
            than one time reference frame or the current frame isn't a
            time reference frame). (XXX - why check frame_selected?) */
-
     if (cf->edt)
-    {
-        pi = &cf->edt->pi;
-        protos = wmem_list_head(pi->layers);
-
-        /* walk the list of a available protocols in the packet to
-           figure out if any of them affect context sensitivity */
-        while (protos != NULL)
-        {
-            proto_id = GPOINTER_TO_INT(wmem_list_frame_data(protos));
-            proto_name = proto_get_protocol_filter_name(proto_id);
-
-            if ((!strcmp(proto_name, "ip")) ||
-                (!strcmp(proto_name, "ipv6"))) {
-                is_ip = TRUE;
-            } else if (!strcmp(proto_name, "tcp")) {
-                is_tcp = TRUE;
-            } else if (!strcmp(proto_name, "udp")) {
-                is_udp = TRUE;
-            } else if (!strcmp(proto_name, "sctp")) {
-                is_sctp = TRUE;
-            }
-
-            protos = wmem_list_frame_next(protos);
-        }
-    }
+        proto_get_frame_protocols(cf->edt->pi.layers, &is_ip, &is_tcp, &is_udp, &is_sctp, &is_ssl, NULL);
 
     if (cf->edt && cf->edt->tree) {
         GPtrArray          *ga;
@@ -5129,32 +4654,11 @@ set_menus_for_selected_packet(capture_file *cf)
                          frame_selected ? is_ssl : FALSE);
     set_menu_sensitivity(ui_manager_tree_view_menu, "/TreeViewPopup/FollowSSLStream",
                          frame_selected ? is_ssl : FALSE);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ConversationFilter",
-                         frame_selected);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ConversationFilter/Ethernet",
-                         cf->edt && cf->edt->pi.dl_src.type == AT_ETHER);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ConversationFilter/IP",
-                         frame_selected ? is_ip : FALSE);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ConversationFilter/TCP",
-                         is_tcp);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ConversationFilter/UDP",
-                         frame_selected ? is_udp : FALSE);
+
     set_menu_sensitivity(ui_manager_tree_view_menu, "/TreeViewPopup/FollowUDPStream",
                          frame_selected ? is_udp : FALSE);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ConversationFilter/PN-CBA",
-                         cf->edt && cf->edt->pi.profinet_type != 0 && cf->edt->pi.profinet_type < 10);
     set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ColorizeConversation",
                          frame_selected);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ColorizeConversation/Ethernet",
-                         cf->edt && cf->edt->pi.dl_src.type == AT_ETHER);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ColorizeConversation/IP",
-                         frame_selected ? is_ip : FALSE);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ColorizeConversation/TCP",
-                         is_tcp);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ColorizeConversation/UDP",
-                         frame_selected ? is_udp : FALSE);
-    set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/ColorizeConversation/PN-CBA",
-                         cf->edt && cf->edt->pi.profinet_type != 0 && cf->edt->pi.profinet_type < 10);
     set_menu_sensitivity(ui_manager_packet_list_menu, "/PacketListMenuPopup/DecodeAs",
                          frame_selected && decode_as_ok());
 
@@ -5199,18 +4703,27 @@ set_menus_for_selected_packet(capture_file *cf)
     set_menu_sensitivity(ui_manager_main_menubar, "/Menubar/StatisticsMenu/TCPStreamGraphMenu",
                          is_tcp);
 
-    while (list_entry != NULL) {
-        dissector_filter_t *filter_entry;
+    for (i = 0, conv_filter_list_entry = conv_filter_list;
+         conv_filter_list_entry != NULL;
+         conv_filter_list_entry = g_list_next(conv_filter_list_entry), i++) {
+        conversation_filter_t *filter_entry;
         gchar *path;
 
-        filter_entry = (dissector_filter_t *)list_entry->data;
+        filter_entry = (conversation_filter_t *)conv_filter_list_entry->data;
         path = g_strdup_printf("/Menubar/AnalyzeMenu/ConversationFilterMenu/Filters/filter-%u", i);
-
         set_menu_sensitivity(ui_manager_main_menubar, path,
             menu_dissector_filter_spe_cb(/* frame_data *fd _U_*/ NULL, cf->edt, filter_entry));
         g_free(path);
-        i++;
-        list_entry = g_list_next(list_entry);
+
+        path = g_strdup_printf("/PacketListMenuPopup/ConversationFilter/Conversations/color_conversation-%d", i);
+        set_menu_sensitivity(ui_manager_packet_list_menu, path,
+            menu_color_dissector_filter_spe_cb(NULL, cf->edt, filter_entry));
+        g_free(path);
+
+        path = g_strdup_printf("/PacketListMenuPopup/ColorizeConversation/Colorize/%s", filter_entry->display_name);
+        set_menu_sensitivity(ui_manager_packet_list_menu, path,
+            menu_color_dissector_filter_spe_cb(NULL, cf->edt, filter_entry));
+        g_free(path);
     }
 }
 
@@ -5339,7 +4852,7 @@ menu_prefs_edit_dlg (GtkWidget *w, gpointer data)
 {
     pref_t    *pref   = (pref_t *)data;
     module_t  *module = (module_t *)g_object_get_data (G_OBJECT(w), "module");
-    gchar     *value  = NULL;
+    gchar     *value  = NULL, *tmp_value, *label_str;
 
     GtkWidget *win, *main_grid, *main_vb, *bbox, *cancel_bt, *ok_bt;
     GtkWidget *entry, *label;
@@ -5365,7 +4878,10 @@ menu_prefs_edit_dlg (GtkWidget *w, gpointer data)
         value = g_strdup(*pref->varp.string);
         break;
     case PREF_RANGE:
-        value = g_strdup(range_convert_range (*pref->varp.range));
+        /* Convert wmem to g_alloc memory */
+        tmp_value = range_convert_range(NULL, *pref->varp.range);
+        value = g_strdup(tmp_value);
+        wmem_free(NULL, tmp_value);
         break;
     default:
         g_assert_not_reached();
@@ -5385,7 +4901,9 @@ menu_prefs_edit_dlg (GtkWidget *w, gpointer data)
     gtk_box_pack_start(GTK_BOX(main_vb), main_grid, FALSE, FALSE, 0);
     ws_gtk_grid_set_column_spacing(GTK_GRID(main_grid), 10);
 
-    label = gtk_label_new(ep_strdup_printf("%s:", pref->title));
+    label_str = g_strdup_printf("%s:", pref->title);
+    label = gtk_label_new(label_str);
+    g_free(label_str);
     ws_gtk_grid_attach_defaults(GTK_GRID(main_grid), label, 0, 1, 1, 1);
     gtk_misc_set_alignment(GTK_MISC(label), 1.0f, 0.5f);
     if (pref->description)
@@ -5425,7 +4943,7 @@ add_protocol_prefs_generic_menu(pref_t *pref, gpointer data, GtkUIManager *ui_me
     GSList           *group  = NULL;
     module_t         *module = (module_t *)data;
     const enum_val_t *enum_valp;
-    gchar            *label  = NULL;
+    gchar            *label  = NULL, *tmp_str;
 
     switch (pref->type) {
     case PREF_UINT:
@@ -5481,7 +4999,9 @@ add_protocol_prefs_generic_menu(pref_t *pref, gpointer data, GtkUIManager *ui_me
         g_free (label);
         break;
     case PREF_RANGE:
-        label = g_strdup_printf ("%s: %s", pref->title, range_convert_range (*pref->varp.range));
+        tmp_str = range_convert_range (NULL, *pref->varp.range);
+        label = g_strdup_printf ("%s: %s", pref->title, tmp_str);
+        wmem_free(NULL, tmp_str);
         menu_item = gtk_menu_item_new_with_label(label);
         g_object_set_data (G_OBJECT(menu_item), "module", module);
         g_signal_connect(menu_item, "activate", G_CALLBACK(menu_prefs_edit_dlg), pref);
@@ -5839,6 +5359,183 @@ void set_menus_for_profiles(gboolean default_profile)
 {
     set_menu_sensitivity(ui_manager_statusbar_profiles_menu, "/ProfilesMenuPopup/Rename", !default_profile);
     set_menu_sensitivity(ui_manager_statusbar_profiles_menu, "/ProfilesMenuPopup/Delete", !default_profile);
+}
+
+static void
+ws_menubar_external_cb(GtkAction *action _U_, gpointer data _U_)
+{
+    ext_menubar_t *entry = NULL;
+    gchar *url = NULL;
+
+    if ( data != NULL )
+    {
+        entry = (ext_menubar_t *)data;
+        if ( entry->type == EXT_MENUBAR_ITEM )
+        {
+            entry->callback(EXT_MENUBAR_GTK_GUI, (gpointer) ((void *)GTK_WINDOW(top_level)), entry->user_data);
+        }
+        else if ( entry->type == EXT_MENUBAR_URL )
+        {
+            url = (gchar *)entry->user_data;
+
+            if(url != NULL)
+                browser_open_url(url);
+        }
+    }
+}
+
+static void
+ws_menubar_create_ui(ext_menu_t * menu, const char * xpath_parent, GtkActionGroup * action_group, gint depth)
+{
+    ext_menubar_t * item = NULL;
+    GList * children = NULL;
+    gchar * xpath, * submenu_xpath;
+    GtkAction * menu_action;
+    gchar *action_name;
+    gchar ** paths = NULL;
+
+    /* There must exists an xpath parent */
+    g_assert(xpath_parent != NULL && strlen(xpath_parent) > 0);
+
+    /* If the depth counter exceeds, something must have gone wrong */
+    g_assert(depth < EXT_MENUBAR_MAX_DEPTH);
+
+    /* Create a correct xpath, and just keep the necessary action ref [which will be paths [1]] */
+    xpath = g_strconcat(xpath_parent, menu->name, NULL);
+
+    /* Create the action for the menu item and add it to the action group */
+    action_name = g_strconcat("/", menu->name, NULL);
+    menu_action = (GtkAction *)g_object_new ( GTK_TYPE_ACTION,
+            "name", action_name, "label", menu->label, NULL );
+    g_free(action_name);
+
+    gtk_action_group_add_action(action_group, menu_action);
+    g_object_unref(menu_action);
+
+    children = menu->children;
+
+    /* Iterate children to create submenus */
+    while ( children != NULL && children->data != NULL )
+    {
+        item = (ext_menubar_t *) children->data;
+
+        if ( item->type == EXT_MENUBAR_MENU )
+        {
+            /* Handle Submenu entry */
+            submenu_xpath = g_strconcat(xpath, "/", NULL);
+            ws_menubar_create_ui(item, submenu_xpath, action_group, depth++);
+            g_free(submenu_xpath);
+        }
+        else if ( item->type != EXT_MENUBAR_SEPARATOR )
+        {
+            action_name = g_strconcat("/", item->name, NULL);
+            menu_action = (GtkAction*) g_object_new( GTK_TYPE_ACTION,
+                    "name", action_name,
+                    "label", item->label,
+                    "tooltip", item->tooltip,
+                    NULL);
+            g_signal_connect(menu_action, "activate", G_CALLBACK(ws_menubar_external_cb), item );
+            gtk_action_group_add_action(action_group, menu_action);
+            g_object_unref(menu_action);
+            g_free(action_name);
+
+            /* Create the correct action path */
+            paths = g_strsplit(xpath, "|", -1);
+
+            /* Ensures that the above operation has not failed. If this fails, it is a major issue,
+             * so an assertion is appropriate here */
+            g_assert(paths != NULL && paths[1] != NULL && strlen(paths[1]) > 0);
+
+            /* Handle a menu bar item. This cannot be done by register_menu_bar_menu_items, as it
+             * will create it's own action group, assuming that the menu actions and submenu actions
+             * have been pre-registered and globally defined names. This is not the case here. Also
+             * register_menu_bar_menu_items adds a sorted list, completely destroying any sorting,
+             * a plugin might have intended */
+#if 0
+            /* Left here as a reminder, that the code below does basically the same */
+            register_menu_bar_menu_items( g_strdup(paths[1]), item->name, NULL, item->label,
+                    NULL, item->tooltip, ws_menubar_external_cb, item, TRUE, NULL, NULL);
+#endif
+
+            /* Creating menu from entry */
+            add_menu_item_to_main_menubar(g_strdup(paths[1]), item->name, NULL);
+            g_strfreev(paths);
+        }
+
+        /* Iterate Loop */
+        children = g_list_next(children);
+    }
+
+    /* Cleanup */
+    g_free(xpath);
+}
+
+static void
+ws_menubar_external_menus(void)
+{
+    GList * user_menu = NULL;
+    ext_menu_t * menu = NULL;
+    GtkActionGroup  *action_group = NULL;
+    gchar groupdef[20], * xpath;
+    guint8 cnt = 1;
+
+    user_menu = ext_menubar_get_entries();
+
+    while ( ( user_menu != NULL ) && ( user_menu->data != NULL ) )
+    {
+        menu = (ext_menu_t *) user_menu->data;
+
+        /* On this level only menu items should exist. Not doing an assert here,
+         * as it could be an honest mistake */
+        if ( menu->type != EXT_MENUBAR_MENU )
+        {
+            user_menu = g_list_next(user_menu);
+            continue;
+        }
+
+        /* Create unique main actiongroup name */
+        g_snprintf(groupdef, 20, "UserDefined%02d", cnt);
+        xpath = g_strconcat( "/MenuBar/", groupdef, "Menu|", NULL );
+
+        /* Create an action group per menu */
+        action_group = gtk_action_group_new(groupdef);
+
+        /* Register action structure for each menu */
+        gtk_ui_manager_insert_action_group(ui_manager_main_menubar, action_group, 0);
+
+        /* Now we iterate over the items and add them to the UI. This has to be done after the action
+         * group for this menu has been added, otherwise the actions will not be found */
+        ws_menubar_create_ui(menu, xpath, action_group, 0 );
+
+        /* Cleanup */
+        g_free(xpath);
+        g_object_unref(action_group);
+
+        /* Iterate Loop */
+        user_menu = g_list_next (user_menu);
+        cnt++;
+    }
+}
+
+void plugin_if_menubar_preference(gconstpointer user_data)
+{
+    if ( user_data != NULL )
+    {
+        GHashTable * dataSet = (GHashTable *) user_data;
+        const char * module_name;
+        const char * pref_name;
+        const char * pref_value;
+        if ( g_hash_table_lookup_extended(dataSet, "pref_module", NULL, (void**)&module_name ) &&
+                g_hash_table_lookup_extended(dataSet, "pref_key", NULL, (void**)&pref_name ) &&
+                g_hash_table_lookup_extended(dataSet, "pref_value", NULL, (void**)&pref_value ) )
+        {
+            if ( prefs_store_ext(module_name, pref_name, pref_value) )
+            {
+                redissect_packets();
+                redissect_all_packet_windows();
+            }
+        }
+    }
 }
 
 /*

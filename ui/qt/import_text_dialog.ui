@@ -22,9 +22,6 @@
     <height>486</height>
    </size>
   </property>
-  <property name="windowTitle">
-   <string>Wireshark: Import from Hex Dump</string>
-  </property>
   <property name="sizeGripEnabled">
    <bool>true</bool>
   </property>
@@ -39,6 +36,9 @@
     <widget class="QGroupBox" name="groupBox">
      <property name="title">
       <string>Import From</string>
+     </property>
+     <property name="flat">
+      <bool>true</bool>
      </property>
      <layout class="QFormLayout" name="formLayout_2">
       <item row="1" column="0" colspan="2">
@@ -69,7 +69,7 @@
            <string>Browse for text file to import</string>
           </property>
           <property name="text">
-           <string>Browse...</string>
+           <string>Browse…</string>
           </property>
          </widget>
         </item>
@@ -217,7 +217,7 @@
       <enum>Qt::Horizontal</enum>
      </property>
      <property name="standardButtons">
-      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Help|QDialogButtonBox::Ok</set>
+      <set>QDialogButtonBox::Cancel|QDialogButtonBox::Help|QDialogButtonBox::Open</set>
      </property>
     </widget>
    </item>
@@ -225,6 +225,9 @@
     <widget class="QGroupBox" name="groupBox_2">
      <property name="title">
       <string>Encapsulation</string>
+     </property>
+     <property name="flat">
+      <bool>true</bool>
      </property>
      <layout class="QFormLayout" name="formLayout">
       <property name="fieldGrowthPolicy">

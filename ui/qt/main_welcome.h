@@ -23,8 +23,10 @@
 #define MAIN_WELCOME_H
 
 #include <QFrame>
-#include <QListWidget>
-#include <QTreeWidgetItem>
+
+class QListWidget;
+class QListWidgetItem;
+class QTreeWidgetItem;
 
 #include "splash_overlay.h"
 #include "interface_tree.h"
@@ -38,7 +40,13 @@ class MainWelcome : public QFrame
     Q_OBJECT
 public:
     explicit MainWelcome(QWidget *parent = 0);
+    virtual ~MainWelcome();
     InterfaceTree *getInterfaceTree();
+    const QString captureFilter();
+    void setCaptureFilter(const QString capture_filter);
+
+public slots:
+    void interfaceSelected();
 
 protected:
     void resizeEvent(QResizeEvent *event);
@@ -49,24 +57,37 @@ private:
     SplashOverlay *splash_overlay_;
     // QListWidget doesn't activate items when the return or enter keys are pressed on OS X.
     // We may want to subclass it at some point.
-    QListWidget *task_list_;
     QListWidget *recent_files_;
 //    MWOverlay *overlay;
+    QMenu *recent_ctx_menu_;
 
 
 signals:
     void startCapture();
-    void recentFileActivated(QString& cfile);
-    void pushFilterSyntaxStatus(QString&);
+    void recentFileActivated(QString cfile);
+    void pushFilterSyntaxStatus(const QString&);
     void popFilterSyntaxStatus();
     void captureFilterSyntaxChanged(bool valid);
+#if HAVE_EXTCAP
+    void showExtcapOptions(QString &device_name);
+#endif
+
+public slots:
+    void setCaptureFilterText(const QString capture_filter);
 
 private slots:
-    void destroySplashOverlay();
-    void showTask();
+    void appInitialized();
+    void captureFilterTextEdited(const QString capture_filter);
+#if HAVE_EXTCAP
+    void interfaceClicked(QTreeWidgetItem *item, int column);
+#endif
     void interfaceDoubleClicked(QTreeWidgetItem *item, int column);
     void updateRecentFiles();
     void openRecentItem(QListWidgetItem *item);
+    void changeEvent(QEvent* event);
+    void showRecentContextMenu(QPoint pos);
+    void showRecentFolder();
+    void copyRecentPath();
 };
 
 #endif // MAIN_WELCOME_H

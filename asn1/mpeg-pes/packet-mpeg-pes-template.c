@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <wiretap/wtap.h>
 #include <epan/asn1.h>
@@ -194,7 +192,7 @@ static guint64 decode_clock_reference(tvbuff_t *tvb, gint offset,
 }
 
 static int
-dissect_mpeg_pes_header_data(tvbuff_t *tvb, packet_info *pinfo,
+dissect_mpeg_pes_header_data(tvbuff_t *tvb, packet_info *pinfo _U_,
 		proto_tree *root, unsigned int flags)
 {
 	proto_item *item = proto_tree_add_item(root, hf_mpeg_pes_header_data, tvb,
@@ -208,11 +206,6 @@ dissect_mpeg_pes_header_data(tvbuff_t *tvb, packet_info *pinfo,
 		proto_tree_add_time(tree, hf_mpeg_pes_pts, tvb,
 				offset, 5, &nst);
 		offset += 5;
-
-		SET_ADDRESS(&pinfo->dst, AT_NONE, 0, NULL);
-		col_add_fstr(pinfo->cinfo, COL_DEF_DST,
-					"PTS %ld.%09u",
-					(long) nst.secs, nst.nsecs);
 	}
 	if (flags & DTS_FLAG) {
 		nstime_t nst;
@@ -220,11 +213,6 @@ dissect_mpeg_pes_header_data(tvbuff_t *tvb, packet_info *pinfo,
 		proto_tree_add_time(tree, hf_mpeg_pes_dts, tvb,
 				offset, 5, &nst);
 		offset += 5;
-
-		SET_ADDRESS(&pinfo->src, AT_NONE, 0, NULL);
-		col_add_fstr(pinfo->cinfo, COL_DEF_SRC,
-					"DTS %ld.%09u",
-					(long) nst.secs, nst.nsecs);
 	}
 	if (flags & ESCR_FLAG) {
 		nstime_t nst;
@@ -344,7 +332,7 @@ dissect_mpeg_pes_header_data(tvbuff_t *tvb, packet_info *pinfo,
 
 static gint
 dissect_mpeg_pes_pack_header(tvbuff_t *tvb, gint offset,
-		packet_info *pinfo, proto_tree *root)
+		packet_info *pinfo _U_, proto_tree *root)
 {
 	unsigned int program_mux_rate, stuffing_length;
 
@@ -361,9 +349,6 @@ dissect_mpeg_pes_pack_header(tvbuff_t *tvb, gint offset,
 	proto_tree_add_uint(tree, hf_mpeg_pes_program_mux_rate, tvb, offset / 8, 3,
 			program_mux_rate);
 	offset += 3 * 8;
-
-	SET_ADDRESS(&pinfo->src, AT_NONE, 0, NULL);
-	col_add_fstr(pinfo->cinfo, COL_DEF_SRC, "%u B/s", program_mux_rate);
 
 	stuffing_length = tvb_get_guint8(tvb, offset / 8) & 0x07;
 	proto_tree_add_item(tree, hf_mpeg_pes_stuffing_length, tvb,
@@ -389,7 +374,6 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 	int stream;
 	asn1_ctx_t asn1_ctx;
 	gint offset = 0;
-	const char *s;
 
 	if (!tvb_bytes_exist(tvb, 0, 3))
 		return FALSE;	/* not enough bytes for a PES prefix */
@@ -401,9 +385,7 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 	col_clear(pinfo->cinfo, COL_INFO);
 
 	stream = tvb_get_guint8(tvb, 3);
-	s = try_val_to_str(stream, mpeg_pes_T_stream_vals);
-	if (s != NULL)
-		col_set_str(pinfo->cinfo, COL_INFO, s);
+	col_add_fstr(pinfo->cinfo, COL_INFO, "%s ", val_to_str(stream, mpeg_pes_T_stream_vals, "Unknown stream: %d"));
 
 #if 0
 	if (tree == NULL)
@@ -417,9 +399,7 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 		int frame_type;
 
 		frame_type = tvb_get_guint8(tvb, 5) >> 3 & 0x07;
-		s = try_val_to_str(frame_type, mpeg_pes_T_frame_type_vals);
-		if (s != NULL)
-			col_set_str(pinfo->cinfo, COL_INFO, s);
+		col_add_fstr(pinfo->cinfo, COL_INFO, "%s ", val_to_str(frame_type, mpeg_pes_T_frame_type_vals, "Unknown frame type: %d"));
 
 		offset = dissect_mpeg_pes_Picture(tvb, offset, &asn1_ctx,
 				tree, hf_mpeg_video_picture);
@@ -499,8 +479,8 @@ dissect_mpeg_pes(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 			header_length = tvb_get_guint8(tvb, 8);
 			if (header_length > 0) {
 				int flags = tvb_get_guint8(tvb, 7);
-				tvbuff_t *header_data = tvb_new_subset(tvb, offset / 8,
-						header_length, header_length);
+				tvbuff_t *header_data = tvb_new_subset_length(tvb, offset / 8,
+						header_length);
 				dissect_mpeg_pes_header_data(header_data, pinfo, tree, flags);
 				offset += header_length * 8;
 				 /* length may be zero for Video stream */
@@ -674,7 +654,7 @@ proto_register_mpeg_pes(void)
 	proto_mpeg = proto_register_protocol(
 			"Moving Picture Experts Group", "MPEG", "mpeg");
 	register_dissector("mpeg", dissect_mpeg, proto_mpeg);
-	register_heur_dissector_list("mpeg", &heur_subdissector_list);
+	heur_subdissector_list = register_heur_dissector_list("mpeg");
 
 	proto_mpeg_pes = proto_register_protocol(
 			"Packetized Elementary Stream", "MPEG PES", "mpeg-pes");
@@ -689,5 +669,5 @@ proto_reg_handoff_mpeg_pes(void)
 	dissector_handle_t mpeg_handle = find_dissector("mpeg");
 
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_MPEG, mpeg_handle);
-	heur_dissector_add("mpeg", dissect_mpeg_pes, proto_mpeg_pes);
+	heur_dissector_add("mpeg", dissect_mpeg_pes, "MPEG PES", "mpeg_pes", proto_mpeg_pes, HEURISTIC_ENABLE);
 }

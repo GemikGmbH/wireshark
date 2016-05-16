@@ -8,6 +8,9 @@
 
 !include "common.nsh"
 !include 'LogicLib.nsh'
+!include x64.nsh
+!include "StrFunc.nsh"
+${UnStrRep}
 
 SetCompress off
 OutFile "${STAGING_DIR}\uninstall_installer.exe"
@@ -54,7 +57,7 @@ ShowUninstDetails show
 
 Function .onInit
   ; MUST be the absolute path to our staging directory.
-  WriteUninstaller "${MAKEDIR}\${STAGING_DIR}\${UNINSTALLER_NAME}"
+  WriteUninstaller "${STAGING_DIR}\${UNINSTALLER_NAME}"
   SetErrorLevel 0
   Quit
 FunctionEnd
@@ -86,6 +89,32 @@ SectionEnd
 !define EXECUTABLE_MARKER "EXECUTABLE_MARKER"
 Var EXECUTABLE
 
+Section /o "Un.USBPcap" un.SecUSBPcap
+;-------------------------------------------
+SectionIn 2
+${If} ${RunningX64}
+    ${DisableX64FSRedirection}
+    SetRegView 64
+${EndIf}
+ReadRegStr $1 HKEY_LOCAL_MACHINE "Software\Microsoft\Windows\CurrentVersion\Uninstall\USBPcap" "UninstallString"
+${If} ${RunningX64}
+    ${EnableX64FSRedirection}
+    SetRegView 32
+${EndIf}
+${If} $1 != ""
+    ${UnStrRep} $2 '$1' '\Uninstall.exe' ''
+    ${UnStrRep} $3 '$2' '"' ''
+    ExecWait '$1 _?=$3' $0
+    DetailPrint "USBPcap uninstaller returned $0"
+    ${If} $0 == "0"
+        Delete "$3\Uninstall.exe"
+        Delete "$INSTDIR\extcap\USBPcapCMD.exe"
+    ${EndIf}
+${EndIf}
+ClearErrors
+SectionEnd
+
+
 Section "Uninstall" un.SecUinstall
 ;-------------------------------------------
 ;
@@ -97,6 +126,7 @@ SetShellVarContext all
 !insertmacro IsWiresharkRunning
 
 Push "${EXECUTABLE_MARKER}"
+Push "androiddump"
 Push "dumpcap"
 Push "${PROGRAM_NAME}"
 Push "tshark"
@@ -134,37 +164,49 @@ DeleteRegKey HKCR ${WIRESHARK_ASSOC}
 DeleteRegKey HKCR "${WIRESHARK_ASSOC}\Shell\open\command"
 DeleteRegKey HKCR "${WIRESHARK_ASSOC}\DefaultIcon"
 
+Delete "$INSTDIR\*.dll"
+Delete "$INSTDIR\*.exe"
+Delete "$INSTDIR\*.html"
+Delete "$INSTDIR\*.qm"
+Delete "$INSTDIR\accessible\*.*"
+Delete "$INSTDIR\AUTHORS-SHORT"
+Delete "$INSTDIR\COPYING*"
+Delete "$INSTDIR\audio\*.*"
+Delete "$INSTDIR\bearer\*.*"
+Delete "$INSTDIR\diameter\*.*"
 Delete "$INSTDIR\etc\gtk-2.0\*.*"
 Delete "$INSTDIR\etc\gtk-3.0\*.*"
 Delete "$INSTDIR\etc\pango\*.*"
-Delete "$INSTDIR\lib\gtk-2.0\2.2.0\engines\*.*"
-Delete "$INSTDIR\lib\gtk-2.0\2.2.0\loaders\*.*"
-Delete "$INSTDIR\lib\gtk-2.0\2.2.0\immodules\*.*"
-Delete "$INSTDIR\lib\gtk-2.0\2.4.0\engines\*.*"
-Delete "$INSTDIR\lib\gtk-2.0\2.4.0\loaders\*.*"
-Delete "$INSTDIR\lib\gtk-2.0\2.4.0\immodules\*.*"
+Delete "$INSTDIR\extcap\androiddump.*"
+Delete "$INSTDIR\help\*.*"
+Delete "$INSTDIR\iconengines\*.*"
+Delete "$INSTDIR\imageformats\*.*"
 Delete "$INSTDIR\lib\gtk-2.0\2.10.0\engines\*.*"
-Delete "$INSTDIR\lib\gtk-2.0\2.10.0\loaders\*.*"
 Delete "$INSTDIR\lib\gtk-2.0\2.10.0\immodules\*.*"
+Delete "$INSTDIR\lib\gtk-2.0\2.10.0\loaders\*.*"
+Delete "$INSTDIR\lib\gtk-2.0\2.2.0\engines\*.*"
+Delete "$INSTDIR\lib\gtk-2.0\2.2.0\immodules\*.*"
+Delete "$INSTDIR\lib\gtk-2.0\2.2.0\loaders\*.*"
+Delete "$INSTDIR\lib\gtk-2.0\2.4.0\engines\*.*"
+Delete "$INSTDIR\lib\gtk-2.0\2.4.0\immodules\*.*"
+Delete "$INSTDIR\lib\gtk-2.0\2.4.0\loaders\*.*"
 Delete "$INSTDIR\lib\gtk-2.0\modules\*.*"
 Delete "$INSTDIR\lib\pango\1.2.0\modules\*.*"
 Delete "$INSTDIR\lib\pango\1.4.0\modules\*.*"
 Delete "$INSTDIR\lib\pango\1.5.0\modules\*.*"
-Delete "$INSTDIR\share\themes\Default\gtk-2.0\*.*"
+Delete "$INSTDIR\mediaservice\*.*"
+Delete "$INSTDIR\platforms\*.*"
+Delete "$INSTDIR\playlistformats\*.*"
+Delete "$INSTDIR\printsupport\*.*"
 Delete "$INSTDIR\share\glib-2.0\schemas\*.*"
-Delete "$INSTDIR\help\*.*"
-Delete "$INSTDIR\diameter\*.*"
-Delete "$INSTDIR\snmp\mibs\*.*"
+Delete "$INSTDIR\share\themes\Default\gtk-2.0\*.*"
 Delete "$INSTDIR\snmp\*.*"
+Delete "$INSTDIR\snmp\mibs\*.*"
 Delete "$INSTDIR\tpncp\*.*"
+Delete "$INSTDIR\translations\*.*"
 Delete "$INSTDIR\ui\*.*"
 Delete "$INSTDIR\wimaxasncp\*.*"
-Delete "$INSTDIR\*.exe"
-Delete "$INSTDIR\*.dll"
-Delete "$INSTDIR\*.html"
 Delete "$INSTDIR\ws.css"
-Delete "$INSTDIR\COPYING*"
-Delete "$INSTDIR\AUTHORS-SHORT"
 ; previous versions installed these files
 Delete "$INSTDIR\*.manifest"
 ; previous versions installed this file
@@ -192,9 +234,15 @@ Delete "$QUICKLAUNCH\${PROGRAM_NAME}.lnk"
 Delete "$QUICKLAUNCH\${PROGRAM_NAME_GTK}.lnk"
 Delete "$QUICKLAUNCH\${PROGRAM_NAME_QT}.lnk"
 
+RMDir "$INSTDIR\accessible"
+RMDir "$INSTDIR\audio"
+RMDir "$INSTDIR\bearer"
 RMDir "$INSTDIR\etc\gtk-2.0"
 RMDir "$INSTDIR\etc\pango"
 RMDir "$INSTDIR\etc"
+RMDir "$INSTDIR\extcap"
+RMDir "$INSTDIR\iconengines"
+RMDir "$INSTDIR\imageformats"
 RMDir "$INSTDIR\lib\gtk-2.0\2.2.0\engines"
 RMDir "$INSTDIR\lib\gtk-2.0\2.2.0\loaders"
 RMDir "$INSTDIR\lib\gtk-2.0\2.2.0\immodules"
@@ -217,6 +265,10 @@ RMDir "$INSTDIR\lib\pango\1.5.0\modules"
 RMDir "$INSTDIR\lib\pango\1.5.0"
 RMDir "$INSTDIR\lib\pango"
 RMDir "$INSTDIR\lib"
+RMDir "$INSTDIR\mediaservice"
+RMDir "$INSTDIR\platforms"
+RMDir "$INSTDIR\playlistformats"
+RMDir "$INSTDIR\printsupport"
 RMDir "$INSTDIR\share\themes\Default\gtk-2.0"
 RMDir "$INSTDIR\share\themes\Default"
 RMDir "$INSTDIR\share\themes"
@@ -229,6 +281,7 @@ RMDir "$INSTDIR\snmp"
 RMDir "$INSTDIR\radius"
 RMDir "$INSTDIR\dtds"
 RMDir "$INSTDIR\tpncp"
+RMDir "$INSTDIR\translations"
 RMDir "$INSTDIR\ui"
 RMDir "$INSTDIR\wimaxasncp"
 RMDir "$INSTDIR"
@@ -280,10 +333,12 @@ Section /o "Un.WinPcap" un.SecWinPcap
 SectionIn 2
 ReadRegStr $1 HKEY_LOCAL_MACHINE "SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\WinPcapInst" "UninstallString"
 ;IfErrors un.lbl_winpcap_notinstalled ;if RegKey is unavailable, WinPcap is not installed
-;MessageBox MB_OK "WinPcap $1" /SD IDOK
-ExecWait '$1' $0
-DetailPrint "WinPcap uninstaller returned $0"
-;SetRebootFlag true
+${If} $1 != ""
+    ;MessageBox MB_OK "WinPcap $1" /SD IDOK
+    ExecWait '$1' $0
+    DetailPrint "WinPcap uninstaller returned $0"
+    ;SetRebootFlag true
+${EndIf}
 ;un.lbl_winpcap_notinstalled:
 SectionEnd
 
@@ -306,6 +361,7 @@ SectionEnd
     !insertmacro MUI_DESCRIPTION_TEXT ${un.SecGlobalSettings} "Uninstall global settings like: $INSTDIR\cfilters"
     !insertmacro MUI_DESCRIPTION_TEXT ${un.SecPersonalSettings} "Uninstall personal settings like your preferences file from your profile: $PROFILE."
     !insertmacro MUI_DESCRIPTION_TEXT ${un.SecWinPcap} "Call WinPcap's uninstall program."
+    !insertmacro MUI_DESCRIPTION_TEXT ${un.SecUSBPcap} "Call USBPcap's uninstall program."
 !insertmacro MUI_UNFUNCTION_DESCRIPTION_END
 
 ;

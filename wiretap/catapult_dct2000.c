@@ -25,7 +25,6 @@
 
 #include "wtap-int.h"
 #include "file_wrappers.h"
-#include <wsutil/buffer.h>
 
 #include "catapult_dct2000.h"
 
@@ -111,7 +110,7 @@ static gboolean catapult_dct2000_seek_read(wtap *wth, gint64 seek_off,
 static void catapult_dct2000_close(wtap *wth);
 
 static gboolean catapult_dct2000_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
-                                      const guint8 *pd, int *err);
+                                      const guint8 *pd, int *err, gchar **err_info);
 
 
 /************************************************************/
@@ -165,7 +164,7 @@ static gboolean free_line_prefix_info(gpointer key, gpointer value, gpointer use
 /********************************************/
 /* Open file (for reading)                 */
 /********************************************/
-int
+wtap_open_return_val
 catapult_dct2000_open(wtap *wth, int *err, gchar **err_info)
 {
     gint64  offset = 0;
@@ -186,18 +185,18 @@ catapult_dct2000_open(wtap *wth, int *err, gchar **err_info)
     if (!read_new_line(wth->fh, &offset, &firstline_length, linebuff,
                        sizeof linebuff, err, err_info)) {
         if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-            return -1;
-        return 0;
+            return WTAP_OPEN_ERROR;
+        return WTAP_OPEN_NOT_MINE;
     }
     if (((size_t)firstline_length < strlen(catapult_dct2000_magic)) ||
         firstline_length >= MAX_FIRST_LINE_LENGTH) {
 
-        return 0;
+        return WTAP_OPEN_NOT_MINE;
     }
 
     /* This file is not for us if it doesn't match our signature */
     if (memcmp(catapult_dct2000_magic, linebuff, strlen(catapult_dct2000_magic)) != 0) {
-        return 0;
+        return WTAP_OPEN_NOT_MINE;
     }
 
     /* Make sure table is ready for use */
@@ -226,15 +225,15 @@ catapult_dct2000_open(wtap *wth, int *err, gchar **err_info)
                        linebuff, sizeof linebuff, err, err_info)) {
         g_free(file_externals);
         if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-            return -1;
-        return 0;
+            return WTAP_OPEN_ERROR;
+        return WTAP_OPEN_NOT_MINE;
     }
     if ((file_externals->secondline_length >= MAX_TIMESTAMP_LINE_LENGTH) ||
         (!get_file_time_stamp(linebuff, &timestamp, &usecs))) {
 
         /* Give up if file time line wasn't valid */
         g_free(file_externals);
-        return 0;
+        return WTAP_OPEN_NOT_MINE;
     }
 
     /* Fill in timestamp */
@@ -260,7 +259,7 @@ catapult_dct2000_open(wtap *wth, int *err, gchar **err_info)
     wth->subtype_close = catapult_dct2000_close;
 
     /* Choose microseconds (have 4 decimal places...) */
-    wth->tsprecision = WTAP_FILE_TSPREC_USEC;
+    wth->file_tsprec = WTAP_TSPREC_USEC;
 
 
     /***************************************************************/
@@ -272,7 +271,7 @@ catapult_dct2000_open(wtap *wth, int *err, gchar **err_info)
     wth->priv = (void*)file_externals;
 
     *err = errno;
-    return 1;
+    return WTAP_OPEN_MINE;
 }
 
 /* Ugly, but much faster than using g_snprintf! */
@@ -575,7 +574,7 @@ catapult_dct2000_dump_can_write_encap(int encap)
 
         default:
             /* But don't write to any other formats... */
-            return WTAP_ERR_UNSUPPORTED_ENCAP;
+            return WTAP_ERR_UNWRITABLE_ENCAP;
     }
 }
 
@@ -586,7 +585,7 @@ catapult_dct2000_dump_can_write_encap(int encap)
 
 static gboolean
 catapult_dct2000_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
-                      const guint8 *pd, int *err)
+                      const guint8 *pd, int *err, gchar **err_info _U_)
 {
     const union wtap_pseudo_header *pseudo_header = &phdr->pseudo_header;
     guint32 n;
@@ -606,7 +605,7 @@ catapult_dct2000_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
 
     /* We can only write packet records. */
     if (phdr->rec_type != REC_TYPE_PACKET) {
-        *err = WTAP_ERR_REC_TYPE_UNSUPPORTED;
+        *err = WTAP_ERR_UNWRITABLE_REC_TYPE;
         return FALSE;
     }
 
@@ -1297,7 +1296,7 @@ process_parsed_line(wtap *wth, dct2000_file_externals_t *file_externals,
 
     /*****************************/
     /* Get the data buffer ready */
-    buffer_assure_space(buf,
+    ws_buffer_assure_space(buf,
                         strlen(context_name)+1 +     /* Context name */
                         1 +                          /* port */
                         strlen(timestamp_string)+1 + /* timestamp */
@@ -1307,7 +1306,7 @@ process_parsed_line(wtap *wth, dct2000_file_externals_t *file_externals,
                         1 +                          /* direction */
                         1 +                          /* encap */
                         (is_comment ? data_chars : (data_chars/2)));
-    frame_buffer = buffer_start_ptr(buf);
+    frame_buffer = ws_buffer_start_ptr(buf);
 
     /******************************************/
     /* Write the stub info to the data buffer */
@@ -1495,7 +1494,7 @@ hex_from_char(gchar c)
 
 
 /* Table allowing fast lookup from a pair of ascii hex characters to a guint8 */
-static guint8 s_tableValues[255][255];
+static guint8 s_tableValues[256][256];
 
 /* Prepare table values so ready so don't need to check inside hex_byte_from_chars() */
 static void  prepare_hex_byte_from_chars_table(void)
@@ -1566,7 +1565,6 @@ packet_offset_hash_func(gconstpointer v)
 static gboolean
 get_file_time_stamp(gchar *linebuff, time_t *secs, guint32 *usecs)
 {
-    int n;
     struct tm tm;
     #define MAX_MONTH_LETTERS 9
     char month[MAX_MONTH_LETTERS+1];
@@ -1579,12 +1577,14 @@ get_file_time_stamp(gchar *linebuff, time_t *secs, guint32 *usecs)
         return FALSE;
     }
 
-    /**************************************************************/
-    /* First is month. Read until get a space following the month */
-    for (n=0; (linebuff[n] != ' ') && (n < MAX_MONTH_LETTERS); n++) {
-        month[n] = linebuff[n];
+    /********************************************************/
+    /* Scan for all fields                                  */
+    scan_found = sscanf(linebuff, "%9s %2d, %4d     %2d:%2d:%2d.%4u",
+                        month, &day, &year, &hour, &minute, &second, usecs);
+    if (scan_found != 7) {
+        /* Give up if not all found */
+        return FALSE;
     }
-    month[n] = '\0';
 
     if      (strcmp(month, "January"  ) == 0)  tm.tm_mon = 0;
     else if (strcmp(month, "February" ) == 0)  tm.tm_mon = 1;
@@ -1600,17 +1600,6 @@ get_file_time_stamp(gchar *linebuff, time_t *secs, guint32 *usecs)
     else if (strcmp(month, "December" ) == 0)  tm.tm_mon = 11;
     else {
         /* Give up if not found a properly-formatted date */
-        return FALSE;
-    }
-    /* Skip space char */
-    n++;
-
-    /********************************************************/
-    /* Scan for remaining numerical fields                  */
-    scan_found = sscanf(linebuff+n, "%2d, %4d     %2d:%2d:%2d.%4u",
-                        &day, &year, &hour, &minute, &second, usecs);
-    if (scan_found != 6) {
-        /* Give up if not all found */
         return FALSE;
     }
 
@@ -1654,3 +1643,16 @@ free_line_prefix_info(gpointer key, gpointer value,
     /* Item will always be removed from table */
     return TRUE;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

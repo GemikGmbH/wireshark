@@ -34,7 +34,6 @@
 
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
 #include <locale.h>
 
 #ifdef HAVE_UNISTD_H
@@ -49,23 +48,24 @@
 #include "wsutil/wsgetopt.h"
 #endif
 
-#ifdef _WIN32 /* Needed for console I/O */
-
-#include <fcntl.h>
-#include <conio.h>
-#include <ui/win32/console_win32.h>
+#ifdef HAVE_LIBZ
+#include <zlib.h>      /* to get the libz version number */
 #endif
 
 #ifdef HAVE_LIBPORTAUDIO
 #include <portaudio.h>
 #endif /* HAVE_LIBPORTAUDIO */
 
+#include <wsutil/clopts_common.h>
+#include <wsutil/copyright_info.h>
 #include <wsutil/crash_info.h>
 #include <wsutil/filesystem.h>
 #include <wsutil/file_util.h>
 #include <wsutil/privileges.h>
 #include <wsutil/report_err.h>
 #include <wsutil/u3.h>
+#include <wsutil/ws_diag_control.h>
+#include <wsutil/ws_version_info.h>
 
 #include <wiretap/merge.h>
 
@@ -73,71 +73,76 @@
 #include <epan/column.h>
 #include <epan/disabled_protos.h>
 #include <epan/epan.h>
+#include <epan/proto.h>
 #include <epan/epan_dissect.h>
 #include <epan/dfilter/dfilter.h>
 #include <epan/strutil.h>
-#include <epan/emem.h>
 #include <epan/ex-opt.h>
 #include <epan/funnel.h>
 #include <epan/expert.h>
-#include <epan/frequency-utils.h>
 #include <epan/prefs.h>
 #include <epan/prefs-int.h>
 #include <epan/tap.h>
-#include <epan/stat_cmd_args.h>
+#include <epan/stat_tap_ui.h>
 #include <epan/uat.h>
 #include <epan/print.h>
 #include <epan/timestamp.h>
+#include <epan/conversation_table.h>
 
+#if defined(HAVE_HEIMDAL_KERBEROS) || defined(HAVE_MIT_KERBEROS)
+#include <epan/asn1.h>
+#include <epan/dissectors/packet-kerberos.h>
+#endif
+
+#include <wsutil/cmdarg_err.h>
 #include <wsutil/plugins.h>
 
 /* general (not GTK specific) */
 #include "../file.h"
 #include "../frame_tvbuff.h"
 #include "../summary.h"
-#include "../filters.h"
 #include "../color.h"
 #include "../color_filters.h"
 #include "../register.h"
 #include "../ringbuffer.h"
-#include "ui/util.h"
-#include "../clopts_common.h"
-#include "../cmdarg_err.h"
-#include "../version_info.h"
 #include "../log.h"
 
 #include "gtk_iface_monitor.h"
 
 #include "ui/alert_box.h"
+#include "ui/console.h"
 #include "ui/decode_as_utils.h"
+#include "ui/filters.h"
 #include "ui/main_statusbar.h"
 #include "ui/persfilepath_opt.h"
 #include "ui/preference_utils.h"
 #include "ui/recent.h"
 #include "ui/recent_utils.h"
 #include "ui/software_update.h"
-#include "ui/simple_dialog.h"
 #include "ui/ui_util.h"
+#include "ui/util.h"
 
 #ifdef HAVE_LIBPCAP
+#include "ui/capture_ui_utils.h"
 #include "ui/capture_globals.h"
 #include "ui/iface_lists.h"
 #endif
 
 #include "codecs/codecs.h"
 
+#include "caputils/capture-pcap-util.h"
+
 #ifdef HAVE_LIBPCAP
-#include "capture_ui_utils.h"
-#include "capture-pcap-util.h"
-#include "capture_ifinfo.h"
-#include "capture.h"
-#include "capture_sync.h"
+#include "caputils/capture_ifinfo.h"
+#include "ui/capture.h"
+#include <capchild/capture_sync.h>
 #endif
 
 #ifdef _WIN32
-#include "capture-wpcap.h"
-#include "capture_wpcap_packet.h"
+#include "caputils/capture-wpcap.h"
+#include "caputils/capture_wpcap_packet.h"
 #include <tchar.h> /* Needed for Unicode */
+#include <wsutil/os_version_info.h>
 #include <wsutil/unicode-utils.h>
 #include <commctrl.h>
 #include <shellapi.h>
@@ -164,6 +169,7 @@
 #include "ui/gtk/main_toolbar.h"
 #include "ui/gtk/main_toolbar_private.h"
 #include "ui/gtk/main_welcome.h"
+#include "ui/gtk/main_welcome_private.h"
 #include "ui/gtk/drag_and_drop.h"
 #include "ui/gtk/capture_file_dlg.h"
 #include "ui/gtk/packet_panes.h"
@@ -185,6 +191,12 @@
 #include "ui/gtk/proto_help.h"
 #include "ui/gtk/packet_list.h"
 #include "ui/gtk/filter_expression_save_dlg.h"
+#include "ui/gtk/conversations_table.h"
+#include "ui/gtk/hostlist_table.h"
+#include "ui/gtk/service_response_time_table.h"
+#include "ui/gtk/response_time_delay_table.h"
+#include "ui/gtk/simple_stattable.h"
+#include "simple_dialog.h"
 
 #include "ui/gtk/old-gtk-compat.h"
 
@@ -194,8 +206,8 @@
 #endif
 
 #ifdef HAVE_AIRPCAP
-#include <airpcap.h>
-#include "airpcap_loader.h"
+#include <caputils/airpcap.h>
+#include <caputils/airpcap_loader.h>
 #include "airpcap_dlg.h"
 #include "airpcap_gui_utils.h"
 #endif
@@ -242,9 +254,6 @@ GString *comp_info_str, *runtime_info_str;
 static gboolean have_capture_file = FALSE; /* XXX - is there an equivalent in cfile? */
 
 static guint  tap_update_timer_id;
-
-static void console_log_handler(const char *log_domain,
-    GLogLevelFlags log_level, const char *message, gpointer user_data);
 
 static void create_main_window(gint, gint, gint, e_prefs*);
 static void show_main_window(gboolean);
@@ -341,6 +350,7 @@ match_selected_ptree_cb(gpointer data, MATCH_SELECTED_E action)
         filter = proto_construct_match_selected_string(cfile.finfo_selected,
                                                        cfile.edt);
         match_selected_cb_do((GtkWidget *)g_object_get_data(G_OBJECT(data), E_DFILTER_TE_KEY), action, filter);
+        wmem_free(NULL, filter);
     }
 }
 
@@ -369,6 +379,7 @@ colorize_selected_ptree_cb(GtkWidget *w _U_, gpointer data _U_, guint8 filt_nr)
             }
             packet_list_colorize_packets();
         }
+        wmem_free(NULL, filter);
     }
 }
 
@@ -383,7 +394,7 @@ static void selected_ptree_info_answered_cb(gpointer dialog _U_, gint btn, gpoin
     case(ESD_BTN_OK):
         if (cfile.finfo_selected) {
             /* open wiki page using the protocol abbreviation */
-            selected_proto_url = g_strdup_printf("http://wiki.wireshark.org/Protocols/%s", proto_abbrev);
+            selected_proto_url = g_strdup_printf("https://wiki.wireshark.org/Protocols/%s", proto_abbrev);
             browser_open_url(selected_proto_url);
             g_free(selected_proto_url);
         }
@@ -415,41 +426,27 @@ selected_ptree_info_cb(GtkWidget *widget _U_, gpointer data _U_)
 
         proto_abbrev = proto_registrar_get_abbrev(field_id);
 
-        if (!proto_is_private(field_id)) {
-            /* ask the user if the wiki page really should be opened */
-            dialog = simple_dialog(ESD_TYPE_CONFIRMATION, ESD_BTNS_OK_CANCEL,
-                    "%sOpen Wireshark Wiki page of protocol \"%s\"?%s\n"
-                    "\n"
-                    "This will open the \"%s\" related Wireshark Wiki page in your Web browser.\n"
-                    "\n"
-                    "The Wireshark Wiki is a collaborative approach to provide information "
-                    "about Wireshark in several ways (not limited to protocol specifics).\n"
-                    "\n"
-                    "This Wiki is new, so the page of the selected protocol "
-                    "may not exist and/or may not contain valuable information.\n"
-                    "\n"
-                    "As everyone can edit the Wiki and add new content (or extend existing), "
-                    "you are encouraged to add information if you can.\n"
-                    "\n"
-                    "Hint 1: If you are new to wiki editing, try out editing the Sandbox first!\n"
-                    "\n"
-                    "Hint 2: If you want to add a new protocol page, you should use the ProtocolTemplate, "
-                    "which will save you a lot of editing and will give a consistent look over the pages.",
-                    simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
-            simple_dialog_set_cb(dialog, selected_ptree_info_answered_cb, (gpointer)proto_abbrev);
-        } else {
-            /* appologize to the user that the wiki page cannot be opened */
-            simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
-                    "%sCan't open Wireshark Wiki page of protocol \"%s\"%s\n"
-                    "\n"
-                    "This would open the \"%s\" related Wireshark Wiki page in your Web browser.\n"
-                    "\n"
-                    "Since this is a private protocol, such information is not available in "
-                    "a public wiki. Therefore this wiki entry is blocked.\n"
-                    "\n"
-                    "Sorry for the inconvenience.\n",
-                    simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
-        }
+        /* ask the user if the wiki page really should be opened */
+        dialog = simple_dialog(ESD_TYPE_CONFIRMATION, ESD_BTNS_OK_CANCEL,
+                "%sOpen Wireshark Wiki page of protocol \"%s\"?%s\n"
+                "\n"
+                "This will open the \"%s\" related Wireshark Wiki page in your Web browser.\n"
+                "\n"
+                "The Wireshark Wiki is a collaborative approach to provide information "
+                "about Wireshark in several ways (not limited to protocol specifics).\n"
+                "\n"
+                "This Wiki is new, so the page of the selected protocol "
+                "may not exist and/or may not contain valuable information.\n"
+                "\n"
+                "As everyone can edit the Wiki and add new content (or extend existing), "
+                "you are encouraged to add information if you can.\n"
+                "\n"
+                "Hint 1: If you are new to wiki editing, try out editing the Sandbox first!\n"
+                "\n"
+                "Hint 2: If you want to add a new protocol page, you should use the ProtocolTemplate, "
+                "which will save you a lot of editing and will give a consistent look over the pages.",
+                simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
+        simple_dialog_set_cb(dialog, selected_ptree_info_answered_cb, (gpointer)proto_abbrev);
     }
 }
 
@@ -462,7 +459,7 @@ static void selected_ptree_ref_answered_cb(gpointer dialog _U_, gint btn, gpoint
     case(ESD_BTN_OK):
         if (cfile.finfo_selected) {
             /* open reference page using the protocol abbreviation */
-            selected_proto_url = g_strdup_printf("http://www.wireshark.org/docs/dfref/%c/%s", proto_abbrev[0], proto_abbrev);
+            selected_proto_url = g_strdup_printf("https://www.wireshark.org/docs/dfref/%c/%s", proto_abbrev[0], proto_abbrev);
             browser_open_url(selected_proto_url);
             g_free(selected_proto_url);
         }
@@ -493,38 +490,24 @@ selected_ptree_ref_cb(GtkWidget *widget _U_, gpointer data _U_)
 
         proto_abbrev = proto_registrar_get_abbrev(field_id);
 
-        if (!proto_is_private(field_id)) {
-            /* ask the user if the wiki page really should be opened */
-            dialog = simple_dialog(ESD_TYPE_CONFIRMATION, ESD_BTNS_OK_CANCEL,
-                    "%sOpen Wireshark filter reference page of protocol \"%s\"?%s\n"
-                    "\n"
-                    "This will open the \"%s\" related Wireshark filter reference page in your Web browser.\n"
-                    "\n",
-                    simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
-            simple_dialog_set_cb(dialog, selected_ptree_ref_answered_cb, (gpointer)proto_abbrev);
-        } else {
-            /* appologize to the user that the wiki page cannot be opened */
-            simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
-                    "%sCan't open Wireshark filter reference page of protocol \"%s\"%s\n"
-                    "\n"
-                    "This would open the \"%s\" related Wireshark filter reference page in your Web browser.\n"
-                    "\n"
-                    "Since this is a private protocol, such information is not available on "
-                    "a public website. Therefore this filter entry is blocked.\n"
-                    "\n"
-                    "Sorry for the inconvenience.\n",
-                    simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
-        }
+        /* ask the user if the wiki page really should be opened */
+        dialog = simple_dialog(ESD_TYPE_CONFIRMATION, ESD_BTNS_OK_CANCEL,
+                "%sOpen Wireshark filter reference page of protocol \"%s\"?%s\n"
+                "\n"
+                "This will open the \"%s\" related Wireshark filter reference page in your Web browser.\n"
+                "\n",
+                simple_dialog_primary_start(), proto_abbrev, simple_dialog_primary_end(), proto_abbrev);
+        simple_dialog_set_cb(dialog, selected_ptree_ref_answered_cb, (gpointer)proto_abbrev);
     }
 }
 
 static gboolean
 is_address_column (gint column)
 {
-    if (((cfile.cinfo.col_fmt[column] == COL_DEF_SRC) ||
-         (cfile.cinfo.col_fmt[column] == COL_RES_SRC) ||
-         (cfile.cinfo.col_fmt[column] == COL_DEF_DST) ||
-         (cfile.cinfo.col_fmt[column] == COL_RES_DST)) &&
+    if (((cfile.cinfo.columns[column].col_fmt == COL_DEF_SRC) ||
+         (cfile.cinfo.columns[column].col_fmt == COL_RES_SRC) ||
+         (cfile.cinfo.columns[column].col_fmt == COL_DEF_DST) ||
+         (cfile.cinfo.columns[column].col_fmt == COL_RES_DST)) &&
         strlen(cfile.cinfo.col_expr.col_expr_val[column]))
     {
         return TRUE;
@@ -559,13 +542,13 @@ get_ip_address_list_from_packet_list_row(gpointer data)
 
         /* First check selected column */
         if (is_address_column (column)) {
-            addr_list = g_list_append (addr_list, se_strdup_printf("%s", cfile.cinfo.col_expr.col_expr_val[column]));
+            addr_list = g_list_append (addr_list, g_strdup_printf("%s", cfile.cinfo.col_expr.col_expr_val[column]));
         }
 
         for (col = 0; col < cfile.cinfo.num_cols; col++) {
             /* Then check all columns except the selected */
             if ((col != column) && (is_address_column (col))) {
-                addr_list = g_list_append (addr_list, se_strdup_printf("%s", cfile.cinfo.col_expr.col_expr_val[col]));
+                addr_list = g_list_append (addr_list, g_strdup_printf("%s", cfile.cinfo.col_expr.col_expr_val[col]));
             }
         }
 
@@ -599,7 +582,7 @@ get_filter_from_packet_list_row_and_column(gpointer data)
                          fdata, &cfile.cinfo);
         epan_dissect_fill_in_columns(&edt, TRUE, TRUE);
 
-        if ((cfile.cinfo.col_custom_occurrence[column]) ||
+        if ((cfile.cinfo.columns[column].col_custom_occurrence) ||
             (strchr (cfile.cinfo.col_expr.col_expr_val[column], ',') == NULL))
         {
             /* Only construct the filter when a single occurrence is displayed
@@ -611,20 +594,20 @@ get_filter_from_packet_list_row_and_column(gpointer data)
              */
             if (strlen(cfile.cinfo.col_expr.col_expr[column]) != 0 &&
                 strlen(cfile.cinfo.col_expr.col_expr_val[column]) != 0) {
-                /* leak a little but safer than ep_ here */
-                if (cfile.cinfo.col_fmt[column] == COL_CUSTOM) {
-                    header_field_info *hfi = proto_registrar_get_byname(cfile.cinfo.col_custom_field[column]);
+                /* leak a little; is there a safe wmem_ scope here? */
+                if (cfile.cinfo.columns[column].col_fmt == COL_CUSTOM) {
+                    header_field_info *hfi = proto_registrar_get_byname(cfile.cinfo.columns[column].col_custom_field);
                     if (hfi && hfi->parent == -1) {
                         /* Protocol only */
-                        buf = se_strdup(cfile.cinfo.col_expr.col_expr[column]);
+                        buf = g_strdup(cfile.cinfo.col_expr.col_expr[column]);
                     } else if (hfi && IS_FT_STRING(hfi->type)) {
                         /* Custom string, add quotes */
-                        buf = se_strdup_printf("%s == \"%s\"", cfile.cinfo.col_expr.col_expr[column],
+                        buf = g_strdup_printf("%s == \"%s\"", cfile.cinfo.col_expr.col_expr[column],
                                                cfile.cinfo.col_expr.col_expr_val[column]);
                     }
                 }
                 if (buf == NULL) {
-                    buf = se_strdup_printf("%s == %s", cfile.cinfo.col_expr.col_expr[column],
+                    buf = g_strdup_printf("%s == %s", cfile.cinfo.col_expr.col_expr[column],
                                            cfile.cinfo.col_expr.col_expr_val[column]);
                 }
             }
@@ -639,9 +622,14 @@ get_filter_from_packet_list_row_and_column(gpointer data)
 void
 match_selected_plist_cb(gpointer data, MATCH_SELECTED_E action)
 {
+    char *filter;
+
+    filter = get_filter_from_packet_list_row_and_column((GtkWidget *)data);
+
     match_selected_cb_do((GtkWidget *)g_object_get_data(G_OBJECT(data), E_DFILTER_TE_KEY),
-        action,
-        get_filter_from_packet_list_row_and_column((GtkWidget *)data));
+        action, filter);
+
+    g_free(filter);
 }
 
 /* This function allows users to right click in the details window and copy the text
@@ -858,7 +846,7 @@ tree_view_selection_changed_cb(GtkTreeSelection *sel, gpointer user_data _U_)
         } else {
             /*
              * Don't show anything if the field name is zero-length;
-             * the pseudo-field for "proto_tree_add_text()" is such
+             * the pseudo-field for text-only items is such
              * a field, and we don't want "Text (text)" showing up
              * on the status line if you've selected such a field.
              *
@@ -870,10 +858,9 @@ tree_view_selection_changed_cb(GtkTreeSelection *sel, gpointer user_data _U_)
              * but we'd have to add checks for null pointers in some
              * places if we did that.
              *
-             * Or perhaps protocol tree items added with
-             * "proto_tree_add_text()" should have -1 as the field index,
-             * with no pseudo-field being used, but that might also
-             * require special checks for -1 to be added.
+             * Or perhaps text-only items should have -1 as the field
+             * index, with no pseudo-field being used, but that might
+             * also require special checks for -1 to be added.
              */
             statusbar_push_field_msg("%s", "");
         }
@@ -936,7 +923,15 @@ void collapse_tree_cb(GtkWidget *widget _U_, gpointer data _U_)
 
 void resolve_name_cb(GtkWidget *widget _U_, gpointer data _U_)
 {
-    static const e_addr_resolve resolv_flags = {TRUE, TRUE, TRUE, TRUE, TRUE, FALSE};
+    static const e_addr_resolve resolv_flags = {
+        TRUE,   /* mac_name */
+        TRUE,   /* network_name */
+        TRUE,   /* transport_name */
+        TRUE,   /* concurrent_dns */
+        TRUE,   /* dns_pkt_addr_resolution */
+        TRUE,   /* use_external_net_name_resolver */
+        FALSE   /* load_hosts_file_from_profile_only */
+    };
 
     if (cfile.edt->tree) {
         proto_tree_draw_resolve(cfile.edt->tree, tree_view_gbl, &resolv_flags);
@@ -1152,7 +1147,7 @@ file_quit_cmd_cb(GtkWidget *widget _U_, gpointer data _U_)
 }
 
 static void
-print_usage(gboolean print_ver) {
+print_usage(gboolean for_help_option) {
 
     FILE *output;
 
@@ -1160,14 +1155,12 @@ print_usage(gboolean print_ver) {
     create_console();
 #endif
 
-    if (print_ver) {
+    if (for_help_option) {
         output = stdout;
-        fprintf(output, "Wireshark " VERSION "%s\n"
+        fprintf(output, "Wireshark %s\n"
             "Interactively dump and analyze network traffic.\n"
-            "See http://www.wireshark.org for more information.\n"
-            "\n"
-            "%s",
-            wireshark_gitversion, get_copyright_info());
+            "See https://www.wireshark.org for more information.\n",
+            get_ws_vcs_version_info());
     } else {
         output = stderr;
     }
@@ -1187,7 +1180,7 @@ print_usage(gboolean print_ver) {
 #ifdef HAVE_PCAP_CREATE
     fprintf(output, "  -I                       capture in monitor mode, if available\n");
 #endif
-#if defined(_WIN32) || defined(HAVE_PCAP_CREATE)
+#ifdef CAN_SET_CAPTURE_BUFFER_SIZE
     fprintf(output, "  -B <buffer size>         size of kernel buffer (def: %dMB)\n", DEFAULT_CAPTURE_BUFFER_SIZE);
 #endif
     fprintf(output, "  -y <link type>           link layer type (def: first appropriate)\n");
@@ -1217,7 +1210,13 @@ print_usage(gboolean print_ver) {
     fprintf(output, "Processing:\n");
     fprintf(output, "  -R <read filter>         packet filter in Wireshark display filter syntax\n");
     fprintf(output, "  -n                       disable all name resolutions (def: all enabled)\n");
-    fprintf(output, "  -N <name resolve flags>  enable specific name resolution(s): \"mntC\"\n");
+    fprintf(output, "  -N <name resolve flags>  enable specific name resolution(s): \"mnNtCd\"\n");
+    fprintf(output, "  --disable-protocol <proto_name>\n");
+    fprintf(output, "                           disable dissection of proto_name\n");
+    fprintf(output, "  --enable-heuristic <short_name>\n");
+    fprintf(output, "                           enable dissection of heuristic protocol\n");
+    fprintf(output, "  --disable-heuristic <short_name>\n");
+    fprintf(output, "                           disable dissection of heuristic protocol\n");
 
     fprintf(output, "\n");
     fprintf(output, "User interface:\n");
@@ -1254,36 +1253,20 @@ print_usage(gboolean print_ver) {
 #endif
 }
 
-static void
-show_version(void)
-{
-    printf(PACKAGE " " VERSION "%s\n"
-           "\n"
-           "%s"
-           "\n"
-           "%s"
-           "\n"
-           "%s",
-        wireshark_gitversion, get_copyright_info(), comp_info_str->str,
-        runtime_info_str->str);
-}
-
 /*
  * Report an error in command-line arguments.
  * Creates a console on Windows.
+ * XXX - pop this up in a window of some sort on UNIX+X11 if the controlling
+ * terminal isn't the standard error?
  */
-void
-cmdarg_err(const char *fmt, ...)
+static void
+wireshark_cmdarg_err(const char *fmt, va_list ap)
 {
-    va_list ap;
-
 #ifdef _WIN32
     create_console();
 #endif
     fprintf(stderr, "wireshark: ");
-    va_start(ap, fmt);
     vfprintf(stderr, fmt, ap);
-    va_end(ap);
     fprintf(stderr, "\n");
 }
 
@@ -1293,18 +1276,14 @@ cmdarg_err(const char *fmt, ...)
  * XXX - pop this up in a window of some sort on UNIX+X11 if the controlling
  * terminal isn't the standard error?
  */
-void
-cmdarg_err_cont(const char *fmt, ...)
+static void
+wireshark_cmdarg_err_cont(const char *fmt, va_list ap)
 {
-    va_list ap;
-
 #ifdef _WIN32
     create_console();
 #endif
-    va_start(ap, fmt);
     vfprintf(stderr, fmt, ap);
     fprintf(stderr, "\n");
-    va_end(ap);
 }
 
 /*
@@ -1356,8 +1335,8 @@ main_update_for_unsaved_changes(capture_file *cf)
 void
 main_auto_scroll_live_changed(gboolean auto_scroll_live_in)
 {
-  /* Update menubar and toolbar */
-      menu_auto_scroll_live_changed(auto_scroll_live_in);
+    /* Update menubar and toolbar */
+    menu_auto_scroll_live_changed(auto_scroll_live_in);
     toolbar_auto_scroll_live_changed(auto_scroll_live_in);
 
     /* change auto scroll state */
@@ -1466,8 +1445,8 @@ main_cf_cb_file_read_finished(capture_file *cf)
         add_menu_recent_capture_file(cf->filename);
 
         /* Remember folder for next Open dialog and save it in recent */
-        dir_path = get_dirname(g_strdup(cf->filename));
-        set_last_open_dir(dir_path);
+        dir_path = g_strdup(cf->filename);
+        set_last_open_dir(get_dirname(dir_path));
         g_free(dir_path);
     }
 
@@ -1488,8 +1467,8 @@ main_cf_cb_file_rescan_finished(capture_file *cf)
         add_menu_recent_capture_file(cf->filename);
 
         /* Remember folder for next Open dialog and save it in recent */
-        dir_path = get_dirname(g_strdup(cf->filename));
-        set_last_open_dir(dir_path);
+        dir_path = g_strdup(cf->filename);
+        set_last_open_dir(get_dirname(dir_path));
         g_free(dir_path);
     }
 
@@ -1793,6 +1772,12 @@ main_cf_callback(gint event, gpointer data, gpointer user_data _U_)
         g_log(LOG_DOMAIN_MAIN, G_LOG_LEVEL_DEBUG, "Callback: Rescan finished");
         main_cf_cb_file_rescan_finished(cf);
         break;
+    case(cf_cb_file_retap_started):
+        g_log(LOG_DOMAIN_MAIN, G_LOG_LEVEL_DEBUG, "Callback: Retap started");
+        break;
+    case(cf_cb_file_retap_finished):
+        g_log(LOG_DOMAIN_MAIN, G_LOG_LEVEL_DEBUG, "Callback: Retap finished");
+        break;
     case(cf_cb_file_fast_save_finished):
         g_log(LOG_DOMAIN_MAIN, G_LOG_LEVEL_DEBUG, "Callback: Fast save finished");
         main_cf_cb_file_rescan_finished(cf);
@@ -1896,7 +1881,7 @@ main_capture_callback(gint event, capture_session *cap_session, gpointer user_da
 #endif
 
 static void
-get_gtk_compiled_info(GString *str)
+get_wireshark_gtk_compiled_info(GString *str)
 {
     g_string_append(str, "with ");
     g_string_append_printf(str,
@@ -1906,17 +1891,31 @@ get_gtk_compiled_info(GString *str)
 #else
                            "GTK+ (version unknown)");
 #endif
-    g_string_append(str, ", ");
+
     /* Cairo */
-    g_string_append(str, "with Cairo ");
+    g_string_append(str, ", with Cairo ");
     g_string_append(str, CAIRO_VERSION_STRING);
-    g_string_append(str, ", ");
 
     /* Pango */
-    g_string_append(str, "with Pango ");
+    g_string_append(str, ", with Pango ");
     g_string_append(str, PANGO_VERSION_STRING);
-    g_string_append(str, ", ");
 
+    /* Capture libraries */
+    g_string_append(str, ", ");
+    get_compiled_caplibs_version(str);
+
+    /* LIBZ */
+    g_string_append(str, ", ");
+#ifdef HAVE_LIBZ
+    g_string_append(str, "with libz ");
+#ifdef ZLIB_VERSION
+    g_string_append(str, ZLIB_VERSION);
+#else /* ZLIB_VERSION */
+    g_string_append(str, "(version unknown)");
+#endif /* ZLIB_VERSION */
+#else /* HAVE_LIBZ */
+    g_string_append(str, "without libz");
+#endif /* HAVE_LIBZ */
 }
 
 static void
@@ -1945,8 +1944,20 @@ get_gui_compiled_info(GString *str)
 }
 
 static void
-get_gui_runtime_info(GString *str)
+get_wireshark_runtime_info(GString *str)
 {
+#ifdef HAVE_LIBPCAP
+    /* Capture libraries */
+    g_string_append(str, ", ");
+    get_runtime_caplibs_version(str);
+#endif
+
+    /* zlib */
+#if defined(HAVE_LIBZ) && !defined(_WIN32)
+    g_string_append_printf(str, ", with libz %s", zlibVersion());
+#endif
+
+    /* stuff used by libwireshark */
     epan_get_runtime_version_info(str);
 
 #ifdef HAVE_AIRPCAP
@@ -2034,6 +2045,8 @@ read_configuration_files(char **gdp_path, char **dp_path)
     /* Read the disabled protocols file. */
     read_disabled_protos_list(gdp_path, &gdp_open_errno, &gdp_read_errno,
                               dp_path, &dp_open_errno, &dp_read_errno);
+    read_disabled_heur_dissector_list(gdp_path, &gdp_open_errno, &gdp_read_errno,
+                              dp_path, &dp_open_errno, &dp_read_errno);
     if (*gdp_path != NULL) {
         if (gdp_open_errno != 0) {
             simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
@@ -2089,7 +2102,7 @@ check_and_warn_user_startup(gchar *cf_name _U_)
         "This could be dangerous.\n\n"
         "If you're running Wireshark this way in order to perform live capture, "
         "you may want to be aware that there is a better way documented at\n"
-        "http://wiki.wireshark.org/CaptureSetup/CapturePrivileges", cur_user, cur_group);
+        "https://wiki.wireshark.org/CaptureSetup/CapturePrivileges", cur_user, cur_group);
         g_free(cur_user);
         g_free(cur_group);
         simple_dialog_check_set(priv_warning_dialog, "Don't show this message again.");
@@ -2098,7 +2111,7 @@ check_and_warn_user_startup(gchar *cf_name _U_)
 
 #ifdef _WIN32
     /* Warn the user if npf.sys isn't loaded. */
-    if (!get_stdin_capture() && !cf_name && !npf_sys_is_running() && recent.privs_warn_if_no_npf && get_os_major_version() >= 6) {
+    if (!get_stdin_capture() && !cf_name && !npf_sys_is_running() && recent.privs_warn_if_no_npf && get_windows_major_version() >= 6) {
         priv_warning_dialog = simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
         "The NPF driver isn't running.  You may have trouble\n"
         "capturing or listing interfaces.");
@@ -2146,11 +2159,11 @@ main(int argc, char *argv[])
     gint                 pl_size = 280, tv_size = 95, bv_size = 75;
     gchar               *rc_file, *cf_name = NULL, *rfilter = NULL, *dfilter = NULL, *jfilter = NULL;
     dfilter_t           *rfcode = NULL;
+    gchar               *err_msg;
     gboolean             rfilter_parse_failed = FALSE;
     e_prefs             *prefs_p;
     char                 badopt;
     GtkWidget           *splash_win = NULL;
-    GLogLevelFlags       log_flags;
     guint                go_to_packet = 0;
     search_direction     jump_backwards = SD_FORWARD;
     dfilter_t           *jump_to_filter = NULL;
@@ -2158,33 +2171,25 @@ main(int argc, char *argv[])
 #ifdef HAVE_GTKOSXAPPLICATION
     GtkosxApplication   *theApp;
 #endif
+    GSList              *disable_protocol_slist = NULL;
+    GSList              *enable_heur_slist = NULL;
+    GSList              *disable_heur_slist = NULL;
 
-#ifdef HAVE_LIBPCAP
-#if defined(_WIN32) || defined(HAVE_PCAP_CREATE)
-#define OPTSTRING_B "B:"
-#else
-#define OPTSTRING_B ""
-#endif  /* _WIN32 or HAVE_PCAP_CREATE */
-#else /* HAVE_LIBPCAP */
-#define OPTSTRING_B ""
-#endif  /* HAVE_LIBPCAP */
-#ifdef HAVE_PCAP_REMOTE
-#define OPTSTRING_A "A:"
-#else
-#define OPTSTRING_A ""
-#endif
-#ifdef HAVE_PCAP_CREATE
-#define OPTSTRING_I "I"
-#else
-#define OPTSTRING_I ""
-#endif
-
-#define OPTSTRING "a:" OPTSTRING_A "b:" OPTSTRING_B "c:C:Df:g:Hhi:" OPTSTRING_I "jJ:kK:lLm:nN:o:P:pr:R:Ss:t:u:vw:X:y:Y:z:"
+#define OPTSTRING OPTSTRING_CAPTURE_COMMON "C:g:Hh" "jJ:kK:lm:nN:o:P:r:R:St:u:vw:X:Y:z:"
+DIAG_OFF(cast-qual)
     static const struct option long_options[] = {
+        {(char *)"help", no_argument, NULL, 'h'},
         {(char *)"read-file", required_argument, NULL, 'r' },
+        {(char *)"read-filter", required_argument, NULL, 'R' },
+        {(char *)"display-filter", required_argument, NULL, 'Y' },
+        {(char *)"version", no_argument, NULL, 'v'},
+        LONGOPT_CAPTURE_COMMON
         {0, 0, 0, 0 }
     };
+DIAG_ON(cast-qual)
     static const char optstring[] = OPTSTRING;
+
+    cmdarg_err_init(wireshark_cmdarg_err, wireshark_cmdarg_err_cont);
 
     /* Set the C-language locale to the native environment. */
     setlocale(LC_ALL, "");
@@ -2204,7 +2209,7 @@ main(int argc, char *argv[])
     /*
      * Attempt to get the pathname of the executable file.
      */
-    init_progfile_dir_error = init_progfile_dir(argv[0], main);
+    init_progfile_dir_error = init_progfile_dir(argv[0], (void *)main);
 
     /* initialize the funnel mini-api */
     initialize_funnel_ops();
@@ -2226,9 +2231,9 @@ main(int argc, char *argv[])
     switch (airpcap_dll_ret_val) {
         case AIRPCAP_DLL_OK:
             /* load the airpcap interfaces */
-            airpcap_if_list = get_airpcap_interface_list(&err, &err_str);
+            g_airpcap_if_list = get_airpcap_interface_list(&err, &err_str);
 
-            if (airpcap_if_list == NULL || g_list_length(airpcap_if_list) == 0){
+            if (g_airpcap_if_list == NULL || g_list_length(g_airpcap_if_list) == 0){
                 if (err == CANT_GET_AIRPCAP_INTERFACE_LIST && err_str != NULL) {
                     simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", "Failed to open Airpcap Adapters.");
                     g_free(err_str);
@@ -2238,7 +2243,7 @@ main(int argc, char *argv[])
             } else {
 
                 /* select the first ad default (THIS SHOULD BE CHANGED) */
-                airpcap_if_active = airpcap_get_default_if(airpcap_if_list);
+                airpcap_if_active = airpcap_get_default_if(g_airpcap_if_list);
             }
         break;
 #if 0
@@ -2261,21 +2266,20 @@ main(int argc, char *argv[])
 #endif /* HAVE_AIRPCAP */
 #endif  /* _WIN32 */
 
-    /* Assemble the compile-time version information string */
-    comp_info_str = g_string_new("Compiled ");
+    /* Get the compile-time version information string */
+    comp_info_str = get_compiled_version_info(get_wireshark_gtk_compiled_info,
+                                              get_gui_compiled_info);
 
-    get_compiled_version_info(comp_info_str, get_gtk_compiled_info, get_gui_compiled_info);
+    /* Get the run-time version information string */
+    runtime_info_str = get_runtime_version_info(get_wireshark_runtime_info);
 
-    /* Assemble the run-time version information string */
-    runtime_info_str = g_string_new("Running ");
-    get_runtime_version_info(runtime_info_str, get_gui_runtime_info);
-
-    ws_add_crash_info(PACKAGE " " VERSION "%s\n"
+    /* Add it to the information to be reported on a crash. */
+    ws_add_crash_info("Wireshark %s\n"
         "\n"
         "%s"
         "\n"
         "%s",
-        wireshark_gitversion, comp_info_str->str, runtime_info_str->str);
+        get_ws_vcs_version_info(), comp_info_str->str, runtime_info_str->str);
 
 #ifdef _WIN32
     /* Start windows sockets */
@@ -2339,18 +2343,13 @@ main(int argc, char *argv[])
                 break;
             case 'D':        /* Print a list of capture devices and exit */
 #ifdef HAVE_LIBPCAP
-                if_list = capture_interface_list(&err, &err_str,main_window_update);
+                if_list = capture_interface_list(&err, &err_str, NULL);
                 if (if_list == NULL) {
-                    switch (err) {
-                        case CANT_GET_INTERFACE_LIST:
-                        case DONT_HAVE_PCAP:
-                            cmdarg_err("%s", err_str);
-                            g_free(err_str);
-                            break;
-
-                        case NO_INTERFACES_FOUND:
-                            cmdarg_err("There are no interfaces on which a capture can be done");
-                            break;
+                    if (err == 0)
+                        cmdarg_err("There are no interfaces on which a capture can be done");
+                    else {
+                        cmdarg_err("%s", err_str);
+                        g_free(err_str);
                     }
                     exit(2);
                 }
@@ -2388,7 +2387,7 @@ main(int argc, char *argv[])
 #ifdef _WIN32
                 create_console();
 #endif
-                show_version();
+                show_version("Wireshark", comp_info_str, runtime_info_str);
 #ifdef _WIN32
                 destroy_console();
 #endif
@@ -2414,11 +2413,11 @@ main(int argc, char *argv[])
     /* Only the static part of it will be read, as we don't have the gui now to fill the */
     /* recent lists which is done in the dynamic part. */
     /* We have to do this already here, so command line parameters can overwrite these values. */
-    recent_read_profile_static(&rf_path, &rf_open_errno);
-    if (rf_path != NULL && rf_open_errno != 0) {
+    if (!recent_read_profile_static(&rf_path, &rf_open_errno)) {
         simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
                       "Could not open recent file\n\"%s\": %s.",
                       rf_path, g_strerror(rf_open_errno));
+        g_free(rf_path);
     }
 
     if (recent.gui_fileopen_remembered_dir &&
@@ -2445,50 +2444,25 @@ main(int argc, char *argv[])
 #ifdef HAVE_LIBPCAP
     capture_callback_add(main_capture_callback, NULL);
 #endif
+
     cf_callback_add(statusbar_cf_callback, NULL);
 #ifdef HAVE_LIBPCAP
     capture_callback_add(statusbar_capture_callback, NULL);
 #endif
 
-    /* Arrange that if we have no console window, and a GLib message logging
-       routine is called to log a message, we pop up a console window.
+    cf_callback_add(welcome_cf_callback, NULL);
+#ifdef HAVE_LIBPCAP
+    capture_callback_add(welcome_capture_callback, NULL);
+#endif
 
-       We do that by inserting our own handler for all messages logged
-       to the default domain; that handler pops up a console if necessary,
-       and then calls the default handler. */
-
-    /* We might want to have component specific log levels later ... */
-
-    log_flags = (GLogLevelFlags)
-                (G_LOG_LEVEL_ERROR|
-                 G_LOG_LEVEL_CRITICAL|
-                 G_LOG_LEVEL_WARNING|
-                 G_LOG_LEVEL_MESSAGE|
-                 G_LOG_LEVEL_INFO|
-                 G_LOG_LEVEL_DEBUG|
-                 G_LOG_FLAG_FATAL|
-                 G_LOG_FLAG_RECURSION);
-
-    g_log_set_handler(NULL,
-                      log_flags,
-                      console_log_handler, NULL /* user_data */);
-    g_log_set_handler(LOG_DOMAIN_MAIN,
-                      log_flags,
-                      console_log_handler, NULL /* user_data */);
+    set_console_log_handler();
 
 #ifdef HAVE_LIBPCAP
-    g_log_set_handler(LOG_DOMAIN_CAPTURE,
-                      log_flags,
-                      console_log_handler, NULL /* user_data */);
-  g_log_set_handler(LOG_DOMAIN_CAPTURE_CHILD,
-                    log_flags,
-                    console_log_handler, NULL /* user_data */);
-
     /* Set the initial values in the capture options. This might be overwritten
        by preference settings and then again by the command line parameters. */
     capture_opts_init(&global_capture_opts);
 
-    capture_session_init(&global_capture_session, (void *)&cfile);
+    capture_session_init(&global_capture_session, &cfile);
 #endif
 
     init_report_err(failure_alert_box, open_failure_alert_box,
@@ -2556,6 +2530,11 @@ main(int argc, char *argv[])
 #endif
 
     register_all_tap_listeners();
+    conversation_table_set_gui_info(init_conversation_table);
+    hostlist_table_set_gui_info(init_hostlist_table);
+    srt_table_iterate_tables(register_service_response_tables, NULL);
+    rtd_table_iterate_tables(register_response_time_delay_tables, NULL);
+    new_stat_tap_iterate_tables(register_simple_stat_tables, NULL);
 
     splash_update(RA_PREFERENCES, NULL, (gpointer)splash_win);
 
@@ -2563,9 +2542,6 @@ main(int argc, char *argv[])
     /* Removed thread code:
      * https://code.wireshark.org/review/gitweb?p=wireshark.git;a=commit;h=9e277ae6154fd04bf6a0a34ec5655a73e5a736a3
      */
-
-    /* this is to keep tap extensions updating once every 3 seconds */
-    tap_update_timer_id = g_timeout_add(prefs_p->tap_update_interval, tap_update_cb, NULL);
 
     splash_update(RA_CONFIGURATION, NULL, (gpointer)splash_win);
     proto_help_init();
@@ -2633,9 +2609,9 @@ main(int argc, char *argv[])
             case 'S':        /* "Sync" mode: used for following file ala tail -f */
             case 'w':        /* Write to capture file xxx */
             case 'y':        /* Set the pcap data link type */
-#if defined(_WIN32) || defined(HAVE_PCAP_CREATE)
+#ifdef CAN_SET_CAPTURE_BUFFER_SIZE
             case 'B':        /* Buffer size */
-#endif /* _WIN32 or HAVE_PCAP_CREATE */
+#endif
 #ifdef HAVE_LIBPCAP
                 status = capture_opts_add_opt(&global_capture_opts, opt, optarg,
                                               &start_capture);
@@ -2688,15 +2664,12 @@ main(int argc, char *argv[])
                 prefs_p->gui_gtk2_font_name = g_strdup(optarg);
                 break;
             case 'n':        /* No name resolution */
-                gbl_resolv_flags.mac_name = FALSE;
-                gbl_resolv_flags.network_name = FALSE;
-                gbl_resolv_flags.transport_name = FALSE;
-                gbl_resolv_flags.concurrent_dns = FALSE;
+                disable_name_resolution();
                 break;
             case 'N':        /* Select what types of addresses/port #s to resolve */
                 badopt = string_to_name_resolve(optarg, &gbl_resolv_flags);
                 if (badopt != '\0') {
-                    cmdarg_err("-N specifies unknown resolving option '%c'; valid options are 'm', 'n', and 't'",
+                    cmdarg_err("-N specifies unknown resolving option '%c'; valid options are 'C', 'd', m', 'n', 'N', and 't'",
                                badopt);
                     exit(1);
                 }
@@ -2810,12 +2783,26 @@ main(int argc, char *argv[])
                  by the preferences set callback) from being used as
                  part of a tap filter.  Instead, we just add the argument
                  to a list of stat arguments. */
+                if (strcmp("help", optarg) == 0) {
+                  fprintf(stderr, "wireshark: The available statistics for the \"-z\" option are:\n");
+                  list_stat_cmd_args();
+                  exit(0);
+                }
                 if (!process_stat_cmd_arg(optarg)) {
                     cmdarg_err("Invalid -z argument.");
                     cmdarg_err_cont("  -z argument must be one of :");
                     list_stat_cmd_args();
                     exit(1);
                 }
+                break;
+            case LONGOPT_DISABLE_PROTOCOL: /* disable dissection of protocol */
+                disable_protocol_slist = g_slist_append(disable_protocol_slist, optarg);
+                break;
+            case LONGOPT_ENABLE_HEURISTIC: /* enable heuristic dissection of protocol */
+                enable_heur_slist = g_slist_append(enable_heur_slist, optarg);
+                break;
+            case LONGOPT_DISABLE_HEURISTIC: /* disable heuristic dissection of protocol */
+                disable_heur_slist = g_slist_append(disable_heur_slist, optarg);
                 break;
             default:
             case '?':        /* Bad flag - print usage message */
@@ -2947,11 +2934,19 @@ main(int argc, char *argv[])
 
             device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
             if (device.selected) {
-#if defined(HAVE_PCAP_CREATE)
-                caps = capture_get_if_capabilities(device.name, device.monitor_mode_supported, &err_str, main_window_update);
-#else
-                caps = capture_get_if_capabilities(device.name, FALSE, &err_str,main_window_update);
+                gchar* auth_str = NULL;
+#ifdef HAVE_PCAP_REMOTE
+                if (device.remote_opts.remote_host_opts.auth_type == CAPTURE_AUTH_PWD) {
+                    auth_str = g_strdup_printf("%s:%s", device.remote_opts.remote_host_opts.auth_username,
+                                               device.remote_opts.remote_host_opts.auth_password);
+                }
 #endif
+#if defined(HAVE_PCAP_CREATE)
+                caps = capture_get_if_capabilities(device.name, device.monitor_mode_supported, auth_str, &err_str, main_window_update);
+#else
+                caps = capture_get_if_capabilities(device.name, FALSE, auth_str, &err_str,main_window_update);
+#endif
+                g_free(auth_str);
                 if (caps == NULL) {
                     cmdarg_err("%s", err_str);
                     g_free(err_str);
@@ -3014,6 +3009,31 @@ main(int argc, char *argv[])
     /* disabled protocols as per configuration file */
     if (gdp_path == NULL && dp_path == NULL) {
         set_disabled_protos_list();
+        set_disabled_heur_dissector_list();
+    }
+
+    if(disable_protocol_slist) {
+        GSList *proto_disable;
+        for (proto_disable = disable_protocol_slist; proto_disable != NULL; proto_disable = g_slist_next(proto_disable))
+        {
+            proto_disable_proto_by_name((char*)proto_disable->data);
+        }
+    }
+
+    if(enable_heur_slist) {
+        GSList *heur_enable;
+        for (heur_enable = enable_heur_slist; heur_enable != NULL; heur_enable = g_slist_next(heur_enable))
+        {
+            proto_enable_heuristic_by_name((char*)heur_enable->data, TRUE);
+        }
+    }
+
+    if(disable_heur_slist) {
+        GSList *heur_disable;
+        for (heur_disable = disable_heur_slist; heur_disable != NULL; heur_disable = g_slist_next(heur_disable))
+        {
+            proto_enable_heuristic_by_name((char*)heur_disable->data, FALSE);
+        }
     }
 
     build_column_format_array(&cfile.cinfo, prefs_p->num_cols, TRUE);
@@ -3046,11 +3066,11 @@ main(int argc, char *argv[])
     create_main_window(pl_size, tv_size, bv_size, prefs_p);
 
     /* Read the dynamic part of the recent file, as we have the gui now ready for it. */
-    recent_read_dynamic(&rf_path, &rf_open_errno);
-    if (rf_path != NULL && rf_open_errno != 0) {
+    if (!recent_read_dynamic(&rf_path, &rf_open_errno)) {
         simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
                       "Could not open recent file\n\"%s\": %s.",
                       rf_path, g_strerror(rf_open_errno));
+        g_free(rf_path);
     }
 
     color_filters_enable(recent.packet_list_colorize);
@@ -3071,9 +3091,10 @@ main(int argc, char *argv[])
     switch (user_font_apply()) {
         case FA_SUCCESS:
             break;
-        case FA_FONT_NOT_RESIZEABLE:
-            /* "user_font_apply()" popped up an alert box. */
-            /* turn off zooming - font can't be resized */
+        case FA_ZOOMED_TOO_FAR:
+            /* The zoom level is too big for this font; turn off zooming. */
+            recent.gui_zoom_level = 0;
+            break;
         case FA_FONT_NOT_AVAILABLE:
             /* XXX - did we successfully load the un-zoomed version earlier?
              If so, this *probably* means the font is available, but not at
@@ -3085,6 +3106,7 @@ main(int argc, char *argv[])
             /* in any other case than FA_SUCCESS, turn off zooming */
             recent.gui_zoom_level = 0;
             /* XXX: would it be a good idea to disable zooming (insensitive GUI)? */
+            break;
     }
 
     dnd_init(top_level);
@@ -3099,6 +3121,9 @@ main(int argc, char *argv[])
 
     g_timeout_add(info_update_freq, resolv_update_cb, NULL);
 
+    /* this is to keep tap extensions updating once every 3 seconds */
+    tap_update_timer_id = g_timeout_add(prefs_p->tap_update_interval, tap_update_cb, NULL);
+
     /* If we were given the name of a capture file, read it in now;
      we defer it until now, so that, if we can't open it, and pop
      up an alert box, the alert box is more likely to come up on
@@ -3109,8 +3134,9 @@ main(int argc, char *argv[])
         show_main_window(TRUE);
         check_and_warn_user_startup(cf_name);
         if (rfilter != NULL) {
-            if (!dfilter_compile(rfilter, &rfcode)) {
-                bad_dfilter_alert_box(top_level, rfilter);
+            if (!dfilter_compile(rfilter, &rfcode, &err_msg)) {
+                bad_dfilter_alert_box(top_level, rfilter, err_msg);
+                g_free(err_msg);
                 rfilter_parse_failed = TRUE;
             }
         }
@@ -3148,8 +3174,9 @@ main(int argc, char *argv[])
                             cf_goto_frame(&cfile, go_to_packet);
                         } else if (jfilter != NULL) {
                             /* try to compile given filter */
-                            if (!dfilter_compile(jfilter, &jump_to_filter)) {
-                                bad_dfilter_alert_box(top_level, jfilter);
+                            if (!dfilter_compile(jfilter, &jump_to_filter, &err_msg)) {
+                                bad_dfilter_alert_box(top_level, jfilter, err_msg);
+                                g_free(err_msg);
                             } else {
                             /* Filter ok, jump to the first packet matching the filter
                                conditions. Default search direction is forward, but if
@@ -3199,8 +3226,8 @@ main(int argc, char *argv[])
             if (global_capture_opts.save_file != NULL) {
                 /* Save the directory name for future file dialogs. */
                 /* (get_dirname overwrites filename) */
-                s = get_dirname(g_strdup(global_capture_opts.save_file));
-                set_last_open_dir(s);
+                s = g_strdup(global_capture_opts.save_file);
+                set_last_open_dir(get_dirname(s));
                 g_free(s);
             }
             /* "-k" was specified; start a capture. */
@@ -3289,7 +3316,8 @@ main(int argc, char *argv[])
 
 #ifdef _WIN32
     /* hide the (unresponsive) main window, while asking the user to close the console window */
-    gtk_widget_hide(top_level);
+    if (G_IS_OBJECT(top_level))
+        gtk_widget_hide(top_level);
 
     software_update_cleanup();
 
@@ -3339,7 +3367,7 @@ WinMain (struct HINSTANCE__ *hInstance,
     comm_ctrl.dwICC = ICC_WIN95_CLASSES;
     InitCommonControlsEx(&comm_ctrl);
 
-    /* RichEd20.DLL is needed for filter entries. */
+    /* RichEd20.DLL is needed for native file dialog filter entries. */
     ws_load_library("riched20.dll");
 
     set_has_console(FALSE);
@@ -3350,93 +3378,6 @@ WinMain (struct HINSTANCE__ *hInstance,
 #endif /* _WIN32 */
 
 
-static void
-console_log_handler(const char *log_domain, GLogLevelFlags log_level,
-                    const char *message, gpointer user_data _U_)
-{
-    time_t curr;
-    struct tm *today;
-    const char *level;
-
-
-    /* ignore log message, if log_level isn't interesting based
-       upon the console log preferences.
-       If the preferences haven't been loaded loaded yet, display the
-       message anyway.
-
-       The default console_log_level preference value is such that only
-         ERROR, CRITICAL and WARNING level messages are processed;
-         MESSAGE, INFO and DEBUG level messages are ignored.  */
-    if((log_level & G_LOG_LEVEL_MASK & prefs.console_log_level) == 0 &&
-        prefs.console_log_level != 0) {
-        return;
-    }
-
-#ifdef _WIN32
-    if (prefs.gui_console_open != console_open_never || log_level & G_LOG_LEVEL_ERROR) {
-        /* the user wants a console or the application will terminate immediately */
-        create_console();
-    }
-    if (get_has_console()) {
-        /* For some unknown reason, the above doesn't appear to actually cause
-           anything to be sent to the standard output, so we'll just splat the
-           message out directly, just to make sure it gets out. */
-#endif
-        switch(log_level & G_LOG_LEVEL_MASK) {
-            case G_LOG_LEVEL_ERROR:
-                level = "Err ";
-                break;
-            case G_LOG_LEVEL_CRITICAL:
-                level = "Crit";
-                break;
-            case G_LOG_LEVEL_WARNING:
-                level = "Warn";
-                break;
-            case G_LOG_LEVEL_MESSAGE:
-                level = "Msg ";
-                break;
-            case G_LOG_LEVEL_INFO:
-                level = "Info";
-                break;
-            case G_LOG_LEVEL_DEBUG:
-                level = "Dbg ";
-                break;
-            default:
-                fprintf(stderr, "unknown log_level %u\n", log_level);
-                level = NULL;
-                g_assert_not_reached();
-        }
-
-        /* create a "timestamp" */
-        time(&curr);
-        today = localtime(&curr);
-
-        fprintf(stderr, "%02u:%02u:%02u %8s %s %s\n",
-                today->tm_hour, today->tm_min, today->tm_sec,
-                log_domain != NULL ? log_domain : "",
-                level, message);
-#ifdef _WIN32
-        if(log_level & G_LOG_LEVEL_ERROR) {
-            /* wait for a key press before the following error handler will terminate the program
-               this way the user at least can read the error message */
-            printf("\n\nPress any key to exit\n");
-            _getch();
-        }
-    } else {
-        /* XXX - on UN*X, should we just use g_log_default_handler()?
-           We want the error messages to go to the standard output;
-           on Mac OS X, that will cause them to show up in various
-           per-user logs accessible through Console (details depend
-           on whether you're running 10.0 through 10.4 or running
-           10.5 and later), and, on other UN*X desktop environments,
-           if they don't show up in some form of console log, that's
-           a deficiency in that desktop environment.  (Too bad
-           Windows doesn't set the standard output and error for
-           GUI apps to something that shows up in such a log.) */
-        g_log_default_handler(log_domain, log_level, message, user_data);
-    }
-#endif
-}
 
 
 /*
@@ -3462,7 +3403,6 @@ static GtkWidget *main_widget_layout(gint layout_content)
         return NULL;
     }
 }
-
 
 /*
  * Rearrange the main window widgets
@@ -3907,7 +3847,6 @@ void change_configuration_profile (const gchar *profile_name)
     /* Set profile name and update the status bar */
     set_profile_name (profile_name);
     profile_bar_update ();
-    filter_expression_reinit(FILTER_EXPRESSION_REINIT_DESTROY);
 
     /* Reset current preferences and apply the new */
     prefs_reset();
@@ -3915,11 +3854,11 @@ void change_configuration_profile (const gchar *profile_name)
 
     (void) read_configuration_files (&gdp_path, &dp_path);
 
-    recent_read_profile_static(&rf_path, &rf_open_errno);
-    if (rf_path != NULL && rf_open_errno != 0) {
+    if (!recent_read_profile_static(&rf_path, &rf_open_errno)) {
         simple_dialog(ESD_TYPE_WARN, ESD_BTN_OK,
             "Could not open common recent file\n\"%s\": %s.",
             rf_path, g_strerror(rf_open_errno));
+        g_free(rf_path);
     }
     if (recent.gui_fileopen_remembered_dir &&
         test_for_directory(recent.gui_fileopen_remembered_dir) == EISDIR) {
@@ -3931,6 +3870,9 @@ void change_configuration_profile (const gchar *profile_name)
 
     prefs_to_capture_opts();
     prefs_apply_all();
+#ifdef HAVE_LIBPCAP
+    update_local_interfaces();
+#endif
     macros_post_update();
 
     /* Update window view and redraw the toolbar */
@@ -3942,6 +3884,7 @@ void change_configuration_profile (const gchar *profile_name)
     proto_enable_all();
     if (gdp_path == NULL && dp_path == NULL) {
         set_disabled_protos_list();
+        set_disabled_heur_dissector_list();
     }
 
     /* Reload color filters */
@@ -3960,6 +3903,38 @@ void change_configuration_profile (const gchar *profile_name)
 
     /* Reload pane geometry, must be done after recreating the list */
     main_pane_load_window_geometry();
+}
+
+void
+main_fields_changed (void)
+{
+    /* Reload color filters */
+    color_filters_reload();
+
+    /* Syntax check filter */
+    filter_te_syntax_check_cb(main_display_filter_widget, NULL);
+    if (cfile.dfilter) {
+        /* Check if filter is still valid */
+        dfilter_t *dfp = NULL;
+        if (!dfilter_compile(cfile.dfilter, &dfp, NULL)) {
+            /* Not valid.  Enable 'Apply' button and remove dfilter. */
+            g_signal_emit_by_name(G_OBJECT(main_display_filter_widget), "changed");
+            g_free(cfile.dfilter);
+            cfile.dfilter = NULL;
+        }
+        dfilter_free(dfp);
+    }
+
+    if (have_custom_cols(&cfile.cinfo)) {
+        /* Recreate packet list according to new/changed/deleted fields */
+        packet_list_recreate();
+    } else if (cfile.state != FILE_CLOSED) {
+        /* Redissect packets if we have any */
+        redissect_packets();
+    }
+    destroy_packet_wins(); /* TODO: close windows until we can recreate */
+
+    proto_free_deregistered_fields();
 }
 
 /** redissect packets and update UI */

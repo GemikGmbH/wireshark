@@ -23,23 +23,21 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include <epan/wmem/wmem.h>
 #include <epan/reassemble.h>
 #include <epan/conversation.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
 #include <epan/ipproto.h>
+#include <epan/strutil.h>
 
-#include <epan/dissectors/packet-tcp.h>
+#include "packet-tcp.h"
 
 #include "packet-ber.h"
 #include "packet-ros.h"
 #include "packet-x509ce.h"
 
-#include <epan/strutil.h>
 
 #define PNAME  "X.519 Internet Directly Mapped Protocol"
 #define PSNAME "IDMP"
@@ -81,6 +79,7 @@ static int hf_idmp_fragment_error = -1;
 static int hf_idmp_fragment_count = -1;
 static int hf_idmp_reassembled_in = -1;
 static int hf_idmp_reassembled_length = -1;
+static int hf_idmp_segment_data = -1;
 
 static gint ett_idmp_fragment = -1;
 static gint ett_idmp_fragments = -1;
@@ -197,9 +196,7 @@ static int dissect_idmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
                                         idmp_length, !idmp_final);
 
         if(fd_head && fd_head->next) {
-            proto_tree_add_text(tree, tvb, offset, (idmp_length) ? -1 : 0,
-                                "IDMP segment data (%u byte%s)", idmp_length,
-                                plurality(idmp_length, "", "s"));
+            proto_tree_add_item(tree, hf_idmp_segment_data, tvb, offset, (idmp_length) ? -1 : 0, ENC_NA);
 
             if (idmp_final) {
                 /* This is the last segment */
@@ -219,9 +216,8 @@ static int dissect_idmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
             col_append_fstr(pinfo->cinfo, COL_INFO, " [IDMP fragment, %u byte%s, IDMP reassembly not enabled]",
                                 idmp_length, plurality(idmp_length, "", "s"));
 
-            proto_tree_add_text(tree, tvb, offset, (idmp_length) ? -1 : 0,
-                                "IDMP segment data (%u byte%s) (IDMP reassembly not enabled)", idmp_length,
-                                plurality(idmp_length, "", "s"));
+            proto_tree_add_bytes_format_value(tree, hf_idmp_segment_data, tvb, offset, (idmp_length) ? -1 : 0,
+                                NULL, "(IDMP reassembly not enabled)");
         }
     }
     /* not reassembling - just dissect */
@@ -230,10 +226,11 @@ static int dissect_idmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
         dissect_idmp_IDM_PDU(FALSE, tvb, offset, &asn1_ctx, tree, hf_idmp_PDU);
     }
 
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
-static guint get_idmp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+static guint get_idmp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                              int offset, void *data _U_)
 {
     guint32 len;
 
@@ -245,14 +242,18 @@ static guint get_idmp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
 static int dissect_idmp_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* data)
 {
     tcp_dissect_pdus(tvb, pinfo, parent_tree, idmp_desegment, 0, get_idmp_pdu_len, dissect_idmp, data);
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 static void idmp_reassemble_init (void)
 {
     reassembly_table_init (&idmp_reassembly_table,
                            &addresses_reassembly_table_functions);
+}
 
+static void idmp_reassemble_cleanup(void)
+{
+    reassembly_table_destroy(&idmp_reassembly_table);
     saved_protocolID = NULL;
 }
 
@@ -310,6 +311,9 @@ void proto_register_idmp(void)
         { &hf_idmp_reassembled_length,
           { "Reassembled IDMP length", "idmp.reassembled.length", FT_UINT32, BASE_DEC,
             NULL, 0x00, "The total length of the reassembled payload", HFILL } },
+        { &hf_idmp_segment_data,
+          { "IDMP segment data", "idmp.segment_data", FT_BYTES, BASE_NONE,
+            NULL, 0x00, NULL, HFILL } },
 
 #include "packet-idmp-hfarr.c"
     };
@@ -333,6 +337,7 @@ void proto_register_idmp(void)
     new_register_dissector("idmp", dissect_idmp_tcp, proto_idmp);
 
     register_init_routine (&idmp_reassemble_init);
+    register_cleanup_routine (&idmp_reassemble_cleanup);
 
     /* Register our configuration options for IDMP, particularly our port */
 

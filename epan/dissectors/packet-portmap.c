@@ -29,8 +29,6 @@
 #include "packet-rpc.h"
 #include "packet-portmap.h"
 #include <epan/ipproto.h>
-#include <epan/conversation.h>
-#include <epan/packet_info.h>
 
 /*
  * See:
@@ -70,13 +68,14 @@ static dissector_handle_t rpc_handle;
 
 /* Dissect a getport call */
 static int
-dissect_getport_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_getport_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 	proto_tree *tree, void* data)
 {
 	guint32 proto, version;
 	guint32 prog;
 	const char *prog_name;
 	const char *proto_name;
+	int offset = 0;
 
 	/* make sure we remember protocol type until the reply packet */
 	if(!pinfo->fd->flags.visited){
@@ -126,10 +125,11 @@ dissect_getport_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_getport_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_getport_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 	proto_tree *tree, void* data)
 {
 	guint32 portx;
+	int offset = 0;
 
 	/* we might have learnt a <ipaddr><protocol><port> mapping for ONC-RPC*/
 	if(!pinfo->fd->flags.visited){
@@ -166,11 +166,12 @@ dissect_getport_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 
 /* Dissect a 'set' call */
 static int
-dissect_set_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_set_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 	proto_tree *tree, void* data _U_)
 {
 	guint32 proto;
 	guint32 prog;
+	int offset = 0;
 
 	if ( tree )
 	{
@@ -194,11 +195,12 @@ dissect_set_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 
 /* Dissect a 'unset' call */
 static int
-dissect_unset_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_unset_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 	proto_tree *tree, void* data _U_)
 {
 	guint32 proto;
 	guint32 prog;
+	int offset = 0;
 
 	if ( tree )
 	{
@@ -221,12 +223,10 @@ dissect_unset_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_set_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_set_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 	proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_bool(tvb, tree, hf_portmap_answer,
-	    offset);
-	return offset;
+	return dissect_rpc_bool(tvb, tree, hf_portmap_answer, 0);
 }
 
 static int
@@ -234,7 +234,7 @@ dissect_dump_entry(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 	proto_tree *tree, void* data _U_)
 {
 	int prog, version, proto, port;
-	proto_item *ti, *subtree;
+	proto_tree *subtree;
 
 	prog = tvb_get_ntohl(tvb, offset+0);
 	version = tvb_get_ntohl(tvb, offset+4);
@@ -242,10 +242,9 @@ dissect_dump_entry(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 	port = tvb_get_ntohl(tvb, offset+12);
 	if ( tree )
 	{
-		ti = proto_tree_add_text(tree, tvb, offset, 16,
-			"Map Entry: %s (%u) V%d",
+		subtree = proto_tree_add_subtree_format(tree, tvb, offset, 16,
+			ett_portmap_entry, NULL, "Map Entry: %s (%u) V%d",
 			rpc_prog_name(prog), prog, version);
-		subtree = proto_item_add_subtree(ti, ett_portmap_entry);
 
 		proto_tree_add_uint_format_value(subtree, hf_portmap_prog, tvb,
 			offset+0, 4, prog,
@@ -263,20 +262,19 @@ dissect_dump_entry(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_dump_reply(tvbuff_t *tvb, int offset, packet_info *pinfo,
+dissect_dump_reply(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_list(tvb, pinfo, tree, offset,
-		  dissect_dump_entry, NULL);
-	return offset;
+	return dissect_rpc_list(tvb, pinfo, tree, 0, dissect_dump_entry, NULL);
 }
 
 /* Dissect a callit call */
 static int
-dissect_callit_call(tvbuff_t *tvb, int offset, packet_info *pinfo,
+dissect_callit_call(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree, void* data _U_)
 {
 	guint32 prog, vers, proc;
+	int offset = 0;
 
 	prog = tvb_get_ntohl(tvb, offset+0);
 	if ( tree )
@@ -315,14 +313,13 @@ dissect_callit_call(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 /* Dissect a callit reply */
 static int
-dissect_callit_reply(tvbuff_t *tvb, int offset, packet_info *pinfo,
+dissect_callit_reply(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree, void* data _U_)
 {
-	if ( tree )
-	{
-		proto_tree_add_item(tree, hf_portmap_port, tvb,
+	int offset = 0;
+
+	proto_tree_add_item(tree, hf_portmap_port, tvb,
 			offset, 4, ENC_BIG_ENDIAN);
-	}
 	offset += 4;
 
 	/* Dissect the result of this procedure.
@@ -337,14 +334,13 @@ dissect_callit_reply(tvbuff_t *tvb, int offset, packet_info *pinfo,
 }
 
 /* proc number, "proc name", dissect_request, dissect_reply */
-/* NULL as function pointer means: type of arguments is "void". */
 static const vsff portmap1_proc[] = {
-	{ PORTMAPPROC_NULL,	"NULL",		NULL,	NULL },
-	{ PORTMAPPROC_SET,	"SET",		NULL,	NULL },
-	{ PORTMAPPROC_UNSET,	"UNSET",	NULL,	NULL },
-	{ PORTMAPPROC_GETPORT,	"GETPORT",	NULL,	NULL },
-	{ PORTMAPPROC_DUMP,	"DUMP",		NULL,	NULL },
-	{ PORTMAPPROC_CALLIT,	"CALLIT",	NULL,	NULL },
+	{ PORTMAPPROC_NULL,	"NULL",		dissect_rpc_void,	dissect_rpc_void },
+	{ PORTMAPPROC_SET,	"SET",		dissect_rpc_unknown,	dissect_rpc_unknown },
+	{ PORTMAPPROC_UNSET,	"UNSET",	dissect_rpc_unknown,	dissect_rpc_unknown },
+	{ PORTMAPPROC_GETPORT,	"GETPORT",	dissect_rpc_unknown,	dissect_rpc_unknown },
+	{ PORTMAPPROC_DUMP,	"DUMP",		dissect_rpc_unknown,	dissect_rpc_unknown },
+	{ PORTMAPPROC_CALLIT,	"CALLIT",	dissect_rpc_unknown,	dissect_rpc_unknown },
 	{ 0,			NULL,		NULL,	NULL }
 };
 static const value_string portmap1_proc_vals[] = {
@@ -360,7 +356,7 @@ static const value_string portmap1_proc_vals[] = {
 
 static const vsff portmap2_proc[] = {
 	{ PORTMAPPROC_NULL, "NULL",
-		NULL, NULL },
+		dissect_rpc_void, dissect_rpc_void },
 	{ PORTMAPPROC_SET, "SET",
 		dissect_set_call, dissect_set_reply },
 	{ PORTMAPPROC_UNSET, "UNSET",
@@ -368,7 +364,7 @@ static const vsff portmap2_proc[] = {
 	{ PORTMAPPROC_GETPORT,	"GETPORT",
 		dissect_getport_call, dissect_getport_reply },
 	{ PORTMAPPROC_DUMP, "DUMP",
-		NULL, dissect_dump_reply },
+		dissect_rpc_void, dissect_dump_reply },
 	{ PORTMAPPROC_CALLIT, "CALLIT",
 		dissect_callit_call, dissect_callit_reply },
 	{ 0, NULL, NULL, NULL }
@@ -389,17 +385,14 @@ static const value_string portmap2_proc_vals[] = {
 static int
 dissect_rpcb(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
-	proto_item* rpcb_item = NULL;
-	proto_tree* rpcb_tree = NULL;
+	proto_item* rpcb_item;
+	proto_tree* rpcb_tree;
 	int old_offset = offset;
 	guint32 prog;
 
-	if (tree) {
-		rpcb_item = proto_tree_add_item(tree, hf_portmap_rpcb, tvb,
+	rpcb_item = proto_tree_add_item(tree, hf_portmap_rpcb, tvb,
 			offset, -1, ENC_NA);
-		if (rpcb_item)
-			rpcb_tree = proto_item_add_subtree(rpcb_item, ett_portmap_rpcb);
-	}
+	rpcb_tree = proto_item_add_subtree(rpcb_item, ett_portmap_rpcb);
 
 	prog = tvb_get_ntohl(tvb, offset);
 	if (rpcb_tree)
@@ -429,42 +422,37 @@ dissect_rpcb(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree
 
 /* RFC 1833, Page 7 */
 static int
-dissect_rpcb3_getaddr_call(tvbuff_t *tvb, int offset, packet_info *pinfo,
+dissect_rpcb3_getaddr_call(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpcb(tvb, offset, pinfo, tree, data);
-
-	return offset;
+	return dissect_rpcb(tvb, 0, pinfo, tree, data);
 }
 
 
 /* RFC 1833, Page 7 */
 static int
-dissect_rpcb3_getaddr_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_rpcb3_getaddr_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 	proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_string(tvb, tree,
-	    hf_portmap_uaddr, offset, NULL);
-
-	return offset;
+	return dissect_rpc_string(tvb, tree, hf_portmap_uaddr, 0, NULL);
 }
 
 
 /* RFC 1833, Page 7 */
 static int
-dissect_rpcb3_dump_reply(tvbuff_t *tvb, int offset, packet_info *pinfo,
+dissect_rpcb3_dump_reply(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_list(tvb, pinfo, tree, offset,
-		  dissect_rpcb, NULL);
-	return offset;
+	return dissect_rpc_list(tvb, pinfo, tree, 0, dissect_rpcb, NULL);
 }
 
 /* RFC 1833, page 4 */
 static int
-dissect_rpcb_rmtcallres(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_rpcb_rmtcallres(tvbuff_t *tvb, packet_info *pinfo _U_,
 	proto_tree *tree, void* data _U_)
 {
+	int offset = 0;
+
 	/* Dissect the remote universal address. */
 	offset = dissect_rpc_string(tvb, tree,
 	    hf_portmap_rpcb_addr, offset, NULL);
@@ -484,23 +472,23 @@ dissect_rpcb_rmtcallres(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 /* Portmapper version 3, RFC 1833, Page 7 */
 static const vsff portmap3_proc[] = {
 	{ RPCBPROC_NULL,	"NULL",
-		NULL, NULL },
+		dissect_rpc_void, dissect_rpc_void },
 	{ RPCBPROC_SET,		"SET",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_UNSET,	"UNSET",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_GETADDR,	"GETADDR",
 		dissect_rpcb3_getaddr_call, dissect_rpcb3_getaddr_reply},
 	{ RPCBPROC_DUMP,	"DUMP",
-		NULL, dissect_rpcb3_dump_reply },
+		dissect_rpc_void, dissect_rpcb3_dump_reply },
 	{ RPCBPROC_CALLIT,	"CALLIT",
 		dissect_callit_call, dissect_rpcb_rmtcallres },
 	{ RPCBPROC_GETTIME,	"GETTIME",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_UADDR2TADDR,	"UADDR2TADDR",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_TADDR2UADDR,	"TADDR2UADDR",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ 0, NULL, NULL, NULL }
 };
 static const value_string portmap3_proc_vals[] = {
@@ -521,31 +509,31 @@ static const value_string portmap3_proc_vals[] = {
 /* Portmapper version 4, RFC 1833, Page 8 */
 static const vsff portmap4_proc[] = {
 	{ RPCBPROC_NULL,	"NULL",
-		NULL, NULL },
+		dissect_rpc_void, dissect_rpc_void },
 	{ RPCBPROC_SET,		"SET",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_UNSET,	"UNSET",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_GETADDR,	"GETADDR",
 		dissect_rpcb3_getaddr_call, dissect_rpcb3_getaddr_reply},
 	{ RPCBPROC_DUMP,	"DUMP",
-		NULL, dissect_rpcb3_dump_reply },
+		dissect_rpc_void, dissect_rpcb3_dump_reply },
 	{ RPCBPROC_BCAST,	"BCAST",
 		dissect_callit_call, dissect_rpcb_rmtcallres },
 	{ RPCBPROC_GETTIME,	"GETTIME",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_UADDR2TADDR,	"UADDR2TADDR",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_TADDR2UADDR,	"TADDR2UADDR",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_GETVERSADDR,	"GETVERSADDR",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_INDIRECT,	"INDIRECT",
 		dissect_callit_call, dissect_rpcb_rmtcallres },
 	{ RPCBPROC_GETADDRLIST,	"GETADDRLIST",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ RPCBPROC_GETSTAT,	"GETSTAT",
-		NULL, NULL },
+		dissect_rpc_unknown, dissect_rpc_unknown },
 	{ 0, NULL, NULL, NULL }
 };
 static const value_string portmap4_proc_vals[] = {
@@ -565,6 +553,13 @@ static const value_string portmap4_proc_vals[] = {
 	{ 0, NULL }
 };
 /* end of Portmap version 4 */
+
+static const rpc_prog_vers_info portmap_vers_info[] = {
+	{ 1, portmap1_proc, &hf_portmap_procedure_v1 },
+	{ 2, portmap2_proc, &hf_portmap_procedure_v2 },
+	{ 3, portmap3_proc, &hf_portmap_procedure_v3 },
+	{ 4, portmap4_proc, &hf_portmap_procedure_v4 },
+};
 
 void
 proto_register_portmap(void)
@@ -643,11 +638,21 @@ void
 proto_reg_handoff_portmap(void)
 {
 	/* Register the protocol as RPC */
-	rpc_init_prog(proto_portmap, PORTMAP_PROGRAM, ett_portmap);
-	/* Register the procedure tables */
-	rpc_init_proc_table(PORTMAP_PROGRAM, 1, portmap1_proc, hf_portmap_procedure_v1);
-	rpc_init_proc_table(PORTMAP_PROGRAM, 2, portmap2_proc, hf_portmap_procedure_v2);
-	rpc_init_proc_table(PORTMAP_PROGRAM, 3, portmap3_proc, hf_portmap_procedure_v3);
-	rpc_init_proc_table(PORTMAP_PROGRAM, 4, portmap4_proc, hf_portmap_procedure_v4);
+	rpc_init_prog(proto_portmap, PORTMAP_PROGRAM, ett_portmap,
+	    G_N_ELEMENTS(portmap_vers_info), portmap_vers_info);
+
 	rpc_handle = find_dissector("rpc");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

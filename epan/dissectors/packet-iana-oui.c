@@ -24,8 +24,8 @@
 
 #include <epan/packet.h>
 #include "packet-llc.h"
+#include "packet-iana-oui.h"
 #include <epan/oui.h>
-#include <epan/iana_snap_pid.h>
 
 void proto_register_iana_oui(void);
 
@@ -60,3 +60,16 @@ proto_register_iana_oui(void)
 
 	llc_add_oui(OUI_IANA, "llc.iana_pid", "LLC IANA OUI PID", hf);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

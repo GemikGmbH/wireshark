@@ -24,8 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 
@@ -47,10 +45,10 @@ typedef union _EslFlagsUnion
         guint16    port1        : 1;
         guint16    port0        : 1;
         guint16    extended     : 1;
-	guint16    port11       : 1;
-	guint16    port10       : 1;
-        guint16    crcError     : 1;
+        guint16    port11       : 1;
+        guint16    port10       : 1;
         guint16    alignError   : 1;
+        guint16    crcError     : 1;
         guint16    timeStampEna : 1;
         guint16    port9        : 1;
         guint16    port8        : 1;
@@ -75,8 +73,8 @@ typedef union _EslFlagsUnion
 #define esl_extended_bitmask     0x0100
 #define esl_port11_bitmask       0x0200
 #define esl_port10_bitmask       0x0400
-#define esl_crcError_bitmask     0x0800
-#define esl_alignError_bitmask   0x1000
+#define esl_alignError_bitmask   0x0800
+#define esl_crcError_bitmask     0x1000
 #define esl_timeStampEna_bitmask 0x2000
 #define esl_port9_bitmask        0x4000
 #define esl_port8_bitmask        0x8000
@@ -94,7 +92,6 @@ typedef struct _EslHeader
 #define SIZEOF_ESLHEADER 16
 
 static dissector_handle_t eth_withoutfcs_handle;
-static int esl_enable_dissector = FALSE;
 
 void proto_reg_handoff_esl(void);
 
@@ -195,8 +192,9 @@ dissect_esl_header(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree) {
             flags =  tvb_get_letohs(tvb, offset);
             proto_tree_add_uint(esl_header_tree, hf_esl_port, tvb, offset, 2, flags_to_port(flags));
 
-            proto_tree_add_item(esl_header_tree, hf_esl_crcerror, tvb, offset, 2, ENC_LITTLE_ENDIAN);
             proto_tree_add_item(esl_header_tree, hf_esl_alignerror, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+            proto_tree_add_item(esl_header_tree, hf_esl_crcerror, tvb, offset, 2, ENC_LITTLE_ENDIAN);
+
             offset+=2;
 
             proto_tree_add_item(esl_header_tree, hf_esl_timestamp, tvb, offset, 8, ENC_LITTLE_ENDIAN);
@@ -261,7 +259,7 @@ dissect_esl_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
     static gboolean  in_heur    = FALSE;
     gboolean         result;
     tvbuff_t        *next_tvb;
-    guint            esl_length = tvb_length(tvb);
+    guint            esl_length = tvb_captured_length(tvb);
 
     if ( in_heur )
         return FALSE;
@@ -273,7 +271,7 @@ dissect_esl_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
             ref_time_frame.fd = NULL;
 
         /* Check that there's enough data */
-        if ( tvb_length(tvb) < SIZEOF_ESLHEADER )
+        if ( esl_length < SIZEOF_ESLHEADER )
             return FALSE;
 
         /* check for Esl frame, this has a unique destination MAC from Beckhoff range
@@ -293,10 +291,10 @@ dissect_esl_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
         {
             if ( eth_withoutfcs_handle != NULL )
             {
-                next_tvb = tvb_new_subset(tvb, 0, esl_length-SIZEOF_ESLHEADER, esl_length-SIZEOF_ESLHEADER);
+                next_tvb = tvb_new_subset_length(tvb, 0, esl_length-SIZEOF_ESLHEADER);
                 call_dissector(eth_withoutfcs_handle, next_tvb, pinfo, tree);
             }
-            next_tvb = tvb_new_subset(tvb, esl_length-SIZEOF_ESLHEADER, SIZEOF_ESLHEADER, SIZEOF_ESLHEADER);
+            next_tvb = tvb_new_subset_length(tvb, esl_length-SIZEOF_ESLHEADER, SIZEOF_ESLHEADER);
             dissect_esl_header(next_tvb, pinfo, tree);
             modify_times(tvb, esl_length-SIZEOF_ESLHEADER, pinfo);
 
@@ -351,9 +349,7 @@ proto_register_esl(void) {
 
     esl_module = prefs_register_protocol(proto_esl, proto_reg_handoff_esl);
 
-    prefs_register_bool_preference(esl_module, "enable", "Enable dissector",
-                                   "Enable this dissector (default is false)",
-                                   &esl_enable_dissector);
+    prefs_register_obsolete_preference(esl_module, "enable");
 
     proto_register_field_array(proto_esl,hf,array_length(hf));
     proto_register_subtree_array(ett,array_length(ett));
@@ -367,8 +363,20 @@ proto_reg_handoff_esl(void) {
 
     if (!initialized) {
         eth_withoutfcs_handle = find_dissector("eth_withoutfcs");
-        heur_dissector_add("eth", dissect_esl_heur, proto_esl);
+        heur_dissector_add("eth", dissect_esl_heur, "EtherCAT over Ethernet", "esl_eth", proto_esl, HEURISTIC_DISABLE);
         initialized = TRUE;
     }
-    proto_set_decoding(proto_esl, esl_enable_dissector);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

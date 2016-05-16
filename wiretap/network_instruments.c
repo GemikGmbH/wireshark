@@ -22,7 +22,6 @@
 #include <string.h>
 #include "wtap-int.h"
 #include "file_wrappers.h"
-#include <wsutil/buffer.h>
 #include "network_instruments.h"
 
 static const char network_instruments_magic[] = {"ObserverPktBufferVersion=15.00"};
@@ -98,7 +97,7 @@ static gboolean observer_read(wtap *wth, int *err, gchar **err_info,
     gint64 *data_offset);
 static gboolean observer_seek_read(wtap *wth, gint64 seek_off,
     struct wtap_pkthdr *phdr, Buffer *buf, int *err, gchar **err_info);
-static int read_packet_header(FILE_T fh, union wtap_pseudo_header *pseudo_header,
+static int read_packet_header(wtap *wth, FILE_T fh, union wtap_pseudo_header *pseudo_header,
     packet_entry_header *packet_header, int *err, gchar **err_info);
 static gboolean process_packet_header(wtap *wth,
     packet_entry_header *packet_header, struct wtap_pkthdr *phdr, int *err,
@@ -108,13 +107,12 @@ static int read_packet_data(FILE_T fh, int offset_to_frame, int current_offset_f
 static gboolean skip_to_next_packet(wtap *wth, int offset_to_next_packet,
     int current_offset_from_packet_header, int *err, char **err_info);
 static gboolean observer_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
-    const guint8 *pd, int *err);
+    const guint8 *pd, int *err, gchar **err_info);
 static gint observer_to_wtap_encap(int observer_encap);
 static gint wtap_to_observer_encap(int wtap_encap);
 
-int network_instruments_open(wtap *wth, int *err, gchar **err_info)
+wtap_open_return_val network_instruments_open(wtap *wth, int *err, gchar **err_info)
 {
-    int bytes_read;
     int offset;
     capture_file_header file_header;
     guint i;
@@ -124,23 +122,21 @@ int network_instruments_open(wtap *wth, int *err, gchar **err_info)
     packet_entry_header packet_header;
     observer_dump_private_state * private_state = NULL;
 
-    errno = WTAP_ERR_CANT_READ;
     offset = 0;
 
     /* read in the buffer file header */
-    bytes_read = file_read(&file_header, sizeof file_header, wth->fh);
-    if (bytes_read != sizeof file_header) {
-        *err = file_error(wth->fh, err_info);
-        if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-            return -1;
-        return 0;
+    if (!wtap_read_bytes(wth->fh, &file_header, sizeof file_header,
+                         err, err_info)) {
+        if (*err != WTAP_ERR_SHORT_READ)
+            return WTAP_OPEN_ERROR;
+        return WTAP_OPEN_NOT_MINE;
     }
-    offset += bytes_read;
+    offset += (int)sizeof file_header;
     CAPTURE_FILE_HEADER_FROM_LE_IN_PLACE(file_header);
 
     /* check if version info is present */
     if (memcmp(file_header.observer_version, network_instruments_magic, true_magic_length)!=0) {
-        return 0;
+        return WTAP_OPEN_NOT_MINE;
     }
 
     /* initialize the private state */
@@ -159,41 +155,33 @@ int network_instruments_open(wtap *wth, int *err, gchar **err_info)
             break;
 
         /* read the TLV header */
-        bytes_read = file_read(&tlvh, sizeof tlvh, wth->fh);
-        if (bytes_read != sizeof tlvh) {
-            *err = file_error(wth->fh, err_info);
-            if (*err == 0)
-                *err = WTAP_ERR_SHORT_READ;
-            return -1;
-        }
-        offset += bytes_read;
+        if (!wtap_read_bytes(wth->fh, &tlvh, sizeof tlvh, err, err_info))
+            return WTAP_OPEN_ERROR;
+        offset += (int)sizeof tlvh;
         TLV_HEADER_FROM_LE_IN_PLACE(tlvh);
 
         if (tlvh.length < sizeof tlvh) {
             *err = WTAP_ERR_BAD_FILE;
             *err_info = g_strdup_printf("Observer: bad record (TLV length %u < %lu)",
                 tlvh.length, (unsigned long)sizeof tlvh);
-            return -1;
+            return WTAP_OPEN_ERROR;
         }
 
         /* process (or skip over) the current TLV */
         switch (tlvh.type) {
         case INFORMATION_TYPE_TIME_INFO:
-            bytes_read = file_read(&private_state->time_format, sizeof private_state->time_format, wth->fh);
-            if (bytes_read != sizeof private_state->time_format) {
-                *err = file_error(wth->fh, err_info);
-                if (*err == 0)
-                    *err = WTAP_ERR_SHORT_READ;
-                return -1;
-            }
+            if (!wtap_read_bytes(wth->fh, &private_state->time_format,
+                                 sizeof private_state->time_format,
+                                 err, err_info))
+                return WTAP_OPEN_ERROR;
             private_state->time_format = GUINT32_FROM_LE(private_state->time_format);
-            offset += bytes_read;
+            offset += (int)sizeof private_state->time_format;
             break;
         default:
             seek_increment = tlvh.length - (int)sizeof tlvh;
             if (seek_increment > 0) {
                 if (file_seek(wth->fh, seek_increment, SEEK_CUR, err) == -1)
-                    return -1;
+                    return WTAP_OPEN_ERROR;
             }
             offset += seek_increment;
         }
@@ -204,36 +192,32 @@ int network_instruments_open(wtap *wth, int *err, gchar **err_info)
         *err = WTAP_ERR_BAD_FILE;
         *err_info = g_strdup_printf("Observer: bad record (offset to first packet %d < %d)",
             header_offset, offset);
-        return -1;
+        return WTAP_OPEN_ERROR;
     }
     seek_increment = header_offset - offset;
     if (seek_increment > 0) {
         if (file_seek(wth->fh, seek_increment, SEEK_CUR, err) == -1)
-            return -1;
+            return WTAP_OPEN_ERROR;
     }
 
     /* pull off the packet header */
-    bytes_read = file_read(&packet_header, sizeof packet_header, wth->fh);
-    if (bytes_read != sizeof packet_header) {
-        *err = file_error(wth->fh, err_info);
-        if (*err == 0)
-            *err = WTAP_ERR_SHORT_READ;
-        return -1;
-    }
+    if (!wtap_read_bytes(wth->fh, &packet_header, sizeof packet_header,
+                         err, err_info))
+        return WTAP_OPEN_ERROR;
     PACKET_ENTRY_HEADER_FROM_LE_IN_PLACE(packet_header);
 
     /* check the packet's magic number */
     if (packet_header.packet_magic != observer_packet_magic) {
         *err = WTAP_ERR_UNSUPPORTED;
         *err_info = g_strdup_printf("Observer: unsupported packet version %ul", packet_header.packet_magic);
-        return -1;
+        return WTAP_OPEN_ERROR;
     }
 
     /* check the data link type */
     if (observer_to_wtap_encap(packet_header.network_type) == WTAP_ENCAP_UNKNOWN) {
         *err = WTAP_ERR_UNSUPPORTED;
         *err_info = g_strdup_printf("Observer: network type %u unknown or unsupported", packet_header.network_type);
-        return -1;
+        return WTAP_OPEN_ERROR;
     }
     wth->file_encap = observer_to_wtap_encap(packet_header.network_type);
 
@@ -245,16 +229,16 @@ int network_instruments_open(wtap *wth, int *err, gchar **err_info)
     wth->subtype_close = NULL;
     wth->subtype_sequential_close = NULL;
     wth->snapshot_length = 0;    /* not available in header */
-    wth->tsprecision = WTAP_FILE_TSPREC_NSEC;
+    wth->file_tsprec = WTAP_TSPREC_NSEC;
     wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_NETWORK_INSTRUMENTS;
 
     /* reset the pointer to the first packet */
     if (file_seek(wth->fh, header_offset, SEEK_SET, err) == -1)
-        return -1;
+        return WTAP_OPEN_ERROR;
 
     init_gmt_to_localtime_offset();
 
-    return 1;
+    return WTAP_OPEN_MINE;
 }
 
 /* Reads the next packet. */
@@ -270,7 +254,7 @@ static gboolean observer_read(wtap *wth, int *err, gchar **err_info,
         *data_offset = file_tell(wth->fh);
 
         /* process the packet header, including TLVs */
-        header_bytes_consumed = read_packet_header(wth->fh, &wth->phdr.pseudo_header, &packet_header, err,
+        header_bytes_consumed = read_packet_header(wth, wth->fh, &wth->phdr.pseudo_header, &packet_header, err,
             err_info);
         if (header_bytes_consumed <= 0)
             return FALSE;    /* EOF or error */
@@ -318,7 +302,7 @@ static gboolean observer_seek_read(wtap *wth, gint64 seek_off,
         return FALSE;
 
     /* process the packet header, including TLVs */
-    offset = read_packet_header(wth->random_fh, pseudo_header, &packet_header, err,
+    offset = read_packet_header(wth, wth->random_fh, pseudo_header, &packet_header, err,
         err_info);
     if (offset <= 0)
         return FALSE;    /* EOF or error */
@@ -337,11 +321,10 @@ static gboolean observer_seek_read(wtap *wth, gint64 seek_off,
 }
 
 static int
-read_packet_header(FILE_T fh, union wtap_pseudo_header *pseudo_header,
+read_packet_header(wtap *wth, FILE_T fh, union wtap_pseudo_header *pseudo_header,
     packet_entry_header *packet_header, int *err, gchar **err_info)
 {
     int offset;
-    int bytes_read;
     guint i;
     tlv_header tlvh;
     int seek_increment;
@@ -350,14 +333,13 @@ read_packet_header(FILE_T fh, union wtap_pseudo_header *pseudo_header,
     offset = 0;
 
     /* pull off the packet header */
-    bytes_read = file_read(packet_header, sizeof *packet_header, fh);
-    if (bytes_read != sizeof *packet_header) {
-        *err = file_error(fh, err_info);
+    if (!wtap_read_bytes_or_eof(fh, packet_header, sizeof *packet_header,
+                                err, err_info)) {
         if (*err != 0)
             return -1;
         return 0;    /* EOF */
     }
-    offset += bytes_read;
+    offset += (int)sizeof *packet_header;
     PACKET_ENTRY_HEADER_FROM_LE_IN_PLACE(*packet_header);
 
     /* check the packet's magic number */
@@ -385,17 +367,28 @@ read_packet_header(FILE_T fh, union wtap_pseudo_header *pseudo_header,
         return -1;
     }
 
+    /* initialize the pseudo header */
+    switch (wth->file_encap) {
+    case WTAP_ENCAP_ETHERNET:
+        /* There is no FCS in the frame */
+        pseudo_header->eth.fcs_len = 0;
+        break;
+    case WTAP_ENCAP_IEEE_802_11_WITH_RADIO:
+        pseudo_header->ieee_802_11.fcs_len = 0;
+        pseudo_header->ieee_802_11.decrypted = FALSE;
+        pseudo_header->ieee_802_11.datapad = FALSE;
+        pseudo_header->ieee_802_11.phy = PHDR_802_11_PHY_UNKNOWN;
+        pseudo_header->ieee_802_11.presence_flags = 0;
+        /* Updated below */
+        break;
+    }
+
     /* process extra information */
     for (i = 0; i < packet_header->number_of_information_elements; i++) {
         /* read the TLV header */
-        bytes_read = file_read(&tlvh, sizeof tlvh, fh);
-        if (bytes_read != sizeof tlvh) {
-            *err = file_error(fh, err_info);
-            if (*err == 0)
-                *err = WTAP_ERR_SHORT_READ;
+        if (!wtap_read_bytes(fh, &tlvh, sizeof tlvh, err, err_info))
             return -1;
-        }
-        offset += bytes_read;
+        offset += (int)sizeof tlvh;
         TLV_HEADER_FROM_LE_IN_PLACE(tlvh);
 
         if (tlvh.length < sizeof tlvh) {
@@ -408,21 +401,21 @@ read_packet_header(FILE_T fh, union wtap_pseudo_header *pseudo_header,
         /* process (or skip over) the current TLV */
         switch (tlvh.type) {
         case INFORMATION_TYPE_WIRELESS:
-            bytes_read = file_read(&wireless_header, sizeof wireless_header, fh);
-            if (bytes_read != sizeof wireless_header) {
-                *err = file_error(fh, err_info);
-                if(*err == 0)
-                    *err = WTAP_ERR_SHORT_READ;
+            if (!wtap_read_bytes(fh, &wireless_header, sizeof wireless_header,
+                                 err, err_info))
                 return -1;
-            }
             /* update the pseudo header */
-            pseudo_header->ieee_802_11.fcs_len = 0;
+            pseudo_header->ieee_802_11.presence_flags |=
+                PHDR_802_11_HAS_CHANNEL |
+                PHDR_802_11_HAS_DATA_RATE |
+                PHDR_802_11_HAS_SIGNAL_PERCENT;
             /* set decryption status */
+            /* XXX - what other bits are there in conditions? */
             pseudo_header->ieee_802_11.decrypted = (wireless_header.conditions & WIRELESS_WEP_SUCCESS) != 0;
             pseudo_header->ieee_802_11.channel = wireless_header.frequency;
             pseudo_header->ieee_802_11.data_rate = wireless_header.rate;
-            pseudo_header->ieee_802_11.signal_level = wireless_header.strengthPercent;
-            offset += bytes_read;
+            pseudo_header->ieee_802_11.signal_percent = wireless_header.strengthPercent;
+            offset += (int)sizeof wireless_header;
             break;
         default:
             /* skip the TLV data */
@@ -507,17 +500,6 @@ process_packet_header(wtap *wth, packet_entry_header *packet_header,
         }
     }
 
-    /* update the pseudo header */
-    switch (wth->file_encap) {
-    case WTAP_ENCAP_ETHERNET:
-        /* There is no FCS in the frame */
-        phdr->pseudo_header.eth.fcs_len = 0;
-        break;
-    case WTAP_ENCAP_IEEE_802_11_WITH_RADIO:
-        /* Updated in read_packet_header */
-        break;
-    }
-
     return TRUE;
 }
 
@@ -546,7 +528,7 @@ read_packet_data(FILE_T fh, int offset_to_frame, int current_offset_from_packet_
     }
 
     /* set-up the packet buffer */
-    buffer_assure_space(buf, length);
+    ws_buffer_assure_space(buf, length);
 
     /* read in the packet data */
     if (!wtap_read_packet_bytes(fh, buf, length, err, err_info))
@@ -589,7 +571,7 @@ int network_instruments_dump_can_write_encap(int encap)
         return WTAP_ERR_ENCAP_PER_PACKET_UNSUPPORTED;
 
     if (encap < 0 || (wtap_to_observer_encap(encap) == OBSERVER_UNDEFINED))
-        return WTAP_ERR_UNSUPPORTED_ENCAP;
+        return WTAP_ERR_UNWRITABLE_ENCAP;
 
     return 0;
 }
@@ -690,7 +672,7 @@ gboolean network_instruments_dump_open(wtap_dumper *wdh, int *err)
    Returns TRUE on success, FALSE on failure. */
 static gboolean observer_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
     const guint8 *pd,
-    int *err)
+    int *err, gchar **err_info _U_)
 {
     observer_dump_private_state * private_state = NULL;
     packet_entry_header           packet_header;
@@ -698,7 +680,7 @@ static gboolean observer_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
 
     /* We can only write packet records. */
     if (phdr->rec_type != REC_TYPE_PACKET) {
-        *err = WTAP_ERR_REC_TYPE_UNSUPPORTED;
+        *err = WTAP_ERR_UNWRITABLE_REC_TYPE;
         return FALSE;
     }
 
@@ -789,3 +771,16 @@ static gint wtap_to_observer_encap(int wtap_encap)
     }
     return OBSERVER_UNDEFINED;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

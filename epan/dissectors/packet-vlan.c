@@ -24,7 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <wsutil/pint.h>
 #include <epan/expert.h>
@@ -180,7 +179,7 @@ dissect_vlan(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     is_802_2 = TRUE;
 
     /* Don't throw an exception for this check (even a BoundsError) */
-    if (tvb_length_remaining(tvb, 4) >= 2) {
+    if (tvb_captured_length_remaining(tvb, 4) >= 2) {
       if (tvb_get_ntohs(tvb, 4) == 0xffff) {
         is_802_2 = FALSE;
       }
@@ -270,3 +269,16 @@ proto_reg_handoff_vlan(void)
 
   dissector_add_uint("ethertype", q_in_q_ethertype, vlan_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

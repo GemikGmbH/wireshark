@@ -36,11 +36,8 @@
 
 #include "config.h"
 
-#include <string.h>
-
-#include <glib.h>
-
 #include <epan/packet.h>
+#include <epan/expert.h>
 #include <wiretap/wtap.h>
 
 void proto_register_jfif(void);
@@ -98,7 +95,6 @@ void proto_reg_handoff_jfif(void);
 #define MARKER_RST6     0xFFD6
 #define MARKER_RST7     0xFFD7
 
-#define MARKER_FFDB     0xFFDB
 #define MARKER_SOI      0xFFD8
 #define MARKER_EOI      0xFFD9
 #define MARKER_SOS      0xFFDA
@@ -344,15 +340,35 @@ static gint hf_sos_se = -1;
 static gint hf_sos_ah = -1;
 static gint hf_sos_al = -1;
 
+/* Comment */
+static gint hf_comment_header = -1;
+static gint hf_comment = -1;
+
+static gint hf_remain_seg_data = -1;
+static gint hf_endianness = -1;
+static gint hf_start_ifd_offset = -1;
+static gint hf_next_ifd_offset = -1;
+static gint hf_exif_flashpix_marker = -1;
+static gint hf_entropy_coded_segment = -1;
+static gint hf_fill_bytes = -1;
+static gint hf_skipped_tiff_data = -1;
+static gint hf_ifd_num_fields = -1;
+static gint hf_idf_tag = -1;
+static gint hf_idf_type = -1;
+static gint hf_idf_count = -1;
+static gint hf_idf_offset = -1;
+
+
 /* Initialize the subtree pointers */
 static gint ett_jfif = -1;
 static gint ett_marker_segment = -1;
 static gint ett_details = -1;
 
+static expert_field ei_file_jpeg_first_identifier_not_jfif   = EI_INIT;
+static expert_field ei_start_ifd_offset   = EI_INIT;
+static expert_field ei_next_ifd_offset   = EI_INIT;
 
 /****************** JFIF protocol dissection functions ******************/
-
-#define ErrorInvalidJFIF "This is not a valid JFIF (JPEG) object"
 
 
 /*
@@ -362,10 +378,10 @@ static void
 process_marker_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
         guint16 marker, const char *marker_name)
 {
-    proto_item *ti = NULL;
-    proto_tree *subtree = NULL;
+    proto_item *ti;
+    proto_tree *subtree;
 
-    if (! tree)
+    if (!tree)
         return;
 
     ti = proto_tree_add_item(tree, hf_marker_segment,
@@ -377,8 +393,7 @@ process_marker_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
 
     proto_tree_add_item(subtree, hf_len, tvb, 2, 2, ENC_BIG_ENDIAN);
 
-    proto_tree_add_text(subtree, tvb, 4, -1,
-            "Remaining segment data (%u bytes)", len - 2);
+    proto_tree_add_bytes_format_value(subtree, hf_remain_seg_data, tvb, 4, -1, NULL, "%u bytes", len - 2);
 }
 
 /*
@@ -388,10 +403,12 @@ static void
 process_sof_header(proto_tree *tree, tvbuff_t *tvb, guint32 len _U_,
         guint16 marker, const char *marker_name)
 {
-    proto_item *ti = NULL;
-    proto_tree *subtree = NULL;
+    proto_item *ti;
+    proto_tree *subtree;
+    guint8 count;
+    guint32 offset;
 
-    if (! tree)
+    if (!tree)
         return;
 
     ti = proto_tree_add_item(tree, hf_sof_header,
@@ -410,16 +427,14 @@ process_sof_header(proto_tree *tree, tvbuff_t *tvb, guint32 len _U_,
     proto_tree_add_item(subtree, hf_sof_samples_per_line, tvb, 7, 2, ENC_BIG_ENDIAN);
 
     proto_tree_add_item(subtree, hf_sof_nf, tvb, 9, 1, ENC_BIG_ENDIAN);
-    {
-        guint8 count = tvb_get_guint8(tvb, 9);
-        guint32 offset = 10;
-        while (count > 0) {
-            proto_tree_add_item(subtree, hf_sof_c_i, tvb, offset++, 1, ENC_BIG_ENDIAN);
-            proto_tree_add_item(subtree, hf_sof_h_i, tvb, offset, 1, ENC_BIG_ENDIAN);
-            proto_tree_add_item(subtree, hf_sof_v_i, tvb, offset++, 1, ENC_BIG_ENDIAN);
-            proto_tree_add_item(subtree, hf_sof_tq_i, tvb, offset++, 1, ENC_BIG_ENDIAN);
-            count--;
-        }
+    count = tvb_get_guint8(tvb, 9);
+    offset = 10;
+    while (count > 0) {
+        proto_tree_add_item(subtree, hf_sof_c_i, tvb, offset++, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(subtree, hf_sof_h_i, tvb, offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(subtree, hf_sof_v_i, tvb, offset++, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(subtree, hf_sof_tq_i, tvb, offset++, 1, ENC_BIG_ENDIAN);
+        count--;
     }
 }
 
@@ -430,11 +445,12 @@ static void
 process_sos_header(proto_tree *tree, tvbuff_t *tvb, guint32 len _U_,
         guint16 marker, const char *marker_name)
 {
-    proto_item *ti = NULL;
-    proto_tree *subtree = NULL;
+    proto_item *ti;
+    proto_tree *subtree;
+    guint8 count;
     guint32 offset;
 
-    if (! tree)
+    if (!tree)
         return;
 
     ti = proto_tree_add_item(tree, hf_sos_header,
@@ -447,15 +463,13 @@ process_sos_header(proto_tree *tree, tvbuff_t *tvb, guint32 len _U_,
     proto_tree_add_item(subtree, hf_len, tvb, 2, 2, ENC_BIG_ENDIAN);
 
     proto_tree_add_item(subtree, hf_sos_ns, tvb, 4, 1, ENC_BIG_ENDIAN);
-    {
-        guint8 count = tvb_get_guint8(tvb, 4);
-        offset = 5;
-        while (count > 0) {
-            proto_tree_add_item(subtree, hf_sos_cs_j, tvb, offset++, 1, ENC_BIG_ENDIAN);
-            proto_tree_add_item(subtree, hf_sos_td_j, tvb, offset, 1, ENC_BIG_ENDIAN);
-            proto_tree_add_item(subtree, hf_sos_ta_j, tvb, offset++, 1, ENC_BIG_ENDIAN);
-            count--;
-        }
+    count = tvb_get_guint8(tvb, 4);
+    offset = 5;
+    while (count > 0) {
+        proto_tree_add_item(subtree, hf_sos_cs_j, tvb, offset++, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(subtree, hf_sos_td_j, tvb, offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(subtree, hf_sos_ta_j, tvb, offset++, 1, ENC_BIG_ENDIAN);
+        count--;
     }
 
     proto_tree_add_item(subtree, hf_sos_ss, tvb, offset++, 1, ENC_BIG_ENDIAN);
@@ -466,6 +480,32 @@ process_sos_header(proto_tree *tree, tvbuff_t *tvb, guint32 len _U_,
     /* offset ++ */;
 }
 
+/*
+ * Process a Comment header (with length).
+ */
+static void
+process_comment_header(proto_tree *tree, tvbuff_t *tvb, guint32 len _U_,
+        guint16 marker, const char *marker_name)
+{
+    proto_item *ti;
+    proto_tree *subtree;
+
+    if (!tree)
+        return;
+
+    ti = proto_tree_add_item(tree, hf_comment_header,
+            tvb, 0, -1, ENC_NA);
+    subtree = proto_item_add_subtree(ti, ett_marker_segment);
+
+    proto_item_append_text(ti, ": %s (0x%04X)", marker_name, marker);
+    proto_tree_add_item(subtree, hf_marker, tvb, 0, 2, ENC_BIG_ENDIAN);
+
+    proto_tree_add_item(subtree, hf_len, tvb, 2, 2, ENC_BIG_ENDIAN);
+
+    proto_tree_add_item(subtree, hf_comment, tvb, 4, len-2, ENC_ASCII|ENC_NA);
+}
+
+
 /* Process an APP0 block.
  *
  * XXX - This code only works on US-ASCII systems!!!
@@ -474,15 +514,16 @@ static int
 process_app0_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
         guint16 marker, const char *marker_name)
 {
-    proto_item *ti = NULL;
-    proto_tree *subtree = NULL;
+    proto_item *ti;
+    proto_tree *subtree;
     proto_tree *subtree_details = NULL;
     guint32 offset;
     char *str;
     gint str_size;
+    guint16 x, y;
 
     if (!tree)
-        return 0 ;
+        return 0;
 
     ti = proto_tree_add_item(tree, hf_marker_segment,
             tvb, 0, -1, ENC_NA);
@@ -493,7 +534,7 @@ process_app0_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
 
     proto_tree_add_item(subtree, hf_len, tvb, 2, 2, ENC_BIG_ENDIAN);
 
-    str = tvb_get_stringz(wmem_packet_scope(), tvb, 4, &str_size);
+    str = tvb_get_stringz_enc(wmem_packet_scope(), tvb, 4, &str_size, ENC_ASCII);
     ti = proto_tree_add_item(subtree, hf_identifier, tvb, 4, str_size, ENC_ASCII|ENC_NA);
     if (strcmp(str, "JFIF") == 0) {
         /* Version */
@@ -521,40 +562,27 @@ process_app0_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
                 tvb, 16, 1, ENC_BIG_ENDIAN);
         proto_tree_add_item(subtree, hf_ythumbnail,
                 tvb, 17, 1, ENC_BIG_ENDIAN);
-        {
-            guint16 x = tvb_get_guint8(tvb, 16);
-            guint16 y = tvb_get_guint8(tvb, 17);
-            if (x || y) {
-                proto_tree_add_item(subtree, hf_rgb,
-                        tvb, 18, 3 * (x * y), ENC_NA);
-                offset = 18 + (3 * (x * y));
-            } else {
-                offset = 18;
-            }
+        x = tvb_get_guint8(tvb, 16);
+        y = tvb_get_guint8(tvb, 17);
+        if (x || y) {
+            proto_tree_add_item(subtree, hf_rgb,
+                    tvb, 18, 3 * (x * y), ENC_NA);
+            offset = 18 + (3 * (x * y));
+        } else {
+            offset = 18;
         }
-    } else if (strcmp(str, "JFXX") == 0) {
+    }
+    else if (strcmp(str, "JFXX") == 0) {
         proto_tree_add_item(subtree, hf_extension_code,
                 tvb, 9, 1, ENC_BIG_ENDIAN);
-        {
-            guint8 code = tvb_get_guint8(tvb, 9);
-            switch (code) {
-                case 0x10: /* Thumbnail coded using JPEG */
-                    break;
-                case 0x11: /* thumbnail stored using 1 byte per pixel */
-                    break;
-                case 0x13: /* thumbnail stored using 3 bytes per pixel */
-                    break;
-                default: /* Error */
-                    break;
-            }
-        }
+        /* XXX - dissect the extension based on its extension code */
         offset = 10;
-    } else { /* Unknown */
+    }
+    else { /* Unknown */
         proto_item_append_text(ti, " (unknown identifier)");
         offset = 4 + str_size;
 
-        proto_tree_add_text(subtree, tvb, offset, -1,
-                "Remaining segment data (%u bytes)", len - 2 - str_size);
+        proto_tree_add_bytes_format_value(subtree, hf_remain_seg_data, tvb, offset, -1, NULL, "%u bytes", len - 2 - str_size);
     }
     return offset;
 }
@@ -564,18 +592,15 @@ process_app0_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
  * XXX - This code only works on US-ASCII systems!!!
  */
 static int
-process_app1_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
-        guint16 marker, const char *marker_name)
+process_app1_segment(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, guint32 len,
+        guint16 marker, const char *marker_name, gboolean show_first_identifier_not_jfif)
 {
-    proto_item *ti = NULL;
-    proto_tree *subtree = NULL;
+    proto_item *ti;
+    proto_tree *subtree;
     char *str;
     gint str_size;
     int offset = 0;
     int tiff_start;
-
-    if (!tree)
-        return 0;
 
     ti = proto_tree_add_item(tree, hf_marker_segment,
             tvb, 0, -1, ENC_NA);
@@ -588,32 +613,37 @@ process_app1_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
     proto_tree_add_item(subtree, hf_len, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
 
-    str = tvb_get_stringz(wmem_packet_scope(), tvb, offset, &str_size);
+    str = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &str_size, ENC_ASCII);
     ti = proto_tree_add_item(subtree, hf_identifier, tvb, offset, str_size, ENC_ASCII|ENC_NA);
     offset += str_size;
+
+    if (show_first_identifier_not_jfif && strcmp(str, "JFIF") != 0) {
+        expert_add_info(pinfo, ti, &ei_file_jpeg_first_identifier_not_jfif);
+    }
+
     if (strcmp(str, "Exif") == 0) {
         /*
          * Endianness
          */
-        gboolean is_little_endian;
+        int encoding;
         guint16 val_16;
-        guint32 val_32;
-        guint16 num_fields;
+        guint32 val_32, num_fields;
+        proto_item* tiff_item;
 
         offset++; /* Skip a byte supposed to be 0x00 */
 
         tiff_start = offset;
         val_16 = tvb_get_ntohs(tvb, offset);
         if (val_16 == 0x4949) {
-            is_little_endian = TRUE;
-            proto_tree_add_text(subtree, tvb, offset, 2, "Endianness: little endian");
+            encoding = ENC_LITTLE_ENDIAN;
+            proto_tree_add_uint_format_value(subtree, hf_endianness, tvb, offset, 2, val_16, "little endian");
         } else if (val_16 == 0x4D4D) {
-            is_little_endian = FALSE;
-            proto_tree_add_text(subtree, tvb, offset, 2, "Endianness: big endian");
+            encoding = ENC_BIG_ENDIAN;
+            proto_tree_add_uint_format_value(subtree, hf_endianness, tvb, offset, 2, val_16, "big endian");
         } else {
             /* Error: invalid endianness encoding */
-            proto_tree_add_text(subtree, tvb, offset, 2,
-                    "Incorrect endianness encoding - skipping the remainder of this application marker");
+            proto_tree_add_uint_format_value(subtree, hf_endianness, tvb, offset, 2, val_16,
+                    "Incorrect encoding 0x%04x- skipping the remainder of this application marker", val_16);
             return offset;
         }
         offset += 2;
@@ -624,11 +654,10 @@ process_app1_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
         /*
          * Offset to IFD
          */
-        if (is_little_endian) {
-            val_32 = tvb_get_letohl(tvb, offset);
-        } else {
-            val_32 = tvb_get_ntohl(tvb, offset);
-        }
+        val_32 = tvb_get_guint32(tvb, offset, encoding);
+        tiff_item = proto_tree_add_uint_format_value(subtree, hf_start_ifd_offset, tvb, offset, 4, val_32, "%u bytes",
+            val_32);
+        offset += 4;
         /*
          * Check for a bogus val_32 value.
          * XXX - bogus value message should also deal with a
@@ -636,22 +665,16 @@ process_app1_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
          * Or should it just check against the segment length,
          * which is 16 bits?
          */
-        if (val_32 + tiff_start < (guint32)offset + 4) {
-            proto_tree_add_text(subtree, tvb, offset, 4,
-                "Start offset of IFD starting from the TIFF header start: %u bytes (bogus, should be >= %u",
-                val_32, offset + 4 - tiff_start);
+        if (val_32 + tiff_start < (guint32)offset) {
+            expert_add_info_format(pinfo, tiff_item, &ei_start_ifd_offset, " (bogus, should be >= %u)",
+                offset- tiff_start);
             return offset;
         }
-        proto_tree_add_text(subtree, tvb, offset, 4,
-            "Start offset of IFD starting from the TIFF header start: %u bytes",
-            val_32);
-        offset += 4;
         /*
          * Skip the following portion
          */
         if (val_32 + tiff_start > (guint32)offset) {
-            proto_tree_add_text(subtree, tvb, offset, val_32 + tiff_start - offset,
-                "Skipped data between end of TIFF header and start of IFD (%u bytes)",
+            proto_tree_add_bytes_format_value(subtree, hf_skipped_tiff_data, tvb, offset, val_32 + tiff_start - offset, NULL, "%u bytes",
                 val_32 + tiff_start - offset);
         }
         for (;;) {
@@ -659,62 +682,35 @@ process_app1_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
             /*
              * Process the IFD
              */
-            if (is_little_endian) {
-                num_fields = tvb_get_letohs(tvb, offset);
-            } else {
-                num_fields = tvb_get_ntohs(tvb, offset);
-            }
-            proto_tree_add_text(subtree, tvb, offset, 2, "Number of fields in this IFD: %u", num_fields);
+            proto_tree_add_item_ret_uint(subtree, hf_ifd_num_fields, tvb, offset, 2, encoding, &num_fields);
             offset += 2;
             while (num_fields-- > 0) {
-                guint16 tag, type;
-                guint32 count, off;
-
-                if (is_little_endian) {
-                    tag = tvb_get_letohs(tvb, offset);
-                    type = tvb_get_letohs(tvb, offset + 2);
-                    count = tvb_get_letohl(tvb, offset + 4);
-                    off = tvb_get_letohl(tvb, offset + 8);
-                } else {
-                    tag = tvb_get_ntohs(tvb, offset);
-                    type = tvb_get_ntohs(tvb, offset + 2);
-                    count = tvb_get_ntohl(tvb, offset + 4);
-                    off = tvb_get_ntohl(tvb, offset + 8);
-                }
-                /* TODO - refine this */
-                proto_tree_add_text(subtree, tvb, offset, 2,
-                    "Exif Tag: 0x%04X (%s), Type: %u (%s), Count: %u, "
-                    "Value offset from start of TIFF header: %u",
-                    tag, val_to_str_const(tag, vals_exif_tags, "Unknown Exif tag"),
-                    type, val_to_str_const(type, vals_exif_types, "Unknown Exif type"),
-                    count, off);
-                offset += 12;
+                proto_tree_add_item(subtree, hf_idf_tag, tvb, offset, 2, encoding);
+                offset += 2;
+                proto_tree_add_item(subtree, hf_idf_type, tvb, offset, 2, encoding);
+                offset += 2;
+                proto_tree_add_item(subtree, hf_idf_count, tvb, offset, 4, encoding);
+                offset += 4;
+                proto_tree_add_item(subtree, hf_idf_offset, tvb, offset, 4, encoding);
+                offset += 4;
             }
             /*
              * Offset to the next IFD
              */
-            if (is_little_endian) {
-                val_32 = tvb_get_letohl(tvb, offset);
-            } else {
-                val_32 = tvb_get_ntohl(tvb, offset);
-            }
-            if (val_32 != 0 &&
-                val_32 + tiff_start < (guint32)offset + 4) {
-                proto_tree_add_text(subtree, tvb, offset, 4,
-                    "Offset to next IFD from start of TIFF header: %u bytes (bogus, should be >= %u)",
-                    val_32, offset + 4 - tiff_start);
-                return offset;
-            }
-            proto_tree_add_text(subtree, tvb, offset, 4,
-                "Offset to next IFD from start of TIFF header: %u bytes",
+            val_32 = tvb_get_guint32(tvb, offset, encoding);
+            tiff_item = proto_tree_add_uint_format_value(subtree, hf_next_ifd_offset, tvb, offset, 4, val_32, "%u bytes",
                 val_32);
             offset += 4;
+            if (val_32 != 0 &&
+                val_32 + tiff_start < (guint32)offset) {
+                expert_add_info_format(pinfo, tiff_item, &ei_next_ifd_offset, " (bogus, should be >= %u)", offset + tiff_start);
+                return offset;
+            }
             if (val_32 == 0)
                 break;
         }
     } else {
-        proto_tree_add_text(subtree, tvb, offset, -1,
-                "Remaining segment data (%u bytes)", len - 2 - str_size);
+        proto_tree_add_bytes_format_value(subtree, hf_remain_seg_data, tvb, offset, -1, NULL, "%u bytes", len - 2 - str_size);
         proto_item_append_text(ti, " (Unknown identifier)");
     }
     return offset;
@@ -728,8 +724,8 @@ static void
 process_app2_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
         guint16 marker, const char *marker_name)
 {
-    proto_item *ti = NULL;
-    proto_tree *subtree = NULL;
+    proto_item *ti;
+    proto_tree *subtree;
     char *str;
     gint str_size;
 
@@ -745,13 +741,12 @@ process_app2_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
 
     proto_tree_add_item(subtree, hf_len, tvb, 2, 2, ENC_BIG_ENDIAN);
 
-    str = tvb_get_stringz(wmem_packet_scope(), tvb, 4, &str_size);
+    str = tvb_get_stringz_enc(wmem_packet_scope(), tvb, 4, &str_size, ENC_ASCII);
     ti = proto_tree_add_item(subtree, hf_identifier, tvb, 4, str_size, ENC_ASCII|ENC_NA);
     if (strcmp(str, "FPXR") == 0) {
-        proto_tree_add_text(tree, tvb, 0, -1, "Exif FlashPix APP2 application marker");
+        proto_tree_add_item(tree, hf_exif_flashpix_marker, tvb, 0, -1, ENC_NA);
     } else {
-        proto_tree_add_text(subtree, tvb, 4 + str_size, -1,
-                "Remaining segment data (%u bytes)", len - 2 - str_size);
+        proto_tree_add_bytes_format_value(subtree, hf_remain_seg_data, tvb, 4 + str_size, -1, NULL, "%u bytes", len - 2 - str_size);
         proto_item_append_text(ti, " (Unknown identifier)");
     }
 }
@@ -759,19 +754,27 @@ process_app2_segment(proto_tree *tree, tvbuff_t *tvb, guint32 len,
 static gint
 dissect_jfif(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-    proto_tree *subtree = NULL;
-    proto_item *ti = NULL;
+    proto_tree *subtree;
+    proto_item *ti;
     gint tvb_len = tvb_reported_length(tvb);
     gint32 start_entropy = 0;
     gint32 start_fill, start_marker;
+    gboolean show_first_identifier_not_jfif = FALSE;
 
     /* check if we have a full JFIF in tvb */
     if (tvb_len < 20)
         return 0;
+    /* Start Of Image marker must come first */
     if (tvb_get_ntohs(tvb, 0) != MARKER_SOI)
         return 0;
-    if (tvb_memeql(tvb, 6, "JFIF", 5))
+    /* Check identifier field in first App segment is "JFIF", although "Exif" from App1
+       can/does appear here too... */
+    if (tvb_memeql(tvb, 6, "Exif", 5) == 0) {
+        show_first_identifier_not_jfif = TRUE;
+    }
+    else if (tvb_memeql(tvb, 6, "JFIF", 5)) {
         return 0;
+    }
 
     /* Add summary to INFO column if it is enabled */
     col_append_sep_fstr(pinfo->cinfo, COL_INFO, " ", "(JPEG JFIF image)");
@@ -799,8 +802,7 @@ dissect_jfif(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
         if (start_fill == -1) start_fill = tvb_len;
 
         if (start_fill != start_entropy)
-            proto_tree_add_text(subtree, tvb, start_entropy, start_fill - start_entropy,
-                                "Entropy-coded segment (dissection is not yet implemented)");
+            proto_tree_add_item(subtree, hf_entropy_coded_segment, tvb, start_entropy, start_fill - start_entropy, ENC_NA);
 
         if (start_fill == tvb_len) break;
 
@@ -810,8 +812,7 @@ dissect_jfif(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
             ++start_marker;
 
         if (start_marker != start_fill)
-            proto_tree_add_text(subtree, tvb, start_fill, start_marker - start_fill,
-                                "Fill bytes");
+            proto_tree_add_item(subtree, hf_fill_bytes, tvb, start_fill, start_marker - start_fill, ENC_NA);
 
         marker = tvb_get_ntohs(tvb, start_marker);
         str = try_val_to_str(marker, vals_marker);
@@ -819,13 +820,14 @@ dissect_jfif(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
             if (marker_has_length(marker)) { /* Marker segment */
                 /* Length of marker segment = 2 + len */
                 const guint16 len = tvb_get_ntohs(tvb, start_marker + 2);
-                tvbuff_t *tmp_tvb = tvb_new_subset(tvb, start_marker, 2 + len, 2 + len);
+                tvbuff_t *tmp_tvb = tvb_new_subset_length(tvb, start_marker, 2 + len);
                 switch (marker) {
                     case MARKER_APP0:
                         process_app0_segment(subtree, tmp_tvb, len, marker, str);
                         break;
                     case MARKER_APP1:
-                        process_app1_segment(subtree, tmp_tvb, len, marker, str);
+                        process_app1_segment(subtree, tmp_tvb, pinfo, len, marker, str, show_first_identifier_not_jfif);
+                        show_first_identifier_not_jfif = FALSE;
                         break;
                     case MARKER_APP2:
                         process_app2_segment(subtree, tmp_tvb, len, marker, str);
@@ -848,6 +850,9 @@ dissect_jfif(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
                         break;
                     case MARKER_SOS:
                         process_sos_header(subtree, tmp_tvb, len, marker, str);
+                        break;
+                    case MARKER_COM:
+                        process_comment_header(subtree, tmp_tvb, len, marker, str);
                         break;
                     default:
                         process_marker_segment(subtree, tmp_tvb, len, marker, str);
@@ -1166,6 +1171,128 @@ proto_register_jfif(void)
               HFILL
           }
         },
+
+        /* Header: Comment (MARKER_COM) */
+        { &hf_comment_header,
+          {   "Comment header",
+              IMG_JFIF ".header.comment",
+              FT_NONE, BASE_NONE, NULL, 0x00,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_comment,
+          {   "Comment",
+              IMG_JFIF ".comment",
+              FT_STRING, STR_ASCII, NULL, 0x0,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_remain_seg_data,
+          {   "Remaining segment data",
+              IMG_JFIF ".remain_seg_data",
+              FT_BYTES, BASE_NONE, NULL, 0x00,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_endianness,
+          {   "Endianness",
+              IMG_JFIF ".endianness",
+              FT_UINT16, BASE_HEX, NULL, 0x0,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_start_ifd_offset,
+          {   "Start offset of IFD starting from the TIFF header start",
+              IMG_JFIF ".start_ifd_offset",
+              FT_UINT32, BASE_DEC, NULL, 0x0,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_next_ifd_offset,
+          {   "Offset to next IFD from start of TIFF header",
+              IMG_JFIF ".next_ifd_offset",
+              FT_UINT32, BASE_DEC, NULL, 0x0,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_exif_flashpix_marker,
+          {   "Exif FlashPix APP2 application marker",
+              IMG_JFIF ".exif_flashpix_marker",
+              FT_NONE, BASE_NONE, NULL, 0x00,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_entropy_coded_segment,
+          {   "Entropy-coded segment (dissection is not yet implemented)",
+              IMG_JFIF ".entropy_coded_segment",
+              FT_BYTES, BASE_NONE, NULL, 0x00,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_fill_bytes,
+          {   "Fill bytes",
+              IMG_JFIF ".fill_bytes",
+              FT_BYTES, BASE_NONE, NULL, 0x00,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_skipped_tiff_data,
+          {   "Skipped data between end of TIFF header and start of IFD",
+              IMG_JFIF ".skipped_tiff_data",
+              FT_BYTES, BASE_NONE, NULL, 0x00,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_ifd_num_fields,
+          {   "Number of fields in this IFD",
+              IMG_JFIF ".ifd.num_fields",
+              FT_UINT16, BASE_DEC, NULL, 0x0,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_idf_tag,
+          {   "Exif Tag",
+              IMG_JFIF ".ifd.tag",
+              FT_UINT16, BASE_DEC, VALS(vals_exif_tags), 0x0,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_idf_type,
+          {   "Type",
+              IMG_JFIF ".ifd.type",
+              FT_UINT16, BASE_DEC, VALS(vals_exif_types), 0x0,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_idf_count,
+          {   "Count",
+              IMG_JFIF ".ifd.count",
+              FT_UINT32, BASE_DEC, NULL, 0x0,
+              NULL,
+              HFILL
+          }
+        },
+        { &hf_idf_offset,
+          {   "Value offset from start of TIFF header",
+              IMG_JFIF ".ifd.offset",
+              FT_UINT32, BASE_DEC, NULL, 0x0,
+              NULL,
+              HFILL
+          }
+        },
     };
 
     /* Setup protocol subtree array */
@@ -1174,6 +1301,20 @@ proto_register_jfif(void)
         &ett_marker_segment,
         &ett_details,
     };
+
+    static ei_register_info ei[] = {
+        { &ei_file_jpeg_first_identifier_not_jfif,
+          { IMG_JFIF ".app0-identifier-not-jfif", PI_MALFORMED, PI_WARN,
+            "Initial App0 segment with \"JFIF\" Identifier not found", EXPFILL }},
+        { &ei_start_ifd_offset,
+          { IMG_JFIF ".start_ifd_offset.invalid", PI_PROTOCOL, PI_WARN,
+            "Invalid value", EXPFILL }},
+        { &ei_next_ifd_offset,
+          { IMG_JFIF ".next_ifd_offset.invalid", PI_PROTOCOL, PI_WARN,
+            "Invalid value", EXPFILL }},
+    };
+
+    expert_module_t* expert_jfif;
 
     /* Register the protocol name and description */
     proto_jfif = proto_register_protocol(
@@ -1186,6 +1327,9 @@ proto_register_jfif(void)
      * and subtrees used */
     proto_register_field_array(proto_jfif, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    expert_jfif = expert_register_protocol(proto_jfif);
+    expert_register_field_array(expert_jfif, ei, array_length(ei));
 
     new_register_dissector(IMG_JFIF, dissect_jfif, proto_jfif);
 }
@@ -1203,6 +1347,19 @@ proto_reg_handoff_jfif(void)
 
     dissector_add_uint("wtap_encap", WTAP_ENCAP_JPEG_JFIF, jfif_handle);
 
-    heur_dissector_add("http", dissect_jfif_heur, proto_jfif);
-    heur_dissector_add("wtap_file", dissect_jfif_heur, proto_jfif);
+    heur_dissector_add("http", dissect_jfif_heur, "JPEG file in HTTP", "jfif_http", proto_jfif, HEURISTIC_ENABLE);
+    heur_dissector_add("wtap_file", dissect_jfif_heur, "JPEG file", "jfif_wtap", proto_jfif, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

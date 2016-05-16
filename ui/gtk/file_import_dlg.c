@@ -24,14 +24,11 @@
 
 #include "config.h"
 
-#include <gtk/gtk.h>
 
 #include <stdlib.h>
 
 #include "globals.h"
-#include "wtap.h"
 #include "pcap-encap.h"
-#include "version_info.h"
 
 #include "ui/simple_dialog.h"
 #include "ui/alert_box.h"
@@ -47,9 +44,10 @@
 #include "ui/text_import.h"
 #include "ui/text_import_scanner.h"
 
-#include "file.h"
 #include "wsutil/file_util.h"
 #include "wsutil/tempfile.h"
+#include "wsutil/os_version_info.h"
+#include "wsutil/ws_version_info.h"
 
 #define INPUT_FRM_KEY                   "input_frame"
 
@@ -454,7 +452,6 @@ header_sctp_data_rb_toggle(GtkWidget *widget, gpointer data)
 static void
 file_import_open(text_import_info_t *info)
 {
-    int   import_file_fd;
     char *tmpname, *capfile_name;
     int   err;
 
@@ -463,32 +460,30 @@ file_import_open(text_import_info_t *info)
     wtapng_iface_descriptions_t *idb_inf;
     wtapng_if_descr_t            int_data;
     GString                     *os_info_str;
-    char                         appname[100];
-
-    /* Choose a random name for the temporary import buffer */
-    import_file_fd = create_tempfile(&tmpname, "import");
-    capfile_name = g_strdup(tmpname);
 
     /* Create data for SHB  */
     os_info_str = g_string_new("");
     get_os_version_info(os_info_str);
 
-    g_snprintf(appname, sizeof(appname), "Wireshark " VERSION "%s", wireshark_gitversion);
-
     shb_hdr = g_new(wtapng_section_t,1);
     shb_hdr->section_length = -1;
     /* options */
     shb_hdr->opt_comment    = g_strdup_printf("File created by File->Import of file %s", info->import_text_filename);
-    shb_hdr->shb_hardware   = NULL;                    /* UTF-8 string containing the
-                                                       * description of the hardware used to create this section.
-                                                       */
-    shb_hdr->shb_os         = os_info_str->str;        /* UTF-8 string containing the name
-                                                       * of the operating system used to create this section.
-                                                       */
-    g_string_free(os_info_str, FALSE);                /* The actual string is not freed */
-    shb_hdr->shb_user_appl  = appname;                /* UTF-8 string containing the name
-                                                       *  of the application used to create this section.
-                                                       */
+    /*
+     * UTF-8 string containing the description of the hardware used to create
+     * this section.
+     */
+    shb_hdr->shb_hardware   = NULL;
+    /*
+     * UTF-8 string containing the name of the operating system used to create
+     * this section.
+     */
+    shb_hdr->shb_os         = g_string_free(os_info_str, FALSE);
+    /*
+     * UTF-8 string containing the name of the application used to create
+     * this section.
+     */
+    shb_hdr->shb_user_appl  = g_strdup_printf("Wireshark %s", get_ws_vcs_version_info());
 
 
     /* Create fake IDB info */
@@ -515,9 +510,15 @@ file_import_open(text_import_info_t *info)
 
     g_array_append_val(idb_inf->interface_data, int_data);
 
-    info->wdh = wtap_dump_fdopen_ng(import_file_fd, WTAP_FILE_TYPE_SUBTYPE_PCAPNG, info->encapsulation, info->max_frame_length, FALSE, shb_hdr, idb_inf, &err);
+    /* Use a random name for the temporary import buffer */
+    info->wdh = wtap_dump_open_tempfile_ng(&tmpname, "import",
+                                           WTAP_FILE_TYPE_SUBTYPE_PCAPNG,
+                                           info->encapsulation,
+                                           info->max_frame_length, FALSE,
+                                           shb_hdr, idb_inf, NULL, &err);
+    capfile_name = g_strdup(tmpname);
     if (info->wdh == NULL) {
-        open_failure_alert_box(capfile_name, err, TRUE);
+        open_failure_alert_box(tmpname ? tmpname : "temporary file", err, TRUE);
         fclose(info->import_text_file);
         goto end;
     }
@@ -564,6 +565,8 @@ end:
     g_free(info->date_timestamp_format);
     g_free(info);
     g_free(capfile_name);
+    wtap_free_shb(shb_hdr);
+    wtap_free_idb_info(idb_inf);
     window_destroy(file_import_dlg_w);
 }
 

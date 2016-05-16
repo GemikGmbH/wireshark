@@ -33,14 +33,10 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/conversation.h>
 #include <epan/expert.h>
-#include <epan/wmem/wmem.h>
-
 #include "packet-sprt.h"
 
 void proto_register_sprt(void);
@@ -62,9 +58,9 @@ typedef enum {
 } i_octet_dlci_status_t;
 
 
- /* Keep conversation info for one side of an SPRT conversation
-  * TODO - this needs to be bidirectional
-  */
+/* Keep conversation info for one side of an SPRT conversation
+ * TODO - this needs to be bidirectional
+ */
 struct _sprt_conversation_info
 {
     gchar    method[SPRT_CONV_MAX_SETUP_METHOD_SIZE + 1];
@@ -329,7 +325,7 @@ static int hf_sprt_ack_field_items =            -1;
 static int hf_sprt_transport_channel_item =     -1;
 static int hf_sprt_sequence_item =              -1;
 
-static int hf_sprt_payload =                    -1;
+static int hf_sprt_payload_length =             -1;
 static int hf_sprt_payload_no_data =            -1;
 static int hf_sprt_payload_reserved_bit =       -1;
 static int hf_sprt_payload_message_id =         -1;
@@ -889,7 +885,7 @@ dissect_sprt_data(tvbuff_t *tvb,
 
     if (payload_length > 0)
     {
-        ti = proto_tree_add_uint(sprt_tree, hf_sprt_payload, tvb, offset, 1, payload_length);
+        ti = proto_tree_add_uint(sprt_tree, hf_sprt_payload_length, tvb, offset, 1, payload_length);
         proto_item_set_len(ti, payload_length);
 
         sprt_payload_tree = proto_item_add_subtree(ti, ett_payload);
@@ -1014,7 +1010,7 @@ dissect_sprt_data(tvbuff_t *tvb,
                     break;
                 }
                 offset += 2;
-            } while (tvb_length_remaining(tvb, offset) >= 2);
+            } while (tvb_reported_length_remaining(tvb, offset) >= 2);
             break;
         case SPRT_MODEM_RELAY_MSG_ID_START_JM:
             /* No additional content */
@@ -1468,13 +1464,13 @@ dissect_sprt(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
         col_append_fstr(pinfo->cinfo, COL_INFO, ", Seq=%u", seqnum);
 
     /* dissect the payload, if any */
-    payload_length = tvb_length(tvb) - (6 + noa * 2); /* total sprt length - header stuff */
+    payload_length = tvb_captured_length(tvb) - (6 + noa * 2); /* total sprt length - header stuff */
     dissect_sprt_data(tvb, pinfo, p_conv_data, sprt_tree, offset, payload_length);
 
     if (noa)
         col_append_str(pinfo->cinfo, COL_INFO, " (ACK fields present)");
 
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 /* heuristic dissector */
@@ -1490,7 +1486,7 @@ dissect_sprt_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
      * a heuristic dissector called before us!
      */
 
-    if (tvb_length(tvb) < 6)
+    if (tvb_captured_length(tvb) < 6)
         return FALSE; /* packet is waay to short */
 
     /* Get the fields in the first two octets */
@@ -1698,10 +1694,10 @@ proto_register_sprt(void)
         },
         /* SPRT payload, if any: */
         {
-            &hf_sprt_payload,
+            &hf_sprt_payload_length,
             {
                 "Payload (in bytes)",
-                "sprt.payload",
+                "sprt.payload.length",
                 FT_UINT32,
                 BASE_DEC,
                 NULL,
@@ -3433,7 +3429,20 @@ void
 proto_reg_handoff_sprt(void)
 {
     sprt_handle = find_dissector("sprt");
-    dissector_add_handle("udp.port", sprt_handle);
+    dissector_add_for_decode_as("udp.port", sprt_handle);
 
-    heur_dissector_add( "udp", dissect_sprt_heur, proto_sprt);
+    heur_dissector_add( "udp", dissect_sprt_heur, "SPRT over UDP", "sprt_udp", proto_sprt, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

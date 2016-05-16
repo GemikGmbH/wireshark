@@ -27,7 +27,6 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 
@@ -41,7 +40,7 @@ static int hf_roverride_opnum = -1;
 static gint ett_roverride = -1;
 
 
-static e_uuid_t uuid_roverride = { 0x5d978990, 0x4851, 0x11ca, { 0x99, 0x37, 0x08, 0x00, 0x1e, 0x03, 0x94, 0x48 } };
+static e_guid_t uuid_roverride = { 0x5d978990, 0x4851, 0x11ca, { 0x99, 0x37, 0x08, 0x00, 0x1e, 0x03, 0x94, 0x48 } };
 static guint16  ver_roverride = 1;
 
 
@@ -78,3 +77,16 @@ proto_reg_handoff_roverride (void)
 	/* Register the protocol as dcerpc */
 	dcerpc_init_uuid (proto_roverride, ett_roverride, &uuid_roverride, ver_roverride, roverride_dissectors, hf_roverride_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -23,17 +23,15 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #include <gtk/gtk.h>
 
-#include <epan/stat_cmd_args.h>
 
-#include "../file.h"
 #include "../globals.h"
-#include "../stat_menu.h"
+#include <epan/stat_groups.h>
 
+#include "ui/gtk/old-gtk-compat.h"
 #include "ui/gtk/stock_icons.h"
 #include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/filter_dlg.h"
@@ -43,7 +41,6 @@
 #include "ui/gtk/gtkglobals.h"
 #include "ui/gtk/filter_autocomplete.h"
 
-#include "ui/gtk/old-gtk-compat.h"
 
 typedef struct _tap_param_dlg_list_item {
     GtkWidget *dlg;
@@ -65,16 +62,35 @@ void
 register_param_stat(tap_param_dlg *info, const char *name,
     register_stat_group_t group)
 {
+    gchar *action_name;
     gchar *full_name;
     const gchar *stock_id = NULL;
+    stat_tap_ui ui_info;
+    size_t i;
 
-    register_stat_cmd_arg(info->init_string, info->tap_init_cb, NULL);
-
+    /* XXX We appear to leak memory here. */
     /*
      * This menu item will pop up a dialog box, so append "..."
      * to it.
      */
     full_name = g_strdup_printf("%s...", name);
+    /*
+     * Escape path separators for add_menu_item_to_main_menubar.
+     */
+    action_name = g_strdup(name);
+    for (i = 0; i < strlen(action_name); i++) {
+        if (action_name[i] == '/') {
+            action_name[i] = '#';
+        }
+    }
+
+    ui_info.group = group;
+    ui_info.title = full_name;
+    ui_info.cli_string = info->init_string;
+    ui_info.tap_init_cb = info->tap_init_cb;
+    ui_info.nparams = info->nparams;
+    ui_info.params = info->params;
+    register_stat_tap_ui(&ui_info, NULL);
 
     switch (group) {
 
@@ -97,8 +113,10 @@ register_param_stat(tap_param_dlg *info, const char *name,
         break;
 
     case REGISTER_STAT_GROUP_TELEPHONY:
+    case REGISTER_STAT_GROUP_TELEPHONY_ANSI:
     case REGISTER_STAT_GROUP_TELEPHONY_GSM:
     case REGISTER_STAT_GROUP_TELEPHONY_LTE:
+    case REGISTER_STAT_GROUP_TELEPHONY_MTP3:
     case REGISTER_STAT_GROUP_TELEPHONY_SCTP:
         break;
 
@@ -108,7 +126,7 @@ register_param_stat(tap_param_dlg *info, const char *name,
 
     register_menu_bar_menu_items(
         stat_group_name(group), /* GUI path to the place holder in the menu */
-        name,                   /* Action name */
+        action_name,            /* Action name */
         stock_id,               /* Stock id */
         full_name,              /* label */
         NULL,                   /* Accelerator */
@@ -172,13 +190,14 @@ tap_param_dlg_start_button_clicked(GtkWidget *item _U_, gpointer dialog_data)
             break;
 
         case PARAM_STRING:
+        case PARAM_UUID:    /* XXX - do as multiple fixed-length boxes */
         case PARAM_FILTER:
             g_string_append(params,
                             gtk_entry_get_text(GTK_ENTRY(dlg_data->param_items[i])));
             break;
         }
     }
-    (dlg_data->cont.tap_init_cb)(params->str,NULL);
+    (dlg_data->cont.tap_init_cb)(params->str, dlg_data->cont.user_data);
     g_string_free(params, TRUE);
 }
 
@@ -217,6 +236,7 @@ tap_param_dlg_cb(GtkAction *action _U_, gpointer data)
         end_dlg_list->cont.tap_init_cb = dlg_data->tap_init_cb;
         end_dlg_list->cont.nparams = dlg_data->nparams;
         end_dlg_list->cont.params = dlg_data->params;
+        end_dlg_list->cont.user_data = dlg_data->user_data;
         end_dlg_list->args.title = g_strdup_printf("%s Filter", dlg_data->win_title);
         end_dlg_list->args.wants_apply_button = TRUE;
         end_dlg_list->args.activate_on_ok = FALSE;
@@ -243,11 +263,18 @@ tap_param_dlg_cb(GtkAction *action _U_, gpointer data)
         return;
     }
 
+    /* If we don't have any parameters, just launch the stat dialog */
+    if (current_dlg->cont.nparams == 0)
+    {
+        tap_param_dlg_start_button_clicked(NULL, current_dlg);
+        return;
+    }
+
     display_name = cf_get_display_name(&cfile);
     title = g_strdup_printf("Wireshark: %s: %s", current_dlg->cont.win_title , display_name);
     g_free(display_name);
 
-    current_dlg->dlg=dlg_window_new(title);
+    current_dlg->dlg=dlg_window_new_with_geom(title, current_dlg->cont.win_title, GTK_WIN_POS_CENTER_ON_PARENT);
     gtk_window_set_default_size(GTK_WINDOW(current_dlg->dlg), 300, -1);
     g_free(title);
 
@@ -369,6 +396,7 @@ tap_param_dlg_cb(GtkAction *action _U_, gpointer data)
 
         case PARAM_STRING:
         case PARAM_FILTER:
+        case PARAM_UUID:
             dlg_set_activate(current_dlg->param_items[i], start_button);
             break;
         }
@@ -387,3 +415,16 @@ tap_param_dlg_cb(GtkAction *action _U_, gpointer data)
     gtk_widget_show_all(current_dlg->dlg);
     window_present(current_dlg->dlg);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

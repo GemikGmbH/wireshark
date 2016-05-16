@@ -26,10 +26,8 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
-#include "packet-dcerpc-dce122.h"
 
 void proto_register_dtsprovider (void);
 void proto_reg_handoff_dtsprovider (void);
@@ -42,7 +40,7 @@ static int hf_dtsprovider_opnum = -1;
 static gint ett_dtsprovider = -1;
 
 
-static e_uuid_t uuid_dtsprovider = { 0xbfca1238, 0x628a, 0x11c9, { 0xa0, 0x73, 0x08, 0x00, 0x2b, 0x0d, 0xea, 0x7a } };
+static e_guid_t uuid_dtsprovider = { 0xbfca1238, 0x628a, 0x11c9, { 0xa0, 0x73, 0x08, 0x00, 0x2b, 0x0d, 0xea, 0x7a } };
 static guint16  ver_dtsprovider = 1;
 
 
@@ -80,3 +78,16 @@ proto_reg_handoff_dtsprovider (void)
 	/* Register the protocol as dcerpc */
 	dcerpc_init_uuid (proto_dtsprovider, ett_dtsprovider, &uuid_dtsprovider, ver_dtsprovider, dtsprovider_dissectors, hf_dtsprovider_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

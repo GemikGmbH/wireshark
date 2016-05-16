@@ -26,7 +26,7 @@
 
 
 /*
-   All informations used in this decoding were gathered from
+	All informations used in this decoding were gathered from
 	* some own captures of a private server,
 	* the "Server commands howto" document written by id Software
 		(http://www.quake3arena.com/tech/ServerCommandsHowto.html)
@@ -37,8 +37,6 @@
 
 #include "config.h"
 
-#include <string.h>
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/addr_resolv.h>
@@ -141,7 +139,7 @@ static void
 dissect_quake3_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo _U_,
 	proto_tree *tree, int* direction)
 {
-	proto_tree	*cl_tree = NULL;
+	proto_tree	*cl_tree;
 	proto_item	*text_item = NULL;
 	proto_tree	*text_tree = NULL;
 	guint8		*text;
@@ -152,16 +150,13 @@ dissect_quake3_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo _U_,
 	int		command_len;
 	gboolean	command_finished = FALSE;
 
-	marker = tvb_get_ntohl(tvb, 0);
-	if (tree) {
-		proto_item *cl_item = NULL;
-		cl_item = proto_tree_add_text(tree, tvb,
-				0, -1, "Connectionless");
-		cl_tree = proto_item_add_subtree(cl_item, ett_quake3_connectionless);
+	cl_tree = proto_tree_add_subtree(tree, tvb,
+			0, -1, ett_quake3_connectionless, NULL, "Connectionless");
 
-		proto_tree_add_uint(cl_tree, hf_quake3_connectionless_marker,
-				    tvb, 0, 4, marker);
-	}
+	marker = tvb_get_ntohl(tvb, 0);
+	proto_tree_add_uint(cl_tree, hf_quake3_connectionless_marker,
+				tvb, 0, 4, marker);
+
 	/* all the rest of the packet is just text */
 	offset = 4;
 
@@ -176,7 +171,7 @@ dissect_quake3_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo _U_,
 	 * encoding is used for them?
 	 */
 	text = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &len, ENC_ASCII|ENC_NA);
-        if (cl_tree) {
+	if (cl_tree) {
 		text_item = proto_tree_add_string(cl_tree,
 				hf_quake3_connectionless_text,
 				tvb, offset, len, text);
@@ -256,7 +251,7 @@ dissect_quake3_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo _U_,
 		\ with "<DATA>". */
 		if (text_item) {
 			/* first correct the length until the end of the packet */
-			proto_item_set_len(text_item, tvb_length_remaining(tvb, offset));
+			proto_item_set_len(text_item, tvb_captured_length_remaining(tvb, offset));
 			/* then replace the text */
 			proto_item_set_text(text_item, "Text: getserversResponse<DATA>");
 		}
@@ -282,16 +277,12 @@ dissect_quake3_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo _U_,
 				may run on totally unusual ports.  */
 
 			if (text_tree) {
-				proto_item *server_item;
 				proto_tree *server_tree;
-				server_item = proto_tree_add_text(text_tree,
+				server_tree = proto_tree_add_subtree_format(text_tree,
 					tvb, base, 7,
-					"Server: %s:%u",
+					ett_quake3_server, NULL, "Server: %s:%u",
 						get_hostname(ip_addr),
 						udp_port);
-				server_tree = proto_item_add_subtree(
-					server_item,
-					ett_quake3_server);
 				proto_tree_add_ipv4(server_tree, hf_quake3_server_addr,
 						    tvb, base + 1, 4, ip_addr);
 				proto_tree_add_uint(server_tree, hf_quake3_server_port,
@@ -325,13 +316,13 @@ dissect_quake3_ConnectionlessPacket(tvbuff_t *tvb, packet_info *pinfo _U_,
 		*direction = DIR_UNKNOWN;
 	}
 
-        if (text_tree && command_finished == FALSE) {
+	if (text_tree && command_finished == FALSE) {
 		proto_tree_add_string(text_tree, hf_quake3_connectionless_command,
 					tvb, offset, command_len,
 					val_to_str_const(command, names_command, "Unknown"));
-        }
+	}
 
-        /*offset += len;*/
+	/*offset += len;*/
 
 }
 
@@ -350,15 +341,15 @@ dissect_quake3_server_commands(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree)
 {
 	/* It is totally forbidden to decode this any further,
-	I wont do it. */
+	I won't do it. */
 	call_dissector(data_handle,tvb, pinfo, tree);
 }
 
 
 static const value_string names_reliable[] = {
-        { 0, "Non Reliable" },
-        { 1, "Reliable" },
-        { 0, NULL }
+	{ 0, "Non Reliable" },
+	{ 1, "Reliable" },
+	{ 0, NULL }
 };
 
 
@@ -366,7 +357,7 @@ static void
 dissect_quake3_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	proto_tree *tree, int *direction)
 {
-	proto_tree	*game_tree = NULL;
+	proto_tree	*game_tree;
 	guint32		seq1;
 	guint32		seq2;
 	int		rel1;
@@ -377,11 +368,7 @@ dissect_quake3_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	*direction = (pinfo->destport == gbl_quake3_server_port) ?
 			DIR_C2S : DIR_S2C;
 
-	if (tree) {
-		proto_item *game_item;
-		game_item = proto_tree_add_text(tree, tvb, 0, -1, "Game");
-		game_tree = proto_item_add_subtree(game_item, ett_quake3_game);
-	}
+	game_tree = proto_tree_add_subtree(tree, tvb, 0, -1, ett_quake3_game, NULL, "Game");
 
 	offset = 0;
 
@@ -389,11 +376,9 @@ dissect_quake3_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	rel1 = seq1 & 0x8000 ? 1 : 0;
 	seq1 &= ~0x8000;
 	if (game_tree) {
-		proto_item *seq1_item = proto_tree_add_text(game_tree,
-			tvb, offset, 2, "Current Sequence: %u (%s)",
+		proto_tree *seq1_tree = proto_tree_add_subtree_format(game_tree,
+			tvb, offset, 2, ett_quake3_game_seq1, NULL, "Current Sequence: %u (%s)",
 			seq1, val_to_str(rel1,names_reliable,"%u"));
-		proto_tree *seq1_tree = proto_item_add_subtree(
-			seq1_item, ett_quake3_game_seq1);
 		proto_tree_add_uint(seq1_tree, hf_quake3_game_seq1,
 				    tvb, offset, 2, seq1);
 		proto_tree_add_boolean(seq1_tree, hf_quake3_game_rel1,
@@ -405,11 +390,9 @@ dissect_quake3_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	rel2 = seq2 & 0x8000 ? 1 : 0;
 	seq2 &= ~0x8000;
 	if (game_tree) {
-		proto_item *seq2_item = proto_tree_add_text(game_tree,
-			tvb, offset, 2, "Acknowledge Sequence: %u (%s)",
+		proto_tree *seq2_tree = proto_tree_add_subtree_format(game_tree,
+			tvb, offset, 2, ett_quake3_game_seq2, NULL, "Acknowledge Sequence: %u (%s)",
 			seq2, val_to_str(rel2,names_reliable,"%u"));
-		proto_tree *seq2_tree = proto_item_add_subtree(
-			seq2_item, ett_quake3_game_seq2);
 		proto_tree_add_uint(seq2_tree, hf_quake3_game_seq2,
 				    tvb, offset, 2, seq2);
 		proto_tree_add_boolean(seq2_tree, hf_quake3_game_rel2,
@@ -430,29 +413,19 @@ dissect_quake3_GamePacket(tvbuff_t *tvb, packet_info *pinfo,
 	/* all the rest is pure game data */
 	rest_length = tvb_reported_length(tvb) - offset;
 	if (rest_length) {
-		tvbuff_t *next_tvb =
-		tvb_new_subset(tvb, offset, rest_length , rest_length);
+		tvbuff_t *next_tvb = tvb_new_subset_remaining(tvb, offset);
+		proto_tree *c_tree;
 
 		if (*direction == DIR_C2S) {
-			proto_tree *c_tree = NULL;
-			if (tree) {
-				proto_item *c_item;
-				c_item = proto_tree_add_text(game_tree, next_tvb,
-							     0, -1, "Client Commands");
-				c_tree = proto_item_add_subtree(
-					c_item, ett_quake3_game_clc);
-			}
+			c_tree = proto_tree_add_subtree(game_tree, next_tvb,
+							     0, -1, ett_quake3_game_clc, NULL, "Client Commands");
+
 			dissect_quake3_client_commands(next_tvb, pinfo, c_tree);
 		}
 		else {
-			proto_tree *c_tree = NULL;
-			if (tree) {
-				proto_item *c_item;
-				c_item = proto_tree_add_text(game_tree, next_tvb,
-							     0, -1, "Server Commands");
-				c_tree = proto_item_add_subtree(
-					c_item, ett_quake3_game_svc);
-			}
+			c_tree = proto_tree_add_subtree(game_tree, next_tvb,
+							     0, -1, ett_quake3_game_svc, NULL, "Server Commands");
+
 			dissect_quake3_server_commands(next_tvb, pinfo, c_tree);
 		}
 	}
@@ -625,7 +598,7 @@ proto_reg_handoff_quake3(void)
 			dissector_delete_uint("udp.port", master_port+i, quake3_handle);
 	}
 
-        /* set port for future deletes */
+	/* set port for future deletes */
 	server_port = gbl_quake3_server_port;
 	master_port = gbl_quake3_master_port;
 
@@ -638,4 +611,15 @@ proto_reg_handoff_quake3(void)
 			quake3_handle);
 }
 
-
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

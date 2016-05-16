@@ -34,12 +34,8 @@
 #include <epan/expert.h>
 #include <epan/prefs.h>
 #include <epan/etypes.h>
-#include <epan/ip_opts.h>
-#include <epan/wmem/wmem.h>
-#include <epan/strutil.h>
 #include <epan/to_str.h>
 
-#include "packet-bluetooth-hci.h"
 #include "packet-btsdp.h"
 #include "packet-btl2cap.h"
 
@@ -112,12 +108,16 @@ static gint hf_service_attribute_id_hdp                                    = -1;
 static gint hf_service_attribute_id_hid                                    = -1;
 static gint hf_service_attribute_id_wap                                    = -1;
 static gint hf_service_attribute_id_map_mas                                = -1;
+static gint hf_service_attribute_id_map_mns                                = -1;
 static gint hf_service_attribute_id_opp                                    = -1;
 static gint hf_service_attribute_id_pan_nap                                = -1;
 static gint hf_service_attribute_id_pan_gn                                 = -1;
 static gint hf_service_attribute_id_pan_panu                               = -1;
 static gint hf_service_attribute_id_pbap                                   = -1;
 static gint hf_service_attribute_id_synch                                  = -1;
+static gint hf_service_attribute_id_ctn_as                                 = -1;
+static gint hf_service_attribute_id_ctn_ns                                 = -1;
+static gint hf_service_attribute_id_mps                                    = -1;
 static gint hf_did_specification_id                                        = -1;
 static gint hf_did_vendor_id                                               = -1;
 static gint hf_did_vendor_id_bluetooth_sig                                 = -1;
@@ -156,7 +156,10 @@ static gint hf_avrcp_tg_supported_features_category_2                      = -1;
 static gint hf_avrcp_tg_supported_features_category_1                      = -1;
 static gint hf_hsp_remote_audio_volume_control                             = -1;
 static gint hf_gnss_supported_features                                     = -1;
+static gint hf_pbap_pse_supported_repositories                             = -1;
 static gint hf_pbap_pse_supported_repositories_reserved                    = -1;
+static gint hf_pbap_pse_supported_repositories_favourites                  = -1;
+static gint hf_pbap_pse_supported_repositories_speed_dial                  = -1;
 static gint hf_pbap_pse_supported_repositories_sim_card                    = -1;
 static gint hf_pbap_pse_supported_repositories_local_phonebook             = -1;
 static gint hf_fax_support_class_1                                         = -1;
@@ -321,6 +324,106 @@ static gint hf_bpp_reference_printing_top_url                              = -1;
 static gint hf_bpp_direct_printing_top_url                                 = -1;
 static gint hf_bpp_device_name                                             = -1;
 static gint hf_bpp_printer_admin_rui_top_url                               = -1;
+static gint hf_ctn_instance_id                                             = -1;
+static gint hf_ctn_supported_features                                      = -1;
+static gint hf_ctn_supported_features_reserved                             = -1;
+static gint hf_ctn_supported_features_forward                              = -1;
+static gint hf_ctn_supported_features_delete                               = -1;
+static gint hf_ctn_supported_features_uploading                            = -1;
+static gint hf_ctn_supported_features_downloading                          = -1;
+static gint hf_ctn_supported_features_browsing                             = -1;
+static gint hf_ctn_supported_features_notification                         = -1;
+static gint hf_ctn_supported_features_account_management                   = -1;
+static gint hf_mps_mpsd_scenarios                                          = -1;
+static gint hf_mps_mpsd_scenarios_reserved                                 = -1;
+static gint hf_mps_mpsd_scenarios_37                                       = -1;
+static gint hf_mps_mpsd_scenarios_36                                       = -1;
+static gint hf_mps_mpsd_scenarios_35                                       = -1;
+static gint hf_mps_mpsd_scenarios_34                                       = -1;
+static gint hf_mps_mpsd_scenarios_33                                       = -1;
+static gint hf_mps_mpsd_scenarios_32                                       = -1;
+static gint hf_mps_mpsd_scenarios_31                                       = -1;
+static gint hf_mps_mpsd_scenarios_30                                       = -1;
+static gint hf_mps_mpsd_scenarios_29                                       = -1;
+static gint hf_mps_mpsd_scenarios_28                                       = -1;
+static gint hf_mps_mpsd_scenarios_27                                       = -1;
+static gint hf_mps_mpsd_scenarios_26                                       = -1;
+static gint hf_mps_mpsd_scenarios_25                                       = -1;
+static gint hf_mps_mpsd_scenarios_24                                       = -1;
+static gint hf_mps_mpsd_scenarios_23                                       = -1;
+static gint hf_mps_mpsd_scenarios_22                                       = -1;
+static gint hf_mps_mpsd_scenarios_21                                       = -1;
+static gint hf_mps_mpsd_scenarios_20                                       = -1;
+static gint hf_mps_mpsd_scenarios_19                                       = -1;
+static gint hf_mps_mpsd_scenarios_18                                       = -1;
+static gint hf_mps_mpsd_scenarios_17                                       = -1;
+static gint hf_mps_mpsd_scenarios_16                                       = -1;
+static gint hf_mps_mpsd_scenarios_15                                       = -1;
+static gint hf_mps_mpsd_scenarios_14                                       = -1;
+static gint hf_mps_mpsd_scenarios_13                                       = -1;
+static gint hf_mps_mpsd_scenarios_12                                       = -1;
+static gint hf_mps_mpsd_scenarios_11                                       = -1;
+static gint hf_mps_mpsd_scenarios_10                                       = -1;
+static gint hf_mps_mpsd_scenarios_9                                        = -1;
+static gint hf_mps_mpsd_scenarios_8                                        = -1;
+static gint hf_mps_mpsd_scenarios_7                                        = -1;
+static gint hf_mps_mpsd_scenarios_6                                        = -1;
+static gint hf_mps_mpsd_scenarios_5                                        = -1;
+static gint hf_mps_mpsd_scenarios_4                                        = -1;
+static gint hf_mps_mpsd_scenarios_3                                        = -1;
+static gint hf_mps_mpsd_scenarios_2                                        = -1;
+static gint hf_mps_mpsd_scenarios_1                                        = -1;
+static gint hf_mps_mpsd_scenarios_0                                        = -1;
+static gint hf_mps_mpmd_scenarios                                          = -1;
+static gint hf_mps_mpmd_scenarios_reserved                                 = -1;
+static gint hf_mps_mpmd_scenarios_18                                       = -1;
+static gint hf_mps_mpmd_scenarios_17                                       = -1;
+static gint hf_mps_mpmd_scenarios_16                                       = -1;
+static gint hf_mps_mpmd_scenarios_15                                       = -1;
+static gint hf_mps_mpmd_scenarios_14                                       = -1;
+static gint hf_mps_mpmd_scenarios_13                                       = -1;
+static gint hf_mps_mpmd_scenarios_12                                       = -1;
+static gint hf_mps_mpmd_scenarios_11                                       = -1;
+static gint hf_mps_mpmd_scenarios_10                                       = -1;
+static gint hf_mps_mpmd_scenarios_9                                        = -1;
+static gint hf_mps_mpmd_scenarios_8                                        = -1;
+static gint hf_mps_mpmd_scenarios_7                                        = -1;
+static gint hf_mps_mpmd_scenarios_6                                        = -1;
+static gint hf_mps_mpmd_scenarios_5                                        = -1;
+static gint hf_mps_mpmd_scenarios_4                                        = -1;
+static gint hf_mps_mpmd_scenarios_3                                        = -1;
+static gint hf_mps_mpmd_scenarios_2                                        = -1;
+static gint hf_mps_mpmd_scenarios_1                                        = -1;
+static gint hf_mps_mpmd_scenarios_0                                        = -1;
+static gint hf_mps_supported_profile_and_protocol_dependency               = -1;
+static gint hf_mps_supported_profile_and_protocol_dependency_reserved                       = -1;
+static gint hf_mps_supported_profile_and_protocol_dependency_dis_connection_order_behaviour = -1;
+static gint hf_mps_supported_profile_and_protocol_dependency_gavdp_requirements             = -1;
+static gint hf_mps_supported_profile_and_protocol_dependency_sniff_mode_during_streaming    = -1;
+static gint hf_map_mas_goep_l2cap_psm                                      = -1;
+static gint hf_map_mns_goep_l2cap_psm                                      = -1;
+static gint hf_map_supported_features                                      = -1;
+static gint hf_map_supported_features_reserved                             = -1;
+static gint hf_map_supported_features_extended_event_report_1_1            = -1;
+static gint hf_map_supported_features_instance_information_feature         = -1;
+static gint hf_map_supported_features_delete_feature                       = -1;
+static gint hf_map_supported_features_uploading_feature                    = -1;
+static gint hf_map_supported_features_browsing_feature                     = -1;
+static gint hf_map_supported_features_notification_feature                 = -1;
+static gint hf_map_supported_features_notification_registration_feature    = -1;
+static gint hf_pbap_pse_supported_features                                 = -1;
+static gint hf_pbap_pse_supported_features_reserved                        = -1;
+static gint hf_pbap_pse_supported_features_download                        = -1;
+static gint hf_pbap_pse_supported_features_browsing                        = -1;
+static gint hf_pbap_pse_supported_features_database_identifier             = -1;
+static gint hf_pbap_pse_supported_features_folder_version_counters         = -1;
+static gint hf_pbap_pse_supported_features_vcard_selecting                 = -1;
+static gint hf_pbap_pse_supported_features_enhanced_missed_calls           = -1;
+static gint hf_pbap_pse_supported_features_x_bt_uci_vcard_property         = -1;
+static gint hf_pbap_pse_supported_features_x_bt_uid_vcard_property         = -1;
+static gint hf_pbap_pse_supported_features_contact_referencing             = -1;
+static gint hf_pbap_pse_supported_features_default_contact_image_format    = -1;
+static gint hf_pbap_goep_l2cap_psm                                         = -1;
 
 static gint ett_btsdp                                     = -1;
 static gint ett_btsdp_ssr                                 = -1;
@@ -341,14 +444,134 @@ static gint ett_btsdp_supported_features_mdep_role        = -1;
 static gint ett_btsdp_supported_features_mdep_description = -1;
 static gint ett_btsdp_protocol                            = -1;
 
+static const int *hfx_ctn_supported_features[] = {
+    &hf_ctn_supported_features_reserved,
+    &hf_ctn_supported_features_forward,
+    &hf_ctn_supported_features_delete,
+    &hf_ctn_supported_features_uploading,
+    &hf_ctn_supported_features_downloading,
+    &hf_ctn_supported_features_browsing,
+    &hf_ctn_supported_features_notification,
+    &hf_ctn_supported_features_account_management,
+    NULL
+};
+
+static const int *hfx_mps_mpsd_scenarios[] = {
+    &hf_mps_mpsd_scenarios_reserved,
+    &hf_mps_mpsd_scenarios_37,
+    &hf_mps_mpsd_scenarios_36,
+    &hf_mps_mpsd_scenarios_35,
+    &hf_mps_mpsd_scenarios_34,
+    &hf_mps_mpsd_scenarios_33,
+    &hf_mps_mpsd_scenarios_32,
+    &hf_mps_mpsd_scenarios_31,
+    &hf_mps_mpsd_scenarios_30,
+    &hf_mps_mpsd_scenarios_29,
+    &hf_mps_mpsd_scenarios_28,
+    &hf_mps_mpsd_scenarios_27,
+    &hf_mps_mpsd_scenarios_26,
+    &hf_mps_mpsd_scenarios_25,
+    &hf_mps_mpsd_scenarios_24,
+    &hf_mps_mpsd_scenarios_23,
+    &hf_mps_mpsd_scenarios_22,
+    &hf_mps_mpsd_scenarios_21,
+    &hf_mps_mpsd_scenarios_20,
+    &hf_mps_mpsd_scenarios_19,
+    &hf_mps_mpsd_scenarios_18,
+    &hf_mps_mpsd_scenarios_17,
+    &hf_mps_mpsd_scenarios_16,
+    &hf_mps_mpsd_scenarios_15,
+    &hf_mps_mpsd_scenarios_14,
+    &hf_mps_mpsd_scenarios_13,
+    &hf_mps_mpsd_scenarios_12,
+    &hf_mps_mpsd_scenarios_11,
+    &hf_mps_mpsd_scenarios_10,
+    &hf_mps_mpsd_scenarios_9,
+    &hf_mps_mpsd_scenarios_8,
+    &hf_mps_mpsd_scenarios_7,
+    &hf_mps_mpsd_scenarios_6,
+    &hf_mps_mpsd_scenarios_5,
+    &hf_mps_mpsd_scenarios_4,
+    &hf_mps_mpsd_scenarios_3,
+    &hf_mps_mpsd_scenarios_2,
+    &hf_mps_mpsd_scenarios_1,
+    &hf_mps_mpsd_scenarios_0,
+    NULL
+};
+
+static const int *hfx_mps_mpmd_scenarios[] = {
+    &hf_mps_mpmd_scenarios_reserved,
+    &hf_mps_mpmd_scenarios_18,
+    &hf_mps_mpmd_scenarios_17,
+    &hf_mps_mpmd_scenarios_16,
+    &hf_mps_mpmd_scenarios_15,
+    &hf_mps_mpmd_scenarios_14,
+    &hf_mps_mpmd_scenarios_13,
+    &hf_mps_mpmd_scenarios_12,
+    &hf_mps_mpmd_scenarios_11,
+    &hf_mps_mpmd_scenarios_10,
+    &hf_mps_mpmd_scenarios_9,
+    &hf_mps_mpmd_scenarios_8,
+    &hf_mps_mpmd_scenarios_7,
+    &hf_mps_mpmd_scenarios_6,
+    &hf_mps_mpmd_scenarios_5,
+    &hf_mps_mpmd_scenarios_4,
+    &hf_mps_mpmd_scenarios_3,
+    &hf_mps_mpmd_scenarios_2,
+    &hf_mps_mpmd_scenarios_1,
+    &hf_mps_mpmd_scenarios_0,
+    NULL
+};
+
+static const int *hfx_mps_supported_profile_and_protocol_dependency[] = {
+    &hf_mps_supported_profile_and_protocol_dependency_reserved,
+    &hf_mps_supported_profile_and_protocol_dependency_dis_connection_order_behaviour,
+    &hf_mps_supported_profile_and_protocol_dependency_gavdp_requirements,
+    &hf_mps_supported_profile_and_protocol_dependency_sniff_mode_during_streaming,
+    NULL
+};
+
+static const int *hfx_map_supported_features[] = {
+    &hf_map_supported_features_reserved,
+    &hf_map_supported_features_extended_event_report_1_1,
+    &hf_map_supported_features_instance_information_feature,
+    &hf_map_supported_features_delete_feature,
+    &hf_map_supported_features_uploading_feature,
+    &hf_map_supported_features_browsing_feature,
+    &hf_map_supported_features_notification_feature,
+    &hf_map_supported_features_notification_registration_feature,
+    NULL
+};
+
+static const int *hfx_pbap_pse_supported_repositories[] = {
+    &hf_pbap_pse_supported_repositories_reserved,
+    &hf_pbap_pse_supported_repositories_favourites,
+    &hf_pbap_pse_supported_repositories_speed_dial,
+    &hf_pbap_pse_supported_repositories_sim_card,
+    &hf_pbap_pse_supported_repositories_local_phonebook,
+    NULL
+};
+
+static const int *hfx_pbap_pse_supported_features[] = {
+    &hf_pbap_pse_supported_features_reserved,
+    &hf_pbap_pse_supported_features_default_contact_image_format,
+    &hf_pbap_pse_supported_features_contact_referencing,
+    &hf_pbap_pse_supported_features_x_bt_uid_vcard_property,
+    &hf_pbap_pse_supported_features_x_bt_uci_vcard_property,
+    &hf_pbap_pse_supported_features_enhanced_missed_calls,
+    &hf_pbap_pse_supported_features_vcard_selecting,
+    &hf_pbap_pse_supported_features_folder_version_counters,
+    &hf_pbap_pse_supported_features_database_identifier,
+    &hf_pbap_pse_supported_features_browsing,
+    &hf_pbap_pse_supported_features_download,
+    NULL
+};
+
 static expert_field ei_btsdp_continuation_state_none = EI_INIT;
 static expert_field ei_btsdp_continuation_state_large = EI_INIT;
 static expert_field ei_data_element_value_large = EI_INIT;
 
 static dissector_handle_t btsdp_handle;
-
-static dissector_table_t btrfcomm_service_table;
-static dissector_table_t btl2cap_service_table;
 
 static wmem_tree_t *tid_requests           = NULL;
 static wmem_tree_t *continuation_states    = NULL;
@@ -592,8 +815,16 @@ static const value_string vs_wap_attribute_id[] = {
 };
 
 static const value_string vs_map_mas_attribute_id[] = {
+    { 0x200,    "GOEP L2CAP PSM" }, /* MAP v1.2 and later */
     { 0x0315,   "MAS Instance ID" },
     { 0x0316,   "Supported Message Types" },
+    { 0x0317,   "Supported Features" }, /* MAP v1.2 and later */
+    { 0, NULL }
+};
+
+static const value_string vs_map_mns_attribute_id[] = {
+    { 0x200,    "GOEP L2CAP PSM" }, /* MAP v1.2 and later */
+    { 0x0317,   "Supported Features" }, /* MAP v1.2 and later */
     { 0, NULL }
 };
 
@@ -628,12 +859,32 @@ static const value_string vs_pan_panu_attribute_id[] = {
 };
 
 static const value_string vs_pbap_attribute_id[] = {
+    { 0x0200,   "GOEP L2CAP PSM" },
     { 0x0314,   "Supported Repositories" },
+    { 0x0317,   "Supported Features" },
     { 0, NULL }
 };
 
 static const value_string vs_synch_attribute_id[] = {
     { 0x0301,   "Supported Data Stores List" },
+    { 0, NULL }
+};
+
+static const value_string vs_mps_attribute_id[] = {
+    { 0x0200,  "Multiple Profiles - Single Device Supported Scenarios" },
+    { 0x0201,  "Multiple Profiles - Multiple Device Supported Scenarios" },
+    { 0x0202,  "Supported Profile and Protocol Dependency" },
+    { 0, NULL }
+};
+
+static const value_string vs_ctn_as_attribute_id[] = {
+    { 0x0315,  "Instance ID" },
+    { 0x0317,  "Supported Features" },
+    { 0, NULL }
+};
+
+static const value_string vs_ctn_ns_attribute_id[] = {
+    { 0x0317,  "Supported Features" },
     { 0, NULL }
 };
 
@@ -757,7 +1008,7 @@ static const value_string hid_device_subclass_subtype_vals[] = {
 };
 
 /* USB HID 1.11 bCountryCode */
-static const value_string hid_country_code_vals[] = {
+const value_string hid_country_code_vals[] = {
     {  0,   "Not Supported" },
     {  1,   "Arabic" },
     {  2,   "Belgian" },
@@ -796,7 +1047,6 @@ static const value_string hid_country_code_vals[] = {
     { 35,   "Turkish-F" },
     { 0, NULL }
 };
-
 
 static const value_string descriptor_list_type_vals[] = {
     { 0x22,  "Report" },
@@ -839,12 +1089,6 @@ static const value_string vs_data_element_type[] = {
     { 0, NULL }
 };
 
-const custom_uuid_t custom_uuid[] = {
-    { {0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x02, 0xEE, 0x00, 0x00, 0x02}, 16, "SyncML Server" },
-    { {0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x10, 0x00, 0x80, 0x00, 0x00, 0x02, 0xEE, 0x00, 0x00, 0x02}, 16, "SyncML Client" },
-    { {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}, 0, NULL},
-};
-
 extern value_string_ext ext_psm_vals;
 extern value_string_ext wap_mib_enum_vals_character_sets_ext;
 extern value_string_ext usb_langid_vals_ext;
@@ -860,10 +1104,10 @@ service_info_t* btsdp_get_service_info(wmem_tree_key_t* key)
     return (service_info_t *)wmem_tree_lookup32_array_le(service_infos, key);
 }
 
-static uuid_t
+static bluetooth_uuid_t
 get_specified_uuid(wmem_array_t  *uuid_array)
 {
-    uuid_t  uuid;
+    bluetooth_uuid_t uuid;
 
 /* Try to find UUID that is already use in RFCOMM or L2CAP, otherwise try to
    return last one (most generic).
@@ -871,50 +1115,25 @@ get_specified_uuid(wmem_array_t  *uuid_array)
     if (uuid_array) {
         guint32  i_uuid;
         guint32  size;
-        uuid_t  *p_uuid = NULL;
+        bluetooth_uuid_t *p_uuid = NULL;
 
         size = wmem_array_get_count(uuid_array);
 
         for (i_uuid = 0; i_uuid < size; i_uuid += 1) {
-            p_uuid = (uuid_t *) wmem_array_index(uuid_array, i_uuid);
-            if (dissector_get_uint_handle(btrfcomm_service_table, p_uuid->bt_uuid))
+            p_uuid = (bluetooth_uuid_t *) wmem_array_index(uuid_array, i_uuid);
+            if (p_uuid->size == 16) /* CustomUUID (UUID128) is always ok */
                 break;
-            if (dissector_get_uint_handle(btl2cap_service_table, p_uuid->bt_uuid))
+            if (p_uuid->size == 0)
+                continue;
+            if (dissector_get_string_handle(bluetooth_uuid_table, print_numeric_uuid(p_uuid)))
                 break;
         }
 
         if (p_uuid) return *p_uuid;
     }
 
-    memset(&uuid, 0, sizeof(uuid_t));
+    memset(&uuid, 0, sizeof(bluetooth_uuid_t));
     return uuid;
-}
-
-
-static gchar *
-print_uuid(uuid_t *uuid)
-{
-    if (uuid->bt_uuid) {
-        return wmem_strdup(wmem_packet_scope(), val_to_str_ext_const(uuid->bt_uuid, &bt_sig_uuid_vals_ext, "Unknown"));
-    } else {
-        guint i_uuid;
-
-        i_uuid = 0;
-        while (custom_uuid[i_uuid].name) {
-            if (custom_uuid[i_uuid].size != uuid->size) {
-                i_uuid += 1;
-                continue;
-            }
-
-            if (memcmp(uuid->data, custom_uuid[i_uuid].uuid, uuid->size) == 0) {
-                return wmem_strdup(wmem_packet_scope(), custom_uuid[i_uuid].name);
-            }
-
-            i_uuid += 1;
-        }
-
-        return bytes_to_ep_str(uuid->data, uuid->size);
-    }
 }
 
 
@@ -1131,7 +1350,7 @@ get_int_by_size(tvbuff_t *tvb, gint off, gint size)
 }
 
 static gint
-dissect_uuid(proto_tree *tree, tvbuff_t *tvb, gint offset, gint size, uuid_t *uuid)
+dissect_uuid(proto_tree *tree, tvbuff_t *tvb, gint offset, gint size, bluetooth_uuid_t *uuid)
 {
     proto_item  *item;
 
@@ -1146,20 +1365,20 @@ dissect_uuid(proto_tree *tree, tvbuff_t *tvb, gint offset, gint size, uuid_t *uu
     } else if (size == 16 && tvb_get_ntohs(tvb, offset) == 0x0000 && tvb_get_ntohl(tvb, offset + 4) == 0x1000 && tvb_get_ntoh64(tvb, offset + 8) == G_GUINT64_CONSTANT(0x800000805F9B34FB)) {
         item = proto_tree_add_item(tree, hf_data_element_value_uuid_128, tvb, offset, size, ENC_NA);
         uuid->bt_uuid = tvb_get_ntohs(tvb, offset + 2);
-        proto_item_append_text(item, " (%s)", val_to_str_ext_const(uuid->bt_uuid, &bt_sig_uuid_vals_ext, "Unknown"));
+        proto_item_append_text(item, " (%s)", val_to_str_ext_const(uuid->bt_uuid, &bluetooth_uuid_vals_ext, "Unknown"));
     } else {
         guint i_uuid;
         item = proto_tree_add_item(tree, hf_data_element_value_uuid, tvb, offset, size, ENC_NA);
 
         i_uuid = 0;
-        while (custom_uuid[i_uuid].name) {
-            if (custom_uuid[i_uuid].size != size) {
+        while (bluetooth_uuid_custom[i_uuid].name) {
+            if (bluetooth_uuid_custom[i_uuid].size != size) {
                 i_uuid += 1;
                 continue;
             }
 
-            if (tvb_memeql(tvb, offset, custom_uuid[i_uuid].uuid, 4) == 0) {
-                proto_item_append_text(item, " (%s)", custom_uuid[i_uuid].name);
+            if (tvb_memeql(tvb, offset, bluetooth_uuid_custom[i_uuid].uuid, 4) == 0) {
+                proto_item_append_text(item, " (%s)", bluetooth_uuid_custom[i_uuid].name);
                 break;
             }
 
@@ -1187,7 +1406,7 @@ dissect_continuation_state(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo,
     proto_item  *cont_item;
     guint length;
 
-    length = tvb_length_remaining(tvb, offset);
+    length = tvb_reported_length_remaining(tvb, offset);
     if (length == 0)  {
         proto_tree_add_expert(tree, pinfo, &ei_btsdp_continuation_state_none, tvb, offset, -1);
     } else if (length > 17) {
@@ -1237,6 +1456,7 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
     tid_request_t     *tid_request;
     continuation_state_data_t *continuation_state_data;
     wmem_tree_key_t    key[12];
+    wmem_tree_t       *subtree;
     guint32            k_interface_id;
     guint32            k_adapter_id;
     guint32            k_chandle;
@@ -1244,13 +1464,13 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
     guint32            k_tid;
     guint32            k_pdu_type;
     guint32            k_frame_number;
-    guint8             *k_continuation_state;
+    guint32           *k_continuation_state_array;
+    guint8            *continuation_state;
     guint32            interface_id;
     guint32            adapter_id;
     guint32            chandle;
     guint32            psm;
     guint32            frame_number;
-    guint32           *continuation_state_array;
 
     if (new_tvb) *new_tvb = NULL;
 
@@ -1285,7 +1505,7 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
     if (is_first) *is_first = TRUE;
     if (is_continued) *is_continued = TRUE;
 
-    length = tvb_length_remaining(tvb, offset);
+    length = tvb_reported_length_remaining(tvb, offset);
     if (length == 0)  {
         return offset;
     } else if (length > 17) {
@@ -1330,14 +1550,10 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                     if (tid_request->continuation_state_length > 0) {
                         /* fetch tid_request->continuation_state */
 
-                        k_continuation_state = (guint8 *) wmem_alloc0(wmem_packet_scope(), 20);
-                        k_continuation_state[0] = tid_request->continuation_state_length;
-                        memcpy(&k_continuation_state[1], tid_request->continuation_state, tid_request->continuation_state_length);
-                        continuation_state_array = (guint32 *) k_continuation_state;
-
-                        k_continuation_state = (guint8 *) wmem_alloc0(wmem_packet_scope(), 20);
-                        k_continuation_state[0] = tid_request->continuation_state_length;
-                        memcpy(&k_continuation_state[1], tid_request->continuation_state, tid_request->continuation_state_length);
+                        k_continuation_state_array =  (guint32 *) wmem_alloc0(wmem_packet_scope(), 20);
+                        continuation_state = (guint8 *) k_continuation_state_array;
+                        continuation_state[0] = tid_request->continuation_state_length;
+                        memcpy(&continuation_state[1], tid_request->continuation_state, tid_request->continuation_state_length);
 
                         k_interface_id       = interface_id;
                         k_adapter_id         = adapter_id;
@@ -1357,15 +1573,15 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                         key[4].length = 1;
                         key[4].key    = &k_pdu_type;
                         key[5].length = 1;
-                        key[5].key    = (guint32 *) &k_continuation_state[0];
+                        key[5].key    = &k_continuation_state_array[0];
                         key[6].length = 1;
-                        key[6].key    = (guint32 *) &k_continuation_state[4];
+                        key[6].key    = &k_continuation_state_array[1];
                         key[7].length = 1;
-                        key[7].key    = (guint32 *) &k_continuation_state[8];
+                        key[7].key    = &k_continuation_state_array[2];
                         key[8].length = 1;
-                        key[8].key    = (guint32 *) &k_continuation_state[12];
+                        key[8].key    = &k_continuation_state_array[3];
                         key[9].length = 1;
-                        key[9].key    = (guint32 *) &k_continuation_state[16];
+                        key[9].key    = &k_continuation_state_array[4];
                         key[10].length = 1;
                         key[10].key    = &k_frame_number;
                         key[11].length = 0;
@@ -1377,11 +1593,11 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                                 continuation_state_data->chandle == chandle &&
                                 continuation_state_data->psm == psm &&
                                 continuation_state_data->pdu_type == tid_request->pdu_type &&
-                                continuation_state_data->continuation_state[0] == continuation_state_array[0] &&
-                                continuation_state_data->continuation_state[1] == continuation_state_array[1] &&
-                                continuation_state_data->continuation_state[2] == continuation_state_array[2] &&
-                                continuation_state_data->continuation_state[3] == continuation_state_array[3] &&
-                                continuation_state_data->continuation_state[4] == continuation_state_array[4]) {
+                                continuation_state_data->continuation_state[0] == k_continuation_state_array[0] &&
+                                continuation_state_data->continuation_state[1] == k_continuation_state_array[1] &&
+                                continuation_state_data->continuation_state[2] == k_continuation_state_array[2] &&
+                                continuation_state_data->continuation_state[3] == k_continuation_state_array[3] &&
+                                continuation_state_data->continuation_state[4] == k_continuation_state_array[4]) {
                             tid_request->data = (guint8 *) wmem_alloc(wmem_file_scope(), continuation_state_data->data_length + attribute_list_byte_count);
                             tid_request->data_length = continuation_state_data->data_length + attribute_list_byte_count;
                             memcpy(tid_request->data, continuation_state_data->data, continuation_state_data->data_length);
@@ -1436,23 +1652,20 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                         tid_request->data_length, tid_request->data_length);
 
                 if (new_tvb) *new_tvb = next_tvb;
-                if (tid_request->continuation_state_length) *is_first = FALSE;
+                if (tid_request->continuation_state_length && is_first) *is_first = FALSE;
 
                 if (uuid_array) *uuid_array = tid_request->uuid_array;
                 if (record_handle) *record_handle = tid_request->record_handle;
             }
         }
     } else {
-        guint8      *continuation_state;
+        guint8      *continuation_state_buffer;
         guint8       continuation_state_length;
-        guint8      *packet_scope_string;
 
         continuation_state_length = tvb_get_guint8(tvb, offset);
         offset++;
 
-        continuation_state = (guint8 *) wmem_alloc(wmem_file_scope(), continuation_state_length);
-        packet_scope_string = tvb_bytes_to_ep_str(tvb, offset, continuation_state_length);
-        memcpy(continuation_state, packet_scope_string, continuation_state_length);
+        continuation_state_buffer = tvb_bytes_to_str(wmem_file_scope(), tvb, offset, continuation_state_length);
 
         if (!pinfo->fd->flags.visited) {
             if (is_request) {
@@ -1479,7 +1692,7 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
 
                 tid_request->pdu_type = pdu_type;
 
-                tid_request->continuation_state        = continuation_state;
+                tid_request->continuation_state        = continuation_state_buffer;
                 tid_request->continuation_state_length = continuation_state_length;
 
                 wmem_tree_insert32_array(tid_requests, key, tid_request);
@@ -1494,22 +1707,16 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
 
                     if (tid_request->continuation_state_length > 0) {
                         /* fetch tid_request->continuation_state */
-
-                        k_continuation_state = (guint8 *) wmem_alloc0(wmem_packet_scope(), 20);
-                        k_continuation_state[0] = tid_request->continuation_state_length;
-                        memcpy(&k_continuation_state[1], tid_request->continuation_state, tid_request->continuation_state_length);
-                        continuation_state_array = (guint32 *) k_continuation_state;
-
-                        k_continuation_state = (guint8 *) wmem_alloc0(wmem_packet_scope(), 20);
-                        k_continuation_state[0] = tid_request->continuation_state_length;
-                        memcpy(&k_continuation_state[1], tid_request->continuation_state, tid_request->continuation_state_length);
+                        k_continuation_state_array =  (guint32 *) wmem_alloc0(wmem_packet_scope(), 20);
+                        continuation_state = (guint8 *) k_continuation_state_array;
+                        continuation_state[0] = tid_request->continuation_state_length;
+                        memcpy(&continuation_state[1], tid_request->continuation_state, tid_request->continuation_state_length);
 
                         k_interface_id       = interface_id;
                         k_adapter_id         = adapter_id;
                         k_chandle            = chandle;
                         k_psm                = psm;
                         k_pdu_type           = tid_request->pdu_type;
-                        k_frame_number       = frame_number;
 
                         key[0].length = 1;
                         key[0].key    = &k_interface_id;
@@ -1522,31 +1729,21 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                         key[4].length = 1;
                         key[4].key    = &k_pdu_type;
                         key[5].length = 1;
-                        key[5].key    = (guint32 *) &k_continuation_state[0];
+                        key[5].key    = &k_continuation_state_array[0];
                         key[6].length = 1;
-                        key[6].key    = (guint32 *) &k_continuation_state[4];
+                        key[6].key    = &k_continuation_state_array[1];
                         key[7].length = 1;
-                        key[7].key    = (guint32 *) &k_continuation_state[8];
+                        key[7].key    = &k_continuation_state_array[2];
                         key[8].length = 1;
-                        key[8].key    = (guint32 *) &k_continuation_state[12];
+                        key[8].key    = &k_continuation_state_array[3];
                         key[9].length = 1;
-                        key[9].key    = (guint32 *) &k_continuation_state[16];
-                        key[10].length = 1;
-                        key[10].key    = &k_frame_number;
-                        key[11].length = 0;
-                        key[11].key    = NULL;
+                        key[9].key     = &k_continuation_state_array[4];
+                        key[10].length = 0;
+                        key[10].key    = NULL;
 
-                        continuation_state_data = (continuation_state_data_t *) wmem_tree_lookup32_array_le(continuation_states, key);
-                        if (continuation_state_data && continuation_state_data->interface_id == interface_id &&
-                                continuation_state_data->adapter_id == adapter_id &&
-                                continuation_state_data->chandle == chandle &&
-                                continuation_state_data->psm == psm &&
-                                continuation_state_data->pdu_type == tid_request->pdu_type &&
-                                continuation_state_data->continuation_state[0] == continuation_state_array[0] &&
-                                continuation_state_data->continuation_state[1] == continuation_state_array[1] &&
-                                continuation_state_data->continuation_state[2] == continuation_state_array[2] &&
-                                continuation_state_data->continuation_state[3] == continuation_state_array[3] &&
-                                continuation_state_data->continuation_state[4] == continuation_state_array[4]) {
+                        subtree = (wmem_tree_t *) wmem_tree_lookup32_array(continuation_states, key);
+                        continuation_state_data = (subtree) ? (continuation_state_data_t *) wmem_tree_lookup32_le(subtree, frame_number) : NULL;
+                        if (continuation_state_data) {
                             tid_request->data = (guint8 *) wmem_alloc(wmem_file_scope(), continuation_state_data->data_length + attribute_list_byte_count);
                             tid_request->data_length = continuation_state_data->data_length + attribute_list_byte_count;
                             memcpy(tid_request->data, continuation_state_data->data, continuation_state_data->data_length);
@@ -1563,14 +1760,10 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                     if (record_handle) *record_handle = tid_request->record_handle;
 
                     /* save tid_request in continuation_state data */
-                    k_continuation_state = (guint8 *) wmem_alloc0(wmem_packet_scope(), 20);
-                    k_continuation_state[0] = continuation_state_length;
-                    memcpy(&k_continuation_state[1], continuation_state, continuation_state_length);
-                    continuation_state_array = (guint32 *) k_continuation_state;
-
-                    k_continuation_state = (guint8 *) wmem_alloc0(wmem_packet_scope(), 20);
-                    k_continuation_state[0] = continuation_state_length;
-                    memcpy(&k_continuation_state[1], continuation_state, continuation_state_length);
+                    k_continuation_state_array =  (guint32 *) wmem_alloc0(wmem_packet_scope(), 20);
+                    continuation_state = (guint8 *) k_continuation_state_array;
+                    continuation_state[0] = continuation_state_length;
+                    memcpy(&continuation_state[1], continuation_state_buffer, continuation_state_length);
 
                     k_interface_id       = interface_id;
                     k_adapter_id         = adapter_id;
@@ -1590,15 +1783,15 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                     key[4].length = 1;
                     key[4].key    = &k_pdu_type;
                     key[5].length = 1;
-                    key[5].key    = (guint32 *) &k_continuation_state[0];
+                    key[5].key    = &k_continuation_state_array[0];
                     key[6].length = 1;
-                    key[6].key    = (guint32 *) &k_continuation_state[4];
+                    key[6].key    = &k_continuation_state_array[1];
                     key[7].length = 1;
-                    key[7].key    = (guint32 *) &k_continuation_state[8];
+                    key[7].key    = &k_continuation_state_array[2];
                     key[8].length = 1;
-                    key[8].key    = (guint32 *) &k_continuation_state[12];
+                    key[8].key    = &k_continuation_state_array[3];
                     key[9].length = 1;
-                    key[9].key    = (guint32 *) &k_continuation_state[16];
+                    key[9].key    = &k_continuation_state_array[4];
                     key[10].length = 1;
                     key[10].key    = &k_frame_number;
                     key[11].length = 0;
@@ -1610,11 +1803,11 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                     continuation_state_data->chandle = chandle;
                     continuation_state_data->psm = psm;
                     continuation_state_data->pdu_type = pdu_type;
-                    continuation_state_data->continuation_state[0] = continuation_state_array[0];
-                    continuation_state_data->continuation_state[1] = continuation_state_array[1];
-                    continuation_state_data->continuation_state[2] = continuation_state_array[2];
-                    continuation_state_data->continuation_state[3] = continuation_state_array[3];
-                    continuation_state_data->continuation_state[4] = continuation_state_array[4];
+                    continuation_state_data->continuation_state[0] = k_continuation_state_array[0];
+                    continuation_state_data->continuation_state[1] = k_continuation_state_array[1];
+                    continuation_state_data->continuation_state[2] = k_continuation_state_array[2];
+                    continuation_state_data->continuation_state[3] = k_continuation_state_array[3];
+                    continuation_state_data->continuation_state[4] = k_continuation_state_array[4];
                     continuation_state_data->data = tid_request->data;
                     continuation_state_data->data_length = tid_request->data_length;
 
@@ -1659,7 +1852,7 @@ reassemble_continuation_state(tvbuff_t *tvb, packet_info *pinfo,
                         tid_request->data_length, tid_request->data_length);
 
                 if (new_tvb) *new_tvb = next_tvb;
-                if (tid_request->continuation_state_length) *is_first = FALSE;
+                if (tid_request->continuation_state_length && is_first) *is_first = FALSE;
 
                 if (uuid_array) *uuid_array = tid_request->uuid_array;
                 if (record_handle) *record_handle = tid_request->record_handle;
@@ -1709,7 +1902,7 @@ dissect_data_element(proto_tree *tree, proto_tree **next_tree,
     }
 
     pitem = proto_tree_add_item(ptree, hf_data_element_value, tvb, offset,  0, ENC_NA);
-    if (length > tvb_length_remaining(tvb, offset)) {
+    if (length > tvb_reported_length_remaining(tvb, offset)) {
         expert_add_info(pinfo, pitem, &ei_data_element_value_large);
         length = 0;
     }
@@ -1805,7 +1998,7 @@ dissect_protocol_descriptor_list(proto_tree *next_tree, tvbuff_t *tvb,
     guint32          value;
     gint             length;
     guint32          i_protocol;
-    uuid_t           uuid;
+    bluetooth_uuid_t uuid;
     service_info_t  *record = NULL;
 
     list_offset = offset;
@@ -1929,7 +2122,7 @@ dissect_protocol_descriptor_list(proto_tree *next_tree, tvbuff_t *tvb,
 
 static gint
 dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
-        gint offset, gint attribute, uuid_t service_uuid,
+        gint offset, gint attribute, bluetooth_uuid_t service_uuid,
         gint service_did_vendor_id, gint service_did_vendor_id_source,
         service_info_t  *service_info, wmem_strbuf_t **pinfo_buf)
 {
@@ -1959,14 +2152,14 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
     guint8         mdep_id;
     guint16        vendor_id_source;
     const guint8  *str_val;
-    guint16        supported_features;
+    guint32        supported_features;
     guint          i_feature;
     guint          i_protocol;
     guint16        psm;
     guint8        *new_str;
     guint32        value;
     guint64        value_64;
-    uuid_t         uuid;
+    bluetooth_uuid_t uuid;
     gchar         *uuid_str;
     gint           length;
     gint           protocol_order;
@@ -1998,7 +2191,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                     vendor_id = tvb_get_ntohs(tvb, offset);
                     if (service_did_vendor_id_source == DID_VENDOR_ID_SOURCE_BLUETOOTH_SIG) {
                         proto_tree_add_item(next_tree, hf_did_vendor_id_bluetooth_sig, tvb, offset, 2, ENC_BIG_ENDIAN);
-                        str_val = val_to_str_ext_const(vendor_id, &bthci_evt_comp_id_ext, "Unknown");
+                        str_val = val_to_str_ext_const(vendor_id, &bluetooth_company_id_vals_ext, "Unknown");
                     } else if (service_did_vendor_id_source == DID_VENDOR_ID_SOURCE_USB_FORUM) {
                         proto_tree_add_item(next_tree, hf_did_vendor_id_usb_forum, tvb, offset, 2, ENC_BIG_ENDIAN);
                         str_val = val_to_str_ext_const(vendor_id, &ext_usb_vendors_vals, "Unknown");
@@ -2193,16 +2386,37 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
             break;
         case BTSDP_PBAP_PSE_SERVICE_UUID:
             switch (attribute) {
+                case 0x200:
+                    proto_tree_add_item(next_tree, hf_pbap_goep_l2cap_psm, tvb, offset, 2, ENC_BIG_ENDIAN);
+                    psm = tvb_get_ntohs(tvb, offset);
+                    wmem_strbuf_append_printf(info_buf, "%u (0x%02x)", psm, psm);
+                    if (!pinfo->fd->flags.visited  && service_info)
+                        save_channel(pinfo, BTSDP_L2CAP_PROTOCOL_UUID, psm, -1, service_info);
+                    break;
                 case 0x314:
-                    proto_tree_add_item(next_tree, hf_pbap_pse_supported_repositories_reserved, tvb, offset, 1, ENC_BIG_ENDIAN);
-                    proto_tree_add_item(next_tree, hf_pbap_pse_supported_repositories_sim_card, tvb, offset, 1, ENC_BIG_ENDIAN);
-                    proto_tree_add_item(next_tree, hf_pbap_pse_supported_repositories_local_phonebook, tvb, offset, 1, ENC_BIG_ENDIAN);
-
+                    proto_tree_add_bitmask_with_flags(next_tree, tvb, offset, hf_pbap_pse_supported_repositories, ett_btsdp_supported_features,  hfx_pbap_pse_supported_repositories, ENC_NA, BMT_NO_APPEND);
                     supported_features = tvb_get_guint8(tvb, offset);
 
-                    wmem_strbuf_append_printf(info_buf, "%s%s",
+                    wmem_strbuf_append_printf(info_buf, "%s%s%s%s",
                             (supported_features & 0x01) ? "LocalPhonebook " : "",
-                            (supported_features & 0x02) ? "SIM " : "");
+                            (supported_features & 0x02) ? "SIM " : "",
+                            (supported_features & 0x04) ? "SpeedDial " : "",
+                            (supported_features & 0x08) ? "Favourites " : "");
+                    break;
+                case 0x317:
+                    proto_tree_add_bitmask_with_flags(next_tree, tvb, offset, hf_pbap_pse_supported_features, ett_btsdp_supported_features,  hfx_pbap_pse_supported_features, ENC_NA, BMT_NO_APPEND);
+                    supported_features = tvb_get_guint32(tvb, offset, ENC_BIG_ENDIAN);
+                    wmem_strbuf_append_printf(info_buf, "%s%s%s%s%s%s%s%s%s%s",
+                            (supported_features & 0x001) ? "Download " : "",
+                            (supported_features & 0x002) ? "Browsing " : "",
+                            (supported_features & 0x004) ? "DatabaseIdentifier " : "",
+                            (supported_features & 0x008) ? "FolderVersionCounters " : "",
+                            (supported_features & 0x010) ? "vCardSelecting " : "",
+                            (supported_features & 0x020) ? "EnhancedMissedCalls " : "",
+                            (supported_features & 0x040) ? "X-BT-UCIvCardProperty " : "",
+                            (supported_features & 0x080) ? "X-BT-UIDvCardProperty " : "",
+                            (supported_features & 0x100) ? "ContactReferencing " : "",
+                            (supported_features & 0x200) ? "DefaultContactImageFormat " : "");
                     break;
                 default:
                     found = FALSE;
@@ -2250,6 +2464,13 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
         case BTSDP_MAP_SERVICE_UUID:
         case BTSDP_MAP_ACCESS_SRV_SERVICE_UUID:
             switch (attribute) {
+                case 0x200:
+                    proto_tree_add_item(next_tree, hf_map_mas_goep_l2cap_psm, tvb, offset, 2, ENC_BIG_ENDIAN);
+                    psm = tvb_get_ntohs(tvb, offset);
+                    wmem_strbuf_append_printf(info_buf, "%u (0x%02x)", psm, psm);
+                    if (!pinfo->fd->flags.visited  && service_info)
+                        save_channel(pinfo, BTSDP_L2CAP_PROTOCOL_UUID, psm, -1, service_info);
+                    break;
                 case 0x315:
                     proto_tree_add_item(next_tree, hf_map_mas_instance_id, tvb, offset, 1, ENC_BIG_ENDIAN);
                     value = tvb_get_guint8(tvb, offset);
@@ -2269,6 +2490,43 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                             (supported_features & 0x04) ? "SMS_CDMA " : "",
                             (supported_features & 0x08) ? "MMS " : "");
                     break;
+                case 0x317:
+                    proto_tree_add_bitmask_with_flags(next_tree, tvb, offset, hf_map_supported_features, ett_btsdp_supported_features,  hfx_map_supported_features, ENC_NA, BMT_NO_APPEND);
+                    supported_features = tvb_get_guint32(tvb, offset, ENC_BIG_ENDIAN);
+                    wmem_strbuf_append_printf(info_buf, "%s%s%s%s%s%s%s",
+                            (supported_features & 0x01) ? "NotificationRegistration Feature " : "",
+                            (supported_features & 0x02) ? "NotificationFeature " : "",
+                            (supported_features & 0x04) ? "BrowsingFeature " : "",
+                            (supported_features & 0x08) ? "UploadingFeature " : "",
+                            (supported_features & 0x10) ? "DeleteFeature " : "",
+                            (supported_features & 0x20) ? "InstanceInformationFeature " : "",
+                            (supported_features & 0x40) ? "ExtendedEventReport1.1 " : "");
+                    break;
+                default:
+                    found = FALSE;
+            }
+            break;
+        case BTSDP_MAP_NOTIFICATION_SRV_SERVICE_UUID:
+            switch (attribute) {
+                case 0x200:
+                    proto_tree_add_item(next_tree, hf_map_mns_goep_l2cap_psm, tvb, offset, 2, ENC_BIG_ENDIAN);
+                    psm = tvb_get_ntohs(tvb, offset);
+                    wmem_strbuf_append_printf(info_buf, "%u (0x%02x)", psm, psm);
+                    if (!pinfo->fd->flags.visited  && service_info)
+                        save_channel(pinfo, BTSDP_L2CAP_PROTOCOL_UUID, psm, -1, service_info);
+                    break;
+                case 0x317:
+                    proto_tree_add_bitmask_with_flags(next_tree, tvb, offset, hf_map_supported_features, ett_btsdp_supported_features,  hfx_map_supported_features, ENC_NA, BMT_NO_APPEND);
+                    supported_features = tvb_get_guint32(tvb, offset, ENC_BIG_ENDIAN);
+                    wmem_strbuf_append_printf(info_buf, "%s%s%s%s%s%s%s",
+                            (supported_features & 0x01) ? "NotificationRegistration Feature " : "",
+                            (supported_features & 0x02) ? "NotificationFeature " : "",
+                            (supported_features & 0x04) ? "BrowsingFeature " : "",
+                            (supported_features & 0x08) ? "UploadingFeature " : "",
+                            (supported_features & 0x10) ? "DeleteFeature " : "",
+                            (supported_features & 0x20) ? "InstanceInformationFeature " : "",
+                            (supported_features & 0x40) ? "ExtendedEventReport1.1 " : "");
+                    break;
                 default:
                     found = FALSE;
             }
@@ -2279,22 +2537,22 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
             switch (attribute) {
                 case 0x300:
                     proto_tree_add_item(next_tree, hf_hcrp_1284_id, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x302:
                     proto_tree_add_item(next_tree, hf_hcrp_device_name, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x304:
                     proto_tree_add_item(next_tree, hf_hcrp_friendly_name, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x306:
                     proto_tree_add_item(next_tree, hf_hcrp_device_location, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 default:
@@ -2306,8 +2564,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
             switch (attribute) {
                 case 0x306:
                     proto_tree_add_item(next_tree, hf_wap_network_address, tvb, offset, 4, ENC_BIG_ENDIAN);
-                    value = tvb_get_ntohl(tvb, offset);
-                    wmem_strbuf_append(info_buf, ip_to_str((guint8 *)&value));
+                    wmem_strbuf_append(info_buf, tvb_ip_to_str(tvb, offset));
                     break;
                 case 0x307:
                     proto_tree_add_item(next_tree, hf_wap_gateway, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2316,7 +2573,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                     break;
                 case 0x308:
                     proto_tree_add_item(next_tree, hf_wap_homepage_url, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x309:
@@ -2388,7 +2645,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                             proto_item_set_len(entry_item, (new_offset - entry_offset) + length);
                             entry_offset = new_offset;
                             proto_tree_add_item(next_tree, hf_hdp_supported_features_mdep_description, tvb, entry_offset, length, ENC_ASCII | ENC_NA);
-                            proto_item_append_text(entry_item, ": %s", tvb_get_string(wmem_packet_scope(), tvb, entry_offset, length));
+                            proto_item_append_text(entry_item, ": %s", tvb_get_string_enc(wmem_packet_scope(), tvb, entry_offset, length, ENC_ASCII));
                             entry_offset += length;
                         }
 
@@ -2430,12 +2687,12 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                 case 0x30D:
                 case 0x200:
                     proto_tree_add_item(next_tree, hf_pan_ipv4_subnet, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x30E:
                     proto_tree_add_item(next_tree, hf_pan_ipv6_subnet, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 default:
@@ -2462,12 +2719,12 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                 case 0x30D:
                 case 0x200:
                     proto_tree_add_item(next_tree, hf_pan_ipv4_subnet, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x30E:
                     proto_tree_add_item(next_tree, hf_pan_ipv6_subnet, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 default:
@@ -2519,7 +2776,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                     break;
                 case 0x306:
                     proto_tree_add_item(next_tree, hf_dun_escape_sequence, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 default:
@@ -2660,7 +2917,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                         value = tvb_get_ntohs(tvb, list_offset);
                         wmem_strbuf_append_printf(info_buf, "Lang ID: %s", val_to_str_ext_const(value, &usb_langid_vals_ext, "Unknown"));
                         proto_item_append_text(entry_item, ": Lang ID: %s", val_to_str_ext_const(value, &usb_langid_vals_ext, "Unknown"));
-                        proto_tree_add_item(last_tree, hf_sdp_lang_id, tvb, list_offset, entry_length, ENC_ASCII | ENC_NA);
+                        proto_tree_add_item(last_tree, hf_sdp_lang_id, tvb, list_offset, entry_length, ENC_BIG_ENDIAN);
                         list_offset += entry_length;
 
                         dissect_data_element(sub_tree, &last_tree, pinfo, tvb, list_offset);
@@ -2888,17 +3145,17 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
             switch (attribute) {
                 case 0x350:
                     proto_tree_add_item(next_tree, hf_bpp_document_formats_supported, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x352:
-                    proto_tree_add_item(next_tree, hf_bpp_character_repertoires_support, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_bytes_to_ep_str(tvb, offset, size);
+                    proto_tree_add_item(next_tree, hf_bpp_character_repertoires_support, tvb, offset, size, ENC_NA);
+                    new_str = tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, size);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x354:
                     proto_tree_add_item(next_tree, hf_bpp_xhtml_print_image_formats_supported, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x356:
@@ -2908,17 +3165,17 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                     break;
                 case 0x358:
                     proto_tree_add_item(next_tree, hf_bpp_1284_id, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x35A:
                     proto_tree_add_item(next_tree, hf_bpp_printer_name, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x35C:
                     proto_tree_add_item(next_tree, hf_bpp_printer_location, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x35E:
@@ -2928,7 +3185,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                     break;
                 case 0x360:
                     proto_tree_add_item(next_tree, hf_bpp_media_types_supported, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x362:
@@ -2948,7 +3205,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                     break;
                 case 0x368:
                     proto_tree_add_item(next_tree, hf_bpp_rui_formats_supported, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x370:
@@ -2963,17 +3220,17 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
                     break;
                 case 0x374:
                     proto_tree_add_item(next_tree, hf_bpp_reference_printing_top_url, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x376:
                     proto_tree_add_item(next_tree, hf_bpp_direct_printing_top_url, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x37A:
                     proto_tree_add_item(next_tree, hf_bpp_device_name, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 default:
@@ -2984,13 +3241,62 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
             switch (attribute) {
                 case 0x368:
                     proto_tree_add_item(next_tree, hf_bpp_rui_formats_supported, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
                     break;
                 case 0x378:
                     proto_tree_add_item(next_tree, hf_bpp_printer_admin_rui_top_url, tvb, offset, size, ENC_ASCII | ENC_NA);
-                    new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+                    new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
                     wmem_strbuf_append(info_buf, new_str);
+                    break;
+                default:
+                    found = FALSE;
+            }
+            break;
+        case BTSDP_CTN_ACCESS_SERVICE_UUID:
+        case BTSDP_CTN_NOTIFICATION_SERVICE_UUID:
+            if (service_uuid.bt_uuid == BTSDP_CTN_NOTIFICATION_SERVICE_UUID && attribute != 0x317) {
+                found = FALSE;
+                break;
+            }
+            switch (attribute) {
+                case 0x315:
+                    proto_tree_add_item(next_tree, hf_ctn_instance_id, tvb, offset, 1, ENC_NA);
+                    value = tvb_get_guint8(tvb, offset);
+                    wmem_strbuf_append_printf(info_buf, "%u (0x%02x)", value, value);
+
+                    break;
+                case 0x317:
+                    proto_tree_add_bitmask(next_tree, tvb, offset, hf_ctn_supported_features, ett_btsdp_supported_features,  hfx_ctn_supported_features, ENC_NA);
+
+                    supported_features = tvb_get_ntohl(tvb, offset);
+                    wmem_strbuf_append_printf(info_buf, "%s%s%s%s%s%s%s",
+                            (supported_features & 0x01) ? "AccountManager " : "",
+                            (supported_features & 0x02) ? "Notification " : "",
+                            (supported_features & 0x04) ? "Browsing " : "",
+                            (supported_features & 0x08) ? "Downloading " : "",
+                            (supported_features & 0x10) ? "Uploading " : "",
+                            (supported_features & 0x20) ? "Delete " : "",
+                            (supported_features & 0x40) ? "Forward " : "");
+                    break;
+                default:
+                    found = FALSE;
+            }
+            break;
+        case BTSDP_MULTI_PROFILE_UUID:
+        case BTSDP_MULTI_PROFILE_SC_UUID:
+            switch (attribute) {
+                case 0x200:
+                    proto_tree_add_bitmask(next_tree, tvb, offset, hf_mps_mpsd_scenarios, ett_btsdp_supported_features,  hfx_mps_mpsd_scenarios, ENC_NA);
+
+                    break;
+                case 0x201:
+                    proto_tree_add_bitmask(next_tree, tvb, offset, hf_mps_mpmd_scenarios, ett_btsdp_supported_features,  hfx_mps_mpmd_scenarios, ENC_NA);
+
+                    break;
+                case 0x202:
+                    proto_tree_add_bitmask(next_tree, tvb, offset, hf_mps_supported_profile_and_protocol_dependency, ett_btsdp_supported_features,  hfx_mps_supported_profile_and_protocol_dependency, ENC_NA);
+
                     break;
                 default:
                     found = FALSE;
@@ -3062,7 +3368,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
 
                 dissect_data_element(entry_tree, &sub_tree, pinfo, tvb, list_offset);
                 list_offset = get_type_length(tvb, list_offset, &entry_length);
-                new_str = tvb_get_string(wmem_packet_scope(), tvb, list_offset, entry_length);
+                new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, list_offset, entry_length, ENC_ASCII);
                 wmem_strbuf_append_printf(info_buf, "Lang: %s", new_str);
                 proto_item_append_text(entry_item, ": Lang: %s", new_str);
                 proto_tree_add_item(sub_tree, hf_sdp_lang_code, tvb, list_offset, entry_length, ENC_ASCII | ENC_NA);
@@ -3140,17 +3446,17 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
             break;
         case 0x00A:
             proto_tree_add_item(next_tree, hf_sdp_service_documentation_url, tvb, offset, size, ENC_ASCII | ENC_NA);
-            new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+            new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
             wmem_strbuf_append(info_buf, new_str);
             break;
         case 0x00B:
             proto_tree_add_item(next_tree, hf_sdp_service_client_executable_url, tvb, offset, size, ENC_ASCII | ENC_NA);
-            new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+            new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
             wmem_strbuf_append(info_buf, new_str);
             break;
         case 0x00C:
             proto_tree_add_item(next_tree, hf_sdp_service_icon_url, tvb, offset, size, ENC_ASCII | ENC_NA);
-            new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+            new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
             wmem_strbuf_append(info_buf, new_str);
             break;
         case 0x00D:
@@ -3178,17 +3484,17 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
             break;
         case 0x100:
             proto_tree_add_item(next_tree, hf_sdp_service_name, tvb, offset, size, ENC_ASCII | ENC_NA);
-            new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+            new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
             wmem_strbuf_append(info_buf, new_str);
             break;
         case 0x101:
             proto_tree_add_item(next_tree, hf_sdp_service_description, tvb, offset, size, ENC_ASCII | ENC_NA);
-            new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+            new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
             wmem_strbuf_append(info_buf, new_str);
             break;
         case 0x102:
             proto_tree_add_item(next_tree, hf_sdp_service_provider_name, tvb, offset, size, ENC_ASCII | ENC_NA);
-            new_str = tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+            new_str = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
             wmem_strbuf_append(info_buf, new_str);
             break;
         default:
@@ -3219,7 +3525,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
         break;
     case 8: /* fall through */
     case 4: {
-        gchar *ptr = (gchar*)tvb_get_string(wmem_packet_scope(), tvb, offset, size);
+        gchar *ptr = (gchar*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, size, ENC_ASCII);
 
         proto_tree_add_item(next_tree, (type == 8) ? hf_data_element_value_url : hf_data_element_value_string, tvb, offset, size, ENC_NA | ENC_ASCII);
         wmem_strbuf_append_printf(info_buf, "%s ", ptr);
@@ -3273,7 +3579,7 @@ dissect_sdp_type(proto_tree *tree, packet_info *pinfo, tvbuff_t *tvb,
 
 static gint
 dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
-        packet_info *pinfo, uuid_t uuid, gint service_offset,
+        packet_info *pinfo, bluetooth_uuid_t uuid, gint service_offset,
         service_info_t  *service_info, gint number_of_attributes, gboolean attribute_only)
 {
     proto_tree          *attribute_tree;
@@ -3287,8 +3593,8 @@ dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
     const gchar         *attribute_name;
     wmem_strbuf_t       *attribute_value = NULL;
     guint16              id;
-    gint                 service_did_vendor_id = 0;
-    gint                 service_did_vendor_id_source = 0;
+    gint                 service_did_vendor_id = -1;
+    gint                 service_did_vendor_id_source = -1;
     gint                 hfx_attribute_id = hf_service_attribute_id_generic;
     const value_string  *name_vals = NULL;
     const guint8        *profile_speficic = "";
@@ -3305,8 +3611,10 @@ dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
             hfx_attribute_id = hf_service_attribute_id_did;
             profile_speficic = "(DID) ";
 
-            service_did_vendor_id_source = findDidVendorIdSource(tvb, service_offset, number_of_attributes);
-            service_did_vendor_id = findDidVendorId(tvb, service_offset, number_of_attributes);
+            if (number_of_attributes > 1) {
+                service_did_vendor_id_source = findDidVendorIdSource(tvb, service_offset, number_of_attributes);
+                service_did_vendor_id = findDidVendorId(tvb, service_offset, number_of_attributes);
+            }
             break;
         case BTSDP_HID_SERVICE_UUID:
             name_vals = vs_hid_attribute_id;
@@ -3318,7 +3626,6 @@ dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
             hfx_attribute_id = hf_service_attribute_id_synch;
             profile_speficic = "(SYNCH) ";
             break;
-        case BTSDP_PBAP_PCE_SERVICE_UUID:
         case BTSDP_PBAP_PSE_SERVICE_UUID:
         case BTSDP_PBAP_SERVICE_UUID:
             name_vals = vs_pbap_attribute_id;
@@ -3350,6 +3657,11 @@ dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
             name_vals = vs_map_mas_attribute_id;
             hfx_attribute_id = hf_service_attribute_id_map_mas;
             profile_speficic = "(MAP MAS) ";
+            break;
+        case BTSDP_MAP_NOTIFICATION_SRV_SERVICE_UUID:
+            name_vals = vs_map_mns_attribute_id;
+            hfx_attribute_id = hf_service_attribute_id_map_mns;
+            profile_speficic = "(MAP MNS) ";
             break;
         case BTSDP_WAP_SERVICE_UUID:
         case BTSDP_WAP_CLIENT_SERVICE_UUID:
@@ -3456,6 +3768,22 @@ dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
             hfx_attribute_id = hf_service_attribute_id_dun;
             profile_speficic = "(DUN) ";
             break;
+        case BTSDP_CTN_ACCESS_SERVICE_UUID:
+            name_vals = vs_ctn_as_attribute_id;
+            hfx_attribute_id = hf_service_attribute_id_ctn_as;
+            profile_speficic = "(CTN AS) ";
+            break;
+        case BTSDP_CTN_NOTIFICATION_SERVICE_UUID:
+            name_vals = vs_ctn_ns_attribute_id;
+            hfx_attribute_id = hf_service_attribute_id_ctn_ns;
+            profile_speficic = "(CTN NS) ";
+            break;
+        case BTSDP_MULTI_PROFILE_UUID:
+        case BTSDP_MULTI_PROFILE_SC_UUID:
+            name_vals = vs_mps_attribute_id;
+            hfx_attribute_id = hf_service_attribute_id_mps;
+            profile_speficic = "(MPS) ";
+            break;
     }
 
     if (name_vals && try_val_to_str(id, name_vals)) {
@@ -3467,7 +3795,7 @@ dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
     }
 
     if (!attribute_only) {
-        attribute_item = proto_tree_add_none_format(tree, hf_service_attribute, tvb, offset, -1,
+        attribute_item = proto_tree_add_none_format(tree, hf_service_attribute, tvb, offset, tvb_reported_length_remaining(tvb, offset),
                         "Service Attribute: %s%s (0x%x)", profile_speficic, attribute_name, id);
         attribute_tree = proto_item_add_subtree(attribute_item, ett_btsdp_attribute);
     } else {
@@ -3498,7 +3826,7 @@ dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
         offset = new_offset;
 
         if (!attribute_only){
-            attribute_value_item = proto_tree_add_item(attribute_tree, hf_service_attribute_value, tvb, offset, -1, ENC_NA);
+            attribute_value_item = proto_tree_add_item(attribute_tree, hf_service_attribute_value, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA);
             attribute_value_tree = proto_item_add_subtree(attribute_value_item, ett_btsdp_attribute_value);
 
             dissect_sdp_type(attribute_value_tree, pinfo, tvb, offset, id, uuid,
@@ -3521,7 +3849,7 @@ dissect_sdp_service_attribute(proto_tree *tree, tvbuff_t *tvb, gint offset,
 
 static gint
 dissect_attribute_id_list(proto_tree *tree, tvbuff_t *tvb, gint offset,
-        packet_info *pinfo, uuid_t *uuid)
+        packet_info *pinfo, bluetooth_uuid_t *uuid)
 {
     proto_item  *list_item;
     proto_tree  *list_tree;
@@ -3530,10 +3858,10 @@ dissect_attribute_id_list(proto_tree *tree, tvbuff_t *tvb, gint offset,
     gint         previous_offset;
     gint         service_offset;
     gint         bytes_to_go;
-    uuid_t       empty_uuid;
+    bluetooth_uuid_t empty_uuid;
 
     if (!uuid)
-        memset(&empty_uuid, 0, sizeof(uuid_t));
+        memset(&empty_uuid, 0, sizeof(bluetooth_uuid_t));
 
     start_offset = offset;
     list_item = proto_tree_add_item(tree, hf_attribute_id_list, tvb, offset, 0, ENC_NA);
@@ -3568,7 +3896,7 @@ dissect_sdp_error_response(proto_tree *tree, tvbuff_t *tvb, gint offset)
 
 static gint
 dissect_sdp_service_attribute_list(proto_tree *tree, tvbuff_t *tvb, gint offset,
-        packet_info *pinfo, uuid_t *service_uuid, btl2cap_data_t *l2cap_data)
+        packet_info *pinfo, bluetooth_uuid_t *service_uuid, btl2cap_data_t *l2cap_data)
 {
     proto_item      *list_item;
     proto_tree      *list_tree;
@@ -3582,7 +3910,7 @@ dissect_sdp_service_attribute_list(proto_tree *tree, tvbuff_t *tvb, gint offset,
     gint             element_length;
     gint             new_offset;
     gint             service_offset;
-    uuid_t           uuid;
+    bluetooth_uuid_t uuid;
     wmem_tree_key_t  key[10];
     guint32          k_interface_id;
     guint32          k_adapter_id;
@@ -3596,10 +3924,10 @@ dissect_sdp_service_attribute_list(proto_tree *tree, tvbuff_t *tvb, gint offset,
     service_info_t  *service_info;
     wmem_array_t    *uuid_array;
 
-    uuid_array = wmem_array_new(wmem_packet_scope(), sizeof(uuid_t));
+    uuid_array = wmem_array_new(wmem_packet_scope(), sizeof(bluetooth_uuid_t));
 
     offset = get_type_length(tvb, offset, &len);
-    memset(&uuid, 0, sizeof(uuid_t));
+    memset(&uuid, 0, sizeof(bluetooth_uuid_t));
 
     list_item = proto_tree_add_item(tree, hf_attribute_list, tvb,
             start_offset, len + (offset - start_offset), ENC_NA);
@@ -3666,7 +3994,7 @@ dissect_sdp_service_attribute_list(proto_tree *tree, tvbuff_t *tvb, gint offset,
                 uuid, service_offset, service_info, number_of_attributes, FALSE);
     }
 
-    if (!pinfo->fd->flags.visited) {
+    if (!pinfo->fd->flags.visited && service_info) {
         k_interface_id    = l2cap_data->interface_id;
         k_adapter_id      = l2cap_data->adapter_id;
         k_sdp_psm         = l2cap_data->psm;
@@ -3717,7 +4045,7 @@ dissect_sdp_service_attribute_list(proto_tree *tree, tvbuff_t *tvb, gint offset,
 static gint
 dissect_sdp_service_attribute_list_array(proto_tree *tree, tvbuff_t *tvb,
         gint offset, packet_info *pinfo, gint attribute_list_byte_count,
-        uuid_t *service_uuid, btl2cap_data_t *l2cap_data)
+        bluetooth_uuid_t *service_uuid, btl2cap_data_t *l2cap_data)
 {
     proto_item   *lists_item;
     proto_tree   *lists_tree;
@@ -3760,13 +4088,13 @@ dissect_sdp_service_search_request(proto_tree *tree, tvbuff_t *tvb, gint offset,
     proto_item   *ti;
     proto_tree   *st;
     proto_tree   *sub_tree = NULL;
-    uuid_t        empty_uuid;
+    bluetooth_uuid_t empty_uuid;
     wmem_array_t *uuid_array = NULL;
 
     start_offset = offset;
-    memset(&empty_uuid, 0, sizeof(uuid_t));
+    memset(&empty_uuid, 0, sizeof(bluetooth_uuid_t));
     if (!pinfo->fd->flags.visited)
-        uuid_array = wmem_array_new(wmem_file_scope(), sizeof(uuid_t));
+        uuid_array = wmem_array_new(wmem_file_scope(), sizeof(bluetooth_uuid_t));
 
     ti = proto_tree_add_item(tree, hf_service_search_pattern, tvb, offset, 0, ENC_NA);
     st = proto_item_add_subtree(ti, ett_btsdp_service_search_pattern);
@@ -3779,7 +4107,7 @@ dissect_sdp_service_search_request(proto_tree *tree, tvbuff_t *tvb, gint offset,
         wmem_strbuf_t  *str = NULL;
         gint            entry_offset;
         gint            entry_size;
-        uuid_t          uuid;
+        bluetooth_uuid_t uuid;
 
         size = dissect_sdp_type(sub_tree, pinfo, tvb, offset, -1, empty_uuid, 0, 0, NULL, &str);
 
@@ -3928,7 +4256,7 @@ dissect_sdp_service_search_response(proto_tree *tree, tvbuff_t *tvb,
         gint        new_offset = 0;
         gint        new_length;
 
-        new_length = tvb_length(new_tvb);
+        new_length = tvb_reported_length(new_tvb);
 
         reassembled_item = proto_tree_add_item(tree, (is_continued) ? hf_partial_record_handle_list : hf_reassembled_record_handle_list,new_tvb, 0, new_length, ENC_NA);
         proto_item_append_text(reassembled_item, " [count = %u]", new_length / 4);
@@ -3953,7 +4281,7 @@ dissect_sdp_service_attribute_request(proto_tree *tree, tvbuff_t *tvb,
 {
     guint32        record_handle;
     wmem_array_t  *uuid_array;
-    uuid_t         uuid;
+    bluetooth_uuid_t uuid;
 
     proto_tree_add_item(tree, hf_sdp_service_record_handle, tvb, offset, 4, ENC_BIG_ENDIAN);
     record_handle = tvb_get_ntohl(tvb, offset);
@@ -3986,7 +4314,7 @@ dissect_sdp_service_attribute_response(proto_tree *tree, tvbuff_t *tvb,
     gboolean       is_continued;
     tvbuff_t      *new_tvb;
     guint32        record_handle = 0;
-    uuid_t         uuid;
+    bluetooth_uuid_t uuid;
 
     proto_tree_add_item(tree, hf_attribute_list_byte_count, tvb, offset, 2, ENC_BIG_ENDIAN);
     attribute_list_byte_count = tvb_get_ntohs(tvb, offset);
@@ -4004,7 +4332,7 @@ dissect_sdp_service_attribute_response(proto_tree *tree, tvbuff_t *tvb,
         uuid_array = get_uuids(pinfo, record_handle, l2cap_data);
         uuid = get_specified_uuid(uuid_array);
     } else {
-        memset(&uuid, 0, sizeof(uuid_t));
+        memset(&uuid, 0, sizeof(bluetooth_uuid_t));
     }
 
     if (is_first && !is_continued) {
@@ -4027,7 +4355,7 @@ dissect_sdp_service_attribute_response(proto_tree *tree, tvbuff_t *tvb,
 
         reassembled_item = proto_tree_add_item(tree,
                 (is_continued) ? hf_partial_attribute_list : hf_reassembled_attribute_list,
-                new_tvb, 0, tvb_length(new_tvb), ENC_NA);
+                new_tvb, 0, tvb_reported_length(new_tvb), ENC_NA);
         reassembled_tree = proto_item_add_subtree(reassembled_item, ett_btsdp_reassembled);
         PROTO_ITEM_SET_GENERATED(reassembled_item);
 
@@ -4052,15 +4380,15 @@ dissect_sdp_service_search_attribute_request(proto_tree *tree, tvbuff_t *tvb,
     gint            size;
     gint            bytes_to_go;
     wmem_strbuf_t  *info_buf = NULL;
-    uuid_t          empty_uuid;
+    bluetooth_uuid_t empty_uuid;
     wmem_array_t   *uuid_array = NULL;
-    uuid_t          uuid;
+    bluetooth_uuid_t uuid;
 
-    memset(&empty_uuid, 0, sizeof(uuid_t));
+    memset(&empty_uuid, 0, sizeof(bluetooth_uuid_t));
     if (!pinfo->fd->flags.visited)
-        uuid_array = wmem_array_new(wmem_file_scope(), sizeof(uuid_t));
+        uuid_array = wmem_array_new(wmem_file_scope(), sizeof(bluetooth_uuid_t));
     else
-        uuid_array = wmem_array_new(wmem_packet_scope(), sizeof(uuid_t));
+        uuid_array = wmem_array_new(wmem_packet_scope(), sizeof(bluetooth_uuid_t));
 
     start_offset = offset;
     pitem = proto_tree_add_item(tree, hf_service_search_pattern, tvb, offset, 0, ENC_NA);
@@ -4073,9 +4401,9 @@ dissect_sdp_service_search_attribute_request(proto_tree *tree, tvbuff_t *tvb,
     while (bytes_to_go > 0) {
         gint            entry_offset;
         gint            entry_size;
-        uuid_t          a_uuid;
+        bluetooth_uuid_t a_uuid;
 
-        memset(&a_uuid, 0, sizeof(uuid_t));
+        memset(&a_uuid, 0, sizeof(bluetooth_uuid_t));
 
         size = dissect_sdp_type(next_tree, pinfo, tvb, offset, -1, empty_uuid, 0, 0, NULL, &info_buf);
         proto_item_append_text(pitem,"%s", wmem_strbuf_get_str(info_buf));
@@ -4116,7 +4444,7 @@ dissect_sdp_service_search_attribute_response(proto_tree *tree, tvbuff_t *tvb,
     gboolean       is_first;
     gboolean       is_continued;
     tvbuff_t      *new_tvb;
-    uuid_t         uuid;
+    bluetooth_uuid_t uuid;
     wmem_array_t  *uuid_array = NULL;
 
     proto_tree_add_item(tree, hf_attribute_list_byte_count, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -4152,13 +4480,13 @@ dissect_sdp_service_search_attribute_response(proto_tree *tree, tvbuff_t *tvb,
 
         reassembled_item = proto_tree_add_item(tree,
                 (is_continued) ? hf_partial_attribute_list : hf_reassembled_attribute_list,
-                new_tvb, 0, tvb_length(new_tvb), ENC_NA);
+                new_tvb, 0, tvb_reported_length(new_tvb), ENC_NA);
         reassembled_tree = proto_item_add_subtree(reassembled_item, ett_btsdp_reassembled);
         PROTO_ITEM_SET_GENERATED(reassembled_item);
 
         if (!is_continued)
             dissect_sdp_service_attribute_list_array(reassembled_tree, new_tvb, 0,
-                    pinfo, tvb_length(new_tvb), &uuid, l2cap_data);
+                    pinfo, tvb_reported_length(new_tvb), &uuid, l2cap_data);
     }
 
     return offset;
@@ -4180,7 +4508,7 @@ dissect_btsdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         return 0;
     l2cap_data = (btl2cap_data_t *) data;
 
-    ti = proto_tree_add_item(tree, proto_btsdp, tvb, 0, -1, ENC_NA);
+    ti = proto_tree_add_item(tree, proto_btsdp, tvb, 0, tvb_captured_length(tvb), ENC_NA);
     st = proto_item_add_subtree(ti, ett_btsdp);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "SDP");
@@ -4193,8 +4521,7 @@ dissect_btsdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             col_set_str(pinfo->cinfo, COL_INFO, "Rcvd ");
             break;
         default:
-            col_add_fstr(pinfo->cinfo, COL_INFO, "Unknown direction %d ",
-                pinfo->p2p_dir);
+            col_set_str(pinfo->cinfo, COL_INFO, "UnknownDirection ");
             break;
     }
 
@@ -4423,12 +4750,12 @@ proto_register_btsdp(void)
         },
         { &hf_data_element_value_uuid_16,
             { "Value: UUID",                     "btsdp.data_element.value.uuid_16",
-            FT_UINT16, BASE_HEX | BASE_EXT_STRING, &bt_sig_uuid_vals_ext, 0,
+            FT_UINT16, BASE_HEX | BASE_EXT_STRING, &bluetooth_uuid_vals_ext, 0,
             NULL, HFILL }
         },
         { &hf_data_element_value_uuid_32,
             { "Value: UUID",                     "btsdp.data_element.value.uuid_32",
-            FT_UINT32, BASE_HEX | BASE_EXT_STRING, &bt_sig_uuid_vals_ext, 0,
+            FT_UINT32, BASE_HEX | BASE_EXT_STRING, &bluetooth_uuid_vals_ext, 0,
             NULL, HFILL }
         },
         { &hf_data_element_value_uuid_128,
@@ -4581,6 +4908,11 @@ proto_register_btsdp(void)
             FT_UINT16, BASE_HEX, VALS(vs_map_mas_attribute_id), 0,
             NULL, HFILL }
         },
+        { &hf_service_attribute_id_map_mns,
+            { "Attribute ID",                    "btsdp.service.attribute",
+            FT_UINT16, BASE_HEX, VALS(vs_map_mns_attribute_id), 0,
+            NULL, HFILL }
+        },
         { &hf_service_attribute_id_opp,
             { "Attribute ID",                    "btsdp.service.attribute",
             FT_UINT16, BASE_HEX, VALS(vs_opp_attribute_id), 0,
@@ -4611,6 +4943,21 @@ proto_register_btsdp(void)
             FT_UINT16, BASE_HEX, VALS(vs_synch_attribute_id), 0,
             NULL, HFILL }
         },
+        { &hf_service_attribute_id_ctn_as,
+            { "Attribute ID",                    "btsdp.service.attribute",
+            FT_UINT16, BASE_HEX, VALS(vs_ctn_as_attribute_id), 0,
+            NULL, HFILL }
+        },
+        { &hf_service_attribute_id_ctn_ns,
+            { "Attribute ID",                    "btsdp.service.attribute",
+            FT_UINT16, BASE_HEX, VALS(vs_ctn_ns_attribute_id), 0,
+            NULL, HFILL }
+        },
+        { &hf_service_attribute_id_mps,
+            { "Attribute ID",                    "btsdp.service.attribute",
+            FT_UINT16, BASE_HEX, VALS(vs_mps_attribute_id), 0,
+            NULL, HFILL }
+        },
         { &hf_did_specification_id,
             { "Specification ID",                "btsdp.service.did.specification_id",
             FT_UINT16, BASE_HEX, NULL, 0,
@@ -4623,7 +4970,7 @@ proto_register_btsdp(void)
         },
         { &hf_did_vendor_id_bluetooth_sig,
             { "Vendor ID",                       "btsdp.service.did.vendor_id",
-            FT_UINT16, BASE_HEX | BASE_EXT_STRING, &bthci_evt_comp_id_ext, 0,
+            FT_UINT16, BASE_HEX | BASE_EXT_STRING, &bluetooth_company_id_vals_ext, 0,
             NULL, HFILL }
         },
         { &hf_did_vendor_id_usb_forum,
@@ -4801,19 +5148,99 @@ proto_register_btsdp(void)
             FT_UINT16, BASE_HEX, NULL, 0xFFFF,
             NULL, HFILL }
         },
+        { &hf_pbap_pse_supported_repositories,
+            { "Supported Repositories",     "btsdp.service.pbap.pse.supported_repositories",
+            FT_UINT8, BASE_HEX, NULL, 0x0,
+            NULL, HFILL }
+        },
         { &hf_pbap_pse_supported_repositories_reserved,
-            { "Supported Repositories: Reserved",          "btsdp.service.pbap.pse.supported_repositories.reserved",
-            FT_UINT8, BASE_HEX, NULL, 0xFC,
+            { "Reserved",                   "btsdp.service.pbap.pse.supported_repositories.reserved",
+            FT_UINT8, BASE_HEX, NULL, 0xF0,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_repositories_favourites,
+            { "Favourites",                 "btsdp.service.pbap.pse.supported_repositories.favourites",
+            FT_BOOLEAN, 8, NULL, 0x08,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_repositories_speed_dial,
+            { "Speed Dial",                 "btsdp.service.pbap.pse.supported_repositories.speed_dial",
+            FT_BOOLEAN, 8, NULL, 0x04,
             NULL, HFILL }
         },
         { &hf_pbap_pse_supported_repositories_sim_card,
-            { "Supported Repositories: SIM Card",          "btsdp.service.pbap.pse.supported_repositories.sim_card",
+            { "SIM Card",                   "btsdp.service.pbap.pse.supported_repositories.sim_card",
             FT_BOOLEAN, 8, NULL, 0x02,
             NULL, HFILL }
         },
         { &hf_pbap_pse_supported_repositories_local_phonebook,
-            { "Supported Repositories: Local Phonebook",   "btsdp.service.pbap.pse.supported_repositories.local_phonebook",
+            { "Local Phonebook",            "btsdp.service.pbap.pse.supported_repositories.local_phonebook",
             FT_BOOLEAN, 8, NULL, 0x01,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features,
+            { "Supported Features",              "btsdp.service.pbap.pse.supported_features",
+            FT_UINT32, BASE_HEX, NULL, 0x0,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_reserved,
+            { "Reserved",                        "btsdp.service.pbap.pse.supported_features.reserved",
+            FT_UINT32, BASE_HEX, NULL, 0xFFFFFC00,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_default_contact_image_format,
+            { "Default Contact Image Format",    "btsdp.service.pbap.pse.supported_features.default_contact_image_format",
+            FT_BOOLEAN, 32, NULL, 0x00000200,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_contact_referencing,
+            { "Contact Referencing",             "btsdp.service.pbap.pse.supported_features.contact_referencing",
+            FT_BOOLEAN, 32, NULL, 0x00000100,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_x_bt_uid_vcard_property,
+            { "X-BT-UID vCard Property",         "btsdp.service.pbap.pse.supported_features.x_bt_uid_vcard_property",
+            FT_BOOLEAN, 32, NULL, 0x00000080,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_x_bt_uci_vcard_property,
+            { "X-BT-UCI vCard Property",         "btsdp.service.pbap.pse.supported_features.x_bt_uci_vcard_property",
+            FT_BOOLEAN, 32, NULL, 0x00000040,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_enhanced_missed_calls,
+            { "Enhanced Missed Calls",           "btsdp.service.pbap.pse.supported_features.enhanced_missed_calls",
+            FT_BOOLEAN, 32, NULL, 0x00000020,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_vcard_selecting,
+            { "vCard Selecting",                 "btsdp.service.pbap.pse.supported_features.vcard_selecting",
+            FT_BOOLEAN, 32, NULL, 0x00000010,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_folder_version_counters,
+            { "Folder Version Counters",         "btsdp.service.pbap.pse.supported_features.folder_version_counters",
+            FT_BOOLEAN, 32, NULL, 0x00000008,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_database_identifier,
+            { "Database Identifier",             "btsdp.service.pbap.pse.supported_features.database_identifier",
+            FT_BOOLEAN, 32, NULL, 0x00000004,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_browsing,
+            { "Browsing",                        "btsdp.service.pbap.pse.supported_features.browsing",
+            FT_BOOLEAN, 32, NULL, 0x00000002,
+            NULL, HFILL }
+        },
+        { &hf_pbap_pse_supported_features_download,
+            { "Download",                        "btsdp.service.pbap.pse.supported_features.download",
+            FT_BOOLEAN, 32, NULL, 0x00000001,
+            NULL, HFILL }
+        },
+        { &hf_pbap_goep_l2cap_psm,
+            { "GOEP L2CAP PSM",                  "btsdp.pbap.goep_l2cap_psm",
+            FT_UINT16, BASE_DEC_HEX, NULL, 0,
             NULL, HFILL }
         },
         { &hf_dun_support_audio_feedback,
@@ -4856,6 +5283,16 @@ proto_register_btsdp(void)
             FT_UINT8, BASE_DEC_HEX, NULL, 0,
             NULL, HFILL }
         },
+        { &hf_map_mas_goep_l2cap_psm,
+            { "GOEP L2CAP PSM",                  "btsdp.map.mas.goep_l2cap_psm",
+            FT_UINT16, BASE_DEC_HEX, NULL, 0,
+            NULL, HFILL }
+        },
+        { &hf_map_mns_goep_l2cap_psm,
+            { "GOEP L2CAP PSM",                  "btsdp.map.mns.goep_l2cap_psm",
+            FT_UINT16, BASE_DEC_HEX, NULL, 0,
+            NULL, HFILL }
+        },
         { &hf_map_mas_supported_message_types_reserved,
             { "Supported Message Types: Reserved",         "btsdp.map.mas.supported_message_types.reserved",
             FT_UINT8, BASE_DEC_HEX, NULL, 0xF0,
@@ -4887,7 +5324,7 @@ proto_register_btsdp(void)
             NULL, HFILL }
         },
         { &hf_hcrp_device_location,
-            { "Sevice Location",                 "btsdp.hcrp.device_location",
+            { "Service Location",                 "btsdp.hcrp.device_location",
             FT_STRING, BASE_NONE, NULL, 0,
             NULL, HFILL }
         },
@@ -5109,6 +5546,431 @@ proto_register_btsdp(void)
         { &hf_hfp_gw_network,
             { "Network",                                                  "btsdp.service.hfp.gw.network",
             FT_UINT8, BASE_HEX, VALS(hfp_gw_network_vals), 0,
+            NULL, HFILL }
+        },
+        { &hf_ctn_instance_id,
+            { "Instance ID",                     "btsdp.ctn.instance_id",
+            FT_UINT8, BASE_DEC_HEX, NULL, 0,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features,
+            { "Supported Features",              "btsdp.ctn.supported_features",
+            FT_UINT32, BASE_HEX, NULL, 0,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features_reserved,
+            { "Reserved",                        "btsdp.ctn.supported_features.reserved",
+            FT_BOOLEAN, 32, NULL, 0xFFFFFF80,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features_forward,
+            { "Forward",                         "btsdp.ctn.supported_features.forward",
+            FT_BOOLEAN, 32, NULL, 0x40,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features_delete,
+            { "Delete",                          "btsdp.ctn.supported_features.delete",
+            FT_BOOLEAN, 32, NULL, 0x20,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features_uploading,
+            { "Uploading",                       "btsdp.ctn.supported_features.uploading",
+            FT_BOOLEAN, 32, NULL, 0x10,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features_downloading,
+            { "Downloading",                     "btsdp.ctn.supported_features.downloading",
+            FT_BOOLEAN, 32, NULL, 0x08,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features_browsing,
+            { "Browsing",                        "btsdp.ctn.supported_features.browsing",
+            FT_BOOLEAN, 32, NULL, 0x04,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features_notification,
+            { "Notification",                    "btsdp.ctn.supported_features.notification",
+            FT_BOOLEAN, 32, NULL, 0x02,
+            NULL, HFILL }
+        },
+        { &hf_ctn_supported_features_account_management,
+            { "Account Management",              "btsdp.ctn.supported_features.account_management",
+            FT_BOOLEAN, 32, NULL, 0x01,
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios,
+            { "Supported Profile and Protocol Dependency",                                                   "btsdp.mps.mpsd_scenarios",
+            FT_UINT64, BASE_HEX, NULL, 0,
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_reserved,
+            { "Reserved",                                                                                    "btsdp.mps.mpsd_scenarios.reserved",
+            FT_UINT64, BASE_HEX, NULL, G_GUINT64_CONSTANT(0xFFFFFFC000000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_37,
+            { "Phonebook Download during Audio Streaming (A2DP-SNK_PBAP-Client)",                            "btsdp.mps.mpsd_scenarios.37",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000002000000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_36,
+            { "Phonebook Download during Audio Streaming (A2DP-SRC_PBAP-Server)",                            "btsdp.mps.mpsd_scenarios.36",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000001000000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_35,
+            { "Data communication establishment in Personal Area Network during Audio Streaming (A2DP-SNK_PAN_PANU)",  "btsdp.mps.mpsd_scenarios.35",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000800000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_34,
+            { "Data communication establishment in Personal Area Network during Audio Streaming (A2DP-SRC_PAN-NAP)",   "btsdp.mps.mpsd_scenarios.34",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000400000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_33,
+            { "Start Audio Streaming during Data communication in Personal Area Network (A2DP-SNK_PAN-PANU)",          "btsdp.mps.mpsd_scenarios.33",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000200000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_32,
+            { "Start Audio Streaming during Data communication in Personal Area Network (A2DP-SRC_PAN-NAP)",           "btsdp.mps.mpsd_scenarios.32",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000100000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_31,
+            { "Incoming voice call during Data communication in Personal Area Network (HFP-HF_PAN-PANU)",              "btsdp.mps.mpsd_scenarios.31",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000080000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_30,
+            { "Incoming voice call during Data communication in Personal Area Network (HFP-AG_PAN-NAP)",               "btsdp.mps.mpsd_scenarios.30",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000040000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_29,
+            { "Outgoing voice call during Data communication in Personal Area Network (HFP-HF_PAN-PANU)",              "btsdp.mps.mpsd_scenarios.29",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000020000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_28,
+            { "Outgoing voice call during Data communication in Personal Area Network (HFP-AG_PAN-NAP)",               "btsdp.mps.mpsd_scenarios.28",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000010000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_27,
+            { "Data communication in Personal Area Network during active voice call (HFP-HF_PAN-PANU)",                "btsdp.mps.mpsd_scenarios.27",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000008000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_26,
+            { "Data communication in Personal Area Network during active voice call (HFP-AG_PAN-NAP)",                 "btsdp.mps.mpsd_scenarios.26",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000004000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_25,
+            { "Terminate voice call / data call during data communication and voice call (HFP-HF_DUN-DT)",             "btsdp.mps.mpsd_scenarios.25",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000002000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_24,
+            { "Terminate voice call / data call during data communication and voice call (HFP-AG_DUN-GW)",             "btsdp.mps.mpsd_scenarios.24",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000001000000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_23,
+            { "Data communication establishment under PSDM (DUN) during Audio Streaming (A2DP-SNK_DUN-DT)",            "btsdp.mps.mpsd_scenarios.23",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000800000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_22,
+            { "Data communication establishment under PSDM (DUN) during Audio Streaming (A2DP-SRC_DUN-GW)",            "btsdp.mps.mpsd_scenarios.22",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000400000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_21,
+            { "Start Audio Streaming during Data communication under PSDM (DUN) (A2DP-SNK_DUN-DT)",                    "btsdp.mps.mpsd_scenarios.21",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000200000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_20,
+            { "Start Audio Streaming during Data communication under PSDM (DUN) (A2DP-SRC_DUN-GW)",                    "btsdp.mps.mpsd_scenarios.20",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000100000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_19,
+            { "Incoming voice call during Data communication under PSDM (DUN) (HFP-HF_DUN-DT)",                        "btsdp.mps.mpsd_scenarios.19",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000080000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_18,
+            { "Incoming voice call during Data communication under PSDM (DUN) (HFP-AG_DUN-GW)",                        "btsdp.mps.mpsd_scenarios.18",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000040000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_17,
+            { "Outgoing voice call during Data communication under PSDM (DUN) (HFP-HF_DUN-DT)",                        "btsdp.mps.mpsd_scenarios.17",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000020000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_16,
+            { "Outgoing voice call during Data communication under PSDM (DUN) (HFP-AG_DUN-GW)",                        "btsdp.mps.mpsd_scenarios.16",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000010000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_15,
+            { "Data communication under PSDM (DUN) during active voice call (HFP-HF_DUN-DT)",                          "btsdp.mps.mpsd_scenarios.15",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000008000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_14,
+            { "Data communication under PSDM (DUN) during active voice call (HFP-AG_DUN-GW)",                          "btsdp.mps.mpsd_scenarios.14",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000004000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_13,
+            { "Suspend Audio Streaming after AVRCP Pause/Stop (HFP-HF_A2DP-SNK)",                            "btsdp.mps.mpsd_scenarios.13",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000002000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_12,
+            { "Suspend Audio Streaming after AVRCP Pause/Stop (HFP-AG_A2DP-SRC)",                            "btsdp.mps.mpsd_scenarios.12",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000001000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_11,
+            { "Start Audio Streaming after AVRCP Play Command (HFP-HF_A2DP-SNK)",                            "btsdp.mps.mpsd_scenarios.11",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000800),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_10,
+            { "Start Audio Streaming after AVRCP Play Command (HFP-AG_A2DP-SRC)",                            "btsdp.mps.mpsd_scenarios.10",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000400),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_9,
+            { "Press Play on Audio Player during active call (HFP-HF_A2DP-SNK)",                             "btsdp.mps.mpsd_scenarios.9",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000200),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_8,
+            { "Press Play on Audio Player during active call (HFP-AG_A2DP-SRC)",                             "btsdp.mps.mpsd_scenarios.8",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000100),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_7,
+            { "HFP call termination during AVP connection (HFP-HF_A2DP-SNK)",                                "btsdp.mps.mpsd_scenarios.7",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000080),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_6,
+            { "HFP call termination during AVP connection (HFP-AG_A2DP-SRC)",                                "btsdp.mps.mpsd_scenarios.6",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000040),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_5,
+            { "Reject/Ignore Incoming Call during Audio Streaming (HFP-HF_A2DP-SNK)",                        "btsdp.mps.mpsd_scenarios.5",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000020),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_4,
+            { "Reject/Ignore Incoming Call during Audio Streaming (HFP-AG_A2DP-SRC)",                        "btsdp.mps.mpsd_scenarios.4",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000010),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_3,
+            { "Outgoing Call during Audio Streaming (HFP-HF_A2DP-SNK)",                                      "btsdp.mps.mpsd_scenarios.3",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000008),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_2,
+            { "Outgoing Call during Audio Streaming (HFP-AG_A2DP-SRC)",                                      "btsdp.mps.mpsd_scenarios.2",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000004),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_1,
+            { "Answer Incoming Call during Audio Streaming (HFP-HF_A2DP-SNK)",                               "btsdp.mps.mpsd_scenarios.1",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000002),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpsd_scenarios_0,
+            { "Answer Incoming Call during Audio Streaming (HFP-AG_A2DP-SRC)",                               "btsdp.mps.mpsd_scenarios.0",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000001),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios,
+            { "Supported Profile and Protocol Dependency",                                                   "btsdp.mps.mpmd_scenarios",
+            FT_UINT64, BASE_HEX, NULL, 0,
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_reserved,
+            { "Reserved",                                                                                    "btsdp.mps.mpmd_scenarios.reserved",
+            FT_UINT64, BASE_HEX, NULL, G_GUINT64_CONSTANT(0xFFFFFFFFFFF80000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_18,
+            { "Start Packet data communication during Audio streaming (A2DP-SNK_AVRCP-CT_DUN-DT)",           "btsdp.mps.mpmd_scenarios.18",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000040000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_17,
+            { "Start Packet data communication during Audio streaming (A2DP-SRC_AVRCP-TG)",                  "btsdp.mps.mpmd_scenarios.17",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000020000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_16,
+            { "Start Audio streaming during Data communication under PSDM (A2DP-SNK_AVRCP-CT_DUN-DT)",       "btsdp.mps.mpmd_scenarios.16",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000010000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_15,
+            { "Start Audio streaming during Data communication under PSDM (A2DP-SRC_AVRCP-TG)",              "btsdp.mps.mpmd_scenarios.15",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000008000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_14,
+            { "Suspend Audio Streaming after AVRCP Pause/Stop (A2DP-SRC_AVRCP-TG)",                          "btsdp.mps.mpmd_scenarios.14",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000004000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_13,
+            { "Suspend Audio Streaming after AVRCP Pause/Stop (AVRCP-CT where the same device does not carry out the role of an A2DP SNK)",     "btsdp.mps.mpmd_scenarios.13",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000002000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_12,
+            { "Start Audio Streaming after AVRCP Play Command (A2DP-SRC_AVRCP-TG)",                                                             "btsdp.mps.mpmd_scenarios.12",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000001000),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_11,
+            { "Start Audio Streaming after AVRCP Play Command (AVRCP-CT where the same device does not carry out the role of an A2DP SNK)",     "btsdp.mps.mpmd_scenarios.11",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000800),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_10,
+            { "Press Play on Audio Player during active call (A2DP-SRC_AVRCP-TG)",                 "btsdp.mps.mpmd_scenarios.10",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000400),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_9,
+            { "Press Play on Audio Player during active call (HFP-HF_A2DP-SNK_AVRCP-CT)",          "btsdp.mps.mpmd_scenarios.9",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000200),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_8,
+            { "HFP Call termination during AVP connection (A2DP-SRC_AVRCP-TG)",                    "btsdp.mps.mpmd_scenarios.8",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000100),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_7,
+            { "HFP Call termination during AVP connection (HFP-HF_ A2DP-SNK_AVRCP-CT)",            "btsdp.mps.mpmd_scenarios.7",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000080),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_6,
+            { "HFP Call termination during AVP connection (HFP-AG)",                               "btsdp.mps.mpmd_scenarios.6",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000040),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_5,
+            { "Reject/Ignore Incoming Call during Audio Streaming (A2DP-SRC_AVRCP-TG)",            "btsdp.mps.mpmd_scenarios.5",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000020),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_4,
+            { "Reject/Ignore Incoming Call during Audio Streaming (HFP-HF_A2DP-SNK_AVRCP-CT)",     "btsdp.mps.mpmd_scenarios.4",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000010),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_3,
+            { "Outgoing Call during Audio Streaming (A2DP-SRC_AVRCP-TG)",                          "btsdp.mps.mpmd_scenarios.3",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000008),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_2,
+            { "Outgoing Call during Audio Streaming (HFP-HF_A2DP-SNK_AVRCP-CT)",                   "btsdp.mps.mpmd_scenarios.2",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000004),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_1,
+            { "Answer Incoming Call during Audio Streaming (A2DP-SRC_AVRCP-TG)",                   "btsdp.mps.mpmd_scenarios.1",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000002),
+            NULL, HFILL }
+        },
+        { &hf_mps_mpmd_scenarios_0,
+            { "Answer Incoming Call during Audio Streaming (HFP-HF_A2DP-SNK_AVRCP-CT)",            "btsdp.mps.mpmd_scenarios.0",
+            FT_BOOLEAN, 64, NULL, G_GUINT64_CONSTANT(0x0000000000000001),
+            NULL, HFILL }
+        },
+        { &hf_mps_supported_profile_and_protocol_dependency,
+            { "Supported Profile and Protocol Dependency",           "btsdp.mps.supported_profile_and_protocol_dependency",
+            FT_UINT16, BASE_HEX, NULL, 0,
+            NULL, HFILL }
+        },
+        { &hf_mps_supported_profile_and_protocol_dependency_reserved,
+            { "Reserved",                                  "btsdp.mps.supported_profile_and_protocol_dependency.reserved",
+            FT_UINT16, BASE_HEX, NULL, 0xFFF8,
+            NULL, HFILL }
+        },
+        { &hf_mps_supported_profile_and_protocol_dependency_dis_connection_order_behaviour,
+            { "(Dis)Connection Order/Behaviour",           "btsdp.mps.supported_profile_and_protocol_dependency.dis_connection_order_behaviour",
+            FT_BOOLEAN, 16, NULL, 0x0004,
+            NULL, HFILL }
+        },
+        { &hf_mps_supported_profile_and_protocol_dependency_gavdp_requirements,
+            { "GAVDP Requirements",                        "btsdp.mps.supported_profile_and_protocol_dependency.gavdp_requirements",
+            FT_BOOLEAN, 16, NULL, 0x0002,
+            NULL, HFILL }
+        },
+        { &hf_mps_supported_profile_and_protocol_dependency_sniff_mode_during_streaming,
+            { "Sniff Mode During Streaming",               "btsdp.mps.supported_profile_and_protocol_dependency.sniff_mode_during_streaming",
+            FT_BOOLEAN, 16, NULL, 0x0001,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features,
+            { "Supported Features",    "btsdp.map.supported_features",
+            FT_UINT32, BASE_HEX, NULL, 0x0,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features_reserved,
+            { "Reserved",              "btsdp.map.supported_features.reserved",
+            FT_UINT32, BASE_HEX, NULL, 0xFFFFFF80,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features_extended_event_report_1_1,
+            { "Extended Event Report 1.1",  "btsdp.map.supported_features.extended_event_report_1_1",
+            FT_BOOLEAN, 32, NULL, 0x00000040,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features_instance_information_feature,
+            { "Instance Information Feature",  "btsdp.map.supported_features.instance_information_feature",
+            FT_BOOLEAN, 32, NULL, 0x00000020,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features_delete_feature,
+            { "Delete Feature",  "btsdp.map.supported_features.delete_feature",
+            FT_BOOLEAN, 32, NULL, 0x00000010,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features_uploading_feature,
+            { "Uploading Feature",  "btsdp.map.supported_features.uploading_feature",
+            FT_BOOLEAN, 32, NULL, 0x00000008,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features_browsing_feature,
+            { "Browsing Feature",  "btsdp.map.supported_features.browsing_feature",
+            FT_BOOLEAN, 32, NULL, 0x00000004,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features_notification_feature,
+            { "Notification Feature",  "btsdp.map.supported_features.notification_feature",
+            FT_BOOLEAN, 32, NULL, 0x00000002,
+            NULL, HFILL }
+        },
+        { &hf_map_supported_features_notification_registration_feature,
+            { "Notification Registration Feature",  "btsdp.map.supported_features.notification_registration_feature",
+            FT_BOOLEAN, 32, NULL, 0x00000001,
             NULL, HFILL }
         },
         { &hf_sdp_protocol_item,
@@ -5651,9 +6513,9 @@ proto_register_btsdp(void)
     };
 
     static ei_register_info ei[] = {
-        { &ei_btsdp_continuation_state_none,  { "btsdp.expert.continuation_state_none",  PI_MALFORMED, PI_WARN, "There is no Continuation State", EXPFILL }},
-        { &ei_btsdp_continuation_state_large, { "btsdp.expert.continuation_state_large", PI_MALFORMED, PI_WARN, "Continuation State data is longer then 16", EXPFILL }},
-        { &ei_data_element_value_large,       { "btsdp.expert.data_element.value.large", PI_MALFORMED, PI_WARN, "Data size exceeds the length of payload", EXPFILL }},
+        { &ei_btsdp_continuation_state_none,  { "btsdp.expert.continuation_state_none",  PI_MALFORMED, PI_WARN,      "There is no Continuation State", EXPFILL }},
+        { &ei_btsdp_continuation_state_large, { "btsdp.expert.continuation_state_large", PI_MALFORMED, PI_WARN,      "Continuation State data is longer then 16", EXPFILL }},
+        { &ei_data_element_value_large,       { "btsdp.expert.data_element.value.large", PI_MALFORMED, PI_WARN,      "Data size exceeds the length of payload", EXPFILL }},
     };
 
     proto_btsdp = proto_register_protocol("Bluetooth SDP Protocol", "BT SDP", "btsdp");
@@ -5681,10 +6543,7 @@ void
 proto_reg_handoff_btsdp(void)
 {
     dissector_add_uint("btl2cap.psm", BTL2CAP_PSM_SDP, btsdp_handle);
-    dissector_add_handle("btl2cap.cid", btsdp_handle);
-
-    btrfcomm_service_table = find_dissector_table("btrfcomm.service");
-    btl2cap_service_table = find_dissector_table("btl2cap.service");
+    dissector_add_for_decode_as("btl2cap.cid", btsdp_handle);
 }
 
 /*

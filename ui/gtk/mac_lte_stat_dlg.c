@@ -30,21 +30,18 @@
 #include "ui/gtk/gtkglobals.h"
 
 #include <epan/packet.h>
-#include <epan/packet_info.h>
 #include <epan/tap.h>
 #include <epan/dissectors/packet-mac-lte.h>
 
 #include "ui/simple_dialog.h"
-#include "../stat_menu.h"
+#include <epan/stat_groups.h>
 
 #include "ui/gtk/dlg_utils.h"
-#include "ui/gtk/gui_stat_menu.h"
 #include "ui/gtk/tap_param_dlg.h"
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/help_dlg.h"
 #include "ui/gtk/main.h"
 
-#include "ui/gtk/old-gtk-compat.h"
 
 void register_tap_listener_mac_lte_stat(void);
 
@@ -454,9 +451,9 @@ static int mac_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *ed
 
         /* Update time range */
         if (te->stats.UL_frames == 0) {
-            te->stats.UL_time_start = si->time;
+            te->stats.UL_time_start = si->mac_lte_time;
         }
-        te->stats.UL_time_stop = si->time;
+        te->stats.UL_time_stop = si->mac_lte_time;
 
         te->stats.UL_frames++;
 
@@ -506,9 +503,9 @@ static int mac_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *ed
 
         /* Update time range */
         if (te->stats.DL_frames == 0) {
-            te->stats.DL_time_start = si->time;
+            te->stats.DL_time_start = si->mac_lte_time;
         }
-        te->stats.DL_time_stop = si->time;
+        te->stats.DL_time_stop = si->mac_lte_time;
 
         te->stats.DL_frames++;
 
@@ -1068,7 +1065,7 @@ static void gtk_mac_lte_stat_init(const char *opt_arg, void *userdata _U_)
     g_free(display_name);
 
     /* Create top-level window */
-    hs->mac_lte_stat_dlg_w = window_new_with_geom(GTK_WINDOW_TOPLEVEL, title, "LTE MAC Statistics");
+    hs->mac_lte_stat_dlg_w = window_new_with_geom(GTK_WINDOW_TOPLEVEL, title, "LTE MAC Statistics", GTK_WIN_POS_CENTER_ON_PARENT);
 
     /* Window size */
     gtk_window_set_default_size(GTK_WINDOW(hs->mac_lte_stat_dlg_w), 750, 300);
@@ -1405,7 +1402,7 @@ static void gtk_mac_lte_stat_init(const char *opt_arg, void *userdata _U_)
 
 
 static tap_param mac_lte_stat_params[] = {
-    { PARAM_FILTER, "Filter", NULL }
+    { PARAM_FILTER, "filter", "Filter", NULL, TRUE }
 };
 
 static tap_param_dlg mac_lte_stat_dlg = {
@@ -1414,7 +1411,8 @@ static tap_param_dlg mac_lte_stat_dlg = {
     gtk_mac_lte_stat_init,
     -1,
     G_N_ELEMENTS(mac_lte_stat_params),
-    mac_lte_stat_params
+    mac_lte_stat_params,
+    NULL
 };
 
 
@@ -1423,3 +1421,16 @@ void register_tap_listener_mac_lte_stat(void)
 {
     register_param_stat(&mac_lte_stat_dlg, "_MAC", REGISTER_STAT_GROUP_TELEPHONY_LTE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

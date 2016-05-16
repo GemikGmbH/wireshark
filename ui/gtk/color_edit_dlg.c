@@ -34,14 +34,12 @@
 #include "ui/gtk/color_dlg.h"
 #include "ui/gtk/color_utils.h"
 #include "ui/gtk/dlg_utils.h"
-#include "ui/gtk/gui_utils.h"
 #include "ui/gtk/stock_icons.h"
 #include "ui/gtk/filter_dlg.h"
 #include "ui/gtk/dfilter_expr_dlg.h"
 #include "ui/gtk/color_edit_dlg.h"
 #include "ui/gtk/filter_autocomplete.h"
 
-#include "ui/gtk/old-gtk-compat.h"
 
 
 /* Essentially:
@@ -371,6 +369,7 @@ color_edit_dlg_ok_cb(GtkWidget *w _U_, gpointer user_data)
   gboolean        filter_disabled;
   color_filter_t *colorf;
   dfilter_t      *compiled_filter;
+  gchar          *err_msg;
   GtkTreeModel   *model;
   GtkTreeIter     iter;
   gchar           fg_str[14], bg_str[14];
@@ -388,11 +387,12 @@ color_edit_dlg_ok_cb(GtkWidget *w _U_, gpointer user_data)
     return;
   }
 
-  if (!dfilter_compile(filter_text, &compiled_filter)) {
+  if (!dfilter_compile(filter_text, &compiled_filter, &err_msg)) {
     simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
                   "Filter \"%s\" didn't compile correctly.\n"
                   " Please try again. Filter unchanged.\n%s\n", filter_name,
-                  dfilter_error_msg);
+                  err_msg);
+    g_free(err_msg);
     g_free(filter_name);
     g_free(filter_text);
     return;

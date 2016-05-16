@@ -684,6 +684,7 @@ file_open_cmd(capture_file *cf, GtkWidget *w _U_)
   GString   *file_name      = g_string_new("");
   GString   *display_filter = g_string_new("");
   dfilter_t *rfcode         = NULL;
+  gchar     *err_msg;
   int        err;
   int        type = WTAP_TYPE_AUTO;
 
@@ -700,12 +701,13 @@ file_open_cmd(capture_file *cf, GtkWidget *w _U_)
       /* Only close the old file now that we know we want to open another one. */
       cf_close(cf);
       /* apply our filter */
-      if (dfilter_compile(display_filter->str, &rfcode)) {
+      if (dfilter_compile(display_filter->str, &rfcode, &err_msg)) {
         cf_set_rfcode(&cfile, rfcode);
       } else {
         /* Not valid.  Tell the user, and go back and run the file
            selection box again once they dismiss the alert. */
-        bad_dfilter_alert_box(top_level, display_filter->str);
+        bad_dfilter_alert_box(top_level, display_filter->str, err_msg);
+        g_free(err_msg);
         continue;
       }
 
@@ -715,9 +717,10 @@ file_open_cmd(capture_file *cf, GtkWidget *w _U_)
            just leave it around so that the user can, after they
            dismiss the alert box popped up for the open error,
            try again. */
-        if (rfcode != NULL)
+        if (rfcode != NULL){
           dfilter_free(rfcode);
           rfcode = NULL;
+        }
         continue;
       }
 
@@ -934,6 +937,7 @@ file_merge_cmd(GtkWidget *w _U_)
   GString     *display_filter = g_string_new("");
   int          merge_type;
   dfilter_t   *rfcode         = NULL;
+  gchar       *err_msg;
   int          err;
   int          file_type;
   cf_status_t  merge_status;
@@ -953,10 +957,11 @@ file_merge_cmd(GtkWidget *w _U_)
 #endif /* USE_WIN32_FILE_DIALOGS */
 
       /* Get the specified read filter and try to compile it. */
-      if (!dfilter_compile(display_filter->str, &rfcode)) {
+      if (!dfilter_compile(display_filter->str, &rfcode, &err_msg)) {
         /* Not valid.  Tell the user, and go back and run the file
            selection box again once they dismiss the alert. */
-        bad_dfilter_alert_box(top_level, display_filter->str);
+        bad_dfilter_alert_box(top_level, display_filter->str, err_msg);
+        g_free(err_msg);
         continue;
       }
 
@@ -1004,7 +1009,7 @@ file_merge_cmd(GtkWidget *w _U_)
       /* Attach the new read filter to "cf" ("cf_open()" succeeded, so
          it closed the previous capture file, and thus destroyed any
          previous read filter attached to "cf"). */
-      cfile.rfcode = rfcode;
+      cf_set_rfcode(&cfile, rfcode);
 
       switch (cf_read(&cfile, FALSE)) {
 

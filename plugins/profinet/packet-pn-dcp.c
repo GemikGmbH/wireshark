@@ -25,12 +25,9 @@
 
 #include <string.h>
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/to_str.h>
-#include <epan/wmem/wmem.h>
 #include <epan/expert.h>
 #include <epan/dissectors/packet-dcerpc.h>
 
@@ -75,6 +72,8 @@ static int hf_pn_dcp_suboption_device_role = -1;
 static int hf_pn_dcp_suboption_device_aliasname = -1;
 static int hf_pn_dcp_suboption_device_instance_high = -1;
 static int hf_pn_dcp_suboption_device_instance_low = -1;
+static int hf_pn_dcp_suboption_device_oem_ven_id = -1;
+static int hf_pn_dcp_suboption_device_oem_dev_id = -1;
 
 static int hf_pn_dcp_suboption_dhcp = -1;
 static int hf_pn_dcp_suboption_dhcp_device_id = -1;
@@ -240,6 +239,7 @@ static const value_string pn_dcp_suboption_ip_block_info[] = {
 #define PNDCP_SUBOPTION_DEVICE_DEV_OPTIONS      0x05
 #define PNDCP_SUBOPTION_DEVICE_ALIAS_NAME       0x06
 #define PNDCP_SUBOPTION_DEVICE_DEV_INSTANCE     0x07
+#define PNDCP_SUBOPTION_DEVICE_OEM_DEV_ID       0x08
 
 static const value_string pn_dcp_suboption_device[] = {
     { 0x00, "Reserved" },
@@ -250,7 +250,8 @@ static const value_string pn_dcp_suboption_device[] = {
     { PNDCP_SUBOPTION_DEVICE_DEV_OPTIONS,   "Device Options" },
     { PNDCP_SUBOPTION_DEVICE_ALIAS_NAME,    "Alias Name" },
     { PNDCP_SUBOPTION_DEVICE_DEV_INSTANCE,  "Device Instance" },
-    /*0x08 - 0xff reserved */
+    { PNDCP_SUBOPTION_DEVICE_OEM_DEV_ID,    "OEM Device ID"},
+    /*0x09 - 0xff reserved */
     { 0, NULL }
 };
 
@@ -389,6 +390,7 @@ dissect_PNDCP_Suboption_IP(tvbuff_t *tvb, int offset, packet_info *pinfo,
     guint16     block_qualifier;
     guint32     ip;
     proto_item *item = NULL;
+    address     addr;
 
 
     /* SuboptionIPParameter */
@@ -437,15 +439,18 @@ dissect_PNDCP_Suboption_IP(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
         /* IPAddress */
         offset = dissect_pn_ipv4(tvb, offset, pinfo, tree, hf_pn_dcp_suboption_ip_ip, &ip);
-        proto_item_append_text(block_item, ", IP: %s", ip_to_str((guint8*)&ip));
+        SET_ADDRESS(&addr, AT_IPv4, 4, &ip);
+        proto_item_append_text(block_item, ", IP: %s", address_to_str(wmem_packet_scope(), &addr));
 
         /* Subnetmask */
         offset = dissect_pn_ipv4(tvb, offset, pinfo, tree, hf_pn_dcp_suboption_ip_subnetmask, &ip);
-        proto_item_append_text(block_item, ", Subnet: %s", ip_to_str((guint8*)&ip));
+        SET_ADDRESS(&addr, AT_IPv4, 4, &ip);
+        proto_item_append_text(block_item, ", Subnet: %s", address_to_str(wmem_packet_scope(), &addr));
 
         /* StandardGateway */
         offset = dissect_pn_ipv4(tvb, offset, pinfo, tree, hf_pn_dcp_suboption_ip_standard_gateway, &ip);
-        proto_item_append_text(block_item, ", Gateway: %s", ip_to_str((guint8*)&ip));
+        SET_ADDRESS(&addr, AT_IPv4, 4, &ip);
+        proto_item_append_text(block_item, ", Gateway: %s", address_to_str(wmem_packet_scope(), &addr));
         break;
     default:
         offset = dissect_pn_undecoded(tvb, offset, pinfo, tree, block_length);
@@ -476,6 +481,8 @@ dissect_PNDCP_Suboption_Device(tvbuff_t *tvb, int offset, packet_info *pinfo,
     gboolean  have_block_qualifier = FALSE;
     guint8    device_instance_high;
     guint8    device_instance_low;
+    guint16   oem_vendor_id;
+    guint16   oem_device_id;
 
 
     /* SuboptionDevice... */
@@ -622,6 +629,21 @@ dissect_PNDCP_Suboption_Device(tvbuff_t *tvb, int offset, packet_info *pinfo,
         }
         proto_item_append_text(block_item, ", InstanceHigh: %d, Instance Low: %d",
                                device_instance_high, device_instance_low);
+        break;
+    case PNDCP_SUBOPTION_DEVICE_OEM_DEV_ID:
+        offset = dissect_pn_uint16(tvb, offset, pinfo, tree, hf_pn_dcp_suboption_device_oem_ven_id, &oem_vendor_id);
+        offset = dissect_pn_uint16(tvb, offset, pinfo, tree, hf_pn_dcp_suboption_device_oem_dev_id, &oem_device_id);
+        pn_append_info(pinfo, dcp_item, ", OEM-Dev-ID");
+        proto_item_append_text(block_item, "Device/OEM Device ID");
+        if(have_block_qualifier) {
+            proto_item_append_text(block_item, ", BlockQualifier: %s",
+                                   val_to_str(block_qualifier, pn_dcp_block_qualifier, "Unknown"));
+        }
+        if(have_block_info) {
+            proto_item_append_text(block_item, ", BlockInfo: %s",
+                                   val_to_str(block_info, pn_dcp_block_info, "Unknown"));
+        }
+        proto_item_append_text(block_item, ", OEMVendorID: 0x%04x / OEMDeviceID: 0x%04x", oem_vendor_id, oem_device_id);
         break;
     default:
         offset = dissect_pn_undecoded(tvb, offset, pinfo, tree, block_length);
@@ -1009,15 +1031,13 @@ dissect_PNDCP_PDU(tvbuff_t *tvb,
 /* possibly dissect a PN-RT packet (frame ID must be in the appropriate range) */
 static gboolean
 dissect_PNDCP_Data_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
-    void *data _U_)
+    void *data)
 {
-    guint16     u16FrameID;
+    /* the tvb will NOT contain the frame_id here, so get it from dissection data! */
+    guint16     u16FrameID = GPOINTER_TO_UINT(data);
     proto_item *item;
     proto_tree *dcp_tree;
 
-
-    /* the tvb will NOT contain the frame_id here, so get it from our private data! */
-    u16FrameID = GPOINTER_TO_UINT(pinfo->private_data);
 
     /* frame id must be in valid range (acyclic Real-Time, DCP) */
     if (u16FrameID < FRAME_ID_DCP_HELLO || u16FrameID > FRAME_ID_DCP_IDENT_RES) {
@@ -1196,6 +1216,16 @@ proto_register_pn_dcp (void)
             FT_UINT8, BASE_HEX, NULL, 0x0,
             NULL, HFILL }},
 
+        { &hf_pn_dcp_suboption_device_oem_ven_id,
+          { "OEMVendorID", "pn_dcp.suboption_device_oem_ven_id",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL }},
+
+        { &hf_pn_dcp_suboption_device_oem_dev_id,
+          { "OEMDeviceID", "pn_dcp.suboption_device_oem_dev_id",
+            FT_UINT16, BASE_HEX, NULL, 0x0,
+            NULL, HFILL }},
+
         { &hf_pn_dcp_suboption_dhcp,
           { "Suboption", "pn_dcp.suboption_dhcp",
             FT_UINT8, BASE_DEC, VALS(pn_dcp_suboption_dhcp), 0x0,
@@ -1261,5 +1291,18 @@ void
 proto_reg_handoff_pn_dcp (void)
 {
     /* register ourself as an heuristic pn-rt payload dissector */
-    heur_dissector_add("pn_rt", dissect_PNDCP_Data_heur, proto_pn_dcp);
+    heur_dissector_add("pn_rt", dissect_PNDCP_Data_heur, "PROFINET DCP IO", "pn_dcp_pn_rt", proto_pn_dcp, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

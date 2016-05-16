@@ -22,16 +22,13 @@
  */
 
 /*
- *	AASP over SIP
- *	Content-Type: message/x-aasp-signalling
+ *      AASP over SIP
+ *      Content-Type: message/x-aasp-signalling
  */
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/prefs.h>
 
 /* commands id */
 #define BEGIN_BLOCK_DATA    0x80
@@ -134,7 +131,7 @@ static const value_string szCmdID[] =
 };
 
 /**
- *	Dissect single command
+ *     Dissect single command
  */
 static void
 dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
@@ -150,24 +147,24 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
     proto_item_append_text(ti, ", %s", val_to_str(tvb_get_guint8(tvb, 0), szCmdID, "Unk %d"));
 
     /* command id */
-    proto_tree_add_item(subtree, hf_a_id, tvb, 0, 1, ENC_NA);
+    proto_tree_add_item(subtree, hf_a_id, tvb, 0, 1, ENC_BIG_ENDIAN);
 
     /* attributes */
     switch(tvb_get_guint8(tvb, 0))
     {
     default:
         {
-            if(tvb_length(tvb) > 1)
+            if(tvb_reported_length(tvb) > 1)
                 proto_tree_add_item(subtree, hf_a_data, tvb, 1, -1, ENC_NA);
             break;
         }
     case CONTEXT_INFO:
         {
-            for(i = 1; i<tvb_length(tvb); )
+            for(i = 1; i<tvb_reported_length(tvb); )
             {
                 switch(tvb_get_guint8(tvb, i))
                 {
-                default: i = tvb_length(tvb); continue;
+                default: i = tvb_reported_length(tvb); continue;
 
                 case 1:
                 case 3:
@@ -202,17 +199,17 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
             proto_item_append_text(ti, ": %d '%c'", c, c);
 
             proto_tree_add_item(subtree, hf_a_data, tvb, 1, 4, ENC_NA);
-            ti = proto_tree_add_item(subtree, hf_a_button_id, tvb, 5, 1, ENC_NA);
+            ti = proto_tree_add_item(subtree, hf_a_button_id, tvb, 5, 1, ENC_BIG_ENDIAN);
             if(ti)
                 proto_item_append_text(ti, " '%c'", c);
             break;
         }
     case SET_TEXT:
         {
-            if(tvb_length(tvb) > 3)
+            if(tvb_reported_length(tvb) > 3)
             {
                 proto_tree_add_item(subtree, hf_a_data, tvb, 1, 3, ENC_NA);
-                proto_tree_add_item(subtree, hf_a_length, tvb, 4, 1, ENC_NA);
+                proto_tree_add_item(subtree, hf_a_length, tvb, 4, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_a_text, tvb, 5, -1, ENC_ASCII|ENC_NA);
 
                 pstr = tvb_get_string_enc(wmem_packet_scope(), tvb, 5, tvb_get_guint8(tvb, 4), ENC_ASCII|ENC_NA);
@@ -231,7 +228,7 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
         {
             proto_tree *infotree;
 
-            for(i=1; i<tvb_length(tvb); )
+            for(i=1; i<tvb_reported_length(tvb); )
             {
                 switch(tvb_get_guint8(tvb, i))
                 {
@@ -241,7 +238,7 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
                         len = 2;
                         ti = proto_tree_add_item(subtree, hf_a_item, tvb, i, len, ENC_NA);
                         infotree = proto_item_add_subtree(ti, ett_a_item);
-                        proto_tree_add_item(infotree, hf_a_day, tvb, i+1, 1, ENC_NA);
+                        proto_tree_add_item(infotree, hf_a_day, tvb, i+1, 1, ENC_BIG_ENDIAN);
                         proto_item_append_text(ti, ", Day: '%d'", tvb_get_guint8(tvb, i+1));
                         i += len;
                         break;
@@ -251,7 +248,7 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
                         len = 2;
                         ti = proto_tree_add_item(subtree, hf_a_item, tvb, i, len, ENC_NA);
                         infotree = proto_item_add_subtree(ti, ett_a_item);
-                        proto_tree_add_item(infotree, hf_a_month, tvb, i+1, 1, ENC_NA);
+                        proto_tree_add_item(infotree, hf_a_month, tvb, i+1, 1, ENC_BIG_ENDIAN);
                         proto_item_append_text(ti, ", Month: '%d'", tvb_get_guint8(tvb, i+1));
                         i += len;
                         break;
@@ -261,7 +258,7 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
                         len = 2;
                         ti = proto_tree_add_item(subtree, hf_a_item, tvb, i, len, ENC_NA);
                         infotree = proto_item_add_subtree(ti, ett_a_item);
-                        proto_tree_add_item(infotree, hf_a_weekofyear, tvb, i+1, 1, ENC_NA);
+                        proto_tree_add_item(infotree, hf_a_weekofyear, tvb, i+1, 1, ENC_BIG_ENDIAN);
                         proto_item_append_text(ti, ", Week of the year: '%d'", tvb_get_guint8(tvb, i+1));
                         i += len;
                         break;
@@ -317,7 +314,7 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
                         len = 2;
                         ti = proto_tree_add_item(subtree, hf_a_item, tvb, i, len, ENC_NA);
                         infotree = proto_item_add_subtree(ti, ett_a_item);
-                        proto_tree_add_item(infotree, hf_a_hour, tvb, i+1, 1, ENC_NA);
+                        proto_tree_add_item(infotree, hf_a_hour, tvb, i+1, 1, ENC_BIG_ENDIAN);
                         proto_item_append_text(ti, ", Hour: '%d'", tvb_get_guint8(tvb, i+1));
                         i += len;
                         break;
@@ -327,7 +324,7 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
                         len = 2;
                         ti = proto_tree_add_item(subtree, hf_a_item, tvb, i, len, ENC_NA);
                         infotree = proto_item_add_subtree(ti, ett_a_item);
-                        proto_tree_add_item(infotree, hf_a_minute, tvb, i+1, 1, ENC_NA);
+                        proto_tree_add_item(infotree, hf_a_minute, tvb, i+1, 1, ENC_BIG_ENDIAN);
                         proto_item_append_text(ti, ", Minute: '%d'", tvb_get_guint8(tvb, i+1));
                         i += len;
                         break;
@@ -347,10 +344,10 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
         }
     case DO_COMMAND:
         {
-            if(tvb_length(tvb) > 1)
+            if(tvb_reported_length(tvb) > 1)
             {
-                proto_tree_add_item(subtree, hf_a_line, tvb, 1, 1, ENC_NA);
-                proto_tree_add_item(subtree, hf_a_length, tvb, 2, 1, ENC_NA);
+                proto_tree_add_item(subtree, hf_a_line, tvb, 1, 1, ENC_BIG_ENDIAN);
+                proto_tree_add_item(subtree, hf_a_length, tvb, 2, 1, ENC_BIG_ENDIAN);
                 proto_tree_add_item(subtree, hf_a_cdpn, tvb, 3, -1, ENC_ASCII|ENC_NA);
 
                 pstr = tvb_get_string_enc(wmem_packet_scope(), tvb, 3, tvb_get_guint8(tvb, 2), ENC_ASCII|ENC_NA);
@@ -365,7 +362,7 @@ dissect_a_binary_command(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
 }
 
 /**
- *	Searching for the next command when the variable or unknown length.
+ *      Searching for the next command when the variable or unknown length.
  */
 static guint searchNext(tvbuff_t *tvb, guint begin, guint end)
 {
@@ -387,7 +384,7 @@ dissect_aasp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
     proto_item *ti; proto_tree *aasp_tree; guint n;
 
     /* Check that there's enough data */
-    n = tvb_length(tvb);
+    n = tvb_reported_length(tvb);
     if(n < 3) return 0;
 
     col_clear(pinfo->cinfo, COL_INFO);
@@ -425,15 +422,17 @@ dissect_aasp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
                         /* 86:02:00:00:01:03:02 */
                         switch(tvb_get_guint8(tvb, i+2))
                         {
-                        case 0x00:	i += 11; break;
+                        case 0x00:  i += 11; break;
                         case 0x02:  i +=  8; break;
                         }
                         break;
                     }
 #endif
-                default:	i = searchNext(tvb, i+1, n); break;
+                default:
+                    i = searchNext(tvb, i+1, n);
+                    break;
                 }
-                dissect_a_binary_command(tvb_new_subset(tvb, prev, i-prev, i-prev), pinfo, aasp_tree);
+                dissect_a_binary_command(tvb_new_subset_length(tvb, prev, i-prev), pinfo, aasp_tree);
                 prev = i;
             }
         }
@@ -525,3 +524,16 @@ proto_reg_handoff_aasp(void)
     aasp_handle = new_create_dissector_handle(dissect_aasp, proto_aasp);
     dissector_add_string("media_type", "message/x-aasp-signalling", aasp_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

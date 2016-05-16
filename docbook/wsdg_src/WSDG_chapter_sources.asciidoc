@@ -127,7 +127,7 @@ Recommended for development purposes.
 Age: a few minutes.
 
 You can use a Git client to download the source code from Wireshark's code
-review system. Anyone can clone from the anonymous URL:
+review system. Anyone can clone from the anonymous git URL:
 
 * wireshark-git-anonhttp-url:[]
 
@@ -147,9 +147,11 @@ The following example shows how to get up and running on the command
 line. See <<ChToolsGit>> for information on installing and configuring
 graphical Git and Gerrit clients.
 
-. Sign in to wireshark-code-review-url:[] using OpenID. In the upper
-right corner of the web page, click on your account name and select
-_Settings_.
+. Sign in to wireshark-code-review-url:[] using OpenID (click Register or Sign
+In in the upper right corner of the web page). Follow the login instructions.
+
+. In the upper right corner of the web page, click on your account name and
+select _Settings_.
 
 . Under _Profile_ set a username. This will be the username that
 you use for SSH access. For the steps below we'll assume that your
@@ -162,6 +164,16 @@ upload a key for each computer that you use.
 in many Linux distributions. You can also install it as a
 https://pypi.python.org/pypi/git-review[Python package]. (This step
 isn't strictly necessary but it makes working with Gerrit much easier.)
+To install it from Chocolatey run
++
+--
+----
+# Make sure "Scripts" is in our path
+PS$>$env:path += ";C:\tools\python2\Scripts"
+PS$>choco install pip
+PS$>choco install git-review -source python
+----
+--
 
 . Now on to the command line. First, make sure `git` works:
 +
@@ -384,43 +396,10 @@ to see what options you have.
 
 ==== Win32 native
 
-First, check the file 'config.nmake' to determine if it reflects your
-configuration. The settings in this file are well documented but there are a lot
-of them so please look closely. If you've installed the libraries and tools as
-recommended there should be no need to change anything.
-
-Many of the file and directory names used in the build process go past the old
-8.3 naming limitations. As a result you should use the `cmd.exe` command
-interpreter instead of the old `command.com`.
-
-Be sure that your command-line environment is set up to compile
-and link with MSV$$C++$$. When installing MSV$$C++$$, you can have your
-system's environment set up to always allow compiling from the
-command line, or you can invoke the vcvars32.bat script, which can
-usually be found in the _VC98\Bin_subdirectory of the
-directory in which Visual Studio was installed.
-
-
-You should then cleanup any intermediate files, which are shipped for
-convenience of Unix users, by typing at the command line prompt (cmd.exe):
-
-----
-> nmake -f Makefile.nmake distclean
-----
-
-After doing this, typing at the command line prompt (cmd.exe):
-
-----
-> nmake -f Makefile.nmake all
-----
-
-will start the whole Wireshark build process.
-
+Follow the build procedure in <<ChWin32Build>> to build Wireshark.
 
 After the build process has successfully finished, you should find a
-`wireshark.exe` and some other files
-in the root directory.
-
+`Wireshark.exe` and some other files in the `run\RelWithDebInfo` directory.
 
 [[ChSrcRunFirstTime]]
 
@@ -469,8 +448,12 @@ be informative when things don't work as expected.
 ==== Win32 native
 
 During the build all relevant program files are collected in a subdirectory
-'wireshark-gtk2'. You can run the program from there by
-launching the wireshark.exe executable.
+`run\RelWithDebInfo`. You can run the program from there by
+launching the Wireshark.exe executable.
+
+The older GTK based version is also available in the same
+subdirectory.  You can run the program from there by launching the
+wireshark-gtk.exe executable.
 
 
 [[ChSrcDebug]]
@@ -509,9 +492,8 @@ See http://library.gnome.org/devel/glib/stable/glib-running.html[]
 
 ==== Win32 native
 
-****
-To be written
-****
+You can debug using the Visual Studio Debugger or WinDbg.  See the section
+on using the <<ChToolsDebugger, Debugger Tools>>.
 
 [[ChSrcChange]]
 
@@ -579,7 +561,8 @@ the following benefits by contributing your improvements:
 There's no direct way to push changes to the Git repository. Only a few people
 are authorised to actually make changes to the source code (check-in changed
 files). If you want to submit your changes, you should upload them to the code
-review system.
+review system at wireshark-code-review-url:[]. This requires you to set up git
+as described at <<ChSrcGit>>.
 
 [[ChSrcDiffWhat]]
 
@@ -833,22 +816,28 @@ You'll take a capture file containing packets affecting your dissector
 and the fuzz test will randomly change bytes in this file, so that unusual
 code paths in your dissector are checked. There are tools available to
 automatically do this on any number of input files, see:
-wireshark-wiki-site:[]/FuzzTesting[] for details.
+wireshark-wiki-site:[]FuzzTesting[] for details.
 
 [[ChSrcUpload]]
 
 ==== Uploading your changes
 
 When you're satisfied with your changes (and obtained any necessary approval
-from your organization) you can upload them for review. Changes should be
-pushed to a
-http://test.code.wireshark.org/review/Documentation/user-upload.html#push_create[magical "refs/for" branch]
+from your organization) you can upload them for review at
+wireshark-code-review-url:[]. This requires a Gerrit Code Review account as
+described at <<ChSrcGitRepository>>.
+
+Changes should be pushed to a
+https://code.wireshark.org/review/Documentation/user-upload.html#push_create[magical "refs/for" branch]
 in Gerrit. For example, to upload your new Snowcone Machine Protocol dissector
 you could push to refs/for/master with the topic "snowcone-machine":
 
 ----
 $ git push ssh://my.username@code.wireshark.org:29418/wireshark HEAD:refs/for/master/snowcone-machine
 ----
+
+The username `my.username` is the one which was given during registration with
+the review system.
 
 If you have `git-review` installed you can upload the change with a lot less typing:
 
@@ -878,7 +867,7 @@ You might get one of the following responses to your patch request:
   the core developers are busy (e.g., with their day jobs or family or other commitments) and
   haven't had time to look at your patch. Don't worry, if
   your patch is in the review system it won't get lost.
-+
+
 If you're concerned, feel free to add a comment to the patch or send an email
 to the developer's list asking for status. But please be patient: most if not
 all of us do this in our spare time.
@@ -1055,7 +1044,7 @@ more in-depth discussion of the build process.
 In the wireshark directory, type:
 
 ----
-$ make debian-package
+$ dpkg-buildpackage -rfakeroot -us -uc
 ----
 
 to build the Debian Package.
@@ -1065,9 +1054,9 @@ to build the Debian Package.
 ==== Red Hat: .rpm packages
 
 The RPM is built using rpmbuild (http://www.rpm.org/), which comes as standard on many flavours of Linux, including
-Red Hat and Fedora. The process creates a clean build environment in _packaging/rpm/BUILD_every
+Red Hat and Fedora. The process creates a clean build environment in _packaging/rpm/BUILD_ every
 time the RPM is built. The settings controlling the build are in _packaging/rpm/SPECS/wireshark.spec.in_.
-After editing the settings in this file, _./configure_must be run again in the wireshark directory to
+After editing the settings in this file, _./configure_ must be run again in the wireshark directory to
 generate the actual specification script.
 
 
@@ -1075,9 +1064,14 @@ generate the actual specification script.
 [NOTE]
 ====
 The SPEC file contains settings for the _configure_ used to set the RPM build
-environment. These are completely independent of any settings passed to the
-usual Wireshark `./configure`. The exception to this rule is that the _prefix_
-given to `configure --prefix` is passed to rpmbuild.
+environment. These are mostly independent of any settings passed to the
+usual Wireshark `./configure`. The exceptions to this rule are:
+
+* The _prefix_ given to `configure --prefix` is passed to rpmbuild.
+
+* The selection of the GUI (Qt, Gtk+, or both) is passed to rpmbuild.
+
+* The selection of whether to include Lua support is passed to rpmbuild.
 ====
 
 In the wireshark directory, type:
@@ -1092,7 +1086,12 @@ to build the RPM and source RPM. Once it is done, there will be a message statin
 [TIP]
 ====
 Because this does a clean build as well as constructing the package this can
-take quite a long time.
+take quite a long time.  Suggestion: add the following to your `~/.rpmmacros`
+file to allow parallel builds:
+
+----
+%_smp_mflags -j %(grep -c processor /proc/cpuinfo)
+----
 ====
 
 .Build requirements differ from run requirements
@@ -1105,9 +1104,9 @@ installing the _qt-devel_ package.
 
 [[ChSrcOSX]]
 
-==== MAC OS X: .dmg packages
+==== OS X: .dmg packages
 
-The MAC OS X Package is built using OS X packaging tools, based on information
+The OS X Package is built using OS X packaging tools, based on information
 found in the source tree under 'packaging/macosx'.
 
 In the wireshark directory, type:
@@ -1116,7 +1115,7 @@ In the wireshark directory, type:
 $ make osx-package
 ----
 
-to build the MAC OS X Package.
+to build the OS X Package.
 
 [[ChSrcNSIS]]
 
@@ -1127,20 +1126,18 @@ based systems; instructions how to install it can be found in <<ChToolsNSIS>>.
 NSIS is script based, you will find the Wireshark installer
 generation script at: 'packaging/nsis/wireshark.nsi'.
 
-You will probably have to modify the MAKENSIS setting in the
-'config.nmake' file to specify where the NSIS binaries
-are installed.
-
-In the wireshark directory, type:
+When building with CMake you must first build the 'nsis_package_prep' target,
+followed by the 'nsis_package' target, e.g.
 
 ----
-> nmake -f makefile.nmake packaging
+> msbuild /m /p:Configuration=RelWithDebInfo nsis_package_prep.vcxproj
+> msbuild /m /p:Configuration=RelWithDebInfo nsis_package.vcxproj
 ----
 
-to build the installer.
+Splitting the packaging projects in this way allows for code signing.
 
-.This might take a while
 [TIP]
+.This might take a while
 ====
 Please be patient while the package is compressed.
 It might take some time, even on fast machines.
@@ -1148,7 +1145,42 @@ It might take some time, even on fast machines.
 
 If everything went well, you will now find something like:
 'wireshark-setup-wireshark-version:[].exe' in
-the 'packaging/nsis' directory.
+the 'packaging/nsis' directory in the source tree.
+
+[[ChSrcPortableApps]]
+
+==== Win32: PortableApps .paf.exe package
+
+_PortableApps.com_ is an environment that lets users run popular applications
+from portable media such as flash drives and cloud drive services.
+
+Install the 'PortableApps.com Platform'. Install for ``all users``, which
+will place it in `C:\PortableApps`. Add the following apps:
+
+- NSIS Portable (Unicode)
+- PortableApps.com Installer
+- PortableApps.com Launcher
+- PortableApps.com AppCompactor
+
+When building with CMake you must first build the 'nsis_package_prep' target
+(which takes care of general packaging dependencies), followed by the
+'portableapps_package' target, e.g.
+
+----
+> msbuild /m /p:Configuration=RelWithDebInfo nsis_package_prep.vcxproj
+> msbuild /m /p:Configuration=RelWithDebInfo portableapps_package.vcxproj
+----
+
+[TIP]
+.This might take a while
+====
+Please be patient while the package is compressed.
+It might take some time, even on fast machines.
+====
+
+If everything went well, you will now find something like:
+'WiresharkPortable_wireshark-major-minor-version:[].paf.exe' in
+the 'packaging/portableapps' directory.
 
 ++++++++++++++++++++++++++++++++++++++
 <!-- End of WSDG Chapter Sources -->

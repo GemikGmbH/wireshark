@@ -27,7 +27,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-ipx.h"
 #include "packet-sll.h"
@@ -38,9 +37,7 @@
 #include <epan/aftypes.h>
 #include <epan/arcnet_pids.h>
 #include <epan/conversation.h>
-#include <epan/tap.h>
-#include <epan/wmem/wmem.h>
-
+#include <epan/conversation_table.h>
 void proto_register_ipx(void);
 void proto_reg_handoff_ipx(void);
 
@@ -99,6 +96,7 @@ static int hf_spx_ack_nr = -1;
 static int hf_spx_all_nr = -1;
 static int hf_spx_neg_size = -1;
 static int hf_spx_rexmt_frame = -1;
+static int hf_spx_rexmt_data = -1;
 
 static gint ett_spx = -1;
 static gint ett_spx_connctrl = -1;
@@ -106,16 +104,28 @@ static gint ett_spx_connctrl = -1;
 static int proto_ipxrip = -1;
 static int hf_ipxrip_request = -1;
 static int hf_ipxrip_response = -1;
+static int hf_ipxrip_packet_type = -1;
+static int hf_ipxrip_route_vector = -1;
+static int hf_ipxrip_hops = -1;
+static int hf_ipxrip_ticks = -1;
 
 static gint ett_ipxrip = -1;
 
 static int proto_serialization = -1;
-
+static int hf_serial_number = -1;
 static gint ett_serialization = -1;
 
 static int proto_sap = -1;
 static int hf_sap_request = -1;
 static int hf_sap_response = -1;
+/* Generated from convert_proto_tree_add_text.pl */
+static int hf_sap_intermediate_networks = -1;
+static int hf_sap_server_type = -1;
+static int hf_sap_packet_type = -1;
+static int hf_sap_node = -1;
+static int hf_sap_network = -1;
+static int hf_sap_server_name = -1;
+static int hf_sap_socket = -1;
 
 static gint ett_ipxsap = -1;
 static gint ett_ipxsap_server = -1;
@@ -145,6 +155,58 @@ dissect_ipxmsg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree);
 #define UDP_PORT_IPX    213		/* RFC 1234 */
 
 #define IPX_HEADER_LEN	30		/* It's *always* 30 bytes */
+
+static const char* ipx_conv_get_filter_type(conv_item_t* conv, conv_filter_type_e filter)
+{
+	if ((filter == CONV_FT_SRC_ADDRESS) && (conv->src_address.type == AT_IPX))
+		return "ipx.src";
+
+	if ((filter == CONV_FT_DST_ADDRESS) && (conv->dst_address.type == AT_IPX))
+		return "ipx.dst";
+
+	if ((filter == CONV_FT_ANY_ADDRESS) && (conv->src_address.type == AT_IPX))
+		return "ipx.addr";
+
+	return CONV_FILTER_INVALID;
+}
+
+static ct_dissector_info_t ipx_ct_dissector_info = {&ipx_conv_get_filter_type};
+
+static int
+ipx_conversation_packet(void *pct, packet_info *pinfo, epan_dissect_t *edt _U_, const void *vip)
+{
+	conv_hash_t *hash = (conv_hash_t*) pct;
+	const ipxhdr_t *ipxh=(const ipxhdr_t *)vip;
+
+	add_conversation_table_data(hash, &ipxh->ipx_src, &ipxh->ipx_dst, 0, 0, 1, pinfo->fd->pkt_len, &pinfo->rel_ts, &pinfo->fd->abs_ts, &ipx_ct_dissector_info, PT_NONE);
+
+	return 1;
+}
+
+static const char* ipx_host_get_filter_type(hostlist_talker_t* host, conv_filter_type_e filter)
+{
+	if ((filter == CONV_FT_ANY_ADDRESS) && (host->myaddress.type == AT_IPX))
+		return "ipx.addr";
+
+	return CONV_FILTER_INVALID;
+}
+
+static hostlist_dissector_info_t ipx_host_dissector_info = {&ipx_host_get_filter_type};
+
+static int
+ipx_hostlist_packet(void *pit, packet_info *pinfo, epan_dissect_t *edt _U_, const void *vip)
+{
+	conv_hash_t *hash = (conv_hash_t*) pit;
+	const ipxhdr_t *ipxh=(const ipxhdr_t *)vip;
+
+	/* Take two "add" passes per packet, adding for each direction, ensures that all
+	packets are counted properly (even if address is sending to itself)
+	XXX - this could probably be done more efficiently inside hostlist_table */
+	add_hostlist_table_data(hash, &ipxh->ipx_src, 0, TRUE, 1, pinfo->fd->pkt_len, &ipx_host_dissector_info, PT_NONE);
+	add_hostlist_table_data(hash, &ipxh->ipx_dst, 0, FALSE, 1, pinfo->fd->pkt_len, &ipx_host_dissector_info, PT_NONE);
+
+	return 1;
+}
 
 /* ================================================================= */
 /* IPX                                                               */
@@ -191,12 +253,6 @@ static const value_string ipx_socket_vals[] = {
 };
 
 value_string_ext ipx_socket_vals_ext = VALUE_STRING_EXT_INIT(ipx_socket_vals);
-
-static const char*
-socket_text(guint16 socket)
-{
-	return val_to_str_ext_const(socket, &ipx_socket_vals_ext, "Unknown");
-}
 
 static const value_string ipx_packet_type_vals[] = {
 	{ IPX_PACKET_TYPE_IPX,		"IPX" },
@@ -245,8 +301,6 @@ dissect_ipx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	proto_tree	*ipx_tree = NULL;
 	proto_item	*ti = NULL, *hidden_item;
 
-	const guint8	*src_net_node, *dst_net_node;
-
 	guint8		ipx_hops;
 	char 		*str;
 	guint16		first_socket, second_socket;
@@ -278,18 +332,14 @@ dissect_ipx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	/* Adjust the tvbuff length to include only the IPX datagram. */
 	set_actual_length(tvb, ipxh->ipx_length);
 
-	src_net_node = tvb_get_ptr(tvb, 18, 10);
-	dst_net_node = tvb_get_ptr(tvb, 6,  10);
+	TVB_SET_ADDRESS(&pinfo->net_src,	AT_IPX, tvb, 18, 10);
+    COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->net_src);
+    COPY_ADDRESS_SHALLOW(&ipxh->ipx_src, &pinfo->net_src);
+	TVB_SET_ADDRESS(&pinfo->net_dst,	AT_IPX, tvb, 6,  10);
+    COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->net_dst);
+    COPY_ADDRESS_SHALLOW(&ipxh->ipx_dst, &pinfo->net_dst);
 
-	SET_ADDRESS(&pinfo->net_src,	AT_IPX, 10, src_net_node);
-	SET_ADDRESS(&pinfo->src,	AT_IPX, 10, src_net_node);
-	SET_ADDRESS(&ipxh->ipx_src,	AT_IPX, 10, src_net_node);
-	SET_ADDRESS(&pinfo->net_dst,	AT_IPX, 10, dst_net_node);
-	SET_ADDRESS(&pinfo->dst,	AT_IPX, 10, dst_net_node);
-	SET_ADDRESS(&ipxh->ipx_dst,	AT_IPX, 10, dst_net_node);
-
-	col_add_fstr(pinfo->cinfo, COL_INFO, "%s (0x%04x)",
-				socket_text(ipxh->ipx_dsocket), ipxh->ipx_dsocket);
+	col_add_str(pinfo->cinfo, COL_INFO, val_to_str_ext(ipxh->ipx_dsocket, &ipx_socket_vals_ext, "Unknown (0x%04x)"));
 
 	if (tree) {
 
@@ -460,10 +510,8 @@ spx_hash_func(gconstpointer v)
 static void
 spx_init_protocol(void)
 {
-
-	if (spx_hash)
-		g_hash_table_destroy(spx_hash);
-
+	/* no need for register_cleanup_routine that destroys spx_hash,
+	 * spx_postseq_cleanup should clear this. */
 	spx_hash = g_hash_table_new(spx_hash_func, spx_equal);
 }
 
@@ -526,31 +574,16 @@ spx_hash_lookup(conversation_t *conversation, guint32 spx_src, guint32 spx_seq)
 #define SPX_RESERVED	0x02
 #define SPX_EXT_HEADER	0x01
 
-static const char*
-spx_conn_ctrl(guint8 ctrl)
-{
-	const char *p;
-
-	static const value_string conn_vals[] = {
-		{ 0x00,                        "Data, No Ack Required" },
-		{ SPX_EOM,                     "End-of-Message" },
-		{ SPX_ATTN,                    "Attention" },
-		{ SPX_SEND_ACK,                "Acknowledgment Required"},
-		{ SPX_SEND_ACK|SPX_EOM,        "Send Ack: End Message"},
-		{ SPX_SYS_PACKET,              "System Packet"},
-		{ SPX_SYS_PACKET|SPX_SEND_ACK, "System Packet: Send Ack"},
-		{ 0x00,                        NULL }
-	};
-
-	p = try_val_to_str((ctrl & 0xf0), conn_vals );
-
-	if (p) {
-		return p;
-	}
-	else {
-		return "Unknown";
-	}
-}
+static const value_string conn_vals[] = {
+	{ 0x00,                        "Data, No Ack Required" },
+	{ SPX_EOM,                     "End-of-Message" },
+	{ SPX_ATTN,                    "Attention" },
+	{ SPX_SEND_ACK,                "Acknowledgment Required"},
+	{ SPX_SEND_ACK|SPX_EOM,        "Send Ack: End Message"},
+	{ SPX_SYS_PACKET,              "System Packet"},
+	{ SPX_SYS_PACKET|SPX_SEND_ACK, "System Packet: Send Ack"},
+	{ 0x00,                        NULL }
+};
 
 static const char*
 spx_datastream(guint8 type)
@@ -571,11 +604,10 @@ spx_datastream(guint8 type)
 static void
 dissect_spx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	proto_tree	*spx_tree = NULL;
+	proto_tree	*spx_tree;
 	proto_item	*ti;
 	tvbuff_t	*next_tvb;
 	guint8		conn_ctrl;
-	proto_tree	*cc_tree;
 	guint8		hdr_len = SPX_HEADER_LEN;
 	guint8		datastream_type;
 	const char	*datastream_type_string;
@@ -598,36 +630,38 @@ dissect_spx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		hdr_len = SPX2_HEADER_LEN;
 	}
 
-	if (tree) {
-		ti = proto_tree_add_item(tree, proto_spx, tvb, 0, hdr_len, ENC_NA);
-		spx_tree = proto_item_add_subtree(ti, ett_spx);
-	}
+	ti = proto_tree_add_item(tree, proto_spx, tvb, 0, hdr_len, ENC_NA);
+	spx_tree = proto_item_add_subtree(ti, ett_spx);
 
-	spx_msg_string = spx_conn_ctrl(conn_ctrl);
+	spx_msg_string = val_to_str_const((conn_ctrl & 0xf0), conn_vals, "Unknown" );
 	col_append_fstr(pinfo->cinfo, COL_INFO, " %s", spx_msg_string);
 	if (tree) {
-		ti = proto_tree_add_uint_format_value(spx_tree, hf_spx_connection_control, tvb,
-						0, 1, conn_ctrl,
-						"%s (0x%02X)",
-						spx_msg_string, conn_ctrl);
-		cc_tree = proto_item_add_subtree(ti, ett_spx_connctrl);
-		proto_tree_add_boolean(cc_tree, hf_spx_connection_control_sys, tvb,
-				       0, 1, conn_ctrl);
-		proto_tree_add_boolean(cc_tree, hf_spx_connection_control_send_ack, tvb,
-				       0, 1, conn_ctrl);
-		proto_tree_add_boolean(cc_tree, hf_spx_connection_control_attn, tvb,
-				       0, 1, conn_ctrl);
-		proto_tree_add_boolean(cc_tree, hf_spx_connection_control_eom, tvb,
-				       0, 1, conn_ctrl);
+		const int * spx_flags[] = {
+			&hf_spx_connection_control_sys,
+			&hf_spx_connection_control_send_ack,
+			&hf_spx_connection_control_attn,
+			&hf_spx_connection_control_eom,
+			NULL
+		};
+
+		const int * spx_vii_flags[] = {
+			&hf_spx_connection_control_sys,
+			&hf_spx_connection_control_send_ack,
+			&hf_spx_connection_control_attn,
+			&hf_spx_connection_control_eom,
+			&hf_spx_connection_control_v2,
+			&hf_spx_connection_control_neg_size,
+			&hf_spx_connection_control_reserved,
+			&hf_spx_connection_control_ext_header,
+			NULL
+		};
+
 		if (conn_ctrl & SPX_VII_PACKET) {
-			proto_tree_add_boolean(cc_tree, hf_spx_connection_control_v2, tvb,
-					       0, 1, conn_ctrl);
-			proto_tree_add_boolean(cc_tree, hf_spx_connection_control_neg_size, tvb,
-					       0, 1, conn_ctrl);
-			proto_tree_add_boolean(cc_tree, hf_spx_connection_control_reserved, tvb,
-					       0, 1, conn_ctrl);
-			proto_tree_add_boolean(cc_tree, hf_spx_connection_control_ext_header, tvb,
-					       0, 1, conn_ctrl);
+			proto_tree_add_bitmask_with_flags(spx_tree, tvb, 0, hf_spx_connection_control,
+											ett_spx_connctrl, spx_vii_flags, ENC_NA, BMT_NO_APPEND);
+		} else {
+			proto_tree_add_bitmask_with_flags(spx_tree, tvb, 0, hf_spx_connection_control,
+											ett_spx_connctrl, spx_flags, ENC_NA, BMT_NO_APPEND);
 		}
 	}
 
@@ -788,10 +822,8 @@ dissect_spx(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			    tvb, 0, 0, spx_rexmit_info_p->num,
 			    "This is a retransmission of frame %u",
 			    spx_rexmit_info_p->num);
-			if (tvb_length_remaining(tvb, hdr_len) > 0) {
-				proto_tree_add_text(spx_tree, tvb,
-				    hdr_len, -1,
-				    "Retransmitted data");
+			if (tvb_reported_length_remaining(tvb, hdr_len) > 0) {
+				proto_tree_add_item(spx_tree, hf_spx_rexmt_data, tvb, hdr_len, -1, ENC_NA);
 			}
 		}
 		return;
@@ -875,70 +907,63 @@ dissect_ipxmsg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 /* ================================================================= */
 /* IPX RIP                                                           */
 /* ================================================================= */
+static const value_string ipxrip_packet_vals[] = {
+	{ IPX_RIP_REQUEST,    "Request"},
+	{ IPX_RIP_RESPONSE,   "Response"},
+	{ 0,            NULL}
+};
+
 static void
 dissect_ipxrip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
 	proto_tree	*rip_tree;
 	proto_item	*ti, *hidden_item;
-	guint16		operation;
-	ipx_rt_def_t 	route;
+	guint16		operation, ticks;
 	int		cursor;
 	int		available_length;
-
-	static const char	*rip_type[3] = { "Request", "Response", "Unknown" };
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "IPX RIP");
 	col_clear(pinfo->cinfo, COL_INFO);
 
-	operation = tvb_get_ntohs(tvb, 0) - 1;
+	operation = tvb_get_ntohs(tvb, 0);
 
 	/* rip_types 0 and 1 are valid, anything else becomes 2 or "Unknown" */
-	col_set_str(pinfo->cinfo, COL_INFO, rip_type[MIN(operation, 2)]);
+	col_set_str(pinfo->cinfo, COL_INFO, val_to_str_const(operation, ipxrip_packet_vals, "Unknown"));
 
 	if (tree) {
 		ti = proto_tree_add_item(tree, proto_ipxrip, tvb, 0, -1, ENC_NA);
 		rip_tree = proto_item_add_subtree(ti, ett_ipxrip);
 
-		if (operation < 2) {
-			proto_tree_add_text(rip_tree, tvb, 0, 2,
-			"RIP packet type: %s", rip_type[operation]);
+		proto_tree_add_item(rip_tree, hf_ipxrip_packet_type, tvb, 0, 2, ENC_BIG_ENDIAN);
 
-			if (operation == 0) {
-			  hidden_item = proto_tree_add_boolean(rip_tree,
+		switch(operation)
+		{
+		case IPX_RIP_REQUEST:
+			hidden_item = proto_tree_add_boolean(rip_tree,
 						     hf_ipxrip_request,
 						     tvb, 0, 2, 1);
-			} else {
-			  hidden_item = proto_tree_add_boolean(rip_tree,
+			PROTO_ITEM_SET_HIDDEN(hidden_item);
+			break;
+		case IPX_RIP_RESPONSE:
+			hidden_item = proto_tree_add_boolean(rip_tree,
 						     hf_ipxrip_response,
 						     tvb, 0, 2, 1);
-			}
 			PROTO_ITEM_SET_HIDDEN(hidden_item);
-
-		}
-		else {
-			proto_tree_add_text(rip_tree, tvb, 0, 2, "Unknown RIP packet type");
+			break;
 		}
 
 		available_length = tvb_reported_length(tvb);
 		for (cursor =  2; cursor < available_length; cursor += 8) {
-			tvb_memcpy(tvb, (guint8 *)&route.network, cursor, 4);
-			route.hops = tvb_get_ntohs(tvb, cursor+4);
-			route.ticks = tvb_get_ntohs(tvb, cursor+6);
+			ticks = tvb_get_ntohs(tvb, cursor+6);
 
+			proto_tree_add_item(rip_tree, hf_ipxrip_route_vector, tvb, cursor, 4, ENC_NA);
+			proto_tree_add_item(rip_tree, hf_ipxrip_hops, tvb, cursor+4, 2, ENC_BIG_ENDIAN);
 			if (operation == IPX_RIP_REQUEST - 1) {
-				proto_tree_add_text(rip_tree, tvb, cursor,      8,
-					"Route Vector: %s, %d hop%s, %d tick%s",
-					ipxnet_to_string((guint8*)&route.network),
-					route.hops,  route.hops  == 1 ? "" : "s",
-					route.ticks, route.ticks == 1 ? "" : "s");
+				proto_tree_add_item(rip_tree, hf_ipxrip_ticks, tvb, cursor+6, 2, ENC_BIG_ENDIAN);
 			}
 			else {
-				proto_tree_add_text(rip_tree, tvb, cursor,      8,
-					"Route Vector: %s, %d hop%s, %d tick%s (%d ms)",
-					ipxnet_to_string((guint8*)&route.network),
-					route.hops,  route.hops  == 1 ? "" : "s",
-					route.ticks, route.ticks == 1 ? "" : "s",
-					route.ticks * 1000 / 18);
+				proto_tree_add_uint_format_value(rip_tree, hf_ipxrip_ticks, tvb, cursor+6, 2, ticks,
+                    "%d ms", ticks * 1000 / 18);
 			}
 		}
 	}
@@ -963,10 +988,9 @@ dissect_serialization(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	}
 
 	col_add_fstr(pinfo->cinfo, COL_INFO, "Serial number %s",
-		    tvb_bytes_to_ep_str(tvb, 0, 6));
+		    tvb_bytes_to_str(wmem_packet_scope(), tvb, 0, 6));
 
-	proto_tree_add_text(ser_tree, tvb, 0, 6,
-		      "Serial number: %s", tvb_bytes_to_ep_str(tvb, 0, 6));
+	proto_tree_add_item(ser_tree, hf_serial_number, tvb, 0, 6, ENC_NA);
 }
 
 /*
@@ -1207,6 +1231,14 @@ static const value_string novell_server_vals[] = {
 
 value_string_ext novell_server_vals_ext = VALUE_STRING_EXT_INIT(novell_server_vals);
 
+static const value_string ipxsap_packet_vals[] = {
+	{ IPX_SAP_GENERAL_QUERY,       "General Query"},
+	{ IPX_SAP_GENERAL_RESPONSE,    "General Response"},
+	{ IPX_SAP_NEAREST_QUERY,       "Nearest Query"},
+	{ IPX_SAP_NEAREST_RESPONSE,    "Nearest Response"},
+	{ 0,            NULL}
+};
+
 static void
 dissect_ipxsap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
@@ -1214,13 +1246,6 @@ dissect_ipxsap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	proto_item	*ti, *hidden_item;
 	int		cursor;
 	struct sap_query query;
-	guint16		server_type;
-	gchar		*server_name;
-	guint16		server_port;
-	guint16		intermediate_network;
-
-	static const char	*sap_type[4] = { "General Query", "General Response",
-		"Nearest Query", "Nearest Response" };
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "IPX SAP");
 	col_clear(pinfo->cinfo, COL_INFO);
@@ -1228,33 +1253,30 @@ dissect_ipxsap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	query.query_type = tvb_get_ntohs(tvb, 0);
 	query.server_type = tvb_get_ntohs(tvb, 2);
 
-	if (query.query_type >= 1 && query.query_type <= 4) {
-		col_set_str(pinfo->cinfo, COL_INFO, sap_type[query.query_type - 1]);
-	}
-	else {
-		col_set_str(pinfo->cinfo, COL_INFO, "Unknown Packet Type");
-	}
+	col_set_str(pinfo->cinfo, COL_INFO, val_to_str_const(query.query_type, ipxsap_packet_vals, "Unknown Packet Type"));
 
 	if (tree) {
 		ti = proto_tree_add_item(tree, proto_sap, tvb, 0, -1, ENC_NA);
 		sap_tree = proto_item_add_subtree(ti, ett_ipxsap);
 
-		if (query.query_type >= 1 && query.query_type <= 4) {
-			proto_tree_add_text(sap_tree, tvb, 0, 2, "%s", sap_type[query.query_type - 1]);
-			if ((query.query_type - 1) % 2) {
-			  hidden_item = proto_tree_add_boolean(sap_tree,
+		proto_tree_add_item(sap_tree, hf_sap_packet_type, tvb, 0, 2, ENC_BIG_ENDIAN);
+
+		switch(query.query_type)
+		{
+		case IPX_SAP_GENERAL_QUERY:
+		case IPX_SAP_NEAREST_QUERY:
+			hidden_item = proto_tree_add_boolean(sap_tree,
 						     hf_sap_response,
 						     tvb, 0, 2, 1);
-			} else {
-			  hidden_item = proto_tree_add_boolean(sap_tree,
+			PROTO_ITEM_SET_HIDDEN(hidden_item);
+			break;
+		case IPX_SAP_GENERAL_RESPONSE:
+		case IPX_SAP_NEAREST_RESPONSE:
+			hidden_item = proto_tree_add_boolean(sap_tree,
 						     hf_sap_request,
 						     tvb, 0, 2, 1);
-			}
 			PROTO_ITEM_SET_HIDDEN(hidden_item);
-		}
-		else {
-			proto_tree_add_text(sap_tree, tvb, 0, 2,
-					"Unknown SAP Packet Type %d", query.query_type);
+			break;
 		}
 
 		if (query.query_type == IPX_SAP_GENERAL_RESPONSE ||
@@ -1262,34 +1284,19 @@ dissect_ipxsap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 			int available_length = tvb_reported_length(tvb);
 			for (cursor =  2; (cursor + 64) <= available_length; cursor += 64) {
-				server_type = tvb_get_ntohs(tvb, cursor);
-				server_name = tvb_format_stringzpad(tvb, cursor+2, 48);
 
-				ti = proto_tree_add_text(sap_tree, tvb, cursor+2, 48,
-					"Server Name: %s", server_name);
+				ti = proto_tree_add_item(sap_tree, hf_sap_server_name, tvb, cursor+2, 48, ENC_ASCII|ENC_NA);
 				s_tree = proto_item_add_subtree(ti, ett_ipxsap_server);
 
-				proto_tree_add_text(s_tree, tvb, cursor, 2, "Server Type: %s (0x%04X)",
-				    val_to_str_ext_const(server_type, &novell_server_vals_ext, "Unknown"),
-				    server_type);
-				proto_tree_add_text(s_tree, tvb, cursor+50, 4, "Network: %s",
-						tvb_ipxnet_to_string(tvb, cursor+50));
-				proto_tree_add_text(s_tree, tvb, cursor+54, 6, "Node: %s",
-						tvb_ether_to_str(tvb, cursor+54));
-				server_port = tvb_get_ntohs(tvb, cursor+60);
-				proto_tree_add_text(s_tree, tvb, cursor+60, 2, "Socket: %s (0x%04x)",
-						socket_text(server_port),
-						server_port);
-				intermediate_network = tvb_get_ntohs(tvb, cursor+62);
-				proto_tree_add_text(s_tree, tvb, cursor+62, 2,
-						"Intermediate Networks: %d",
-						intermediate_network);
+				proto_tree_add_item(s_tree, hf_sap_server_type, tvb, cursor, 2, ENC_BIG_ENDIAN);
+				proto_tree_add_item(s_tree, hf_sap_network, tvb, cursor+50, 4, ENC_NA);
+				proto_tree_add_item(s_tree, hf_sap_node, tvb, cursor+54, 6, ENC_NA);
+				proto_tree_add_item(s_tree, hf_sap_socket, tvb, cursor+60, 2, ENC_BIG_ENDIAN);
+				proto_tree_add_item(s_tree, hf_sap_intermediate_networks, tvb, cursor+62, 2, ENC_BIG_ENDIAN);
 			}
 		}
 		else {  /* queries */
-			proto_tree_add_text(sap_tree, tvb, 2, 2, "Server Type: %s (0x%04X)",
-				val_to_str_ext_const(query.server_type, &novell_server_vals_ext, "Unknown"),
-				query.server_type);
+			proto_tree_add_item(sap_tree, hf_sap_server_type, tvb, 2, 2, ENC_BIG_ENDIAN);
 		}
 	}
 }
@@ -1369,7 +1376,7 @@ proto_register_ipx(void)
 	static hf_register_info hf_spx[] = {
 		{ &hf_spx_connection_control,
 		{ "Connection Control",	"spx.ctl",
-		  FT_UINT8,	BASE_HEX,	NULL,	0x0,
+		  FT_UINT8,	BASE_HEX,	VALS(conn_vals),	0xF0,
 		  NULL, HFILL }},
 
 		{ &hf_spx_connection_control_sys,
@@ -1451,6 +1458,11 @@ proto_register_ipx(void)
 		{ "Retransmitted Frame Number",	"spx.rexmt_frame",
 		  FT_FRAMENUM,	BASE_NONE,	NULL,	0x0,
 		  NULL, HFILL }},
+
+		{ &hf_spx_rexmt_data,
+		{ "Retransmitted data",	"spx.rexmt_data",
+		  FT_BYTES,	BASE_NONE,	NULL,	0x0,
+		  NULL, HFILL }},
 	};
 
 	static hf_register_info hf_ipxrip[] = {
@@ -1462,7 +1474,27 @@ proto_register_ipx(void)
 		{ &hf_ipxrip_response,
 		{ "Response",			"ipxrip.response",
 		  FT_BOOLEAN,	BASE_NONE,	NULL,	0x0,
-		  "TRUE if IPX RIP response", HFILL }}
+		  "TRUE if IPX RIP response", HFILL }},
+
+		{ &hf_ipxrip_packet_type,
+		{ "RIP packet type",			"ipxrip.packet_type",
+		  FT_UINT16,	BASE_DEC,	VALS(ipxrip_packet_vals),	0x0,
+		  NULL, HFILL }},
+
+		{ &hf_ipxrip_route_vector,
+		{ "Route Vector",			"ipxrip.route_vector",
+		  FT_IPXNET,	BASE_NONE,	NULL,	0x0,
+		  NULL, HFILL }},
+
+		{ &hf_ipxrip_hops,
+		{ "Hops",			"ipxrip.hops",
+		  FT_UINT16,	BASE_DEC,	NULL,	0x0,
+		  NULL, HFILL }},
+
+		{ &hf_ipxrip_ticks,
+		{ "Ticks",			"ipxrip.ticks",
+		  FT_UINT16,	BASE_DEC,	NULL,	0x0,
+		  NULL, HFILL }},
 	};
 
 	static hf_register_info hf_sap[] = {
@@ -1474,7 +1506,17 @@ proto_register_ipx(void)
 		{ &hf_sap_response,
 		{ "Response",			"ipxsap.response",
 		  FT_BOOLEAN,	BASE_NONE,	NULL,	0x0,
-		  "TRUE if SAP response", HFILL }}
+		  "TRUE if SAP response", HFILL }},
+
+		/* Generated from convert_proto_tree_add_text.pl */
+		{ &hf_sap_packet_type, { "SAP packet type", "ipxsap.packet_type", FT_UINT16, BASE_DEC, VALS(ipxsap_packet_vals), 0x0, NULL, HFILL }},
+		{ &hf_sap_server_name, { "Server Name", "ipxsap.server_name", FT_STRINGZ, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+		{ &hf_sap_server_type, { "Server Type", "ipxsap.server_type", FT_UINT16, BASE_HEX|BASE_EXT_STRING, &novell_server_vals_ext, 0x0, NULL, HFILL }},
+		{ &hf_sap_network, { "Network", "ipxsap.network", FT_IPXNET, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+		{ &hf_sap_node, { "Node", "ipxsap.node", FT_ETHER, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+		{ &hf_sap_socket, { "Socket", "ipxsap.socket", FT_UINT16, BASE_HEX|BASE_EXT_STRING, &ipx_socket_vals_ext, 0x0, NULL, HFILL }},
+		{ &hf_sap_intermediate_networks, { "Intermediate Networks", "ipxsap.intermediate_networks", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+
 	};
 
 	static hf_register_info hf_ipxmsg[] = {
@@ -1487,6 +1529,13 @@ proto_register_ipx(void)
 		{ "Signature Char",			"ipxmsg.sigchar",
 		  FT_UINT8,	BASE_DEC,	VALS(ipxmsg_sigchar_vals),	0x0,
 		  NULL, HFILL }}
+	};
+
+	static hf_register_info hf_serial[] = {
+		{ &hf_serial_number,
+		{ "Serial number",			"nw_serial.serial_number",
+		  FT_BYTES,	BASE_NONE,	NULL,	0x0,
+		  NULL, HFILL }},
 	};
 
 	static gint *ett[] = {
@@ -1516,6 +1565,7 @@ proto_register_ipx(void)
 
 	proto_serialization = proto_register_protocol("NetWare Serialization Protocol",
 	    "NW_SERIAL", "nw_serial");
+	proto_register_field_array(proto_serialization, hf_serial, array_length(hf_serial));
 
 	proto_ipxmsg = proto_register_protocol("IPX Message", "IPX MSG",
 	    "ipxmsg");
@@ -1539,6 +1589,8 @@ proto_register_ipx(void)
 	register_init_routine(&spx_init_protocol);
 	register_postseq_cleanup_routine(&spx_postseq_cleanup);
 	ipx_tap=register_tap("ipx");
+
+	register_conversation_table(proto_ipx, TRUE, ipx_conversation_packet, ipx_hostlist_packet);
 }
 
 void

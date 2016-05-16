@@ -20,7 +20,7 @@
  */
 
 #include "time_shift_dialog.h"
-#include "ui_time_shift_dialog.h"
+#include <ui_time_shift_dialog.h>
 
 #include "wireshark_application.h"
 
@@ -35,6 +35,7 @@ TimeShiftDialog::TimeShiftDialog(QWidget *parent, capture_file *cf) :
     apply_button_(NULL)
 {
     ts_ui_->setupUi(this);
+    setWindowTitle(wsApp->windowTitleString(tr("Time Shift")));
     apply_button_ = ts_ui_->buttonBox->button(QDialogButtonBox::Apply);
     connect(apply_button_, SIGNAL(clicked()), this, SLOT(applyTimeShift()));
 
@@ -162,27 +163,23 @@ void TimeShiftDialog::checkDateTime(SyntaxLineEdit &time_le)
     }
 }
 
-void TimeShiftDialog::on_shiftAllButton_toggled(bool checked)
+void TimeShiftDialog::on_shiftAllButton_toggled(bool)
 {
-    Q_UNUSED(checked);
     enableWidgets();
 }
 
-void TimeShiftDialog::on_setOneButton_toggled(bool checked)
+void TimeShiftDialog::on_setOneButton_toggled(bool)
 {
-    Q_UNUSED(checked);
     enableWidgets();
 }
 
-void TimeShiftDialog::on_unshiftAllButton_toggled(bool checked)
+void TimeShiftDialog::on_unshiftAllButton_toggled(bool)
 {
-    Q_UNUSED(checked);
     enableWidgets();
 }
 
-void TimeShiftDialog::on_setTwoCheckBox_toggled(bool checked)
+void TimeShiftDialog::on_setTwoCheckBox_toggled(bool)
 {
-    Q_UNUSED(checked);
     enableWidgets();
 }
 
@@ -207,34 +204,29 @@ void TimeShiftDialog::on_shiftAllTimeLineEdit_textChanged(const QString &sa_text
     enableWidgets();
 }
 
-void TimeShiftDialog::on_setOneFrameLineEdit_textChanged(const QString &frame_text)
+void TimeShiftDialog::on_setOneFrameLineEdit_textChanged(const QString &)
 {
-    Q_UNUSED(frame_text);
     checkFrameNumber(*ts_ui_->setOneFrameLineEdit);
     ts_ui_->setOneButton->setChecked(true);
     enableWidgets();
 }
-void TimeShiftDialog::on_setOneTimeLineEdit_textChanged(const QString &so_text)
+void TimeShiftDialog::on_setOneTimeLineEdit_textChanged(const QString &)
 {
-    Q_UNUSED(so_text);
     checkDateTime(*ts_ui_->setOneTimeLineEdit);
     ts_ui_->setOneButton->setChecked(true);
     enableWidgets();
 }
 
-void TimeShiftDialog::on_setTwoFrameLineEdit_textChanged(const QString &frame_text)
+void TimeShiftDialog::on_setTwoFrameLineEdit_textChanged(const QString &)
 {
-    Q_UNUSED(frame_text);
-    Q_UNUSED(frame_text);
     checkFrameNumber(*ts_ui_->setTwoFrameLineEdit);
     if (ts_ui_->setTwoCheckBox->isEnabled())
         ts_ui_->setTwoCheckBox->setChecked(true);
     enableWidgets();
 }
 
-void TimeShiftDialog::on_setTwoTimeLineEdit_textChanged(const QString &st_text)
+void TimeShiftDialog::on_setTwoTimeLineEdit_textChanged(const QString &)
 {
-    Q_UNUSED(st_text);
     checkDateTime(*ts_ui_->setTwoTimeLineEdit);
     if (ts_ui_->setTwoCheckBox->isEnabled())
         ts_ui_->setTwoCheckBox->setChecked(true);
@@ -270,7 +262,13 @@ void TimeShiftDialog::applyTimeShift()
     } else if (ts_ui_->unshiftAllButton->isChecked()) {
         err_str = time_shift_undo(cap_file_);
     }
-    if (err_str) syntax_err_ = err_str;
+
+    if (err_str) {
+        syntax_err_ = err_str;
+    } else {
+        emit timeShifted();
+    }
+
     enableWidgets();
 }
 

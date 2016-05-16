@@ -23,12 +23,17 @@
 
 #include <glib.h>
 
+#ifdef HAVE_LIBPCAP
+#include "ui/capture_globals.h"
+#endif
+
 #include "capture_preferences_frame.h"
-#include "ui_capture_preferences_frame.h"
+#include <ui_capture_preferences_frame.h>
+#include "wireshark_application.h"
 
 #include <QSpacerItem>
 
-#include "capture_ui_utils.h"
+#include "ui/capture_ui_utils.h"
 #include "ui/ui_util.h"
 
 #include <cstdio>
@@ -60,28 +65,41 @@ CapturePreferencesFrame::~CapturePreferencesFrame()
     delete ui;
 }
 
-void CapturePreferencesFrame::showEvent(QShowEvent *evt)
+void CapturePreferencesFrame::showEvent(QShowEvent *)
 {
-    Q_UNUSED(evt);
     updateWidgets();
 }
 
 void CapturePreferencesFrame::updateWidgets()
 {
 #ifdef HAVE_LIBPCAP
-    GList *if_list, *combo_list, *combo_entry;
-    int err;
-
-    ui->defaultInterfaceComboBox->clear();
-    if_list = capture_interface_list(&err, NULL,main_window_update);
-    combo_list = build_capture_combo_list(if_list, FALSE);
-    free_interface_list(if_list);
-    for (combo_entry = combo_list; combo_entry != NULL && combo_entry->data != NULL; combo_entry = g_list_next(combo_entry)) {
-        ui->defaultInterfaceComboBox->addItem(QString((const char *)combo_entry->data));
-    }
+    interface_t device;
+    QString default_device_string;
 
     if (pref_device_->stashed_val.string) {
-        ui->defaultInterfaceComboBox->setEditText(pref_device_->stashed_val.string);
+        default_device_string = pref_device_->stashed_val.string;
+    }
+    ui->defaultInterfaceComboBox->clear();
+    if (global_capture_opts.all_ifaces->len == 0) {
+        /*
+         * No interfaces - try refreshing the local interfaces, to
+         * see whether any have showed up (or privileges have changed
+         * to allow us to access them).
+         */
+        wsApp->refreshLocalInterfaces();
+    }
+    for (guint i = 0; i < global_capture_opts.all_ifaces->len; i++) {
+        device = g_array_index(global_capture_opts.all_ifaces, interface_t, i);
+
+        /* Continue if capture device is hidden */
+        if (device.hidden) {
+            continue;
+        }
+        ui->defaultInterfaceComboBox->addItem(QString((const char *)device.display_name));
+    }
+
+    if (!default_device_string.isEmpty()) {
+        ui->defaultInterfaceComboBox->setEditText(default_device_string);
     } else {
         ui->defaultInterfaceComboBox->clearEditText();
     }

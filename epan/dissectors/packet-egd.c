@@ -26,7 +26,6 @@
 
 #include "config.h"
 
-#include <string.h>
 #include <epan/packet.h>
 
 #define EGD_PORT 18246 /* 0x4746 */
@@ -147,7 +146,7 @@ static void dissect_egd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     proto_tree_add_item(egd_tree, hf_egd_resv, tvb, offset, 4, ENC_LITTLE_ENDIAN);
     offset += 4;
 
-    data_length = tvb_length_remaining(tvb, offset);
+    data_length = tvb_reported_length_remaining(tvb, offset);
     if (data_length > 0)
     {
       next_tvb = tvb_new_subset_remaining(tvb, offset);
@@ -248,3 +247,15 @@ void proto_reg_handoff_egd(void)
   data_handle = find_dissector("data");
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

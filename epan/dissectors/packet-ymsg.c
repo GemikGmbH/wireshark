@@ -24,7 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 
 #include "packet-tcp.h"
@@ -174,23 +173,23 @@ enum yahoo_service { /* these are easier to see in hex */
 
 /* Message flags */
 enum yahoo_status {
-        YAHOO_STATUS_AVAILABLE	    = 0,
-        YAHOO_STATUS_BRB,
-        YAHOO_STATUS_BUSY,
-        YAHOO_STATUS_NOTATHOME,
-        YAHOO_STATUS_NOTATDESK,
-        YAHOO_STATUS_NOTINOFFICE,
-        YAHOO_STATUS_ONPHONE,
-        YAHOO_STATUS_ONVACATION,
-        YAHOO_STATUS_OUTTOLUNCH,
-        YAHOO_STATUS_STEPPEDOUT,
-        YAHOO_STATUS_INVISIBLE	    = 12,
-        YAHOO_STATUS_CUSTOM	    = 99,
-        YAHOO_STATUS_IDLE	    = 999,
-        YAHOO_STATUS_WEBLOGIN	    = 0x5a55aa55,
-        YAHOO_STATUS_OFFLINE	    = 0x5a55aa56, /* don't ask */
-        YAHOO_STATUS_TYPING	    = 0x16,
-        YAHOO_STATUS_DISCONNECTED   = -1 /* in ymsg 15. doesnt mean the normal sense of 'disconnected' */
+	YAHOO_STATUS_AVAILABLE	    = 0,
+	YAHOO_STATUS_BRB,
+	YAHOO_STATUS_BUSY,
+	YAHOO_STATUS_NOTATHOME,
+	YAHOO_STATUS_NOTATDESK,
+	YAHOO_STATUS_NOTINOFFICE,
+	YAHOO_STATUS_ONPHONE,
+	YAHOO_STATUS_ONVACATION,
+	YAHOO_STATUS_OUTTOLUNCH,
+	YAHOO_STATUS_STEPPEDOUT,
+	YAHOO_STATUS_INVISIBLE	    = 12,
+	YAHOO_STATUS_CUSTOM	    = 99,
+	YAHOO_STATUS_IDLE	    = 999,
+	YAHOO_STATUS_WEBLOGIN	    = 0x5a55aa55,
+	YAHOO_STATUS_OFFLINE	    = 0x5a55aa56, /* don't ask */
+	YAHOO_STATUS_TYPING	    = 0x16,
+	YAHOO_STATUS_DISCONNECTED   = -1 /* in ymsg 15. doesn't mean the normal sense of 'disconnected' */
 };
 
 enum ypacket_status {
@@ -331,7 +330,7 @@ static int get_content_item_length(tvbuff_t *tvb, int offset)
 	int origoffset = offset;
 
 	/* Keep reading until the magic delimiter (or end of tvb) is found */
-	while (tvb_length_remaining(tvb, offset) >= 2) {
+	while (tvb_captured_length_remaining(tvb, offset) >= 2) {
 		if (tvb_get_ntohs(tvb, offset) == 0xc080) {
 			break;
 		}
@@ -341,7 +340,7 @@ static int get_content_item_length(tvbuff_t *tvb, int offset)
 }
 
 static guint
-get_ymsg_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_ymsg_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
 	guint plen;
 
@@ -469,14 +468,14 @@ dissect_ymsg_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
 
 	col_set_fence(pinfo->cinfo, COL_INFO);
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 
 static gboolean
 dissect_ymsg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-	if (tvb_length(tvb) < 4) {
+	if (tvb_captured_length(tvb) < 4) {
 		return FALSE;
 	}
 	if (tvb_memeql(tvb, 0, "YMSG", 4) == -1) {
@@ -524,7 +523,7 @@ proto_register_ymsg(void)
 		{ &hf_ymsg_content_line_value, {
 				"Value", "ymsg.content-line.value", FT_STRING, BASE_NONE,
 				NULL, 0, "Content line value", HFILL }}
-        };
+	};
 	static gint *ett[] = {
 		&ett_ymsg,
 		&ett_ymsg_content,
@@ -561,5 +560,18 @@ proto_reg_handoff_ymsg(void)
 	 * Just register as a heuristic TCP dissector, and reject stuff
 	 * that doesn't begin with a YMSG signature.
 	 */
-	heur_dissector_add("tcp", dissect_ymsg, proto_ymsg);
+	heur_dissector_add("tcp", dissect_ymsg, "Yahoo YMSG Messenger over TCP", "ymsg_tcp", proto_ymsg, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

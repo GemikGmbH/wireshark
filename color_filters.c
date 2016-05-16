@@ -23,7 +23,7 @@
  * Updated 1 Dec 10 jjm
  */
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
@@ -76,15 +76,12 @@ color_filter_new(const gchar *name,          /* The name of the filter to create
 {
     color_filter_t *colorf;
 
-    colorf                      = (color_filter_t *)g_malloc(sizeof (color_filter_t));
+    colorf                      = (color_filter_t *)g_malloc0(sizeof (color_filter_t));
     colorf->filter_name         = g_strdup(name);
     colorf->filter_text         = g_strdup(filter_string);
     colorf->bg_color            = *bg_color;
     colorf->fg_color            = *fg_color;
     colorf->disabled            = disabled;
-    colorf->c_colorfilter       = NULL;
-    colorf->color_edit_dlg_info = NULL;
-    colorf->selected            = FALSE;
     return colorf;
 }
 
@@ -119,7 +116,6 @@ color_filters_add_tmp(GSList **cfl)
                          BLUE_COMPONENT(cval) );
         colorf = color_filter_new(name, NULL, &bg_color, &fg_color, TRUE);
         colorf->filter_text = g_strdup("frame");
-        colorf->c_colorfilter = NULL;
         *cfl = g_slist_append(*cfl, colorf);
 
         g_free(name);
@@ -143,16 +139,17 @@ color_filters_find_by_name_cb(gconstpointer arg1, gconstpointer arg2)
 
 /* Set the filter off a temporary colorfilters and enable it */
 void
-color_filters_set_tmp(guint8 filt_nr, gchar *filter, gboolean disabled)
+color_filters_set_tmp(guint8 filt_nr, const gchar *filter, gboolean disabled)
 {
     gchar          *name = NULL;
     const gchar    *tmpfilter = NULL;
     GSList         *cfl;
     color_filter_t *colorf;
     dfilter_t      *compiled_filter;
+    gchar          *err_msg;
     guint8         i;
 
-    /* Go through the tomporary filters and look for the same filter string.
+    /* Go through the temporary filters and look for the same filter string.
      * If found, clear it so that a filter can be "moved" up and down the list
      */
     for ( i=1 ; i<=10 ; i++ ) {
@@ -174,10 +171,11 @@ color_filters_set_tmp(guint8 filt_nr, gchar *filter, gboolean disabled)
              * or if we found a matching filter string which need to be cleared
              */
             tmpfilter = ( (filter==NULL) || (i!=filt_nr) ) ? "frame" : filter;
-            if (!dfilter_compile(tmpfilter, &compiled_filter)) {
+            if (!dfilter_compile(tmpfilter, &compiled_filter, &err_msg)) {
                 simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
                               "Could not compile color filter name: \"%s\""
-                              " text: \"%s\".\n%s", name, filter, dfilter_error_msg);
+                              " text: \"%s\".\n%s", name, filter, err_msg);
+                g_free(err_msg);
             } else {
                 if (colorf->filter_text != NULL)
                     g_free(colorf->filter_text);
@@ -194,6 +192,22 @@ color_filters_set_tmp(guint8 filt_nr, gchar *filter, gboolean disabled)
         g_free(name);
     }
     return;
+}
+
+const color_filter_t *
+color_filters_tmp_color(guint8 filter_num) {
+    gchar          *name;
+    color_filter_t *colorf = NULL;
+    GSList         *cfl;
+
+    name = g_strdup_printf("%s%02d", CONVERSATION_COLOR_PREFIX, filter_num);
+    cfl = g_slist_find_custom(color_filter_list, name, color_filters_find_by_name_cb);
+    if (cfl) {
+        colorf = (color_filter_t *)cfl->data;
+    }
+    g_free(name);
+
+    return colorf;
 }
 
 /* Reset the temporary colorfilters */
@@ -339,12 +353,14 @@ static void
 color_filter_compile_cb(gpointer filter_arg, gpointer unused _U_)
 {
     color_filter_t *colorf = (color_filter_t *)filter_arg;
+    gchar *err_msg;
 
     g_assert(colorf->c_colorfilter == NULL);
-    if (!dfilter_compile(colorf->filter_text, &colorf->c_colorfilter)) {
+    if (!dfilter_compile(colorf->filter_text, &colorf->c_colorfilter, &err_msg)) {
         simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
                       "Could not compile color filter name: \"%s\" text: \"%s\".\n%s",
-                      colorf->filter_name, colorf->filter_text, dfilter_error_msg);
+                      colorf->filter_name, colorf->filter_text, err_msg);
+        g_free(err_msg);
         /* this filter was compilable before, so this should never happen */
         /* except if the OK button of the parent window has been clicked */
         /* so don't use g_assert_not_reached() but check the filters again */
@@ -355,12 +371,14 @@ static void
 color_filter_validate_cb(gpointer filter_arg, gpointer unused _U_)
 {
     color_filter_t *colorf = (color_filter_t *)filter_arg;
+    gchar *err_msg;
 
     g_assert(colorf->c_colorfilter == NULL);
-    if (!dfilter_compile(colorf->filter_text, &colorf->c_colorfilter)) {
+    if (!dfilter_compile(colorf->filter_text, &colorf->c_colorfilter, &err_msg)) {
         simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
                       "Removing color filter name: \"%s\" text: \"%s\".\n%s",
-                      colorf->filter_name, colorf->filter_text, dfilter_error_msg);
+                      colorf->filter_name, colorf->filter_text, err_msg);
+        g_free(err_msg);
         /* Delete the color filter from the list of color filters. */
         color_filter_valid_list = g_slist_remove(color_filter_valid_list, colorf);
         color_filter_delete(colorf);
@@ -566,10 +584,12 @@ read_filters_file(FILE *f, gpointer user_data)
             color_t bg_color, fg_color;
             color_filter_t *colorf;
             dfilter_t *temp_dfilter;
+            gchar *err_msg;
 
-            if (!dfilter_compile(filter_exp, &temp_dfilter)) {
+            if (!dfilter_compile(filter_exp, &temp_dfilter, &err_msg)) {
                 g_warning("Could not compile \"%s\" in colorfilters file.\n%s",
-                          name, dfilter_error_msg);
+                          name, err_msg);
+                g_free(err_msg);
                 prefs.unknown_colorfilters = TRUE;
 
                 skip_end_of_line = TRUE;
@@ -675,7 +695,7 @@ color_filters_read_globals(gpointer user_data)
 
 /* read filters from some other filter file (import) */
 gboolean
-color_filters_import(gchar *path, gpointer user_data)
+color_filters_import(const gchar *path, const gpointer user_data)
 {
     FILE     *f;
     gboolean  ret;
@@ -708,7 +728,7 @@ write_filter(gpointer filter_arg, gpointer data_arg)
 
     if ( (colorf->selected || !data->only_selected) &&
          (strstr(colorf->filter_name,CONVERSATION_COLOR_PREFIX)==NULL) ) {
-        fprintf(f,"%s@%s@%s@[%d,%d,%d][%d,%d,%d]\n",
+        fprintf(f,"%s@%s@%s@[%u,%u,%u][%u,%u,%u]\n",
                 colorf->disabled ? "!" : "",
                 colorf->filter_name,
                 colorf->filter_text,
@@ -723,7 +743,7 @@ write_filter(gpointer filter_arg, gpointer data_arg)
 
 /* save filters in a filter file */
 static gboolean
-write_filters_file(GSList *cfl, FILE *f, gboolean only_selected)
+write_filters_file(const GSList *cfl, FILE *f, gboolean only_selected)
 {
     struct write_filter_data data;
 
@@ -731,7 +751,7 @@ write_filters_file(GSList *cfl, FILE *f, gboolean only_selected)
     data.only_selected = only_selected;
 
     fprintf(f,"# DO NOT EDIT THIS FILE!  It was created by Wireshark\n");
-    g_slist_foreach(cfl, write_filter, &data);
+    g_slist_foreach((GSList *) cfl, write_filter, &data);
     return TRUE;
 }
 
@@ -769,7 +789,7 @@ color_filters_write(GSList *cfl)
 
 /* save filters in some other filter file (export) */
 gboolean
-color_filters_export(gchar *path, GSList *cfl, gboolean only_marked)
+color_filters_export(const gchar *path, const GSList *cfl, gboolean only_marked)
 {
     FILE *f;
 

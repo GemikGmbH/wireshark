@@ -25,13 +25,9 @@
 
 #include "config.h"
 
-#include <string.h>
-
-#include <glib.h>
 
 #include <epan/packet.h>
 #include <epan/to_str.h>
-#include <epan/dissectors/packet-smb.h>
 
 #include "packet-smb-browse.h"
 #include "packet-dcerpc.h"
@@ -102,6 +98,8 @@ static int hf_backup_count = -1;
 static int hf_backup_token = -1;
 static int hf_backup_server = -1;
 static int hf_browser_to_promote = -1;
+static int hf_windows_version = -1;
+static int hf_mysterious_field = -1;
 
 static gint ett_browse = -1;
 static gint ett_browse_flags = -1;
@@ -110,16 +108,16 @@ static gint ett_browse_election_os = -1;
 static gint ett_browse_election_desire = -1;
 static gint ett_browse_reset_cmd_flags = -1;
 
-#define SERVER_WORKSTATION		0
-#define SERVER_SERVER			1
-#define SERVER_SQL_SERVER		2
-#define SERVER_DOMAIN_CONTROLLER	3
-#define SERVER_BACKUP_CONTROLLER	4
-#define SERVER_TIME_SOURCE		5
-#define SERVER_APPLE_SERVER		6
-#define SERVER_NOVELL_SERVER		7
-#define SERVER_DOMAIN_MEMBER_SERVER	8
-#define SERVER_PRINT_QUEUE_SERVER	9
+#define SERVER_WORKSTATION		 0
+#define SERVER_SERVER			 1
+#define SERVER_SQL_SERVER		 2
+#define SERVER_DOMAIN_CONTROLLER	 3
+#define SERVER_BACKUP_CONTROLLER	 4
+#define SERVER_TIME_SOURCE		 5
+#define SERVER_APPLE_SERVER		 6
+#define SERVER_NOVELL_SERVER		 7
+#define SERVER_DOMAIN_MEMBER_SERVER	 8
+#define SERVER_PRINT_QUEUE_SERVER	 9
 #define SERVER_DIALIN_SERVER		10
 #define SERVER_XENIX_SERVER		11
 #define SERVER_NT_WORKSTATION		12
@@ -182,13 +180,13 @@ static const value_string server_types[] = {
     windows_version = "Windows 2000";					\
 									\
   else									\
-    windows_version = NULL;
+    windows_version = "";
 
 static const value_string resetbrowserstate_command_names[] = {
-  { 0x01, "Stop being a master browser and become a backup browser"},
-  { 0x02, "Discard browse lists, stop being a master browser, and try again"},
-  { 0x04, "Stop being a master browser for ever"},
-  { 0, NULL}
+	{ 0x01, "Stop being a master browser and become a backup browser"},
+	{ 0x02, "Discard browse lists, stop being a master browser, and try again"},
+	{ 0x04, "Stop being a master browser for ever"},
+	{ 0, NULL}
 };
 
 static true_false_string tfs_demote_to_backup = {
@@ -339,10 +337,10 @@ static const true_false_string tfs_desire_nt = {
 	"NOT Windows NT Advanced Server"
 };
 
-#define BROWSE_HOST_ANNOUNCE			1
-#define BROWSE_REQUEST_ANNOUNCE			2
-#define BROWSE_ELECTION_REQUEST			8
-#define BROWSE_BACKUP_LIST_REQUEST		9
+#define BROWSE_HOST_ANNOUNCE			 1
+#define BROWSE_REQUEST_ANNOUNCE			 2
+#define BROWSE_ELECTION_REQUEST			 8
+#define BROWSE_BACKUP_LIST_REQUEST		 9
 #define BROWSE_BACKUP_LIST_RESPONSE		10
 #define BROWSE_BECOME_BACKUP			11
 #define BROWSE_DOMAIN_ANNOUNCEMENT		12
@@ -351,16 +349,16 @@ static const true_false_string tfs_desire_nt = {
 #define BROWSE_LOCAL_MASTER_ANNOUNCEMENT	15
 
 static const value_string commands[] = {
-	{BROWSE_HOST_ANNOUNCE,		"Host Announcement"},
-	{BROWSE_REQUEST_ANNOUNCE,	"Request Announcement"},
-	{BROWSE_ELECTION_REQUEST,	"Browser Election Request"},
-	{BROWSE_BACKUP_LIST_REQUEST,	"Get Backup List Request"},
-	{BROWSE_BACKUP_LIST_RESPONSE,	"Get Backup List Response"},
-	{BROWSE_BECOME_BACKUP,		"Become Backup Browser"},
-	{BROWSE_DOMAIN_ANNOUNCEMENT,	"Domain/Workgroup Announcement"},
-	{BROWSE_MASTER_ANNOUNCEMENT,	"Master Announcement"},
+	{BROWSE_HOST_ANNOUNCE,			"Host Announcement"},
+	{BROWSE_REQUEST_ANNOUNCE,		"Request Announcement"},
+	{BROWSE_ELECTION_REQUEST,		"Browser Election Request"},
+	{BROWSE_BACKUP_LIST_REQUEST,		"Get Backup List Request"},
+	{BROWSE_BACKUP_LIST_RESPONSE,		"Get Backup List Response"},
+	{BROWSE_BECOME_BACKUP,			"Become Backup Browser"},
+	{BROWSE_DOMAIN_ANNOUNCEMENT,		"Domain/Workgroup Announcement"},
+	{BROWSE_MASTER_ANNOUNCEMENT,		"Master Announcement"},
 	{BROWSE_RESETBROWSERSTATE_ANNOUNCEMENT, "Reset Browser State Announcement"},
-	{BROWSE_LOCAL_MASTER_ANNOUNCEMENT,"Local Master Announcement"},
+	{BROWSE_LOCAL_MASTER_ANNOUNCEMENT,	"Local Master Announcement"},
 	{0,				NULL}
 };
 
@@ -384,53 +382,30 @@ static const true_false_string tfs_os_nts = {
 static void
 dissect_election_criterion_os(tvbuff_t *tvb, proto_tree *parent_tree, int offset)
 {
-	proto_tree *tree = NULL;
-	proto_item *item = NULL;
-	guint8 os;
+	static const int * flags[] = {
+		&hf_election_os_wfw,
+		&hf_election_os_ntw,
+		&hf_election_os_nts,
+		NULL
+	};
 
-	os = tvb_get_guint8(tvb, offset);
-
-	if (parent_tree) {
-		item = proto_tree_add_uint(parent_tree, hf_election_os, tvb, offset, 1, os);
-	      	tree = proto_item_add_subtree(item, ett_browse_election_os);
-	}
-
-	proto_tree_add_boolean(tree, hf_election_os_wfw,
-		tvb, offset, 1, os);
-	proto_tree_add_boolean(tree, hf_election_os_ntw,
-		tvb, offset, 1, os);
-	proto_tree_add_boolean(tree, hf_election_os_nts,
-		tvb, offset, 1, os);
-
+	proto_tree_add_bitmask(parent_tree, tvb, offset, hf_election_os, ett_browse_election_os, flags, ENC_NA);
 }
 
 static void
 dissect_election_criterion_desire(tvbuff_t *tvb, proto_tree *parent_tree, int offset)
 {
-	proto_tree *tree = NULL;
-	proto_item *item = NULL;
-	guint8 desire;
+	static const int * flags[] = {
+		&hf_election_desire_flags_backup,
+		&hf_election_desire_flags_standby,
+		&hf_election_desire_flags_master,
+		&hf_election_desire_flags_domain_master,
+		&hf_election_desire_flags_wins,
+		&hf_election_desire_flags_nt,
+		NULL
+	};
 
-	desire = tvb_get_guint8(tvb, offset);
-
-	if (parent_tree) {
-		item = proto_tree_add_uint(parent_tree, hf_election_desire, tvb, offset, 1, desire);
-	      	tree = proto_item_add_subtree(item, ett_browse_election_desire);
-	}
-
-	proto_tree_add_boolean(tree, hf_election_desire_flags_backup,
-		tvb, offset, 1, desire);
-	proto_tree_add_boolean(tree, hf_election_desire_flags_standby,
-		tvb, offset, 1, desire);
-	proto_tree_add_boolean(tree, hf_election_desire_flags_master,
-		tvb, offset, 1, desire);
-	proto_tree_add_boolean(tree, hf_election_desire_flags_domain_master,
-		tvb, offset, 1, desire);
-	proto_tree_add_boolean(tree, hf_election_desire_flags_wins,
-		tvb, offset, 1, desire);
-	proto_tree_add_boolean(tree, hf_election_desire_flags_nt,
-		tvb, offset, 1, desire);
-
+	proto_tree_add_bitmask(parent_tree, tvb, offset, hf_election_desire, ett_browse_election_desire, flags, ENC_NA);
 }
 
 static void
@@ -472,10 +447,37 @@ dissect_smb_server_type_flags(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			      proto_tree *parent_tree, guint8 *drep,
 			      gboolean infoflag)
 {
-	proto_tree *tree = NULL;
-	proto_item *item = NULL;
 	guint32 flags;
 	int i;
+
+	static const int * type_flags[] = {
+		&hf_server_type_workstation,
+		&hf_server_type_server,
+		&hf_server_type_sql,
+		&hf_server_type_domain,
+		&hf_server_type_backup,
+		&hf_server_type_time,
+		&hf_server_type_apple,
+		&hf_server_type_novell,
+		&hf_server_type_member,
+		&hf_server_type_print,
+		&hf_server_type_dialin,
+		&hf_server_type_xenix,
+		&hf_server_type_ntw,
+		&hf_server_type_wfw,
+		&hf_server_type_nts,
+		&hf_server_type_potentialb,
+		&hf_server_type_backupb,
+		&hf_server_type_masterb,
+		&hf_server_type_domainmasterb,
+		&hf_server_type_osf,
+		&hf_server_type_vms,
+		&hf_server_type_w95,
+		&hf_server_type_dfs,
+		&hf_server_type_local,
+		&hf_server_type_domainenum,
+		NULL
+	};
 
 	if (drep != NULL) {
 		/*
@@ -500,15 +502,10 @@ dissect_smb_server_type_flags(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		offset += 4;
 	}
 
-	if (parent_tree) {
-		item = proto_tree_add_uint(parent_tree, hf_server_type, tvb, offset-4, 4, flags);
-	      	tree = proto_item_add_subtree(item, ett_browse_flags);
-	}
-
 	if (infoflag) {
 		/* Append the type(s) of the system to the COL_INFO line ... */
 		for (i = 0; i < 32; i++) {
-			if (flags & (1<<i)) {
+			if (flags & (1U<<i)) {
 				col_append_fstr(pinfo->cinfo, COL_INFO, ", %s",
 					val_to_str(i, server_types,
 					"Unknown server type:%d"));
@@ -516,56 +513,8 @@ dissect_smb_server_type_flags(tvbuff_t *tvb, int offset, packet_info *pinfo,
 		}
 	}
 
-	proto_tree_add_boolean(tree, hf_server_type_workstation,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_server,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_sql,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_domain,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_backup,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_time,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_apple,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_novell,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_member,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_print,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_dialin,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_xenix,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_ntw,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_wfw,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_nts,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_potentialb,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_backupb,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_masterb,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_domainmasterb,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_osf,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_vms,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_w95,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_dfs,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_local,
-		tvb, offset-4, 4, flags);
-	proto_tree_add_boolean(tree, hf_server_type_domainenum,
-		tvb, offset-4, 4, flags);
+	proto_tree_add_bitmask_value(parent_tree, tvb, offset-4,
+		hf_server_type, ett_browse_flags, type_flags, flags);
 
 	return offset;
 }
@@ -582,9 +531,9 @@ dissect_mailslot_browse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 	guint32 periodicity;
 	guint8 *host_name;
 	gint namelen;
-	guint8 server_count, reset_cmd;
+	guint8 server_count;
 	guint8 os_major_ver, os_minor_ver;
-	const gchar *windows_version = NULL;
+	const gchar *windows_version;
 	int i;
 	guint32 uptime;
 
@@ -617,7 +566,7 @@ dissect_mailslot_browse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 		proto_tree_add_uint_format_value(tree, hf_periodicity, tvb, offset, 4,
 		    periodicity,
 		    "%s",
-		    time_msecs_to_ep_str(periodicity));
+		    time_msecs_to_str(wmem_packet_scope(), periodicity));
 		offset += 4;
 
 		/* server name */
@@ -637,9 +586,7 @@ dissect_mailslot_browse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 		os_minor_ver = tvb_get_guint8(tvb, offset+1);
 
 		SET_WINDOWS_VERSION_STRING(os_major_ver, os_minor_ver, windows_version);
-
-		if(windows_version)
-		  proto_tree_add_text(tree, tvb, offset, 2, "Windows version: %s", windows_version);
+		proto_tree_add_string(tree, hf_windows_version, tvb, offset, 2, windows_version);
 
 		/* OS major version */
 		proto_tree_add_item(tree, hf_os_major, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -662,9 +609,7 @@ dissect_mailslot_browse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 			 * version number, and signature constant,
 			 * however.
 			 */
-			proto_tree_add_text(tree, tvb, offset, 4,
-			    "Mysterious Field: 0x%08x",
-			    tvb_get_letohl(tvb, offset));
+			proto_tree_add_item(tree, hf_mysterious_field, tvb, offset, 4, ENC_LITTLE_ENDIAN);
 			offset += 4;
 		} else {
 			/* browser protocol major version */
@@ -697,7 +642,7 @@ dissect_mailslot_browse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 		offset += 1;
 
 		/* name of computer to which to send reply */
-		computer_name = tvb_get_stringz(wmem_packet_scope(), tvb, offset, &namelen);
+		computer_name = tvb_get_stringz_enc(wmem_packet_scope(), tvb, offset, &namelen, ENC_ASCII);
 		proto_tree_add_string(tree, hf_response_computer_name,
 			tvb, offset, namelen, computer_name);
 		col_append_fstr(pinfo->cinfo, COL_INFO, " %s", computer_name);
@@ -718,7 +663,7 @@ dissect_mailslot_browse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 		proto_tree_add_uint_format_value(tree, hf_server_uptime,
 		    tvb, offset, 4, uptime,
 		    "%s",
-		    time_msecs_to_ep_str(uptime));
+		    time_msecs_to_str(wmem_packet_scope(), uptime));
 		offset += 4;
 
 		/* next 4 bytes must be zero */
@@ -767,21 +712,14 @@ dissect_mailslot_browse(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 		break;
 
 	case BROWSE_RESETBROWSERSTATE_ANNOUNCEMENT: {
-	        proto_tree *sub_tree;
-	        proto_item *reset_item;
+		static const int * flags[] = {
+			&hf_mb_reset_demote,
+			&hf_mb_reset_flush,
+			&hf_mb_reset_stop,
+			NULL
+		};
 
-		/* the subcommand follows ... one of three values */
-
-	        reset_cmd = tvb_get_guint8(tvb, offset);
-		reset_item = proto_tree_add_uint(tree, hf_mb_reset_command, tvb,
-						 offset, 1, reset_cmd);
-		sub_tree = proto_item_add_subtree(reset_item, ett_browse_reset_cmd_flags);
-		proto_tree_add_boolean(sub_tree, hf_mb_reset_demote, tvb,
-				       offset, 1, reset_cmd);
-		proto_tree_add_boolean(sub_tree, hf_mb_reset_flush, tvb,
-				       offset, 1, reset_cmd);
-		proto_tree_add_boolean(sub_tree, hf_mb_reset_stop, tvb,
-				       offset, 1, reset_cmd);
+		proto_tree_add_bitmask(tree, tvb, offset, hf_mb_reset_command, ett_browse_reset_cmd_flags, flags, ENC_NA);
 		break;
 	}
 
@@ -821,7 +759,7 @@ dissect_mailslot_lanman(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 	guint32 periodicity;
 	const guint8 *host_name;
 	guint8 os_major_ver, os_minor_ver;
-	const gchar *windows_version = NULL;
+	const gchar *windows_version;
 	guint namelen;
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "BROWSER");
@@ -859,9 +797,7 @@ dissect_mailslot_lanman(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 		os_minor_ver = tvb_get_guint8(tvb, offset+1);
 
 		SET_WINDOWS_VERSION_STRING(os_major_ver, os_minor_ver, windows_version);
-
-		if(windows_version)
-		  proto_tree_add_text(tree, tvb, offset, 2, "Windows version: %s", windows_version);
+		proto_tree_add_string(tree, hf_windows_version, tvb, offset, 2, windows_version);
 
 		/* OS major version */
 		proto_tree_add_item(tree, hf_os_major, tvb, offset, 1, ENC_LITTLE_ENDIAN);
@@ -876,7 +812,7 @@ dissect_mailslot_lanman(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tr
 		proto_tree_add_uint_format_value(tree, hf_periodicity, tvb, offset, 2,
 		    periodicity,
 		    "%s",
-		    time_msecs_to_ep_str(periodicity));
+		    time_msecs_to_str(wmem_packet_scope(), periodicity));
 		offset += 2;
 
 		/* server name */
@@ -948,103 +884,103 @@ proto_register_smb_browse(void)
 
 		{ &hf_server_type_workstation,
 			{ "Workstation", "browser.server_type.workstation", FT_BOOLEAN, 32,
-			TFS(&tfs_workstation), 1<<SERVER_WORKSTATION, "Is This A Workstation?", HFILL }},
+			TFS(&tfs_workstation), 1U<<SERVER_WORKSTATION, "Is This A Workstation?", HFILL }},
 
 		{ &hf_server_type_server,
 			{ "Server", "browser.server_type.server", FT_BOOLEAN, 32,
-			TFS(&tfs_server), 1<<SERVER_SERVER, "Is This A Server?", HFILL }},
+			TFS(&tfs_server), 1U<<SERVER_SERVER, "Is This A Server?", HFILL }},
 
 		{ &hf_server_type_sql,
 			{ "SQL", "browser.server_type.sql", FT_BOOLEAN, 32,
-			TFS(&tfs_sql), 1<<SERVER_SQL_SERVER, "Is This A SQL Server?", HFILL }},
+			TFS(&tfs_sql), 1U<<SERVER_SQL_SERVER, "Is This A SQL Server?", HFILL }},
 
 		{ &hf_server_type_domain,
 			{ "Domain Controller", "browser.server_type.domain_controller", FT_BOOLEAN, 32,
-			TFS(&tfs_domain), 1<<SERVER_DOMAIN_CONTROLLER, "Is This A Domain Controller?", HFILL }},
+			TFS(&tfs_domain), 1U<<SERVER_DOMAIN_CONTROLLER, "Is This A Domain Controller?", HFILL }},
 
 		{ &hf_server_type_backup,
 			{ "Backup Controller", "browser.server_type.backup_controller", FT_BOOLEAN, 32,
-			TFS(&tfs_backup), 1<<SERVER_BACKUP_CONTROLLER, "Is This A Backup Domain Controller?", HFILL }},
+			TFS(&tfs_backup), 1U<<SERVER_BACKUP_CONTROLLER, "Is This A Backup Domain Controller?", HFILL }},
 
 		{ &hf_server_type_time,
 			{ "Time Source", "browser.server_type.time", FT_BOOLEAN, 32,
-			TFS(&tfs_time), 1<<SERVER_TIME_SOURCE, "Is This A Time Source?", HFILL }},
+			TFS(&tfs_time), 1U<<SERVER_TIME_SOURCE, "Is This A Time Source?", HFILL }},
 
 		{ &hf_server_type_apple,
 			{ "Apple", "browser.server_type.apple", FT_BOOLEAN, 32,
-			TFS(&tfs_apple), 1<<SERVER_APPLE_SERVER, "Is This An Apple Server ?", HFILL }},
+			TFS(&tfs_apple), 1U<<SERVER_APPLE_SERVER, "Is This An Apple Server ?", HFILL }},
 
 		{ &hf_server_type_novell,
 			{ "Novell", "browser.server_type.novell", FT_BOOLEAN, 32,
-			TFS(&tfs_novell), 1<<SERVER_NOVELL_SERVER, "Is This A Novell Server?", HFILL }},
+			TFS(&tfs_novell), 1U<<SERVER_NOVELL_SERVER, "Is This A Novell Server?", HFILL }},
 
 		{ &hf_server_type_member,
 			{ "Member", "browser.server_type.member", FT_BOOLEAN, 32,
-			TFS(&tfs_member), 1<<SERVER_DOMAIN_MEMBER_SERVER, "Is This A Domain Member Server?", HFILL }},
+			TFS(&tfs_member), 1U<<SERVER_DOMAIN_MEMBER_SERVER, "Is This A Domain Member Server?", HFILL }},
 
 		{ &hf_server_type_print,
 			{ "Print", "browser.server_type.print", FT_BOOLEAN, 32,
-			TFS(&tfs_print), 1<<SERVER_PRINT_QUEUE_SERVER, "Is This A Print Server?", HFILL }},
+			TFS(&tfs_print), 1U<<SERVER_PRINT_QUEUE_SERVER, "Is This A Print Server?", HFILL }},
 
 		{ &hf_server_type_dialin,
 			{ "Dialin", "browser.server_type.dialin", FT_BOOLEAN, 32,
-			TFS(&tfs_dialin), 1<<SERVER_DIALIN_SERVER, "Is This A Dialin Server?", HFILL }},
+			TFS(&tfs_dialin), 1U<<SERVER_DIALIN_SERVER, "Is This A Dialin Server?", HFILL }},
 
 		{ &hf_server_type_xenix,
 			{ "Xenix", "browser.server_type.xenix", FT_BOOLEAN, 32,
-			TFS(&tfs_xenix), 1<<SERVER_XENIX_SERVER, "Is This A Xenix Server?", HFILL }},
+			TFS(&tfs_xenix), 1U<<SERVER_XENIX_SERVER, "Is This A Xenix Server?", HFILL }},
 
 		{ &hf_server_type_ntw,
 			{ "NT Workstation", "browser.server_type.ntw", FT_BOOLEAN, 32,
-			TFS(&tfs_ntw), 1<<SERVER_NT_WORKSTATION, "Is This A NT Workstation?", HFILL }},
+			TFS(&tfs_ntw), 1U<<SERVER_NT_WORKSTATION, "Is This A NT Workstation?", HFILL }},
 
 		{ &hf_server_type_wfw,
 			{ "WfW", "browser.server_type.wfw", FT_BOOLEAN, 32,
-			TFS(&tfs_wfw), 1<<SERVER_WINDOWS_FOR_WORKGROUPS, "Is This A Windows For Workgroups Server?", HFILL }},
+			TFS(&tfs_wfw), 1U<<SERVER_WINDOWS_FOR_WORKGROUPS, "Is This A Windows For Workgroups Server?", HFILL }},
 
 		{ &hf_server_type_nts,
 			{ "NT Server", "browser.server_type.nts", FT_BOOLEAN, 32,
-			TFS(&tfs_nts), 1<<SERVER_NT_SERVER, "Is This A NT Server?", HFILL }},
+			TFS(&tfs_nts), 1U<<SERVER_NT_SERVER, "Is This A NT Server?", HFILL }},
 
 		{ &hf_server_type_potentialb,
 			{ "Potential Browser", "browser.server_type.browser.potential", FT_BOOLEAN, 32,
-			TFS(&tfs_potentialb), 1<<SERVER_POTENTIAL_BROWSER, "Is This A Potential Browser?", HFILL }},
+			TFS(&tfs_potentialb), 1U<<SERVER_POTENTIAL_BROWSER, "Is This A Potential Browser?", HFILL }},
 
 		{ &hf_server_type_backupb,
 			{ "Backup Browser", "browser.server_type.browser.backup", FT_BOOLEAN, 32,
-			TFS(&tfs_backupb), 1<<SERVER_BACKUP_BROWSER, "Is This A Backup Browser?", HFILL }},
+			TFS(&tfs_backupb), 1U<<SERVER_BACKUP_BROWSER, "Is This A Backup Browser?", HFILL }},
 
 		{ &hf_server_type_masterb,
 			{ "Master Browser", "browser.server_type.browser.master", FT_BOOLEAN, 32,
-			TFS(&tfs_masterb), 1<<SERVER_MASTER_BROWSER, "Is This A Master Browser?", HFILL }},
+			TFS(&tfs_masterb), 1U<<SERVER_MASTER_BROWSER, "Is This A Master Browser?", HFILL }},
 
 		{ &hf_server_type_domainmasterb,
 			{ "Domain Master Browser", "browser.server_type.browser.domain_master", FT_BOOLEAN, 32,
-			TFS(&tfs_domainmasterb), 1<<SERVER_DOMAIN_MASTER_BROWSER, "Is This A Domain Master Browser?", HFILL }},
+			TFS(&tfs_domainmasterb), 1U<<SERVER_DOMAIN_MASTER_BROWSER, "Is This A Domain Master Browser?", HFILL }},
 
 		{ &hf_server_type_osf,
 			{ "OSF", "browser.server_type.osf", FT_BOOLEAN, 32,
-			TFS(&tfs_osf), 1<<SERVER_OSF, "Is This An OSF server ?", HFILL }},
+			TFS(&tfs_osf), 1U<<SERVER_OSF, "Is This An OSF server ?", HFILL }},
 
 		{ &hf_server_type_vms,
 			{ "VMS", "browser.server_type.vms", FT_BOOLEAN, 32,
-			TFS(&tfs_vms), 1<<SERVER_VMS, "Is This A VMS Server?", HFILL }},
+			TFS(&tfs_vms), 1U<<SERVER_VMS, "Is This A VMS Server?", HFILL }},
 
 		{ &hf_server_type_w95,
 			{ "Windows 95+", "browser.server_type.w95", FT_BOOLEAN, 32,
-			TFS(&tfs_w95), 1<<SERVER_WINDOWS_95, "Is This A Windows 95 or above server?", HFILL }},
+			TFS(&tfs_w95), 1U<<SERVER_WINDOWS_95, "Is This A Windows 95 or above server?", HFILL }},
 
 		{ &hf_server_type_dfs,
 			{ "DFS", "browser.server_type.dfs", FT_BOOLEAN, 32,
-			TFS(&tfs_dfs), 1<<SERVER_DFS_SERVER, "Is This A DFS server?", HFILL }},
+			TFS(&tfs_dfs), 1U<<SERVER_DFS_SERVER, "Is This A DFS server?", HFILL }},
 
 		{ &hf_server_type_local,
 			{ "Local", "browser.server_type.local", FT_BOOLEAN, 32,
-			TFS(&tfs_local), 1<<SERVER_LOCAL_LIST_ONLY, "Is This A Local List Only request?", HFILL }},
+			TFS(&tfs_local), 1U<<SERVER_LOCAL_LIST_ONLY, "Is This A Local List Only request?", HFILL }},
 
 		{ &hf_server_type_domainenum,
 			{ "Domain Enum", "browser.server_type.domainenum", FT_BOOLEAN, 32,
-			TFS(&tfs_domainenum), 1<<SERVER_DOMAIN_ENUM, "Is This A Domain Enum request?", HFILL }},
+			TFS(&tfs_domainenum), 1U<<SERVER_DOMAIN_ENUM, "Is This A Domain Enum request?", HFILL }},
 
 		{ &hf_election_version,
 			{ "Election Version", "browser.election.version", FT_UINT8, BASE_DEC,
@@ -1084,27 +1020,27 @@ proto_register_smb_browse(void)
 
 		{ &hf_election_desire_flags_backup,
 			{ "Backup", "browser.election.desire.backup", FT_BOOLEAN, 8,
-			TFS(&tfs_desire_backup), 1<<DESIRE_BACKUP, "Is this a backup server", HFILL }},
+			TFS(&tfs_desire_backup), 1U<<DESIRE_BACKUP, "Is this a backup server", HFILL }},
 
 		{ &hf_election_desire_flags_standby,
 			{ "Standby", "browser.election.desire.standby", FT_BOOLEAN, 8,
-			TFS(&tfs_desire_standby), 1<<DESIRE_STANDBY, "Is this a standby server?", HFILL }},
+			TFS(&tfs_desire_standby), 1U<<DESIRE_STANDBY, "Is this a standby server?", HFILL }},
 
 		{ &hf_election_desire_flags_master,
 			{ "Master", "browser.election.desire.master", FT_BOOLEAN, 8,
-			TFS(&tfs_desire_master), 1<<DESIRE_MASTER, "Is this a master server", HFILL }},
+			TFS(&tfs_desire_master), 1U<<DESIRE_MASTER, "Is this a master server", HFILL }},
 
 		{ &hf_election_desire_flags_domain_master,
 			{ "Domain Master", "browser.election.desire.domain_master", FT_BOOLEAN, 8,
-			TFS(&tfs_desire_domain_master), 1<<DESIRE_DOMAIN_MASTER, "Is this a domain master", HFILL }},
+			TFS(&tfs_desire_domain_master), 1U<<DESIRE_DOMAIN_MASTER, "Is this a domain master", HFILL }},
 
 		{ &hf_election_desire_flags_wins,
 			{ "WINS", "browser.election.desire.wins", FT_BOOLEAN, 8,
-			TFS(&tfs_desire_wins), 1<<DESIRE_WINS, "Is this a WINS server", HFILL }},
+			TFS(&tfs_desire_wins), 1U<<DESIRE_WINS, "Is this a WINS server", HFILL }},
 
 		{ &hf_election_desire_flags_nt,
 			{ "NT", "browser.election.desire.nt", FT_BOOLEAN, 8,
-			TFS(&tfs_desire_nt), 1<<DESIRE_NT, "Is this a NT server", HFILL }},
+			TFS(&tfs_desire_nt), 1U<<DESIRE_NT, "Is this a NT server", HFILL }},
 
 #if 0
 		{ &hf_election_revision,
@@ -1118,15 +1054,15 @@ proto_register_smb_browse(void)
 
 		{ &hf_election_os_wfw,
 			{ "WfW", "browser.election.os.wfw", FT_BOOLEAN, 8,
-			TFS(&tfs_os_wfw), 1<<OS_WFW, "Is this a WfW host?", HFILL }},
+			TFS(&tfs_os_wfw), 1U<<OS_WFW, "Is this a WfW host?", HFILL }},
 
 		{ &hf_election_os_ntw,
 			{ "NT Workstation", "browser.election.os.ntw", FT_BOOLEAN, 8,
-			TFS(&tfs_os_ntw), 1<<OS_NTW, "Is this a NT Workstation?", HFILL }},
+			TFS(&tfs_os_ntw), 1U<<OS_NTW, "Is this a NT Workstation?", HFILL }},
 
 		{ &hf_election_os_nts,
 			{ "NT Server", "browser.election.os.nts", FT_BOOLEAN, 8,
-			TFS(&tfs_os_nts), 1<<OS_NTS, "Is this a NT Server?", HFILL }},
+			TFS(&tfs_os_nts), 1U<<OS_NTS, "Is this a NT Server?", HFILL }},
 
 		{ &hf_server_uptime,
 			{ "Uptime", "browser.uptime", FT_UINT32, BASE_DEC,
@@ -1148,6 +1084,13 @@ proto_register_smb_browse(void)
 			{ "Browser to Promote", "browser.browser_to_promote", FT_STRINGZ, BASE_NONE,
 			NULL, 0, NULL, HFILL }},
 
+		{ &hf_windows_version,
+			{ "Windows version", "browser.windows_version", FT_STRING, BASE_NONE,
+			NULL, 0, NULL, HFILL }},
+
+		{ &hf_mysterious_field,
+			{ "Mysterious Field", "browser.mysterious_field", FT_UINT32, BASE_HEX,
+			NULL, 0, NULL, HFILL }},
 	};
 
 	static gint *ett[] = {
@@ -1170,3 +1113,16 @@ proto_register_smb_browse(void)
 	register_dissector("mailslot_lanman", dissect_mailslot_lanman,
 	    proto_smb_browse);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

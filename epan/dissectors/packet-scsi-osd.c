@@ -26,18 +26,13 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include <epan/conversation.h>
-#include <epan/tap.h>
 #include <epan/expert.h>
 #include "packet-scsi.h"
-#include "packet-fc.h"
 #include "packet-scsi-osd.h"
 
 void proto_register_scsi_osd(void);
-void proto_reg_handoff_scsi_osd(void);
 
 static int proto_scsi_osd                               = -1;
 int hf_scsi_osd_opcode                                  = -1;
@@ -460,7 +455,7 @@ dissect_osd_attribute_list_entry(packet_info *pinfo, tvbuff_t *tvb,
                 proto_tree_add_expert_format(tree, pinfo, &ei_osd_attr_length_invalid,
                                              tvb, 0, attribute_length, "%s", apn->name);
             } else {
-                tvbuff_t *next_tvb = tvb_new_subset(tvb, offset, attribute_length, attribute_length);
+                tvbuff_t *next_tvb = tvb_new_subset_length(tvb, offset, attribute_length);
                 apn->dissector(next_tvb, pinfo, tree, lun_info, apn);
             }
         }
@@ -514,7 +509,7 @@ dissect_osd_attributes_list(packet_info *pinfo, tvbuff_t *tvb, int offset,
      * all remaining bytes.   7.1.3.1
      */
     if (!osd2 && type == 1) {
-        length = tvb_length_remaining(tvb, offset);
+        length = tvb_reported_length_remaining(tvb, offset);
     }
 
     length += (osd2?8:4);
@@ -544,8 +539,7 @@ dissect_osd_attributes_list(packet_info *pinfo, tvbuff_t *tvb, int offset,
         }
 
         if ((guint32)(offset-start_offset)+attribute_entry_length>length) break;
-        ti = proto_tree_add_text(tree, tvb, offset, attribute_entry_length, "Attribute:");
-        tt = proto_item_add_subtree(ti, ett_osd_attribute);
+        tt = proto_tree_add_subtree(tree, tvb, offset, attribute_entry_length, ett_osd_attribute, &ti, "Attribute:");
 
         switch (type) {
         case 0x01: /* retrieving attributes 7.1.3.2 */
@@ -589,16 +583,14 @@ dissect_osd_attributes_list(packet_info *pinfo, tvbuff_t *tvb, int offset,
 static void
 dissect_osd_option(tvbuff_t *tvb, int offset, proto_tree *parent_tree)
 {
-    proto_tree *tree = NULL;
-    proto_item *it   = NULL;
+    proto_tree *tree;
+    proto_item *it;
     guint8      option;
 
     option = tvb_get_guint8(tvb, offset);
 
-    if (parent_tree) {
-        it = proto_tree_add_item(parent_tree, hf_scsi_osd_option, tvb, offset, 1, ENC_BIG_ENDIAN);
-        tree = proto_item_add_subtree(it, ett_osd_option);
-    }
+    it = proto_tree_add_item(parent_tree, hf_scsi_osd_option, tvb, offset, 1, ENC_BIG_ENDIAN);
+    tree = proto_item_add_subtree(it, ett_osd_option);
 
     proto_tree_add_item(tree, hf_scsi_osd_option_dpo, tvb, offset, 1, ENC_BIG_ENDIAN);
     if (option&0x10) {
@@ -689,16 +681,12 @@ static int
 dissect_osd_attribute_parameters(packet_info *pinfo, tvbuff_t *tvb, int offset, proto_tree *parent_tree, scsi_task_data_t *cdata)
 {
     guint8      gsatype = 0;
-    proto_item *item    = NULL;
-    proto_tree *tree    = NULL;
+    proto_tree *tree;
     scsi_osd_extra_data_t *extra_data = NULL;
     gboolean osd2;
 
-    if (parent_tree) {
-        item = proto_tree_add_text(parent_tree, tvb, offset, 28,
-            "Attribute Parameters");
-        tree = proto_item_add_subtree(item, ett_osd_attribute_parameters);
-    }
+    tree = proto_tree_add_subtree(parent_tree, tvb, offset, 28,
+        ett_osd_attribute_parameters, NULL, "Attribute Parameters");
 
     if (cdata && cdata->itlq && cdata->itlq->extra_data) {
         extra_data = (scsi_osd_extra_data_t *)cdata->itlq->extra_data;
@@ -792,7 +780,6 @@ dissect_osd_attribute_data_out(packet_info *pinfo, tvbuff_t *tvb, int offset _U_
 {
     guint8      gsatype = 0;
     proto_tree *subtree;
-    proto_item *item;
     scsi_osd_extra_data_t *extra_data = NULL;
 
     if (cdata && cdata->itlq && cdata->itlq->extra_data) {
@@ -808,13 +795,13 @@ dissect_osd_attribute_data_out(packet_info *pinfo, tvbuff_t *tvb, int offset _U_
         break;
     case 3: /* 5.2.2.3  attribute list */
         if (extra_data->u.al.get_list_length) {
-            item = proto_tree_add_text(tree, tvb, extra_data->u.al.get_list_offset, extra_data->u.al.get_list_length, "Get Attributes Segment");
-            subtree= proto_item_add_subtree(item, ett_osd_get_attributes);
+            subtree = proto_tree_add_subtree(tree, tvb, extra_data->u.al.get_list_offset, extra_data->u.al.get_list_length,
+                                                ett_osd_get_attributes, NULL, "Get Attributes Segment");
             dissect_osd_attributes_list(pinfo, tvb, extra_data->u.al.get_list_offset, subtree, lun_info, extra_data->osd2);
         }
         if (extra_data->u.al.set_list_length) {
-            item = proto_tree_add_text(tree, tvb, extra_data->u.al.set_list_offset, extra_data->u.al.set_list_length, "Set Attributes Segment");
-            subtree= proto_item_add_subtree(item, ett_osd_set_attributes);
+            subtree = proto_tree_add_subtree(tree, tvb, extra_data->u.al.set_list_offset, extra_data->u.al.set_list_length,
+                                                ett_osd_get_attributes, NULL, "Set Attributes Segment");
             dissect_osd_attributes_list(pinfo, tvb, extra_data->u.al.set_list_offset, subtree, lun_info, extra_data->osd2);
         }
         break;
@@ -1021,7 +1008,10 @@ dissect_osd2_cdb_continuation(packet_info *pinfo, tvbuff_t *tvb, guint32 offset,
             expert_add_info(pinfo, item_length, &ei_osd2_cdb_continuation_descriptor_length_invalid);
             return;
         }
-        offset += length+padlen;
+        /* check for overflow */
+        if (offset + length + padlen > offset) {
+            offset += length+padlen;
+        }
     }
 
 }
@@ -1113,15 +1103,11 @@ dissect_osd_permissions(tvbuff_t *tvb, int offset, proto_tree *parent_tree)
 static void
 dissect_osd_capability(tvbuff_t *tvb, int offset, proto_tree *parent_tree)
 {
-    proto_item *item = NULL;
-    proto_tree *tree = NULL;
+    proto_tree *tree;
     guint8 format;
 
-    if (parent_tree) {
-        item = proto_tree_add_text(parent_tree, tvb, offset, 80,
-            "Capability");
-        tree = proto_item_add_subtree(item, ett_osd_capability);
-    }
+    tree = proto_tree_add_subtree(parent_tree, tvb, offset, 80,
+            ett_osd_capability, NULL, "Capability");
 
     /* capability format */
     proto_tree_add_item(tree, hf_scsi_osd_capability_format, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1186,14 +1172,10 @@ dissect_osd_capability(tvbuff_t *tvb, int offset, proto_tree *parent_tree)
 static int
 dissect_osd_security_parameters(tvbuff_t *tvb, int offset, proto_tree *parent_tree)
 {
-    proto_item *item = NULL;
-    proto_tree *tree = NULL;
+    proto_tree *tree;
 
-    if (parent_tree) {
-        item = proto_tree_add_text(parent_tree, tvb, offset, 40,
-            "Security Parameters");
-        tree = proto_item_add_subtree(item, ett_osd_security_parameters);
-    }
+    tree = proto_tree_add_subtree(parent_tree, tvb, offset, 40,
+        ett_osd_security_parameters, NULL, "Security Parameters");
 
     /* request integrity check value */
     proto_tree_add_item(tree, hf_scsi_osd_ricv, tvb, offset, 20, ENC_NA);
@@ -1610,7 +1592,7 @@ dissect_osd_list(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         dissect_osd_attribute_data_in(pinfo, tvb, offset, tree, cdata, lun_info);
 
         allocation_length = cdata->itlq->alloc_len;
-        remaining_length = tvb_length_remaining(tvb, offset);
+        remaining_length = tvb_captured_length_remaining(tvb, offset);
         if (remaining_length<allocation_length) allocation_length = remaining_length;
         if (allocation_length<24) return;
 
@@ -1695,8 +1677,8 @@ dissect_osd_list(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                 if (attr_list_end>additional_length+8) break;
                 while (offset+16<attr_list_end) {
                     guint32 attribute_length = tvb_get_ntohs(tvb, offset+14);
-                    proto_item *att_item = proto_tree_add_text(subtree, tvb, offset, 16+attribute_length, "Attribute:");
-                    proto_tree *att_tree = proto_item_add_subtree(att_item, ett_osd_attribute);
+                    proto_item *att_item;
+                    proto_tree *att_tree = proto_tree_add_subtree(subtree, tvb, offset, 16+attribute_length, ett_osd_attribute, &att_item, "Attribute:");
                     offset = dissect_osd_attribute_list_entry(pinfo, tvb, att_tree, att_item, offset, lun_info, TRUE);
                 }
                 offset = attr_list_end;
@@ -3159,7 +3141,7 @@ dissect_osd2_query(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         dissect_osd_attribute_data_in(pinfo, tvb, offset, tree, cdata, lun_info);
 
         allocation_length = cdata->itlq->alloc_len;
-        remaining_length = tvb_length_remaining(tvb, offset);
+        remaining_length = tvb_captured_length_remaining(tvb, offset);
         if (remaining_length<allocation_length) allocation_length = remaining_length;
         if (allocation_length<12) return;
 
@@ -3386,11 +3368,8 @@ dissect_osd_opcode(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
             if ((!pinfo->fd->flags.visited) || (!cdata->itlq->extra_data)) {
                 scsi_osd_extra_data_t *extra_data;
 
-                extra_data = wmem_new(wmem_file_scope(), scsi_osd_extra_data_t);
+                extra_data = wmem_new0(wmem_file_scope(), scsi_osd_extra_data_t);
                 extra_data->svcaction = svcaction;
-                extra_data->gsatype = 0;
-                extra_data->osd2 = 0;
-                extra_data->continuation_length = 0;
                 cdata->itlq->extra_data = extra_data;
             }
         }
@@ -4061,10 +4040,6 @@ proto_register_scsi_osd(void)
     expert_register_field_array(expert_scsi_osd, ei, array_length(ei));
 }
 
-void
-proto_reg_handoff_scsi_osd(void)
-{
-}
 /*
  * Editor modelines
  *

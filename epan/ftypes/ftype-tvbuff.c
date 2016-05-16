@@ -20,8 +20,8 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <ftypes-int.h>
+#include <epan/to_str-int.h>
 #include <string.h>
 
 #include <epan/exceptions.h>
@@ -61,7 +61,7 @@ free_tvb_data(void *data)
 }
 
 static gboolean
-val_from_string(fvalue_t *fv, const char *s, LogFunc logfunc _U_)
+val_from_string(fvalue_t *fv, const char *s, gchar **err_msg _U_)
 {
 	tvbuff_t *new_tvb;
 	guint8 *private_data;
@@ -85,7 +85,7 @@ val_from_string(fvalue_t *fv, const char *s, LogFunc logfunc _U_)
 }
 
 static gboolean
-val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, LogFunc logfunc)
+val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_, gchar **err_msg)
 {
 	fvalue_t *fv_bytes;
 	tvbuff_t *new_tvb;
@@ -114,11 +114,11 @@ val_from_unparsed(fvalue_t *fv, const char *s, gboolean allow_partial_value _U_,
 	}
 
 	/* Treat it as a string. */
-	return val_from_string(fv, s, logfunc);
+	return val_from_string(fv, s, err_msg);
 }
 
 static int
-val_repr_len(fvalue_t *fv, ftrepr_t rtype)
+val_repr_len(fvalue_t *fv, ftrepr_t rtype, int field_display _U_)
 {
 	volatile guint length = 0;
 
@@ -127,7 +127,7 @@ val_repr_len(fvalue_t *fv, ftrepr_t rtype)
 	TRY {
 		/* 3 bytes for each byte of the byte "NN:" minus 1 byte
 		 * as there's no trailing ":". */
-		length = tvb_length(fv->value.tvb) * 3 - 1;
+		length = tvb_captured_length(fv->value.tvb) * 3 - 1;
 	}
 	CATCH_ALL {
 		/* nothing */
@@ -138,28 +138,18 @@ val_repr_len(fvalue_t *fv, ftrepr_t rtype)
 }
 
 static void
-val_to_repr(fvalue_t *fv, ftrepr_t rtype, char * volatile buf)
+val_to_repr(fvalue_t *fv, ftrepr_t rtype, int field_display _U_, char * volatile buf)
 {
 	guint length;
-	const guint8 *c;
-	unsigned int i;
 
 	g_assert(rtype == FTREPR_DFILTER);
 
 	TRY {
-		length = tvb_length(fv->value.tvb);
-		c = tvb_get_ptr(fv->value.tvb, 0, length);
+		length = tvb_captured_length(fv->value.tvb);
 
-		for (i = 0; i < length; i++) {
-			if (i == 0) {
-				sprintf((char *)buf, "%02x", *c++);
-				buf += 2;
-			}
-			else {
-				sprintf((char *)buf, ":%02x", *c++);
-				buf += 3;
-			}
-		}
+		if (length)
+			buf = bytes_to_hexstr_punct(buf, tvb_get_ptr(fv->value.tvb, 0, length), length, ':');
+		*buf = '\0';
 	}
 	CATCH_ALL {
 		/* nothing */
@@ -180,7 +170,7 @@ len(fvalue_t *fv)
 
 	TRY {
 		if (fv->value.tvb)
-			length = tvb_length(fv->value.tvb);
+			length = tvb_captured_length(fv->value.tvb);
 	}
 	CATCH_ALL {
 		/* nothing */
@@ -216,9 +206,9 @@ cmp_eq(const fvalue_t *fv_a, const fvalue_t *fv_b)
 	volatile gboolean	eq = FALSE;
 
 	TRY {
-		guint	a_len = tvb_length(a);
+		guint	a_len = tvb_captured_length(a);
 
-		if (a_len == tvb_length(b))
+		if (a_len == tvb_captured_length(b))
 			eq = (memcmp(tvb_get_ptr(a, 0, a_len), tvb_get_ptr(b, 0, a_len), a_len) == 0);
 	}
 	CATCH_ALL {
@@ -237,9 +227,9 @@ cmp_ne(const fvalue_t *fv_a, const fvalue_t *fv_b)
 	volatile gboolean	ne = TRUE;
 
 	TRY {
-		guint	a_len = tvb_length(a);
+		guint	a_len = tvb_captured_length(a);
 
-		if (a_len == tvb_length(b)) {
+		if (a_len == tvb_captured_length(b)) {
 			ne = (memcmp(tvb_get_ptr(a, 0, a_len), tvb_get_ptr(b, 0, a_len), a_len) != 0);
 		}
 	}
@@ -259,8 +249,8 @@ cmp_gt(const fvalue_t *fv_a, const fvalue_t *fv_b)
 	volatile gboolean	gt = FALSE;
 
 	TRY {
-		guint	a_len = tvb_length(a);
-		guint	b_len = tvb_length(b);
+		guint	a_len = tvb_captured_length(a);
+		guint	b_len = tvb_captured_length(b);
 
 		if (a_len > b_len) {
 			gt = TRUE;
@@ -284,8 +274,8 @@ cmp_ge(const fvalue_t *fv_a, const fvalue_t *fv_b)
 	volatile gboolean	ge = FALSE;
 
 	TRY {
-		guint	a_len = tvb_length(a);
-		guint	b_len = tvb_length(b);
+		guint	a_len = tvb_captured_length(a);
+		guint	b_len = tvb_captured_length(b);
 
 		if (a_len > b_len) {
 			ge = TRUE;
@@ -309,8 +299,8 @@ cmp_lt(const fvalue_t *fv_a, const fvalue_t *fv_b)
 	volatile gboolean	lt = FALSE;
 
 	TRY {
-		guint	a_len = tvb_length(a);
-		guint	b_len = tvb_length(b);
+		guint	a_len = tvb_captured_length(a);
+		guint	b_len = tvb_captured_length(b);
 
 		if (a_len < b_len) {
 			lt = TRUE;
@@ -334,8 +324,8 @@ cmp_le(const fvalue_t *fv_a, const fvalue_t *fv_b)
 	volatile gboolean	le = FALSE;
 
 	TRY {
-		guint	a_len = tvb_length(a);
-		guint	b_len = tvb_length(b);
+		guint	a_len = tvb_captured_length(a);
+		guint	b_len = tvb_captured_length(b);
 
 		if (a_len < b_len) {
 			le = TRUE;
@@ -389,7 +379,7 @@ cmp_matches(const fvalue_t *fv_a, const fvalue_t *fv_b)
 		return FALSE;
 	}
 	TRY {
-		tvb_len = tvb_length(tvb);
+		tvb_len = tvb_captured_length(tvb);
 		data = (const char *)tvb_get_ptr(tvb, 0, tvb_len);
 		rc = g_regex_match_full(
 			regex,		/* Compiled PCRE */
@@ -433,13 +423,15 @@ ftype_register_tvbuff(void)
 		value_set,			/* set_value_tvbuff */
 		NULL,				/* set_value_uinteger */
 		NULL,				/* set_value_sinteger */
-		NULL,				/* set_value_integer64 */
+		NULL,				/* set_value_uinteger64 */
+		NULL,				/* set_value_sinteger64 */
 		NULL,				/* set_value_floating */
 
 		value_get,			/* get_value */
 		NULL,				/* get_value_uinteger */
 		NULL,				/* get_value_sinteger */
-		NULL,				/* get_value_integer64 */
+		NULL,				/* get_value_uinteger64 */
+		NULL,				/* get_value_sinteger64 */
 		NULL,				/* get_value_floating */
 
 		cmp_eq,
@@ -460,3 +452,16 @@ ftype_register_tvbuff(void)
 
 	ftype_register(FT_PROTOCOL, &protocol_type);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

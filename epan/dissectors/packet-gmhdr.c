@@ -254,7 +254,7 @@ dissect_gmhdr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     is_802_2 = TRUE;
 
     /* Don't throw an exception for this check (even a BoundsError) */
-    if (tvb_length_remaining(tvb, offset) >= 2) {
+    if (tvb_captured_length_remaining(tvb, offset) >= 2) {
       if (tvb_get_ntohs(tvb, offset) == 0xffff) {
         is_802_2 = FALSE;
       }
@@ -294,7 +294,7 @@ dissect_gmtimestamp_trailer(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
 
   /* See if this packet has a Gigamon trailer, if yes, then decode it */
   /* (Don't throw any exceptions while checking for the trailer).     */
-  tvblen = tvb_length(tvb); /* end+1 */
+  tvblen = tvb_captured_length(tvb); /* end+1 */
   if (tvblen < trailer_len)
     return 0;
 
@@ -313,13 +313,18 @@ dissect_gmtimestamp_trailer(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
     if (gmtrailer_summary_in_tree) {
       offset += 4;
       port_num = tvb_get_ntohs(tvb, offset);
+      proto_item_append_text(ti, ", Port: %d, Timestamp: ", port_num);
       offset += 2;
+
       gmtimev.secs = tvb_get_ntohl(tvb, offset);
       offset += 4;
       gmtimev.nsecs = tvb_get_ntohl(tvb, offset);
 
       tm = localtime(&gmtimev.secs);
-      proto_item_append_text(ti, ", Port: %d, Timestamp: %d:%02d:%02d.%09d", port_num, tm->tm_hour, tm->tm_min, tm->tm_sec, gmtimev.nsecs);
+      if (tm)
+        proto_item_append_text(ti, "%d:%02d:%02d.%09d", tm->tm_hour, tm->tm_min, tm->tm_sec, gmtimev.nsecs);
+      else
+        proto_item_append_text(ti, "<Not representable>");
     }
 
     offset = 0;
@@ -343,7 +348,7 @@ dissect_gmtrailer(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void 
 
   /* See if this packet has a Gigamon trailer, if yes, then decode it */
   /* (Don't throw any exceptions while checking for the trailer).     */
-  tvblen = tvb_length(tvb); /* end+1 */
+  tvblen = tvb_captured_length(tvb); /* end+1 */
   if (tvblen < 5)
     return 0;
   extra_trailer = 0;
@@ -368,8 +373,8 @@ dissect_gmtrailer(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void 
   /* Verify the checksum; if not valid, it means that the trailer is not valid */
   {
     vec_t vec;
-    vec.len = length + 3;
-    vec.ptr = tvb_get_ptr(tvb, offset, vec.len);
+
+    SET_CKSUM_VEC_TVB(vec, tvb, offset, length + 3);
 
     comp_cksum = in_cksum(&vec, 1);
     if (pntoh16(&comp_cksum) != cksum) {
@@ -517,8 +522,20 @@ proto_reg_handoff_gmhdr(void)
 
   gmhdr_handle = create_dissector_handle(dissect_gmhdr, proto_gmhdr);
   dissector_add_uint("ethertype", ETHERTYPE_GIGAMON, gmhdr_handle);
-  heur_dissector_add("eth.trailer", dissect_gmtrailer, proto_gmhdr);
+  heur_dissector_add("eth.trailer", dissect_gmtrailer, "Gigamon Ethernet header", "gmhdr_eth", proto_gmhdr, HEURISTIC_ENABLE);
 
-  heur_dissector_add("eth.trailer", dissect_gmtimestamp_trailer, proto_gmtrailer);
+  heur_dissector_add("eth.trailer", dissect_gmtimestamp_trailer, "Gigamon Ethernet trailer", "gmtrailer_eth", proto_gmtrailer, HEURISTIC_ENABLE);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

@@ -24,37 +24,24 @@
 #include "config.h"
 
 #include <string.h>
-#include <ctype.h>
 #include <math.h>
 
 #include <gtk/gtk.h>
 
-#include <epan/proto.h>
-#include <epan/dfilter/dfilter.h>
-#include <epan/strutil.h>
 #include <epan/prefs.h>
-#include <epan/filter_expressions.h>
 
-#include "../globals.h"
 
-#include "ui/alert_box.h"
-#include "ui/main_statusbar.h"
 #include "ui/preference_utils.h"
-#include "ui/ui_util.h"
 
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/filter_expression_save_dlg.h"
 #include "ui/gtk/dlg_utils.h"
-#include "ui/gtk/stock_icons.h"
-#include "ui/gtk/prefs_dlg.h"
 #include "ui/gtk/filter_dlg.h"
 #include "ui/gtk/filter_autocomplete.h"
-#include "ui/gtk/keys.h"
 #include "ui/gtk/help_dlg.h"
 
 #include "main.h"
 
-#include "main_filter_toolbar.h"
 
 /* Capture callback data keys */
 #define E_FILTER_SAVE_EXPR_KEY     "filter_save_offset_expression"
@@ -100,16 +87,6 @@ filter_expression_save_dlg_init(gpointer filter_tb, gpointer filter_te)
 	}
 }
 
-static void
-filter_expression_nuke(struct filter_expression *fe)
-{
-	if (fe == NULL)
-		return;
-	filter_expression_nuke(fe->next);
-	g_free(fe->label);
-	g_free(fe->expression);
-}
-
 void
 filter_expression_reinit(int what)
 {
@@ -126,7 +103,7 @@ filter_expression_reinit(int what)
 		}
 	}
 	if (what == FILTER_EXPRESSION_REINIT_DESTROY) {
-		filter_expression_nuke(*pfilter_expression_head);
+		filter_expression_free(*pfilter_expression_head);
 		*pfilter_expression_head = NULL;
 		return;
 	}
@@ -159,7 +136,7 @@ filter_expression_reinit(int what)
 			filter_expression_new(fe->label, fe->expression,
 			    fe->enabled);
 		}
-		filter_expression_nuke(prevhead);
+		filter_expression_free(prevhead);
 
 		/* Create the buttons again */
 		fe = *pfilter_expression_head;
@@ -358,3 +335,16 @@ filter_save_frame_destroy_cb(GtkWidget *win _U_, gpointer user_data _U_)
 	/* Note that we no longer have a "Filter Save" dialog box. */
 	filter_save_frame_w = NULL;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -27,7 +27,6 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 
@@ -40,19 +39,19 @@ static int hf_secidmap_opnum = -1;
 
 static gint ett_secidmap = -1;
 
-static e_uuid_t uuid_secidmap = { 0x0d7c1e50, 0x113a, 0x11ca, { 0xb7, 0x1f, 0x08, 0x00, 0x1e, 0x01, 0xdc, 0x6c } };
+static e_guid_t uuid_secidmap = { 0x0d7c1e50, 0x113a, 0x11ca, { 0xb7, 0x1f, 0x08, 0x00, 0x1e, 0x01, 0xdc, 0x6c } };
 static guint16  ver_secidmap = 1;
 
 
 
 static dcerpc_sub_dissector secidmap_dissectors[] = {
-        { 0, "parse_name",       NULL, NULL},
-        { 1, "gen_name",         NULL, NULL},
-        { 2, "avoid_cn_bug",     NULL, NULL},
-        { 3, "parse_name_cache", NULL, NULL},
-        { 4, "gen_name_cache",   NULL, NULL},
+	{ 0, "parse_name",	 NULL, NULL},
+	{ 1, "gen_name",	 NULL, NULL},
+	{ 2, "avoid_cn_bug",	 NULL, NULL},
+	{ 3, "parse_name_cache", NULL, NULL},
+	{ 4, "gen_name_cache",	 NULL, NULL},
 
-        { 0, NULL, NULL, NULL },
+	{ 0, NULL, NULL, NULL },
 };
 
 void
@@ -75,6 +74,19 @@ proto_register_secidmap (void)
 void
 proto_reg_handoff_secidmap (void)
 {
-        /* Register the protocol as dcerpc */
-        dcerpc_init_uuid (proto_secidmap, ett_secidmap, &uuid_secidmap, ver_secidmap, secidmap_dissectors, hf_secidmap_opnum);
+	/* Register the protocol as dcerpc */
+	dcerpc_init_uuid (proto_secidmap, ett_secidmap, &uuid_secidmap, ver_secidmap, secidmap_dissectors, hf_secidmap_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

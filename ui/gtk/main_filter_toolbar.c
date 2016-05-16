@@ -26,20 +26,20 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #include <gtk/gtk.h>
 
 #include "ui/recent.h"
 #include "ui/recent_utils.h"
-
 #include "ui/gtk/old-gtk-compat.h"
+
 
 #include "filter_dlg.h"
 #include "filter_autocomplete.h"
 
 #include "epan/prefs.h"
+#include "epan/plugin_if.h"
 
 #include "keys.h"
 #include "gtkglobals.h"
@@ -110,6 +110,33 @@ filter_save_cb(GtkWidget *w _U_, GtkWindow *parent_w)
     filter_expression_save_dlg(parent_w);
 }
 
+static void
+plugin_if_filter_apply(gconstpointer user_data)
+{
+    /* code is derived from voip_calls_dlg.c::voip_calls_on_filter */
+
+    size_t filter_length;
+    size_t max_filter_length = 2048;
+    gchar *filter_string;
+
+    if ( main_display_filter_widget != 0 )
+    {
+
+        GHashTable * dataSet = (GHashTable *) user_data;
+
+        if ( g_hash_table_lookup_extended(dataSet, "filter_string", NULL, NULL ) )
+        {
+            filter_string = g_strndup((const char *)g_hash_table_lookup(dataSet, "filter_string"), max_filter_length);
+            filter_length = strlen(filter_string);
+
+            if ( filter_length < max_filter_length )
+            {
+                gtk_entry_set_text(GTK_ENTRY(main_display_filter_widget), filter_string);
+                main_filter_packets(&cfile, filter_string, FALSE);
+            }
+        }
+    }
+}
 
 GtkWidget *
 filter_toolbar_new(void)
@@ -279,6 +306,9 @@ filter_toolbar_new(void)
 
     /* make current preferences effective */
     toolbar_redraw_all();
+
+    plugin_if_register_gui_cb(PLUGIN_IF_FILTER_ACTION_APPLY, plugin_if_filter_apply );
+    plugin_if_register_gui_cb(PLUGIN_IF_FILTER_ACTION_PREPARE, plugin_if_filter_apply );
 
     return filter_tb;
 }

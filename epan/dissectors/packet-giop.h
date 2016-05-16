@@ -56,12 +56,12 @@ typedef struct MessageHeader {
   guint8 flags;			/* byte_order in 1.0 */
   guint8 message_type;
   guint32 message_size;
+
+  /* MSG dependent data */
+
   guint32 req_id;               /* request id in MSG  */
-
-  /* MSG dependant data */
-
   guint32 rep_status;           /* reply status in MSG if available */
-  gchar *exception_id;             /* exception string if a USER EXCEPTION occurs  */
+  gchar *exception_id;          /* exception string if a USER EXCEPTION occurs  */
 
 } MessageHeader;
 
@@ -536,7 +536,7 @@ WS_DLL_PUBLIC guint32 get_CDR_encap_info(tvbuff_t *tvb, proto_tree *tree, gint *
 /* Take in an array of char and create a new ephemeral string.
  * Replace non-printable characters with periods.
  *
- * The array may contain \0's so dont use strdup
+ * The array may contain \0's so don't use strdup
  * The string is \0 terminated, and thus longer than
  * the initial sequence.
  */
@@ -606,5 +606,21 @@ typedef enum TCKind TCKind_t;
 #define IOP_ServiceId_INVOCATION_POLICIES               7
 #define IOP_ServiceId_FORWARD_IDENTITY                  8
 #define IOP_ServiceId_UnknownExceptionInfo              9
+
+/* Used for GIOP statistics */
+typedef struct _giop_info_value_t {
+  guint32      framenum;
+  address      *server_addr;
+  const gchar  *client_host;
+  const gchar  *service_host;
+  const gchar  *giop_op;
+  const gchar  *giop_resp;
+  time_t       time_ticks;
+  guint        time_ms;
+  gboolean     first_pass;
+} giop_info_value_t;
+
+
+#define GIOP_TAP_NAME "giop"
 
 #endif /* PACKET_GIOP_H */

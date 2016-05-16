@@ -23,7 +23,6 @@
 
 #include "config.h"
 
-
 #include "packet-rpc.h"
 #include "packet-stat-notify.h"
 
@@ -40,8 +39,9 @@ static gint ett_statnotify = -1;
 
 
 static int
-dissect_statnotify_mon(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
+dissect_statnotify_mon(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
+	int offset = 0;
 
 	offset = dissect_rpc_string(tvb,tree,hf_statnotify_name,offset,NULL);
 
@@ -54,20 +54,24 @@ dissect_statnotify_mon(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_
 }
 
 /* proc number, "proc name", dissect_request, dissect_reply */
-/* NULL as function pointer means: type of arguments is "void". */
 
 static const vsff statnotify1_proc[] = {
-    { 0, "NULL", NULL, NULL },
-    { STATNOTIFYPROC_MON,   "MON-CALLBACK",
-		dissect_statnotify_mon, NULL },
-    { 0, NULL, NULL, NULL }
+	{ 0, "NULL",
+	  dissect_rpc_void, dissect_rpc_void },
+	{ STATNOTIFYPROC_MON,   "MON-CALLBACK",
+	  dissect_statnotify_mon, dissect_rpc_void },
+	{ 0, NULL, NULL, NULL }
 };
 static const value_string statnotify1_proc_vals[] = {
-    { 0, "NULL" },
-    { STATNOTIFYPROC_MON,   "MON-CALLBACK" },
-    { 0, NULL }
+	{ 0, "NULL" },
+	{ STATNOTIFYPROC_MON,   "MON-CALLBACK" },
+	{ 0, NULL }
 };
 /* end of stat-notify version 1 */
+
+static const rpc_prog_vers_info statnotify_vers_info[] = {
+	{ 1, statnotify1_proc, &hf_statnotify_procedure_v1 },
+};
 
 
 void
@@ -101,7 +105,19 @@ void
 proto_reg_handoff_statnotify(void)
 {
 	/* Register the protocol as RPC */
-	rpc_init_prog(proto_statnotify, STATNOTIFY_PROGRAM, ett_statnotify);
-	/* Register the procedure tables */
-	rpc_init_proc_table(STATNOTIFY_PROGRAM, 1, statnotify1_proc, hf_statnotify_procedure_v1);
+	rpc_init_prog(proto_statnotify, STATNOTIFY_PROGRAM, ett_statnotify,
+	    G_N_ELEMENTS(statnotify_vers_info), statnotify_vers_info);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -23,10 +23,8 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/conversation.h>
-#include <epan/wmem/wmem.h>
 #include <epan/asn1.h>
 #include <epan/expert.h>
 
@@ -75,6 +73,15 @@ static int hf_ros_time = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_ros = -1;
+static gint ett_ros_unknown = -1;
+static gint ett_ros_invoke_argument = -1;
+static gint ett_ros_return_result = -1;
+static gint ett_ros_bind_invoke = -1;
+static gint ett_ros_bind_result = -1;
+static gint ett_ros_bind_error = -1;
+static gint ett_ros_unbind_invoke = -1;
+static gint ett_ros_unbind_result = -1;
+static gint ett_ros_unbind_error = -1;
 #include "packet-ros-ett.c"
 
 static expert_field ei_ros_dissector_oid_not_implemented = EI_INIT;
@@ -84,7 +91,6 @@ static dissector_table_t ros_oid_dissector_table=NULL;
 
 static GHashTable *oid_table=NULL;
 static GHashTable *protocol_table=NULL;
-static gint ett_ros_unknown = -1;
 
 void
 register_ros_oid_dissector_handle(const char *oid, dissector_handle_t dissector, int proto _U_, const char *name, gboolean uses_rtse)
@@ -133,7 +139,8 @@ static new_dissector_t ros_lookup_err_dissector(gint32 errcode, const ros_err_t 
 }
 
 
-static gboolean ros_try_string(const char *oid, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, struct SESSION_DATA_STRUCTURE* session)
+static int
+ros_try_string(const char *oid, tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, struct SESSION_DATA_STRUCTURE* session)
 {
 	ros_info_t *rinfo;
 	gint32     opcode_lcl = 0;
@@ -192,37 +199,35 @@ static gboolean ros_try_string(const char *oid, tvbuff_t *tvb, packet_info *pinf
 			if(suffix)
 				col_append_str(pinfo->cinfo, COL_INFO, suffix);
 
-			(*opdissector)(tvb, pinfo, ros_tree, NULL);
-
-			return TRUE;
+			return (*opdissector)(tvb, pinfo, ros_tree, NULL);
 		}
 	}
 
-	return FALSE;
+	return 0;
 }
 
 int
 call_ros_oid_callback(const char *oid, tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, struct SESSION_DATA_STRUCTURE* session)
 {
 	tvbuff_t *next_tvb;
+	int len;
 
 	next_tvb = tvb_new_subset_remaining(tvb, offset);
 
-	if(!ros_try_string(oid, next_tvb, pinfo, tree, session) &&
-           !dissector_try_string(ros_oid_dissector_table, oid, next_tvb, pinfo, tree, session)){
-		proto_item *item=proto_tree_add_text(tree, next_tvb, 0, tvb_length_remaining(tvb, offset), "ROS: Dissector for OID:%s not implemented. Contact Wireshark developers if you want this supported", oid);
-		proto_tree *next_tree=proto_item_add_subtree(item, ett_ros_unknown);
+	if(((len = ros_try_string(oid, next_tvb, pinfo, tree, session)) == 0) &&
+	   ((len = dissector_try_string(ros_oid_dissector_table, oid, next_tvb, pinfo, tree, session)) == 0)) {
+		proto_item *item;
+		proto_tree *next_tree;
+
+		next_tree = proto_tree_add_subtree_format(tree, next_tvb, 0, -1, ett_ros_unknown, &item,
+				"ROS: Dissector for OID:%s not implemented. Contact Wireshark developers if you want this supported", oid);
 
 		expert_add_info_format(pinfo, item, &ei_ros_dissector_oid_not_implemented,
-                                        "ROS: Dissector for OID %s not implemented", oid);
-		dissect_unknown_ber(pinfo, next_tvb, offset, next_tree);
+				       "ROS: Dissector for OID %s not implemented", oid);
+		len = dissect_unknown_ber(pinfo, next_tvb, offset, next_tree);
 	}
 
-	/*XXX until we change the #.REGISTER signature for _PDU()s
-	 * into new_dissector_t   we have to do this kludge with
-	 * manually step past the content in the ANY type.
-	 */
-	offset+=tvb_length_remaining(tvb, offset);
+	offset += len;
 
 	return offset;
 }
@@ -303,7 +308,7 @@ ros_match_call_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
     if(isInvoke) {
       /* this a a request - add it to the unmatched list */
 
-      /* check that we dont already have one of those in the
+      /* check that we don't already have one of those in the
 	 unmatched list and if so remove it */
 
       rcr.invokeId=invokeId;
@@ -314,7 +319,7 @@ ros_match_call_response(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gui
 	g_hash_table_remove(ros_info->unmatched, rcrp);
       }
 
-      /* if we cant reuse the old one, grab a new chunk */
+      /* if we can't reuse the old one, grab a new chunk */
       if(!rcrp){
 	rcrp=wmem_new(wmem_file_scope(), ros_call_response_t);
       }
@@ -420,23 +425,19 @@ dissect_ros(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* da
 		old_offset=offset;
 		offset=dissect_ros_ROS(FALSE, tvb, offset, &asn1_ctx , tree, -1);
 		if(offset == old_offset){
-			item = proto_tree_add_text(tree, tvb, offset, -1,"Unknown ROS PDU");
+			next_tree = proto_tree_add_subtree(tree, tvb, offset, -1, ett_ros_unknown, &item, "Unknown ROS PDU");
 
-			if(item){
-				expert_add_info(pinfo, item, &ei_ros_unknown_ros_pdu);
-				next_tree=proto_item_add_subtree(item, ett_ros_unknown);
-				dissect_unknown_ber(pinfo, tvb, offset, next_tree);
-			}
-
+			expert_add_info(pinfo, item, &ei_ros_unknown_ros_pdu);
+			dissect_unknown_ber(pinfo, tvb, offset, next_tree);
 			break;
 		}
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 static void
-ros_reinit(void)
+ros_cleanup(void)
 {
   ros_conv_info_t *ros_info;
 
@@ -484,6 +485,15 @@ void proto_register_ros(void) {
   static gint *ett[] = {
     &ett_ros,
     &ett_ros_unknown,
+    &ett_ros_invoke_argument,
+    &ett_ros_return_result,
+    &ett_ros_bind_invoke,
+    &ett_ros_bind_result,
+    &ett_ros_bind_error,
+    &ett_ros_unbind_invoke,
+    &ett_ros_unbind_result,
+    &ett_ros_unbind_error,
+
 #include "packet-ros-ettarr.c"
   };
 
@@ -509,7 +519,7 @@ void proto_register_ros(void) {
 
   ros_handle = find_dissector("ros");
 
-  register_init_routine(ros_reinit);
+  register_cleanup_routine(ros_cleanup);
 }
 
 

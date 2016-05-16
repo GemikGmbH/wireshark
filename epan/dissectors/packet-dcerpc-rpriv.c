@@ -27,7 +27,6 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 
@@ -47,7 +46,7 @@ static int hf_rpriv_get_eptgt_rqst_key_t2 = -1;
 static gint ett_rpriv = -1;
 
 
-static e_uuid_t uuid_rpriv = { 0xb1e338f8, 0x9533, 0x11c9, { 0xa3, 0x4a, 0x08, 0x00, 0x1e, 0x01, 0x9c, 0x1e } };
+static e_guid_t uuid_rpriv = { 0xb1e338f8, 0x9533, 0x11c9, { 0xa3, 0x4a, 0x08, 0x00, 0x1e, 0x01, 0x9c, 0x1e } };
 static guint16  ver_rpriv = 1;
 
 
@@ -77,13 +76,13 @@ rpriv_dissect_get_eptgt_rqst (tvbuff_t *tvb, int offset,
 	/* advance to get size of cell, and princ */
 
 	proto_tree_add_item (tree, hf_rpriv_get_eptgt_rqst_key_t, tvb, offset, key_size, ENC_ASCII|ENC_NA);
-	key_t1 = tvb_get_string(wmem_packet_scope(), tvb, offset, key_size);
+	key_t1 = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, key_size, ENC_ASCII);
 	offset += key_size;
 
 	offset += 8;
 	offset = dissect_ndr_uint32(tvb, offset, pinfo, tree, di, drep, hf_rpriv_get_eptgt_rqst_key_size2, &key_size2);
 	proto_tree_add_item (tree, hf_rpriv_get_eptgt_rqst_key_t2, tvb, offset, key_size2, ENC_ASCII|ENC_NA);
-	key_t2 = tvb_get_string(wmem_packet_scope(), tvb, offset, key_size2);
+	key_t2 = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, key_size2, ENC_ASCII);
 	offset += key_size2;
 
 
@@ -142,3 +141,16 @@ proto_reg_handoff_rpriv (void)
 	/* Register the protocol as dcerpc */
 	dcerpc_init_uuid (proto_rpriv, ett_rpriv, &uuid_rpriv, ver_rpriv, rpriv_dissectors, hf_rpriv_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

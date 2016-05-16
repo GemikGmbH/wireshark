@@ -23,11 +23,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/dissectors/packet-dcerpc.h>
-#include <epan/oui.h>
 
 #include "packet-pn.h"
 
@@ -65,7 +62,7 @@ dissect_PNMRRT_Common(tvbuff_t *tvb, int offset,
         packet_info *pinfo, proto_tree *tree, proto_item *item, guint8 length _U_)
 {
     guint16  sequence_id;
-    e_uuid_t uuid;
+    e_guid_t uuid;
 
 
     /* MRRT_SequenceID */
@@ -115,7 +112,7 @@ dissect_PNMRRT_PDU(tvbuff_t *tvb, int offset,
     /* MRRT_Version */
     offset = dissect_pn_uint16(tvb, offset, pinfo, tree, hf_pn_mrrt_version, &version);
 
-    while (tvb_length_remaining(tvb, offset) > 0) {
+    while (tvb_reported_length_remaining(tvb, offset) > 0) {
         /* MRRT_TLVHeader.Type */
         offset = dissect_pn_uint8(tvb, offset, pinfo, tree, hf_pn_mrrt_type, &type);
 
@@ -160,17 +157,15 @@ dissect_PNMRRT_PDU(tvbuff_t *tvb, int offset,
 /* possibly dissect a PN-RT packet (frame ID must be in the appropriate range) */
 static gboolean
 dissect_PNMRRT_Data_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
-    void *data _U_)
+    void *data)
 {
-    guint16     u16FrameID;
+    /* the tvb will NOT contain the frame_id here, so get it from dissector data! */
+    guint16     u16FrameID = GPOINTER_TO_UINT(data);
     proto_item *item;
     proto_tree *mrrt_tree;
     int         offset    = 0;
     guint32     u32SubStart;
 
-
-    /* the tvb will NOT contain the frame_id here, so get it from our private data! */
-    u16FrameID = GPOINTER_TO_UINT(pinfo->private_data);
 
     /* frame id must be in valid range (MRRT) */
     if (u16FrameID != 0xFF60) {
@@ -247,5 +242,18 @@ proto_reg_handoff_pn_mrrt (void)
 {
 
     /* register ourself as an heuristic pn-rt payload dissector */
-    heur_dissector_add("pn_rt", dissect_PNMRRT_Data_heur, proto_pn_mrrt);
+    heur_dissector_add("pn_rt", dissect_PNMRRT_Data_heur, "PROFINET MRRT IO", "pn_mrrt_pn_rt", proto_pn_mrrt, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

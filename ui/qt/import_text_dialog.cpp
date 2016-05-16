@@ -41,6 +41,7 @@
 
 #include <ui_import_text_dialog.h>
 #include "wireshark_application.h"
+#include "qt_ui_utils.h"
 
 #include <QFileDialog>
 #include <QDebug>
@@ -49,16 +50,27 @@
 ImportTextDialog::ImportTextDialog(QWidget *parent) :
     QDialog(parent),
     ti_ui_(new Ui::ImportTextDialog),
-    import_info_()
+    import_info_(),
+    file_ok_(false),
+    time_format_ok_(true),
+    ether_type_ok_(true),
+    proto_ok_(true),
+    source_port_ok_(true),
+    dest_port_ok_(true),
+    tag_ok_(true),
+    ppi_ok_(true),
+    max_len_ok_(true)
 {
     int encap;
     int i;
 
     ti_ui_->setupUi(this);
+    setWindowTitle(wsApp->windowTitleString(tr("Import From Hex Dump")));
     memset(&import_info_, 0, sizeof(import_info_));
 
-    ok_button_ = ti_ui_->buttonBox->button(QDialogButtonBox::Ok);
-    ok_button_->setEnabled(false);
+    import_button_ = ti_ui_->buttonBox->button(QDialogButtonBox::Open);
+    import_button_->setText(tr("Import"));
+    import_button_->setEnabled(false);
 
 #ifdef Q_OS_MAC
     // The grid layout squishes each line edit otherwise.
@@ -103,6 +115,8 @@ ImportTextDialog::ImportTextDialog(QWidget *parent) :
 
 ImportTextDialog::~ImportTextDialog()
 {
+    g_free (import_info_.import_text_filename);
+    g_free (import_info_.date_timestamp_format);
     delete ti_ui_;
 }
 
@@ -111,16 +125,13 @@ QString &ImportTextDialog::capfileName() {
 }
 
 void ImportTextDialog::convertTextFile() {
-    int import_file_fd;
     char *tmpname;
     int err;
 
     capfile_name_.clear();
-    /* Choose a random name for the temporary import buffer */
-    import_file_fd = create_tempfile(&tmpname, "import");
-    capfile_name_.append(tmpname);
-
-    import_info_.wdh = wtap_dump_fdopen(import_file_fd, WTAP_FILE_TYPE_SUBTYPE_PCAP, import_info_.encapsulation, import_info_.max_frame_length, FALSE, &err);
+    /* Use a random name for the temporary import buffer */
+    import_info_.wdh = wtap_dump_open_tempfile(&tmpname, "import", WTAP_FILE_TYPE_SUBTYPE_PCAP, import_info_.encapsulation, import_info_.max_frame_length, FALSE, &err);
+    capfile_name_.append(tmpname ? tmpname : "temporary file");
     qDebug() << capfile_name_ << ":" << import_info_.wdh << import_info_.encapsulation << import_info_.max_frame_length;
     if (import_info_.wdh == NULL) {
         open_failure_alert_box(capfile_name_.toUtf8().constData(), err, TRUE);
@@ -210,7 +221,7 @@ int ImportTextDialog::exec() {
         return result();
     }
 
-    import_info_.import_text_filename = strdup(ti_ui_->textFileLineEdit->text().toUtf8().data());
+    import_info_.import_text_filename = qstring_strdup(ti_ui_->textFileLineEdit->text());
     import_info_.import_text_file = ws_fopen(import_info_.import_text_filename, "rb");
     if (!import_info_.import_text_file) {
         open_failure_alert_box(import_info_.import_text_filename, errno, FALSE);
@@ -224,7 +235,7 @@ int ImportTextDialog::exec() {
         ti_ui_->octalOffsetButton->isChecked()   ? OFFSET_OCT :
         OFFSET_NONE;
     import_info_.date_timestamp = ti_ui_->dateTimeLineEdit->text().length() > 0;
-    import_info_.date_timestamp_format = strdup(ti_ui_->dateTimeLineEdit->text().toUtf8().data());
+    import_info_.date_timestamp_format = qstring_strdup(ti_ui_->dateTimeLineEdit->text());
 
     encap_val = ti_ui_->encapComboBox->itemData(ti_ui_->encapComboBox->currentIndex());
     import_info_.dummy_header_type = HEADER_NONE;
@@ -277,8 +288,19 @@ void ImportTextDialog::on_textFileBrowseButton_clicked()
         break;
     }
 
-    QString file_name = QFileDialog::getOpenFileName(this, tr("Wireshark: Import text file"), open_dir);
+    QString file_name = QFileDialog::getOpenFileName(this, wsApp->windowTitleString(tr("Import Text File")), open_dir);
     ti_ui_->textFileLineEdit->setText(file_name);
+}
+
+void ImportTextDialog::updateImportButtonState()
+{
+    if (file_ok_ && time_format_ok_ && ether_type_ok_ &&
+        proto_ok_ && source_port_ok_ && dest_port_ok_ &&
+        tag_ok_ && ppi_ok_ && max_len_ok_) {
+        import_button_->setEnabled(true);
+    } else {
+        import_button_->setEnabled(false);
+    }
 }
 
 void ImportTextDialog::on_textFileLineEdit_textChanged(const QString &file_name)
@@ -287,11 +309,12 @@ void ImportTextDialog::on_textFileLineEdit_textChanged(const QString &file_name)
 
     text_file = new QFile(file_name);
     if (text_file->open(QIODevice::ReadOnly)) {
-        ok_button_->setEnabled(true);
+        file_ok_ = true;
         text_file->close();
     } else {
-        ok_button_->setEnabled(false);
+        file_ok_ = false;
     }
+    updateImportButtonState();
 }
 
 void ImportTextDialog::on_encapComboBox_currentIndexChanged(int index)
@@ -308,20 +331,44 @@ void ImportTextDialog::on_encapComboBox_currentIndexChanged(int index)
     enableHeaderWidgets(enabled);
 }
 
+bool ImportTextDialog::checkDateTimeFormat(const QString &time_format)
+{
+    const QString valid_code = "aAbBcdHIjmMpSUwWxXyYzZ%";
+    int idx = 0;
+
+    while ((idx = time_format.indexOf("%", idx)) != -1) {
+        idx++;
+        if ((idx == time_format.size()) || !valid_code.contains(time_format[idx])) {
+            return false;
+        }
+        idx++;
+    }
+    return true;
+}
+
 void ImportTextDialog::on_dateTimeLineEdit_textChanged(const QString &time_format)
 {
     if (time_format.length() > 0) {
-        time_t cur_time;
-        struct tm *cur_tm;
-        char time_str[100];
+        if (checkDateTimeFormat(time_format)) {
+            time_t cur_time;
+            struct tm *cur_tm;
+            char time_str[100];
 
-        time(&cur_time);
-        cur_tm = localtime(&cur_time);
-        strftime(time_str, 100, ti_ui_->dateTimeLineEdit->text().toUtf8().constData(), cur_tm);
-        ti_ui_->timestampExampleLabel->setText(QString(tr("Example: %1")).arg(time_str));
+            time(&cur_time);
+            cur_tm = localtime(&cur_time);
+            strftime(time_str, 100, ti_ui_->dateTimeLineEdit->text().toUtf8().constData(), cur_tm);
+            ti_ui_->timestampExampleLabel->setText(QString(tr("Example: %1")).arg(time_str));
+            time_format_ok_ = true;
+        }
+        else {
+            ti_ui_->timestampExampleLabel->setText(tr("<i>(Wrong date format)</i>"));
+            time_format_ok_ = false;
+        }
     } else {
         ti_ui_->timestampExampleLabel->setText(tr("<i>(No format will be applied)</i>"));
+        time_format_ok_ = true;
     }
+    updateImportButtonState();
 }
 
 void ImportTextDialog::on_directionIndicationCheckBox_toggled(bool checked)
@@ -364,14 +411,14 @@ void ImportTextDialog::on_sctpDataButton_toggled(bool checked)
     on_noDummyButton_toggled(checked);
 }
 
-void ImportTextDialog::check_line_edit(SyntaxLineEdit *le, const QString &num_str, int base, guint max_val, bool is_short, guint *val_ptr) {
+void ImportTextDialog::check_line_edit(SyntaxLineEdit *le, bool &ok_enabled, const QString &num_str, int base, guint max_val, bool is_short, guint *val_ptr) {
     bool conv_ok;
     SyntaxLineEdit::SyntaxState syntax_state = SyntaxLineEdit::Empty;
-    bool ok_enabled = true;
 
     if (!le || !val_ptr)
         return;
 
+    ok_enabled = true;
     if (num_str.length() < 1) {
         *val_ptr = 0;
     } else {
@@ -388,42 +435,42 @@ void ImportTextDialog::check_line_edit(SyntaxLineEdit *le, const QString &num_st
         }
     }
     le->setSyntaxState(syntax_state);
-    ok_button_->setEnabled(ok_enabled);
+    updateImportButtonState();
 }
 
 void ImportTextDialog::on_ethertypeLineEdit_textChanged(const QString &ethertype_str)
 {
-    check_line_edit(ti_ui_->ethertypeLineEdit, ethertype_str, 16, 0xffff, true, &import_info_.pid);
+    check_line_edit(ti_ui_->ethertypeLineEdit, ether_type_ok_, ethertype_str, 16, 0xffff, true, &import_info_.pid);
 }
 
 void ImportTextDialog::on_protocolLineEdit_textChanged(const QString &protocol_str)
 {
-    check_line_edit(ti_ui_->protocolLineEdit, protocol_str, 10, 0xff, true, &import_info_.protocol);
+    check_line_edit(ti_ui_->protocolLineEdit, proto_ok_, protocol_str, 10, 0xff, true, &import_info_.protocol);
 }
 
 void ImportTextDialog::on_sourcePortLineEdit_textChanged(const QString &source_port_str)
 {
-    check_line_edit(ti_ui_->sourcePortLineEdit, source_port_str, 10, 0xffff, true, &import_info_.src_port);
+    check_line_edit(ti_ui_->sourcePortLineEdit, source_port_ok_, source_port_str, 10, 0xffff, true, &import_info_.src_port);
 }
 
 void ImportTextDialog::on_destinationPortLineEdit_textChanged(const QString &destination_port_str)
 {
-    check_line_edit(ti_ui_->destinationPortLineEdit, destination_port_str, 10, 0xffff, true, &import_info_.dst_port);
+    check_line_edit(ti_ui_->destinationPortLineEdit, dest_port_ok_, destination_port_str, 10, 0xffff, true, &import_info_.dst_port);
 }
 
 void ImportTextDialog::on_tagLineEdit_textChanged(const QString &tag_str)
 {
-    check_line_edit(ti_ui_->tagLineEdit, tag_str, 10, 0xffffffff, false, &import_info_.tag);
+    check_line_edit(ti_ui_->tagLineEdit, tag_ok_, tag_str, 10, 0xffffffff, false, &import_info_.tag);
 }
 
 void ImportTextDialog::on_ppiLineEdit_textChanged(const QString &ppi_str)
 {
-    check_line_edit(ti_ui_->ppiLineEdit, ppi_str, 10, 0xffffffff, false, &import_info_.ppi);
+    check_line_edit(ti_ui_->ppiLineEdit, ppi_ok_, ppi_str, 10, 0xffffffff, false, &import_info_.ppi);
 }
 
 void ImportTextDialog::on_maxLengthLineEdit_textChanged(const QString &max_frame_len_str)
 {
-    check_line_edit(ti_ui_->maxLengthLineEdit, max_frame_len_str, 10, IMPORT_MAX_PACKET, true, &import_info_.max_frame_length);
+    check_line_edit(ti_ui_->maxLengthLineEdit, max_len_ok_, max_frame_len_str, 10, IMPORT_MAX_PACKET, true, &import_info_.max_frame_length);
 }
 
 void ImportTextDialog::on_buttonBox_helpRequested()

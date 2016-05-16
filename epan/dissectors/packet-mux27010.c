@@ -21,15 +21,24 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
+/*
+ * This dissector analyses a multiplexed communication between a GSM modem and the host,
+ * whereby the multiplexing is based upon a variant of the specification 3G TS 27.010.
+ *
+ * The assigned DLT value is:
+ *   LINKTYPE_MUX27010  236     DLT_MUX27010
+ *
+ * A detailed description of the packet structure/LINKTYPE_MUX27010 can be found on:
+ *  http://www.tcpdump.org/linktypes/LINKTYPE_MUX27010.html
+ */
 
-#include <glib.h>
+#include "config.h"
 
 #include <epan/packet.h>
 #include <wiretap/wtap.h>
 #include <epan/reassemble.h>
 #include <epan/crc8-tvb.h>
-#include <expert.h>
+#include <epan/expert.h>
 
 void proto_register_mux27010(void);
 void proto_reg_handoff_mux27010(void);
@@ -732,7 +741,7 @@ getFrameInformation(tvbuff_t *tvb, packet_info *pinfo, proto_tree *field_tree,
                     int offset, guint16 length_info){
 
     /*Get the data from information field as string*/
-    char *information_field = tvb_get_string(wmem_packet_scope(), tvb,offset,length_info);
+    char *information_field = tvb_get_string_enc(wmem_packet_scope(), tvb,offset,length_info, ENC_ASCII);
 
     /*delete unneeded signs out of info field -> for info column: CR (0x0d) and LF (0x0a)*/
     information_field = g_strdelimit(information_field, "\r\n", ' ');
@@ -756,7 +765,7 @@ dissect_mux27010(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     proto_tree *mux27010_tree, *field_tree, *field_tree_extended_header, *field_tree_addr, *field_tree_ctr;
     int offset = 0;
     guint16 length_info;
-    packet_info pinfo_tmp;
+    gboolean save_fragmented;
     /*Address DLCI*/
     gint8 dlci_number = 0;
     guint8 frame_type;
@@ -821,7 +830,7 @@ dissect_mux27010(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     /*Set the variable for length of the info field to 0*/
     length_info = 0;
 
-    /*Check the frame type because in RR, RNR and REJ are no info and no lenght fields*/
+    /*Check the frame type because in RR, RNR and REJ are no info and no length fields*/
     if ((frame_type != MUX27010_FRAMETYPE_CONTROL_FLAG_RR) && (frame_type != MUX27010_FRAMETYPE_CONTROL_FLAG_RNR) &&
         (frame_type != MUX27010_FRAMETYPE_CONTROL_FLAG_REJ)){
         /*Add a subtree (=item) to the child node => in this subtree will be the details of length field*/
@@ -874,8 +883,8 @@ dissect_mux27010(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             /*If frame has data inside the length_value is > 0*/
             if (cc.length_value > 0) {
                 /*Add another subtree to the control channel subtree => in this subtree the details of control channel values/data will be displayed*/
-                tf_ctr = proto_tree_add_text(field_tree, tvb, offset, cc.length_value, "Data: %i Byte(s)", cc.length_value);
-                field_tree_ctr = proto_item_add_subtree(tf_ctr, ett_mux27010_controlchannelvalue);
+                field_tree_ctr = proto_tree_add_subtree_format(field_tree, tvb, offset, cc.length_value,
+                                ett_mux27010_controlchannelvalue, NULL, "Data: %i Byte(s)", cc.length_value);
 
                 /*Get data of frame*/
                 offset += getControlChannelValues(tvb, field_tree_ctr, offset, &cc, &cc_type);
@@ -934,10 +943,8 @@ dissect_mux27010(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                 tmpOffsetBegin = sizeMuxPPPHeader + 1 + msg_start; /*+ Header_Size, + Direction*/
                 tmpOffsetEnd = sizeMuxPPPHeader + 1 + msg_end;
 
+                save_fragmented = pinfo->fragmented;
                 pinfo->fragmented = TRUE;
-
-                /* XXX - WHY? Isn't there a simpler way? */
-                memcpy(&pinfo_tmp, pinfo, sizeof(*pinfo));
 
                 frag_msg = fragment_add_seq_check(&msg_reassembly_table,
                     tvb, tmpOffsetBegin,
@@ -963,7 +970,7 @@ dissect_mux27010(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                     call_dissector(ppp_handle, next_tvb2, pinfo, tree);
                 }
 
-                pinfo = &pinfo_tmp;
+                pinfo->fragmented = save_fragmented;
             }
         }
 
@@ -995,11 +1002,14 @@ dissect_mux27010(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 static void
 mux27010_init(void)
 {
-    /*
-     * Initialize the fragment and reassembly tables.
-     */
     reassembly_table_init(&msg_reassembly_table,
                           &addresses_reassembly_table_functions);
+}
+
+static void
+mux27010_cleanup(void)
+{
+    reassembly_table_destroy(&msg_reassembly_table);
 }
 
 /*Register the protocol*/
@@ -1419,6 +1429,7 @@ proto_register_mux27010 (void)
     expert_register_field_array(expert_mux27010, ei, array_length(ei));
 
     register_init_routine(mux27010_init);
+    register_cleanup_routine(mux27010_cleanup);
 }
 
 /*Initialize dissector*/
@@ -1432,3 +1443,15 @@ proto_reg_handoff_mux27010(void)
 
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

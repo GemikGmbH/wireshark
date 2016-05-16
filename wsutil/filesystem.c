@@ -29,12 +29,7 @@
  */
 #define _GNU_SOURCE
 
-#ifdef HAVE_DIRENT_H
-#include <dirent.h>
-#endif
-
 #include <stdio.h>
-#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -198,25 +193,6 @@ get_dirname(char *path)
  *  0, if the attempt succeeded and the file turned out not
  *  to be a directory.
  */
-
-/*
- * Visual C++ on Win32 systems doesn't define these.  (Old UNIX systems don't
- * define them either.)
- *
- * Visual C++ on Win32 systems doesn't define S_IFIFO, it defines _S_IFIFO.
- */
-#ifndef S_ISREG
-#define S_ISREG(mode)   (((mode) & S_IFMT) == S_IFREG)
-#endif
-#ifndef S_IFIFO
-#define S_IFIFO _S_IFIFO
-#endif
-#ifndef S_ISFIFO
-#define S_ISFIFO(mode)  (((mode) & S_IFMT) == S_IFIFO)
-#endif
-#ifndef S_ISDIR
-#define S_ISDIR(mode)   (((mode) & S_IFMT) == S_IFDIR)
-#endif
 
 int
 test_for_directory(const char *path)
@@ -391,7 +367,8 @@ get_executable_path(void)
      * XXX - are there OS versions that support "exe" but not "self"?
      */
     struct utsname name;
-    static char executable_path[PATH_MAX];
+    static char executable_path[PATH_MAX + 1];
+    ssize_t r;
 
     if (uname(&name) == -1)
         return NULL;
@@ -402,8 +379,9 @@ get_executable_path(void)
         strcmp(name.release, "2.1") == 0 ||
         strncmp(name.release, "2.1.", 4) == 0)
         return NULL; /* Linux 2.0.x or 2.1.x */
-    if (readlink("/proc/self/exe", executable_path, sizeof executable_path) == -1)
+    if ((r = readlink("/proc/self/exe", executable_path, PATH_MAX)) == -1)
         return NULL;
+    executable_path[r] = '\0';
     return executable_path;
 #elif defined(__FreeBSD__) && defined(KERN_PROC_PATHNAME)
     /*
@@ -441,10 +419,12 @@ get_executable_path(void)
      * XXX - are there OS versions that support "exe" but not "curproc"
      * or "self"?  Are there any that support "self" but not "curproc"?
      */
-    static char executable_path[PATH_MAX];
+    static char executable_path[PATH_MAX + 1];
+    ssize_t r;
 
-    if (readlink("/proc/curproc/exe", executable_path, sizeof executable_path) == -1)
+    if ((r = readlink("/proc/curproc/exe", executable_path, PATH_MAX)) == -1)
         return NULL;
+    executable_path[r] = '\0';
     return executable_path;
 #elif defined(__DragonFly__)
     /*
@@ -453,10 +433,12 @@ get_executable_path(void)
      * instead; it appears to be supported by all versions of DragonFly
      * BSD.
      */
-    static char executable_path[PATH_MAX];
+    static char executable_path[PATH_MAX + 1];
+    ssize_t r;
 
-    if (readlink("/proc/curproc/file", executable_path, sizeof executable_path) == -1)
+    if ((r = readlink("/proc/curproc/file", executable_path, PATH_MAX)) == -1)
         return NULL;
+    executable_path[r] = '\0';
     return executable_path;
 #elif (defined(sun) || defined(__sun)) && defined(HAVE_GETEXECNAME)
     /*
@@ -484,7 +466,7 @@ init_progfile_dir(const char *arg0
 #ifdef _WIN32
     _U_
 #endif
-, int (*main_addr)(int, char **)
+, void *function_addr
 #if defined(_WIN32) || !defined(HAVE_DLADDR)
     _U_
 #endif
@@ -580,7 +562,7 @@ init_progfile_dir(const char *arg0
 
     execname = get_executable_path();
 #ifdef HAVE_DLADDR
-    if (main_addr != NULL && execname == NULL) {
+    if (function_addr != NULL && execname == NULL) {
         /*
          * Try to use dladdr() to find the pathname of the executable.
          * dladdr() is not guaranteed to give you anything better than
@@ -590,7 +572,7 @@ init_progfile_dir(const char *arg0
          * path and obviate the need for us to determine the absolute
          * path.
          */
-        if (dladdr((void *)main_addr, &info))
+        if (dladdr(function_addr, &info))
             execname = info.dli_fname;
     }
 #endif
@@ -951,118 +933,6 @@ get_datafile_dir(void)
     return datafile_dir;
 }
 
-#ifdef HAVE_PYTHON
-/*
- * Find the directory where the python dissectors are stored.
- *
- * On Windows, we use the "py_dissector" subdirectory of the datafile directory.
- *
- * On UN*X, we use the PYTHON_DIR value supplied by the configure
- * script, unless we think we're being run from the build directory,
- * in which case we use the "py_dissector" subdirectory of the datafile directory.
- *
- * In both cases, we then use the subdirectory of that directory whose
- * name is the version number.
- *
- * XXX - if we think we're being run from the build directory, perhaps we
- * should have the plugin code not look in the version subdirectory
- * of the plugin directory, but look in all of the subdirectories
- * of the plugin directory, so it can just fetch the plugins built
- * as part of the build process.
- */
-static const char *wspython_dir = NULL;
-
-static void
-init_wspython_dir(void)
-{
-#ifdef _WIN32
-    /*
-     * On Windows, the data file directory is the installation
-     * directory; the python dissectors are stored under it.
-     *
-     * Assume we're running the installed version of Wireshark;
-     * on Windows, the data file directory is the directory
-     * in which the Wireshark binary resides.
-     */
-    wspython_dir = g_strdup_printf("%s\\python\\%s", get_datafile_dir(),
-                                   VERSION);
-
-    /*
-     * Make sure that pathname refers to a directory.
-     */
-    if (test_for_directory(wspython_dir) != EISDIR) {
-        /*
-         * Either it doesn't refer to a directory or it
-         * refers to something that doesn't exist.
-         *
-         * Assume that means we're running a version of
-         * Wireshark we've built in a build directory,
-         * in which case {datafile dir}\python is the
-         * top-level plugins source directory, and use
-         * that directory and set the "we're running in
-         * a build directory" flag, so the plugin
-         * scanner will check all subdirectories of that
-         * directory for python dissectors.
-         */
-        g_free( (gpointer) wspython_dir);
-        wspython_dir = g_strdup_printf("%s\\python", get_datafile_dir());
-        running_in_build_directory_flag = TRUE;
-    }
-#else
-    if (running_in_build_directory_flag) {
-        /*
-         * We're (probably) being run from the build directory and
-         * weren't started with special privileges, so we'll use
-         * the "python" subdirectory of the datafile directory
-         * (the datafile directory is the build directory).
-         */
-        wspython_dir = g_strdup_printf("%s/epan/wspython/", get_datafile_dir());
-    } else {
-        if (getenv("WIRESHARK_PYTHON_DIR") && !started_with_special_privs()) {
-            /*
-             * The user specified a different directory for plugins
-             * and we aren't running with special privileges.
-             */
-            wspython_dir = g_strdup(getenv("WIRESHARK_PYTHON_DIR"));
-        }
-#ifdef __APPLE__
-        /*
-         * If we're running from an app bundle and weren't started
-         * with special privileges, use the Contents/Resources/lib/wireshark/python
-         * subdirectory of the app bundle.
-         *
-         * (appbundle_dir is not set to a non-null value if we're
-         * started with special privileges, so we need only check
-         * it; we don't need to call started_with_special_privs().)
-         */
-        else if (appbundle_dir != NULL) {
-            wspython_dir = g_strdup_printf("%s/Contents/Resources/lib/wireshark/python",
-                                           appbundle_dir);
-        }
-#endif
-        else {
-            wspython_dir = PYTHON_DIR;
-        }
-    }
-#endif
-}
-#endif /* HAVE_PYTHON */
-
-/*
- * Get the directory in which the python dissectors are stored.
- */
-const char *
-get_wspython_dir(void)
-{
-#ifdef HAVE_PYTHON
-    if (!wspython_dir) init_wspython_dir();
-    return wspython_dir;
-#else
-    return NULL;
-#endif
-}
-
-
 #if defined(HAVE_PLUGINS) || defined(HAVE_LUA)
 /*
  * Find the directory where the plugins are stored.
@@ -1174,6 +1044,104 @@ get_plugin_dir(void)
 #endif
 }
 
+#if defined(HAVE_EXTCAP)
+/*
+ * Find the directory where the extcap hooks are stored.
+ *
+ * On Windows, we use the "extcap" subdirectory of the datafile directory.
+ *
+ * On UN*X, we use the EXTCAP_DIR value supplied by the configure
+ * script, unless we think we're being run from the build directory,
+ * in which case we use the "extcap" subdirectory of the datafile directory.
+ *
+ * In both cases, we then use the subdirectory of that directory whose
+ * name is the version number.
+ *
+ * XXX - if we think we're being run from the build directory, perhaps we
+ * should have the extcap code not look in the version subdirectory
+ * of the extcap directory, but look in all of the subdirectories
+ * of the extcap directory, so it can just fetch the extcap hooks built
+ * as part of the build process.
+ */
+static const char *extcap_dir = NULL;
+
+static void init_extcap_dir(void) {
+#ifdef _WIN32
+    char *alt_extcap_path;
+
+    /*
+     * On Windows, the data file directory is the installation
+     * directory; the extcap hooks are stored under it.
+     *
+     * Assume we're running the installed version of Wireshark;
+     * on Windows, the data file directory is the directory
+     * in which the Wireshark binary resides.
+     */
+    alt_extcap_path = getenv_utf8("WIRESHARK_EXTCAP_DIR");
+    if (alt_extcap_path) {
+        /*
+         * The user specified a different directory for extcap hooks.
+         */
+        extcap_dir = g_strdup(alt_extcap_path);
+    } else {
+        extcap_dir = g_strdup_printf("%s\\extcap", get_datafile_dir());
+    }
+#else
+    if (running_in_build_directory_flag) {
+        /*
+         * We're (probably) being run from the build directory and
+         * weren't started with special privileges, so we'll use
+         * the "extcap hooks" subdirectory of the directory where the program
+         * we're running is (that's the build directory).
+         */
+        extcap_dir = g_strdup_printf("%s/extcap", get_progfile_dir());
+    } else {
+        if (getenv("WIRESHARK_EXTCAP_DIR") && !started_with_special_privs()) {
+            /*
+             * The user specified a different directory for extcap hooks
+             * and we aren't running with special privileges.
+             */
+            extcap_dir = g_strdup(getenv("WIRESHARK_EXTCAP_DIR"));
+        }
+#ifdef __APPLE__
+        /*
+         * If we're running from an app bundle and weren't started
+         * with special privileges, use the Contents/MacOS/extcap
+         * subdirectory of the app bundle.
+         *
+         * (appbundle_dir is not set to a non-null value if we're
+         * started with special privileges, so we need only check
+         * it; we don't need to call started_with_special_privs().)
+         */
+        else if (appbundle_dir != NULL) {
+            extcap_dir = g_strdup_printf("%s/Contents/MacOS/extcap",
+                                         appbundle_dir);
+        }
+#endif
+        else {
+            extcap_dir = EXTCAP_DIR;
+        }
+    }
+#endif
+}
+#endif /* HAVE_EXTCAP */
+
+/*
+ * Get the directory in which the extcap hooks are stored.
+ *
+ * XXX - A fix instead of HAVE_EXTCAP must be found
+ */
+const char *
+get_extcap_dir(void) {
+#if defined(HAVE_EXTCAP)
+    if (!extcap_dir)
+        init_extcap_dir();
+    return extcap_dir;
+#else
+    return NULL;
+#endif
+}
+
 /*
  * Get the flag indicating whether we're running from a build
  * directory.
@@ -1199,20 +1167,6 @@ get_systemfile_dir(void)
     return "/etc";
 #endif
 }
-
-/*
- * Name of directory, under the user's home directory, in which
- * personal configuration files are stored.
- */
-#ifdef _WIN32
-#define PF_DIR "Wireshark"
-#else
-/*
- * XXX - should this be ".libepan"? For backwards-compatibility, I'll keep
- * it ".wireshark" for now.
- */
-#define PF_DIR ".wireshark"
-#endif
 
 void
 set_profile_name(const gchar *profilename)
@@ -1282,22 +1236,33 @@ profile_store_persconffiles(gboolean store)
 }
 
 /*
- * Get the directory in which personal configuration files reside;
- * in UNIX-compatible systems, it's ".wireshark", under the user's home
- * directory, and on Windows systems, it's "Wireshark", under %APPDATA%
- * or, if %APPDATA% isn't set, it's "%USERPROFILE%\Application Data"
- * (which is what %APPDATA% normally is on Windows 2000).
+ * Get the directory in which personal configuration files reside.
+ *
+ * On Windows, it's "Wireshark", under %APPDATA% or, if %APPDATA% isn't set,
+ * it's "%USERPROFILE%\Application Data" (which is what %APPDATA% normally
+ * is on Windows 2000).
+ *
+ * On UNIX-compatible systems, we first look in XDG_CONFIG_HOME/wireshark
+ * and, if that doesn't exist, ~/.wireshark, for backwards compatibility.
+ * If neither exists, we use XDG_CONFIG_HOME/wireshark, so that the directory
+ * is initially created as XDG_CONFIG_HOME/wireshark.  We use that regardless
+ * of whether the user is running under an XDG desktop or not, so that
+ * if the user's home directory is on a server and shared between
+ * different desktop environments on different machines, they can all
+ * share the same configuration file directory.
+ *
+ * XXX - what about stuff that shouldn't be shared between machines,
+ * such as plugins in the form of shared loadable images?
  */
 static const char *
 get_persconffile_dir_no_profile(void)
 {
 #ifdef _WIN32
-    char *appdatadir;
-    char *userprofiledir;
-    char *altappdatapath;
+    const char *env;
 #else
-    const char *homedir;
+    char *xdg_path, *path;
     struct passwd *pwd;
+    const char *homedir;
 #endif
 
     /* Return the cached value, if available */
@@ -1308,62 +1273,79 @@ get_persconffile_dir_no_profile(void)
     /*
      * See if the user has selected an alternate environment.
      */
-    altappdatapath = getenv_utf8("WIRESHARK_APPDATA");
-    if (altappdatapath != NULL) {
-        persconffile_dir = altappdatapath;
+    env = getenv_utf8("WIRESHARK_APPDATA");
+    if (env != NULL) {
+        persconffile_dir = g_strdup(env);
         return persconffile_dir;
     }
 
     /*
      * See if we are running in a U3 environment.
      */
-    altappdatapath = getenv_utf8("U3_APP_DATA_PATH");
-    if (altappdatapath != NULL) {
+    env = getenv_utf8("U3_APP_DATA_PATH");
+    if (env != NULL) {
         /*
          * We are; use the U3 application data path.
          */
-        persconffile_dir = altappdatapath;
-    } else {
-        /*
-         * Use %APPDATA% or %USERPROFILE%, so that configuration
-         * files are stored in the user profile, rather than in
-         * the home directory.  The Windows convention is to store
-         * configuration information in the user profile, and doing
-         * so means you can use Wireshark even if the home directory
-         * is an inaccessible network drive.
-         */
-        appdatadir = getenv_utf8("APPDATA");
-        if (appdatadir != NULL) {
-            /*
-             * Concatenate %APPDATA% with "\Wireshark".
-             */
-            persconffile_dir = g_strdup_printf("%s" G_DIR_SEPARATOR_S "%s",
-                               appdatadir, PF_DIR);
-        } else {
-            /*
-             * OK, %APPDATA% wasn't set, so use
-             * %USERPROFILE%\Application Data.
-             */
-            userprofiledir = getenv_utf8("USERPROFILE");
-            if (userprofiledir != NULL) {
-                persconffile_dir = g_strdup_printf(
-                    "%s" G_DIR_SEPARATOR_S "Application Data" G_DIR_SEPARATOR_S "%s",
-                    userprofiledir, PF_DIR);
-            } else {
-                /*
-                 * Give up and use "C:".
-                 */
-                persconffile_dir = g_strdup_printf("C:" G_DIR_SEPARATOR_S "%s", PF_DIR);
-            }
-        }
+        persconffile_dir = g_strdup(env);
+        return persconffile_dir;
     }
+
+    /*
+     * Use %APPDATA% or %USERPROFILE%, so that configuration
+     * files are stored in the user profile, rather than in
+     * the home directory.  The Windows convention is to store
+     * configuration information in the user profile, and doing
+     * so means you can use Wireshark even if the home directory
+     * is an inaccessible network drive.
+     */
+    env = getenv_utf8("APPDATA");
+    if (env != NULL) {
+        /*
+         * Concatenate %APPDATA% with "\Wireshark".
+         */
+        persconffile_dir = g_build_filename(env, "Wireshark", NULL);
+        return persconffile_dir;
+    }
+
+    /*
+     * OK, %APPDATA% wasn't set, so use %USERPROFILE%\Application Data.
+     */
+    env = getenv_utf8("USERPROFILE");
+    if (env != NULL) {
+        persconffile_dir = g_build_filename(env, "Application Data", "Wireshark", NULL);
+        return persconffile_dir;
+    }
+
+    /*
+     * Give up and use "C:".
+     */
+    persconffile_dir = g_build_filename("C:", "Wireshark", NULL);
+    return persconffile_dir;
 #else
     /*
-     * If $HOME is set, use that.
+     * Check if XDG_CONFIG_HOME/wireshark exists and is a directory.
+     */
+    xdg_path = g_build_filename(g_get_user_config_dir(), "wireshark", NULL);
+    if (g_file_test(xdg_path, G_FILE_TEST_IS_DIR)) {
+        persconffile_dir = xdg_path;
+        return persconffile_dir;
+    }
+
+    /*
+     * It doesn't exist, or it does but isn't a directory, so try
+     * ~/.wireshark.
+     *
+     * If $HOME is set, use that for ~.
+     *
+     * (Note: before GLib 2.36, g_get_home_dir() didn't look at $HOME,
+     * but we always want to do so, so we don't use g_get_home_dir().)
      */
     homedir = getenv("HOME");
     if (homedir == NULL) {
         /*
+         * It's not set.
+         *
          * Get their home directory from the password file.
          * If we can't even find a password file entry for them,
          * use "/tmp".
@@ -1375,10 +1357,21 @@ get_persconffile_dir_no_profile(void)
             homedir = "/tmp";
         }
     }
-    persconffile_dir = g_strdup_printf("%s" G_DIR_SEPARATOR_S "%s", homedir, PF_DIR);
-#endif
+    path = g_build_filename(homedir, ".wireshark", NULL);
+    if (g_file_test(path, G_FILE_TEST_IS_DIR)) {
+        g_free(xdg_path);
+        persconffile_dir = path;
+        return persconffile_dir;
+    }
 
+    /*
+     * Neither are directories that exist; use the XDG path, so we'll
+     * create that as necessary.
+     */
+    g_free(path);
+    persconffile_dir = xdg_path;
     return persconffile_dir;
+#endif
 }
 
 void
@@ -1538,6 +1531,7 @@ create_persconffile_profile(const char *profilename, char **pf_dir_path_return)
 #endif
     ws_statb64 s_buf;
     int ret;
+    int save_errno;
 
     if (profilename) {
         /*
@@ -1552,7 +1546,18 @@ create_persconffile_profile(const char *profilename, char **pf_dir_path_return)
          * If not then create it.
          */
         pf_dir_path = get_profiles_dir ();
-        if (ws_stat64(pf_dir_path, &s_buf) != 0 && errno == ENOENT) {
+        if (ws_stat64(pf_dir_path, &s_buf) != 0) {
+            if (errno != ENOENT) {
+                /* Some other problem; give up now. */
+                save_errno = errno;
+                *pf_dir_path_return = g_strdup(pf_dir_path);
+                errno = save_errno;
+                return -1;
+            }
+
+            /*
+             * It doesn't exist; try to create it.
+             */
             ret = ws_mkdir(pf_dir_path, 0755);
             if (ret == -1) {
                 *pf_dir_path_return = g_strdup(pf_dir_path);
@@ -1562,7 +1567,14 @@ create_persconffile_profile(const char *profilename, char **pf_dir_path_return)
     }
 
     pf_dir_path = get_persconffile_dir(profilename);
-    if (ws_stat64(pf_dir_path, &s_buf) != 0 && errno == ENOENT) {
+    if (ws_stat64(pf_dir_path, &s_buf) != 0) {
+        if (errno != ENOENT) {
+            /* Some other problem; give up now. */
+            save_errno = errno;
+            *pf_dir_path_return = g_strdup(pf_dir_path);
+            errno = save_errno;
+            return -1;
+        }
 #ifdef _WIN32
         /*
          * Does the parent directory of that directory
@@ -1582,6 +1594,16 @@ create_persconffile_profile(const char *profilename, char **pf_dir_path_return)
             && pf_dir_parent_path[pf_dir_parent_path_len - 1] != ':'
             && ws_stat64(pf_dir_parent_path, &s_buf) != 0) {
             /*
+             * Not a drive letter and the stat() failed.
+             */
+            if (errno != ENOENT) {
+                /* Some other problem; give up now. */
+                save_errno = errno;
+                *pf_dir_path_return = g_strdup(pf_dir_path);
+                errno = save_errno;
+                return -1;
+            }
+            /*
              * No, it doesn't exist - make it first.
              */
             ret = ws_mkdir(pf_dir_parent_path, 0755);
@@ -1593,7 +1615,7 @@ create_persconffile_profile(const char *profilename, char **pf_dir_path_return)
         g_free(pf_dir_path_copy);
         ret = ws_mkdir(pf_dir_path, 0755);
 #else
-        ret = ws_mkdir(pf_dir_path, 0755);
+        ret = g_mkdir_with_parents(pf_dir_path, 0755);
 #endif
     } else {
         /*
@@ -1817,10 +1839,13 @@ get_persconffile_path(const char *filename, gboolean from_profile)
 char *
 get_datafile_path(const char *filename)
 {
-    if (running_in_build_directory_flag && !strcmp(filename, "AUTHORS-SHORT")) {
+    if (running_in_build_directory_flag &&
+        (!strcmp(filename, "AUTHORS-SHORT") ||
+         !strcmp(filename, "hosts"))) {
         /* We're running in the build directory and the requested file is a
-         * generated file.  Return the file name in the build directory (not
-         * in the source/data directory).
+         * generated (or a test) file.  Return the file name in the build
+         * directory (not in the source/data directory).
+         * (Oh the things we do to keep the source directory pristine...)
          */
         return g_strdup_printf("%s" G_DIR_SEPARATOR_S "%s", get_progfile_dir(), filename);
     } else {
@@ -1976,7 +2001,8 @@ file_exists(const char *fname)
         return FALSE;
     }
 
-#ifdef _WIN32
+#if defined(_MSC_VER) && _MSC_VER < 1900
+
     /*
      * This is a bit tricky on win32. The st_ino field is documented as:
      * "The inode, and therefore st_ino, has no meaning in the FAT, ..."

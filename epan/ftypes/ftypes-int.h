@@ -34,6 +34,7 @@ ftype_register(enum ftenum ftype, ftype_t *ft);
  * that I don't mind doing it by hand for now. */
 void ftype_register_bytes(void);
 void ftype_register_double(void);
+void ftype_register_fc(void);
 void ftype_register_integers(void);
 void ftype_register_ipv4(void);
 void ftype_register_ipv6(void);
@@ -47,10 +48,10 @@ void ftype_register_pcre(void);
 typedef void (*FvalueNewFunc)(fvalue_t*);
 typedef void (*FvalueFreeFunc)(fvalue_t*);
 
-typedef gboolean (*FvalueFromUnparsed)(fvalue_t*, const char*, gboolean, LogFunc);
-typedef gboolean (*FvalueFromString)(fvalue_t*, const char*, LogFunc);
-typedef void (*FvalueToStringRepr)(fvalue_t*, ftrepr_t, char*volatile);
-typedef int (*FvalueStringReprLen)(fvalue_t*, ftrepr_t);
+typedef gboolean (*FvalueFromUnparsed)(fvalue_t*, const char*, gboolean, gchar **);
+typedef gboolean (*FvalueFromString)(fvalue_t*, const char*, gchar **);
+typedef void (*FvalueToStringRepr)(fvalue_t*, ftrepr_t, int field_display, char*volatile);
+typedef int (*FvalueStringReprLen)(fvalue_t*, ftrepr_t, int field_display);
 
 typedef void (*FvalueSetByteArrayFunc)(fvalue_t*, GByteArray *);
 typedef void (*FvalueSetBytesFunc)(fvalue_t*, const guint8 *);
@@ -60,13 +61,15 @@ typedef void (*FvalueSetStringFunc)(fvalue_t*, const gchar *value);
 typedef void (*FvalueSetTvbuffFunc)(fvalue_t*, tvbuff_t *value);
 typedef void (*FvalueSetUnsignedIntegerFunc)(fvalue_t*, guint32);
 typedef void (*FvalueSetSignedIntegerFunc)(fvalue_t*, gint32);
-typedef void (*FvalueSetInteger64Func)(fvalue_t*, guint64);
+typedef void (*FvalueSetUnsignedInteger64Func)(fvalue_t*, guint64);
+typedef void (*FvalueSetSignedInteger64Func)(fvalue_t*, gint64);
 typedef void (*FvalueSetFloatingFunc)(fvalue_t*, gdouble);
 
 typedef gpointer (*FvalueGetFunc)(fvalue_t*);
 typedef guint32 (*FvalueGetUnsignedIntegerFunc)(fvalue_t*);
 typedef gint32  (*FvalueGetSignedIntegerFunc)(fvalue_t*);
-typedef guint64 (*FvalueGetInteger64Func)(fvalue_t*);
+typedef guint64 (*FvalueGetUnsignedInteger64Func)(fvalue_t*);
+typedef gint64 (*FvalueGetSignedInteger64Func)(fvalue_t*);
 typedef double (*FvalueGetFloatingFunc)(fvalue_t*);
 
 typedef gboolean (*FvalueCmp)(const fvalue_t*, const fvalue_t*);
@@ -95,14 +98,16 @@ struct _ftype_t {
 	FvalueSetTvbuffFunc	set_value_tvbuff;
 	FvalueSetUnsignedIntegerFunc	set_value_uinteger;
 	FvalueSetSignedIntegerFunc		set_value_sinteger;
-	FvalueSetInteger64Func	set_value_integer64;
+	FvalueSetUnsignedInteger64Func	set_value_uinteger64;
+	FvalueSetSignedInteger64Func		set_value_sinteger64;
 	FvalueSetFloatingFunc	set_value_floating;
 
 	/* could be union */
 	FvalueGetFunc		get_value;
 	FvalueGetUnsignedIntegerFunc	get_value_uinteger;
 	FvalueGetSignedIntegerFunc		get_value_sinteger;
-	FvalueGetInteger64Func	get_value_integer64;
+	FvalueGetUnsignedInteger64Func	get_value_uinteger64;
+	FvalueGetSignedInteger64Func	get_value_sinteger64;
 	FvalueGetFloatingFunc	get_value_floating;
 
 	FvalueCmp		cmp_eq;
@@ -139,3 +144,16 @@ struct _ftype_t {
 	}
 
 #endif
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

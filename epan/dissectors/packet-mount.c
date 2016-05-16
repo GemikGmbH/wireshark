@@ -24,11 +24,9 @@
 
 #include "config.h"
 
-#include <string.h>
 
 #include <epan/exceptions.h>
 #include <epan/to_str.h>
-#include "packet-rpc.h"
 #include "packet-mount.h"
 #include "packet-nfs.h"
 
@@ -154,10 +152,11 @@ dissect_fhstatus(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree
 
 
 static int
-dissect_mount_dirpath_call(tvbuff_t *tvb, int offset, packet_info *pinfo,
+dissect_mount_dirpath_call(tvbuff_t *tvb, packet_info *pinfo,
 		proto_tree *tree, void* data)
 {
 	const char *mountpoint=NULL;
+	int offset = 0;
 
 	if((!pinfo->fd->flags.visited) && nfs_file_name_snooping){
 		rpc_call_info_value *civ=(rpc_call_info_value *)data;
@@ -168,10 +167,10 @@ dissect_mount_dirpath_call(tvbuff_t *tvb, int offset, packet_info *pinfo,
 			guint32 len;
 			unsigned char *ptr;
 
-			host=ip_to_str((const guint8 *)pinfo->dst.data);
+			host=address_to_str(wmem_packet_scope(), &pinfo->dst);
 			len=tvb_get_ntohl(tvb, offset);
-                        if (len >= ITEM_LABEL_LENGTH)
-                                THROW(ReportedBoundsError);
+			if (len >= ITEM_LABEL_LENGTH)
+				THROW(ReportedBoundsError);
 
 			name=(unsigned char *)g_malloc(strlen(host)+1+len+1+200);
 			ptr=name;
@@ -195,11 +194,9 @@ dissect_mount_dirpath_call(tvbuff_t *tvb, int offset, packet_info *pinfo,
 
 /* RFC 1094, Page 25,26 */
 static int
-dissect_mount1_mnt_reply(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, void* data)
+dissect_mount1_mnt_reply(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
-	offset = dissect_fhstatus(tvb,offset,pinfo,tree,(rpc_call_info_value*)data);
-
-	return offset;
+	return dissect_fhstatus(tvb,0,pinfo,tree,(rpc_call_info_value*)data);
 }
 
 
@@ -209,18 +206,16 @@ dissect_mount1_mnt_reply(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tr
 static int
 dissect_mountlist(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
-	proto_item* lock_item = NULL;
-	proto_tree* lock_tree = NULL;
+	proto_item* lock_item;
+	proto_tree* lock_tree;
 	int old_offset = offset;
 	const char* hostname;
 	const char* directory;
 
-	if (tree) {
-		lock_item = proto_tree_add_item(tree, hf_mount_mountlist, tvb,
+	lock_item = proto_tree_add_item(tree, hf_mount_mountlist, tvb,
 					offset, -1, ENC_NA);
-		if (lock_item)
-			lock_tree = proto_item_add_subtree(lock_item, ett_mount_mountlist);
-	}
+
+	lock_tree = proto_item_add_subtree(lock_item, ett_mount_mountlist);
 
 	offset = dissect_rpc_string(tvb, lock_tree,
 			hf_mount_mountlist_hostname, offset, &hostname);
@@ -241,12 +236,10 @@ dissect_mountlist(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree 
 /* RFC 1094, Page 26 */
 /* RFC 1813, Page 110 */
 static int
-dissect_mount_dump_reply(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, void* data _U_)
+dissect_mount_dump_reply(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_list(tvb, pinfo, tree, offset,
+	return dissect_rpc_list(tvb, pinfo, tree, 0,
 		dissect_mountlist, NULL);
-
-	return offset;
 }
 
 
@@ -303,12 +296,9 @@ dissect_exportlist(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tr
 			hf_mount_exportlist_directory, offset, &directory);
 	groups_offset = offset;
 
-	if (tree) {
-		groups_item = proto_tree_add_item(exportlist_tree, hf_mount_groups, tvb,
-					offset, -1, ENC_NA);
-		if (groups_item)
-			groups_tree = proto_item_add_subtree(groups_item, ett_mount_groups);
-	}
+	groups_item = proto_tree_add_item(exportlist_tree, hf_mount_groups, tvb, offset, -1, ENC_NA);
+	groups_tree = proto_item_add_subtree(groups_item, ett_mount_groups);
+
 
 	offset = dissect_rpc_list(tvb, pinfo, groups_tree, offset,
 		dissect_group, NULL);
@@ -336,12 +326,10 @@ dissect_exportlist(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tr
 /* RFC 1094, Page 26 */
 /* RFC 1813, Page 113 */
 static int
-dissect_mount_export_reply(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, void* data _U_)
+dissect_mount_export_reply(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_list(tvb, pinfo, tree, offset,
+	return dissect_rpc_list(tvb, pinfo, tree, 0,
 		dissect_exportlist, NULL);
-
-	return offset;
 }
 
 
@@ -359,62 +347,74 @@ dissect_mount_export_reply(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_
 #define	PC_ERROR_VDISABLE	0x0200
 
 static const true_false_string tos_error_all = {
-  "All info invalid",
-  "Some or all info valid"
+	"All info invalid",
+	"Some or all info valid"
 };
 
 static const true_false_string tos_error_link_max = {
-  "LINK_MAX invalid",
-  "LINK_MAX valid"
+	"LINK_MAX invalid",
+	"LINK_MAX valid"
 };
 
 static const true_false_string tos_error_max_canon = {
-  "MAX_CANON invalid",
-  "MAX_CANON valid"
+	"MAX_CANON invalid",
+	"MAX_CANON valid"
 };
 
 static const true_false_string tos_error_max_input = {
-  "MAX_INPUT invalid",
-  "MAX_INPUT valid"
+	"MAX_INPUT invalid",
+	"MAX_INPUT valid"
 };
 
 static const true_false_string tos_error_name_max = {
-  "NAME_MAX invalid",
-  "NAME_MAX valid"
+	"NAME_MAX invalid",
+	"NAME_MAX valid"
 };
 
 static const true_false_string tos_error_path_max = {
-  "PATH_MAX invalid",
-  "PATH_MAX valid"
+	"PATH_MAX invalid",
+	"PATH_MAX valid"
 };
 
 static const true_false_string tos_error_pipe_buf = {
-  "PIPE_BUF invalid",
-  "PIPE_BUF valid"
+	"PIPE_BUF invalid",
+	"PIPE_BUF valid"
 };
 
 static const true_false_string tos_chown_restricted = {
-  "Only a privileged user can change the ownership of a file",
-  "Users may give away their own files"
+	"Only a privileged user can change the ownership of a file",
+	"Users may give away their own files"
 };
 
 static const true_false_string tos_no_trunc = {
-  "File names that are too long will get an error",
-  "File names that are too long will be truncated"
+	"File names that are too long will get an error",
+	"File names that are too long will be truncated"
 };
 
 static const true_false_string tos_error_vdisable = {
-  "VDISABLE invalid",
-  "VDISABLE valid"
+	"VDISABLE invalid",
+	"VDISABLE valid"
 };
 
 
 static int
-dissect_mount_pathconf_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
+dissect_mount_pathconf_reply(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
 	guint32 pc_mask;
-	proto_item *lock_item;
-	proto_tree *lock_tree;
+	static const int * flags[] = {
+		&hf_mount_pathconf_error_all,
+		&hf_mount_pathconf_error_link_max,
+		&hf_mount_pathconf_error_max_canon,
+		&hf_mount_pathconf_error_max_input,
+		&hf_mount_pathconf_error_name_max,
+		&hf_mount_pathconf_error_path_max,
+		&hf_mount_pathconf_error_pipe_buf,
+		&hf_mount_pathconf_chown_restricted,
+		&hf_mount_pathconf_no_trunc,
+		&hf_mount_pathconf_error_vdisable,
+		NULL
+	};
+	int offset = 0;
 
 	/*
 	 * Extract the mask first, so we know which other fields the
@@ -422,96 +422,55 @@ dissect_mount_pathconf_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, 
 	 */
 	pc_mask = tvb_get_ntohl(tvb, offset+OFFS_MASK) & 0xffff;
 	if (!(pc_mask & (PC_ERROR_LINK_MAX|PC_ERROR_ALL))) {
-		if (tree) {
-			dissect_rpc_uint32(tvb,tree,hf_mount_pathconf_link_max,offset);
-		}
+		dissect_rpc_uint32(tvb,tree,hf_mount_pathconf_link_max,offset);
 	}
 	offset += 4;
 
 	if (!(pc_mask & (PC_ERROR_MAX_CANON|PC_ERROR_ALL))) {
-		if (tree) {
-			proto_tree_add_item(tree,
+		proto_tree_add_item(tree,
 				hf_mount_pathconf_max_canon,tvb,offset+2,2,
 				tvb_get_ntohs(tvb,offset)&0xffff);
-		}
 	}
 	offset += 4;
 
 	if (!(pc_mask & (PC_ERROR_MAX_INPUT|PC_ERROR_ALL))) {
-		if (tree) {
-			proto_tree_add_item(tree,
+		proto_tree_add_item(tree,
 				hf_mount_pathconf_max_input,tvb,offset+2,2,
 				tvb_get_ntohs(tvb,offset)&0xffff);
-		}
 	}
 	offset += 4;
 
 	if (!(pc_mask & (PC_ERROR_NAME_MAX|PC_ERROR_ALL))) {
-		if (tree) {
-			proto_tree_add_item(tree,
+		proto_tree_add_item(tree,
 				hf_mount_pathconf_name_max,tvb,offset+2,2,
 				tvb_get_ntohs(tvb,offset)&0xffff);
-		}
 	}
 	offset += 4;
 
 	if (!(pc_mask & (PC_ERROR_PATH_MAX|PC_ERROR_ALL))) {
-		if (tree) {
-			proto_tree_add_item(tree,
+		proto_tree_add_item(tree,
 				hf_mount_pathconf_path_max,tvb,offset+2,2,
 				tvb_get_ntohs(tvb,offset)&0xffff);
-		}
 	}
 	offset += 4;
 
 	if (!(pc_mask & (PC_ERROR_PIPE_BUF|PC_ERROR_ALL))) {
-		if (tree) {
-			proto_tree_add_item(tree,
+		proto_tree_add_item(tree,
 				hf_mount_pathconf_pipe_buf,tvb,offset+2,2,
 				tvb_get_ntohs(tvb,offset)&0xffff);
-		}
 	}
 	offset += 4;
 
 	offset += 4;	/* skip "pc_xxx" pad field */
 
 	if (!(pc_mask & (PC_ERROR_VDISABLE|PC_ERROR_ALL))) {
-		if (tree) {
-			proto_tree_add_item(tree,
+		proto_tree_add_item(tree,
 				hf_mount_pathconf_vdisable,tvb,offset+3,1,
 				tvb_get_ntohs(tvb,offset)&0xffff);
-		}
 	}
 	offset += 4;
 
-
-	if (tree) {
-		lock_item = proto_tree_add_item(tree, hf_mount_pathconf_mask, tvb,
-					offset+2, 2, ENC_BIG_ENDIAN);
-
-		lock_tree = proto_item_add_subtree(lock_item, ett_mount_pathconf_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_error_all, tvb,
-		    offset + 2, 2, pc_mask);
-
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_error_link_max, tvb,
-		    offset + 2, 2, pc_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_error_max_canon, tvb,
-		    offset + 2, 2, pc_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_error_max_input, tvb,
-		    offset + 2, 2, pc_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_error_name_max, tvb,
-		    offset + 2, 2, pc_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_error_path_max, tvb,
-		    offset + 2, 2, pc_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_error_pipe_buf, tvb,
-		    offset + 2, 2, pc_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_chown_restricted, tvb,
-		    offset + 2, 2, pc_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_no_trunc, tvb,
-		    offset + 2, 2, pc_mask);
-		proto_tree_add_boolean(lock_tree, hf_mount_pathconf_error_vdisable, tvb,
-		    offset + 2, 2, pc_mask);
-	}
+	proto_tree_add_bitmask(tree, tvb, offset+2, hf_mount_pathconf_mask, ett_mount_pathconf_mask, flags, ENC_BIG_ENDIAN);
 
 	offset += 8;
 	return offset;
@@ -539,12 +498,13 @@ dissect_mountstat3(packet_info *pinfo, tvbuff_t *tvb, proto_tree *tree, int offs
 
 /* RFC 1831, Page 109 */
 static int
-dissect_mount3_mnt_reply(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, void* data)
+dissect_mount3_mnt_reply(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 {
 	guint32 status;
 	guint32 auth_flavors;
 	guint32 auth_flavor;
 	guint32 auth_flavor_i;
+	int offset = 0;
 
 	offset = dissect_mountstat3(pinfo,tvb,tree,offset,hf_mount3_status,&status);
 
@@ -609,12 +569,10 @@ dissect_sgi_exportlist(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_
 }
 
 static int
-dissect_mount_exportlist_reply(tvbuff_t *tvb, int offset, packet_info *pinfo, proto_tree *tree, void* data _U_)
+dissect_mount_exportlist_reply(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
-	offset = dissect_rpc_list(tvb, pinfo, tree, offset,
+	return dissect_rpc_list(tvb, pinfo, tree, 0,
 		dissect_sgi_exportlist, NULL);
-
-	return offset;
 }
 
 #define ST_RDONLY	0x00000001
@@ -655,125 +613,91 @@ static const true_false_string tos_st_local = {
 };
 
 static int
-dissect_mount_statvfs_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
+dissect_mount_statvfs_reply(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data _U_)
 {
-	proto_item *flag_item;
-	proto_tree *flag_tree;
- 	guint32 statvfs_flags;
+	static const int * flags[] = {
+		&hf_mount_statvfs_flag_rdonly,
+		&hf_mount_statvfs_flag_nosuid,
+		&hf_mount_statvfs_flag_notrunc,
+		&hf_mount_statvfs_flag_nodev,
+		&hf_mount_statvfs_flag_grpid,
+		&hf_mount_statvfs_flag_local,
+		NULL
+	};
+	int offset = 0;
 
-	statvfs_flags = tvb_get_ntohl(tvb, offset+52);
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_bsize, offset);
-	}
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_bsize, offset);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_frsize, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_frsize, offset);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_blocks, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_blocks, offset);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_bfree, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_bfree, offset);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_bavail, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_bavail, offset);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_files, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_files, offset);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_ffree, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_ffree, offset);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_favail, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_favail, offset);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_bytes(tvb, tree, hf_mount_statvfs_basetype, offset,
+
+	dissect_rpc_bytes(tvb, tree, hf_mount_statvfs_basetype, offset,
 			16, TRUE, NULL);
-	}
 	offset += 16;
-	if (tree) {
-		dissect_rpc_bytes(tvb, tree, hf_mount_statvfs_fstr, offset,
-			32, FALSE, NULL);
-	}
+
+	dissect_rpc_bytes(tvb, tree, hf_mount_statvfs_fstr, offset, 32, FALSE, NULL);
 	offset += 32;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_fsid, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_fsid, offset);
 	offset += 4;
 
-	if (tree) {
-		flag_item = proto_tree_add_item(tree, hf_mount_statvfs_flag,
-				tvb, offset, 4, ENC_BIG_ENDIAN);
-		if (flag_item) {
-			flag_tree = proto_item_add_subtree(flag_item,
-					ett_mount_statvfs_flag);
-			proto_tree_add_boolean(flag_tree,
-				hf_mount_statvfs_flag_rdonly, tvb, offset, 4,
-				statvfs_flags);
-			proto_tree_add_boolean(flag_tree,
-				hf_mount_statvfs_flag_nosuid, tvb, offset, 4,
-				statvfs_flags);
-			proto_tree_add_boolean(flag_tree,
-				hf_mount_statvfs_flag_notrunc, tvb, offset, 4,
-				statvfs_flags);
-			proto_tree_add_boolean(flag_tree,
-				hf_mount_statvfs_flag_nodev, tvb, offset, 4,
-				statvfs_flags);
-			proto_tree_add_boolean(flag_tree,
-				hf_mount_statvfs_flag_grpid, tvb, offset, 4,
-				statvfs_flags);
-			proto_tree_add_boolean(flag_tree,
-				hf_mount_statvfs_flag_local, tvb, offset, 4,
-				statvfs_flags);
-		}
-	}
-
+	proto_tree_add_bitmask(tree, tvb, offset, hf_mount_statvfs_flag, ett_mount_statvfs_flag, flags, ENC_BIG_ENDIAN);
 	offset += 4;
-	if (tree) {
-		dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_namemax, offset);
-	}
+
+	dissect_rpc_uint32(tvb, tree, hf_mount_statvfs_namemax, offset);
 	offset += 4;
 
 	return offset;
 }
 
 /* proc number, "proc name", dissect_request, dissect_reply */
-/* NULL as function pointer means: type of arguments is "void". */
 
 /* Mount protocol version 1, RFC 1094 */
 static const vsff mount1_proc[] = {
-    { 0, "NULL", NULL, NULL },
-    { MOUNTPROC_MNT,        "MNT",
-		dissect_mount_dirpath_call, dissect_mount1_mnt_reply },
-    { MOUNTPROC_DUMP,       "DUMP",
-		NULL, dissect_mount_dump_reply },
-    { MOUNTPROC_UMNT,      "UMNT",
-		dissect_mount_dirpath_call, NULL },
-    { MOUNTPROC_UMNTALL,   "UMNTALL",
-		NULL, NULL },
-    { MOUNTPROC_EXPORT,    "EXPORT",
-		NULL, dissect_mount_export_reply },
-    { MOUNTPROC_EXPORTALL, "EXPORTALL",
-		NULL, dissect_mount_export_reply },
-    { 0, NULL, NULL, NULL }
+	{ 0, "NULL",
+	  dissect_rpc_void, dissect_rpc_void },
+	{ MOUNTPROC_MNT,        "MNT",
+	  dissect_mount_dirpath_call, dissect_mount1_mnt_reply },
+	{ MOUNTPROC_DUMP,       "DUMP",
+	  dissect_rpc_void, dissect_mount_dump_reply },
+	{ MOUNTPROC_UMNT,      "UMNT",
+	  dissect_mount_dirpath_call, dissect_rpc_void },
+	{ MOUNTPROC_UMNTALL,   "UMNTALL",
+	  dissect_rpc_void, dissect_rpc_void },
+	{ MOUNTPROC_EXPORT,    "EXPORT",
+	  dissect_rpc_void, dissect_mount_export_reply },
+	{ MOUNTPROC_EXPORTALL, "EXPORTALL",
+	  dissect_rpc_void, dissect_mount_export_reply },
+	{ 0, NULL, NULL, NULL }
 };
 static const value_string mount1_proc_vals[] = {
-    { 0, "NULL" },
-    { MOUNTPROC_MNT,       "MNT" },
-    { MOUNTPROC_DUMP,      "DUMP" },
-    { MOUNTPROC_UMNT,      "UMNT" },
-    { MOUNTPROC_UMNTALL,   "UMNTALL" },
-    { MOUNTPROC_EXPORT,    "EXPORT" },
-    { MOUNTPROC_EXPORTALL, "EXPORTALL" },
-    { 0, NULL }
+	{ 0, "NULL" },
+	{ MOUNTPROC_MNT,       "MNT" },
+	{ MOUNTPROC_DUMP,      "DUMP" },
+	{ MOUNTPROC_UMNT,      "UMNT" },
+	{ MOUNTPROC_UMNTALL,   "UMNTALL" },
+	{ MOUNTPROC_EXPORT,    "EXPORT" },
+	{ MOUNTPROC_EXPORTALL, "EXPORTALL" },
+	{ 0, NULL }
 };
 /* end of mount version 1 */
 
@@ -782,50 +706,52 @@ static const value_string mount1_proc_vals[] = {
    mount V2 is V1 plus MOUNTPROC_PATHCONF to fetch information for the
    POSIX "pathconf()" call. */
 static const vsff mount2_proc[] = {
-    { 0, "NULL", NULL, NULL },
-    { MOUNTPROC_MNT,        "MNT",
-		dissect_mount_dirpath_call, dissect_mount1_mnt_reply },
-    { MOUNTPROC_DUMP,       "DUMP",
-		NULL, dissect_mount_dump_reply },
-    { MOUNTPROC_UMNT,      "UMNT",
-		dissect_mount_dirpath_call, NULL },
-    { MOUNTPROC_UMNTALL,   "UMNTALL",
-		NULL, NULL },
-    { MOUNTPROC_EXPORT,    "EXPORT",
-		NULL, dissect_mount_export_reply },
-    { MOUNTPROC_EXPORTALL, "EXPORTALL",
-		NULL, dissect_mount_export_reply },
-    { MOUNTPROC_PATHCONF,  "PATHCONF",
-		dissect_mount_dirpath_call, dissect_mount_pathconf_reply },
-    { 0, NULL, NULL, NULL }
+	{ 0,                    "NULL",
+	  dissect_rpc_void, dissect_rpc_void },
+	{ MOUNTPROC_MNT,        "MNT",
+	  dissect_mount_dirpath_call, dissect_mount1_mnt_reply },
+	{ MOUNTPROC_DUMP,       "DUMP",
+	  dissect_rpc_void, dissect_mount_dump_reply },
+	{ MOUNTPROC_UMNT,      "UMNT",
+	  dissect_mount_dirpath_call, dissect_rpc_void },
+	{ MOUNTPROC_UMNTALL,   "UMNTALL",
+	  dissect_rpc_void, dissect_rpc_void },
+	{ MOUNTPROC_EXPORT,    "EXPORT",
+	  dissect_rpc_void, dissect_mount_export_reply },
+	{ MOUNTPROC_EXPORTALL, "EXPORTALL",
+	  dissect_rpc_void, dissect_mount_export_reply },
+	{ MOUNTPROC_PATHCONF,  "PATHCONF",
+	  dissect_mount_dirpath_call, dissect_mount_pathconf_reply },
+	{ 0, NULL, NULL, NULL }
 };
 static const value_string mount2_proc_vals[] = {
-    { 0, "NULL" },
-    { MOUNTPROC_MNT,       "MNT" },
-    { MOUNTPROC_DUMP,      "DUMP" },
-    { MOUNTPROC_UMNT,      "UMNT" },
-    { MOUNTPROC_UMNTALL,   "UMNTALL" },
-    { MOUNTPROC_EXPORT,    "EXPORT" },
-    { MOUNTPROC_EXPORTALL, "EXPORTALL" },
-    { MOUNTPROC_PATHCONF,  "PATHCONF" },
-    { 0, NULL }
+	{ 0, "NULL" },
+	{ MOUNTPROC_MNT,       "MNT" },
+	{ MOUNTPROC_DUMP,      "DUMP" },
+	{ MOUNTPROC_UMNT,      "UMNT" },
+	{ MOUNTPROC_UMNTALL,   "UMNTALL" },
+	{ MOUNTPROC_EXPORT,    "EXPORT" },
+	{ MOUNTPROC_EXPORTALL, "EXPORTALL" },
+	{ MOUNTPROC_PATHCONF,  "PATHCONF" },
+	{ 0, NULL }
 };
 /* end of mount version 2 */
 
 
 /* Mount protocol version 3, RFC 1813 */
 static const vsff mount3_proc[] = {
-	{ 0, "NULL", NULL, NULL },
+	{ 0, "NULL",
+		dissect_rpc_void, dissect_rpc_void },
 	{ MOUNTPROC_MNT, "MNT",
 		dissect_mount_dirpath_call, dissect_mount3_mnt_reply },
 	{ MOUNTPROC_DUMP, "DUMP",
-		NULL, dissect_mount_dump_reply },
+		dissect_rpc_void, dissect_mount_dump_reply },
 	{ MOUNTPROC_UMNT, "UMNT",
-		dissect_mount_dirpath_call, NULL },
+		dissect_mount_dirpath_call, dissect_rpc_void },
 	{ MOUNTPROC_UMNTALL, "UMNTALL",
-		NULL, NULL },
+		dissect_rpc_void, dissect_rpc_void },
 	{ MOUNTPROC_EXPORT, "EXPORT",
-		NULL, dissect_mount_export_reply },
+		dissect_rpc_void, dissect_mount_export_reply },
 	{ 0, NULL, NULL, NULL }
 };
 static const value_string mount3_proc_vals[] = {
@@ -839,42 +765,53 @@ static const value_string mount3_proc_vals[] = {
 };
 /* end of Mount protocol version 3 */
 
+static const rpc_prog_vers_info mount_vers_info[] = {
+	{ 1, mount1_proc, &hf_mount_procedure_v1 },
+	{ 2, mount2_proc, &hf_mount_procedure_v2 },
+	{ 3, mount3_proc, &hf_mount_procedure_v3 },
+};
+
 /* SGI mount protocol version 1; actually the same as v1 plus
    MOUNTPROC_EXPORTLIST and MOUNTPROC_STATVFS */
 
 static const vsff sgi_mount1_proc[] = {
-    { 0, "NULL", NULL, NULL },
-    { MOUNTPROC_MNT,        "MNT",
-		dissect_mount_dirpath_call, dissect_mount1_mnt_reply },
-    { MOUNTPROC_DUMP,       "DUMP",
-		NULL, dissect_mount_dump_reply },
-    { MOUNTPROC_UMNT,      "UMNT",
-		dissect_mount_dirpath_call, NULL },
-    { MOUNTPROC_UMNTALL,   "UMNTALL",
-		NULL, NULL },
-    { MOUNTPROC_EXPORT,    "EXPORT",
-		NULL, dissect_mount_export_reply },
-    { MOUNTPROC_EXPORTALL, "EXPORTALL",
-		NULL, dissect_mount_export_reply },
-    { MOUNTPROC_EXPORTLIST,"EXPORTLIST",
-		NULL, dissect_mount_exportlist_reply },
-    { MOUNTPROC_STATVFS,   "STATVFS",
-		dissect_mount_dirpath_call, dissect_mount_statvfs_reply },
-    { 0, NULL, NULL, NULL }
+	{ 0, "NULL",
+	  dissect_rpc_void, dissect_rpc_void },
+	{ MOUNTPROC_MNT,        "MNT",
+	  dissect_mount_dirpath_call, dissect_mount1_mnt_reply },
+	{ MOUNTPROC_DUMP,       "DUMP",
+	  dissect_rpc_void, dissect_mount_dump_reply },
+	{ MOUNTPROC_UMNT,      "UMNT",
+	  dissect_mount_dirpath_call, dissect_rpc_void },
+	{ MOUNTPROC_UMNTALL,   "UMNTALL",
+	  dissect_rpc_void, dissect_rpc_void },
+	{ MOUNTPROC_EXPORT,    "EXPORT",
+	  dissect_rpc_void, dissect_mount_export_reply },
+	{ MOUNTPROC_EXPORTALL, "EXPORTALL",
+	  dissect_rpc_void, dissect_mount_export_reply },
+	{ MOUNTPROC_EXPORTLIST,"EXPORTLIST",
+	  dissect_rpc_void, dissect_mount_exportlist_reply },
+	{ MOUNTPROC_STATVFS,   "STATVFS",
+	  dissect_mount_dirpath_call, dissect_mount_statvfs_reply },
+	{ 0, NULL, NULL, NULL }
 };
 static const value_string sgi_mount1_proc_vals[] = {
-    { 0, "NULL" },
-    { MOUNTPROC_MNT,        "MNT" },
-    { MOUNTPROC_DUMP,       "DUMP" },
-    { MOUNTPROC_UMNT,       "UMNT" },
-    { MOUNTPROC_UMNTALL,    "UMNTALL" },
-    { MOUNTPROC_EXPORT,     "EXPORT" },
-    { MOUNTPROC_EXPORTALL,  "EXPORTALL" },
-    { MOUNTPROC_EXPORTLIST, "EXPORTLIST" },
-    { MOUNTPROC_STATVFS,    "STATVFS" },
-    { 0, NULL }
+	{ 0, "NULL" },
+	{ MOUNTPROC_MNT,        "MNT" },
+	{ MOUNTPROC_DUMP,       "DUMP" },
+	{ MOUNTPROC_UMNT,       "UMNT" },
+	{ MOUNTPROC_UMNTALL,    "UMNTALL" },
+	{ MOUNTPROC_EXPORT,     "EXPORT" },
+	{ MOUNTPROC_EXPORTALL,  "EXPORTALL" },
+	{ MOUNTPROC_EXPORTLIST, "EXPORTLIST" },
+	{ MOUNTPROC_STATVFS,    "STATVFS" },
+	{ 0, NULL }
 };
 /* end of SGI mount protocol version 1 */
+
+static const rpc_prog_vers_info sgi_mount_vers_info[] = {
+	{ 1, sgi_mount1_proc, &hf_sgi_mount_procedure_v1 },
+};
 
 void
 proto_register_mount(void)
@@ -1100,12 +1037,22 @@ proto_register_mount(void)
 void
 proto_reg_handoff_mount(void)
 {
-	/* Register the protocol as RPC */
-	rpc_init_prog(proto_mount, MOUNT_PROGRAM, ett_mount);
-	rpc_init_prog(proto_sgi_mount, SGI_MOUNT_PROGRAM, ett_mount);
-	/* Register the procedure tables */
-	rpc_init_proc_table(MOUNT_PROGRAM, 1, mount1_proc, hf_mount_procedure_v1);
-	rpc_init_proc_table(MOUNT_PROGRAM, 2, mount2_proc, hf_mount_procedure_v2);
-	rpc_init_proc_table(MOUNT_PROGRAM, 3, mount3_proc, hf_mount_procedure_v3);
-	rpc_init_proc_table(SGI_MOUNT_PROGRAM, 1, sgi_mount1_proc, hf_sgi_mount_procedure_v1);
+	/* Register the protocols as RPC */
+	rpc_init_prog(proto_mount, MOUNT_PROGRAM, ett_mount,
+	    G_N_ELEMENTS(mount_vers_info), mount_vers_info);
+	rpc_init_prog(proto_sgi_mount, SGI_MOUNT_PROGRAM, ett_mount,
+	    G_N_ELEMENTS(sgi_mount_vers_info), sgi_mount_vers_info);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

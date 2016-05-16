@@ -5,18 +5,11 @@
 	Pidl is a perl based IDL compiler for DCE/RPC idl files.
 	It is maintained by the Samba team, not the Wireshark team.
 	Instructions on how to download and install Pidl can be
-	found at http://wiki.wireshark.org/Pidl
+	found at https://wiki.wireshark.org/Pidl
 */
 
 
 #include "config.h"
-#ifdef _MSC_VER
-#pragma warning(disable:4005)
-#pragma warning(disable:4013)
-#pragma warning(disable:4018)
-#pragma warning(disable:4101)
-#endif
-
 #include <glib.h>
 #include <string.h>
 #include <epan/packet.h>
@@ -25,6 +18,8 @@
 #include "packet-dcerpc-nt.h"
 #include "packet-windows-common.h"
 #include "packet-dcerpc-wzcsvc.h"
+void proto_register_dcerpc_wzcsvc(void);
+void proto_reg_handoff_dcerpc_wzcsvc(void);
 
 /* Ett declarations */
 static gint ett_dcerpc_wzcsvc = -1;
@@ -37,7 +32,7 @@ static gint proto_dcerpc_wzcsvc = -1;
 /* Version information */
 
 
-static e_uuid_t uuid_dcerpc_wzcsvc = {
+static e_guid_t uuid_dcerpc_wzcsvc = {
 	0x621dff68, 0x3c39, 0x4c6c,
 	{ 0xaa, 0xe3, 0xe6, 0x8e, 0x2c, 0x65, 0x03, 0xad }
 };
@@ -413,7 +408,7 @@ void proto_register_dcerpc_wzcsvc(void)
 {
 	static hf_register_info hf[] = {
 	{ &hf_wzcsvc_opnum,
-	  { "Operation", "wzcsvc.opnum", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
+		{ "Operation", "wzcsvc.opnum", FT_UINT16, BASE_DEC, NULL, 0, NULL, HFILL }},
 	};
 
 

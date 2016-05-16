@@ -195,11 +195,6 @@ WSLUA_CONSTRUCTOR Dir_open(lua_State* L) {
     Dir dir;
     char* dirname_clean;
 
-    if (!dirname) {
-        WSLUA_ARG_ERROR(Dir_open,PATHNAME,"must be a string");
-        return 0;
-    }
-
     dirname_clean = wslua_get_actual_filename(dirname);
     if (!dirname_clean) {
         WSLUA_ARG_ERROR(Dir_open,PATHNAME,"directory does not exist");
@@ -307,9 +302,15 @@ WSLUA_CONSTRUCTOR Dir_global_config_path(lua_State* L) {
     char* filename;
 
     if (running_in_build_directory()) {
-        /* Running in build directory, set datafile_path to wslua source directory */
+        /* Running in build directory, try the source directory (Autotools) */
         filename = g_strdup_printf("%s" G_DIR_SEPARATOR_S "epan" G_DIR_SEPARATOR_S "wslua"
                                    G_DIR_SEPARATOR_S "%s", get_datafile_dir(), fname);
+        if (( ! file_exists(filename))) {
+            /* Try the CMake output directory */
+            g_free(filename);
+            filename = g_strdup_printf("%s" G_DIR_SEPARATOR_S "%s",
+                                       get_progfile_dir(), fname);
+        }
     } else {
         filename = get_datafile_path(fname);
     }
@@ -381,3 +382,16 @@ int Dir_register(lua_State* L) {
     WSLUA_REGISTER_CLASS(Dir);
     return 0;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

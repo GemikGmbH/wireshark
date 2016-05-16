@@ -20,28 +20,31 @@
  */
 
 #include "uat_dialog.h"
-#include "ui_uat_dialog.h"
+#include <ui_uat_dialog.h>
 #include "wireshark_application.h"
 
 #include "epan/strutil.h"
 #include "epan/to_str.h"
+#include "epan/uat-int.h"
 #include "epan/value_string.h"
 #include "ui/help_url.h"
 #include <wsutil/report_err.h>
 
 #include "qt_ui_utils.h"
 
+#include <QComboBox>
 #include <QDesktopServices>
 #include <QFileDialog>
 #include <QFont>
 #include <QKeyEvent>
+#include <QPushButton>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QUrl>
 
 #include <QDebug>
 
-UatDialog::UatDialog(QWidget *parent, uat_t *uat) :
+UatDialog::UatDialog(QWidget *parent, epan_uat *uat) :
     QDialog(parent),
     ui(new Ui::UatDialog),
     uat_(NULL),
@@ -80,7 +83,7 @@ UatDialog::~UatDialog()
     delete ui;
 }
 
-void UatDialog::setUat(uat_t *uat)
+void UatDialog::setUat(epan_uat *uat)
 {
     QString title(tr("Unknown User Accessible Table"));
 
@@ -125,6 +128,7 @@ void UatDialog::keyPressEvent(QKeyEvent *evt)
         switch (evt->key()) {
         case Qt::Key_Escape:
             cur_line_edit_->setText(saved_string_pref_);
+            /* Fall Through */
         case Qt::Key_Enter:
         case Qt::Key_Return:
             stringPrefEditingFinished();
@@ -136,6 +140,7 @@ void UatDialog::keyPressEvent(QKeyEvent *evt)
         switch (evt->key()) {
         case Qt::Key_Escape:
             cur_combo_box_->setCurrentIndex(saved_combo_idx_);
+            /* Fall Through */
         case Qt::Key_Enter:
         case Qt::Key_Return:
             // XXX The combo box eats enter and return
@@ -171,7 +176,12 @@ QString UatDialog::fieldString(guint row, guint column)
         string_rep = str;
         break;
     case PT_TXTMOD_HEXBYTES: {
-        string_rep = bytes_to_ep_str((const guint8 *) str, length);
+        {
+            char* temp_str = bytes_to_str(NULL, (const guint8 *) str, length);
+            QString qstr(temp_str);
+            string_rep = qstr;
+            wmem_free(NULL, temp_str);
+        }
         break;
     }
     default:
@@ -179,6 +189,7 @@ QString UatDialog::fieldString(guint row, guint column)
         break;
     }
 
+    g_free((char*)str);
     return string_rep;
 }
 
@@ -223,8 +234,6 @@ void UatDialog::activateLastItem()
 
 void UatDialog::on_uatTreeWidget_currentItemChanged(QTreeWidgetItem *current, QTreeWidgetItem *previous)
 {
-    Q_UNUSED(current)
-
     for (int col = 0; col < ui->uatTreeWidget->columnCount(); col++) {
         if (previous && ui->uatTreeWidget->itemWidget(previous, col)) {
             ui->uatTreeWidget->removeItemWidget(previous, col);
@@ -244,7 +253,6 @@ void UatDialog::on_uatTreeWidget_itemActivated(QTreeWidgetItem *item, int column
     uat_field_t *field = &uat_->fields[column];
     guint row = item->data(0, Qt::UserRole).toUInt();
     void *rec = UAT_INDEX_PTR(uat_, row);
-    QFileDialog::Options fd_opt = QFileDialog::DontConfirmOverwrite;
     cur_column_ = column;
     QWidget *editor = NULL;
 
@@ -262,12 +270,20 @@ void UatDialog::on_uatTreeWidget_itemActivated(QTreeWidgetItem *item, int column
 
     switch(field->mode) {
     case PT_TXTMOD_DIRECTORYNAME:
-        fd_opt |= QFileDialog::ShowDirsOnly;
+    {
+        QString cur_path = fieldString(row, column);
+        const QByteArray& new_path = QFileDialog::getExistingDirectory(this,
+                field->title, cur_path).toUtf8();
+        field->cb.set(rec, new_path.constData(), (unsigned) new_path.size(), field->cbdata.set, field->fld_data);
+        updateItem(*item);
+        break;
+    }
+
     case PT_TXTMOD_FILENAME:
     {
         QString cur_path = fieldString(row, column);
-        const QByteArray& new_path = QFileDialog::getSaveFileName(this,
-                field->title, cur_path, QString(), NULL, fd_opt).toUtf8();
+        const QByteArray& new_path = QFileDialog::getOpenFileName(this,
+                field->title, cur_path, QString(), NULL, QFileDialog::DontConfirmOverwrite).toUtf8();
         field->cb.set(rec, new_path.constData(), (unsigned) new_path.size(), field->cbdata.set, field->fld_data);
         updateItem(*item);
         break;
@@ -364,16 +380,38 @@ void UatDialog::enumPrefCurrentIndexChanged(int index)
     void *rec = UAT_INDEX_PTR(uat_, row);
     uat_field_t *field = &uat_->fields[cur_column_];
     const QByteArray& enum_txt = cur_combo_box_->itemText(index).toUtf8();
-    const char *err = NULL;
+    char *err = NULL;
 
-    if (field->cb.chk && field->cb.chk(rec, enum_txt.constData(), (unsigned) enum_txt.size(), field->cbdata.chk, field->fld_data, &err)) {
+    if (field->cb.chk && !field->cb.chk(rec, enum_txt.constData(), (unsigned) enum_txt.size(), field->cbdata.chk, field->fld_data, &err)) {
+        QString err_string = "<font color='red'>%1</font>";
+        ui->hintLabel->setText(err_string.arg(err));
+        g_free(err);
+        ok_button_->setEnabled(false);
+        uat_update_record(uat_, rec, FALSE);
+    } else {
+        ui->hintLabel->clear();
         field->cb.set(rec, enum_txt.constData(), (unsigned) enum_txt.size(), field->cbdata.set, field->fld_data);
         ok_button_->setEnabled(true);
-    } else {
-        ok_button_->setEnabled(false);
+        uat_update_record(uat_, rec, TRUE);
     }
+    this->update();
     uat_->changed = TRUE;
 }
+
+const QByteArray UatDialog::unhexbytes(const QString input, QString &qt_err) {
+    if (input.size() % 2) {
+        qt_err = tr("Uneven number of chars hex string (%1)").arg(input.size());
+        return NULL;
+    }
+
+    QByteArray output = QByteArray::fromHex(input.toUtf8());
+
+    if (output.size() != (input.size()/2)) {
+        qt_err = tr("Error parsing hex string");
+    }
+    return output;
+}
+
 
 void UatDialog::stringPrefTextChanged(const QString &text)
 {
@@ -385,21 +423,32 @@ void UatDialog::stringPrefTextChanged(const QString &text)
     guint row = item->data(0, Qt::UserRole).toUInt();
     void *rec = UAT_INDEX_PTR(uat_, row);
     uat_field_t *field = &uat_->fields[cur_column_];
-    const QByteArray& txt = text.toUtf8();
-    const char *err = NULL;
-    bool enable_ok = true;
     SyntaxLineEdit::SyntaxState ss = SyntaxLineEdit::Empty;
-
-    if (field->cb.chk) {
-        if (field->cb.chk(rec, txt.constData(), (unsigned) txt.size(), field->cbdata.chk, field->fld_data, &err)) {
+    bool enable_ok = true;
+    QString qt_err;
+    const QByteArray &txt = (field->mode == PT_TXTMOD_HEXBYTES) ? unhexbytes(text, qt_err) : text.toUtf8();
+    QString err_string = "<font color='red'>%1</font>";
+    if (!qt_err.isEmpty()) {
+        ui->hintLabel->setText(err_string.arg(qt_err));
+        enable_ok = false;
+        ss = SyntaxLineEdit::Invalid;
+    } else {
+        char *err = NULL;
+        if (field->cb.chk && !field->cb.chk(rec, txt.constData(), (unsigned) txt.size(), field->cbdata.chk, field->fld_data, &err)) {
+            ui->hintLabel->setText(err_string.arg(err));
+            g_free(err);
+            enable_ok = false;
+            ss = SyntaxLineEdit::Invalid;
+            uat_update_record(uat_, rec, FALSE);
+        } else {
+            ui->hintLabel->clear();
             field->cb.set(rec, txt.constData(), (unsigned) txt.size(), field->cbdata.set, field->fld_data);
             saved_string_pref_ = text;
             ss = SyntaxLineEdit::Valid;
-        } else {
-            enable_ok = false;
-            ss = SyntaxLineEdit::Invalid;
+            uat_update_record(uat_, rec, TRUE);
         }
     }
+    this->update();
 
     ok_button_->setEnabled(enable_ok);
     cur_line_edit_->setSyntaxState(ss);
@@ -414,6 +463,20 @@ void UatDialog::stringPrefEditingFinished()
     item->setText(cur_column_, saved_string_pref_);
     ok_button_->setEnabled(true);
 
+    if (uat_ && uat_->update_cb) {
+        gchar *err;
+        void *rec = UAT_INDEX_PTR(uat_, item->data(0, Qt::UserRole).toUInt());
+        if (!uat_->update_cb(rec, &err)) {
+            QString err_string = "<font color='red'>%1</font>";
+            ui->hintLabel->setText(err_string.arg(err));
+            g_free(err);
+            ok_button_->setEnabled(false);
+        } else {
+            ui->hintLabel->clear();
+        }
+        this->update();
+    }
+
     updateItem(*item);
 }
 
@@ -423,12 +486,28 @@ void UatDialog::addRecord(bool copy_from_current)
 
     void *rec = g_malloc0(uat_->record_size);
 
-    if (copy_from_current) {
+    if (copy_from_current && uat_->copy_cb) {
         QTreeWidgetItem *item = ui->uatTreeWidget->currentItem();
         if (!item) return;
         guint row = item->data(0, Qt::UserRole).toUInt();
-        if (uat_->copy_cb) {
-            uat_->copy_cb(rec, UAT_INDEX_PTR(uat_, row), uat_->record_size);
+        uat_->copy_cb(rec, UAT_INDEX_PTR(uat_, row), uat_->record_size);
+    } else {
+        for (guint col = 0; col < uat_->ncols; col++) {
+            uat_field_t *field = &uat_->fields[col];
+            switch (field->mode) {
+            case PT_TXTMOD_ENUM:
+                guint length;
+                const char *str;
+                field->cb.tostr(rec, &str, &length, field->cbdata.tostr, field->fld_data);
+                field->cb.set(rec, str, length, field->cbdata.set, field->fld_data);
+                g_free((char*)str);
+                break;
+            case PT_TXTMOD_NONE:
+                break;
+            default:
+                field->cb.set(rec, "", 0, field->cbdata.set, field->fld_data);
+                break;
+            }
         }
     }
 
@@ -472,11 +551,11 @@ void UatDialog::applyChanges()
 
     if (uat_->flags & UAT_AFFECTS_FIELDS) {
         /* Recreate list with new fields and redissect packets */
-        wsApp->emitAppSignal(WiresharkApplication::ColumnsChanged);
+        wsApp->queueAppSignal(WiresharkApplication::FieldsChanged);
     }
     if (uat_->flags & UAT_AFFECTS_DISSECTION) {
         /* Just redissect packets if we have any */
-        wsApp->emitAppSignal(WiresharkApplication::PacketDissectionChanged);
+        wsApp->queueAppSignal(WiresharkApplication::PacketDissectionChanged);
     }
 }
 
@@ -486,11 +565,11 @@ void UatDialog::on_buttonBox_accepted()
     if (!uat_) return;
 
     if (uat_->changed) {
-        const gchar *err = NULL;
-        uat_save(uat_, &err);
+        gchar *err = NULL;
 
-        if (err) {
+        if (!uat_save(uat_, &err)) {
             report_failure("Error while saving %s: %s", uat_->name, err);
+            g_free(err);
         }
 
         if (uat_->post_update_cb) {
@@ -505,12 +584,11 @@ void UatDialog::on_buttonBox_rejected()
     if (!uat_) return;
 
     if (uat_->changed) {
-        const gchar *err = NULL;
+        gchar *err = NULL;
         uat_clear(uat_);
-        uat_load(uat_, &err);
-
-        if (err) {
+        if (!uat_load(uat_, &err)) {
             report_failure("Error while loading %s: %s", uat_->name, err);
+            g_free(err);
         }
         applyChanges();
     }

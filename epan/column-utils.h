@@ -34,7 +34,7 @@ extern "C" {
 
 struct epan_dissect;
 
-/** @file
+/**
  *  Helper routines for column utility structures and routines.
  */
 
@@ -64,7 +64,7 @@ enum {
   COL_DCE_CALL,       /**< 10) DCE/RPC connection oriented call id OR datagram sequence number */
   COL_DCE_CTX,        /**< 11) !! DEPRECATED !! - DCE/RPC connection oriented context id */
   COL_DELTA_TIME,     /**< 12) Delta time */
-  COL_DELTA_CONV_TIME,/**< 13) Delta time to last frame in conversation */
+  COL_DELTA_CONV_TIME,/**< 13) !! DEPRECATED !! - Delta time to last frame in conversation */
   COL_DELTA_TIME_DIS, /**< 14) Delta time displayed*/
   COL_RES_DST,        /**< 15) Resolved dest */
   COL_UNRES_DST,      /**< 16) Unresolved dest */
@@ -201,7 +201,7 @@ WS_DLL_PUBLIC void	col_clear_fence(column_info *cinfo, const gint col);
  *
  * @return the text string
  */
-extern const gchar *col_get_text(column_info *cinfo, const gint col);
+WS_DLL_PUBLIC const gchar *col_get_text(column_info *cinfo, const gint col);
 
 /** Clears the text of a column element.
  *
@@ -254,6 +254,11 @@ void col_custom_prime_edt(struct epan_dissect *edt, column_info *cinfo);
 /** For internal Wireshark use only.  Not to be called from dissectors. */
 WS_DLL_PUBLIC
 gboolean have_custom_cols(column_info *cinfo);
+
+/** For internal Wireshark use only.  Not to be called from dissectors. */
+WS_DLL_PUBLIC
+gboolean have_field_extractors(void);
+
 /** For internal Wireshark use only.  Not to be called from dissectors. */
 WS_DLL_PUBLIC
 gboolean col_has_time_fmt(column_info *cinfo, const gint col);
@@ -268,6 +273,22 @@ gboolean col_based_on_frame_data(column_info *cinfo, const gint col);
  * @param str the string to append
  */
 WS_DLL_PUBLIC void	col_append_str(column_info *cinfo, const gint col, const gchar *str);
+
+/** Append <abbrev>=<val> to a column element, the text will be copied.
+ *
+ * @param cinfo the current packet row
+ * @param col the column to use, e.g. COL_INFO
+ * @param sep an optional separator to prepend to abbrev
+ * @param abbrev the string to append
+ * @param val the value to append
+ */
+WS_DLL_PUBLIC void col_append_str_uint(column_info *cinfo, const gint col, const gchar *sep, const gchar *abbrev, guint32 val);
+
+/* Append the given strings (terminated by COL_ADD_LSTR_TERMINATOR) to a column element,
+ *
+ * Same result as col_append_str() called for every string element.
+ */
+WS_DLL_PUBLIC void	col_append_lstr(column_info *cinfo, const gint el, const gchar *str, ...);
 
 /** Append the given text to a column element, the text will be formatted and copied.
  *

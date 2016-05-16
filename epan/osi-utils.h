@@ -45,12 +45,28 @@
 #define NSAP_IDI_ISODCC       0x39
 #define NSAP_IDI_GOSIP2       0x47
 
-gchar*     print_nsap_net ( const guint8 *, int );
+gchar*     print_nsap_net ( tvbuff_t *, const gint, int );
 void       print_nsap_net_buf( const guint8 *, int, gchar *, int);
-gchar*     print_area     ( const guint8 *, int );
+gchar*     print_area     ( tvbuff_t *, const gint, int );
 void       print_area_buf ( const guint8 *, int, gchar *, int);
-gchar*     print_system_id( const guint8 *, int );
+gchar*     print_system_id(wmem_allocator_t *, const guint8 *, int );
 gchar*     tvb_print_system_id( tvbuff_t *, const gint, int );
 void       print_system_id_buf( const guint8 *, int, gchar *, int);
 
+int        get_osi_address_type(void);
+void       register_osi_address_type(void);
+
 #endif /* __OSI_UTILS_H__ */
+
+/*
+ * Editor modelines
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

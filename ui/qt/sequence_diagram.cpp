@@ -23,6 +23,8 @@
 
 #include "epan/addr_resolv.h"
 
+#include "ui/tap-sequence-analysis.h"
+
 #include "qt_ui_utils.h"
 
 #include <QFont>
@@ -30,8 +32,6 @@
 #include <QPalette>
 #include <QPen>
 #include <QPointF>
-
-#include <QDebug>
 
 const int max_comment_em_width_ = 20;
 
@@ -44,7 +44,7 @@ WSCPSeqData::WSCPSeqData() :
 {
 }
 
-WSCPSeqData::WSCPSeqData(double key, seq_analysis_item_t *value) :
+WSCPSeqData::WSCPSeqData(double key, struct _seq_analysis_item *value) :
   key(key),
   value(value)
 {
@@ -67,12 +67,14 @@ SequenceDiagram::SequenceDiagram(QCPAxis *keyAxis, QCPAxis *valueAxis, QCPAxis *
 //    valueAxis->setAutoTickStep(false);
     QList<QCPAxis *> axes;
     axes << value_axis_ << key_axis_ << comment_axis_;
+    QPen no_pen(Qt::NoPen);
     foreach (QCPAxis *axis, axes) {
         axis->setAutoTicks(false);
         axis->setTickStep(1.0);
         axis->setAutoTickLabels(false);
-        axis->setTicks(false);
-        axis->setBasePen(QPen(Qt::NoPen));
+        axis->setSubTickPen(no_pen);
+        axis->setTickPen(no_pen);
+        axis->setBasePen(no_pen);
     }
 
     value_axis_->grid()->setVisible(false);
@@ -95,39 +97,51 @@ SequenceDiagram::SequenceDiagram(QCPAxis *keyAxis, QCPAxis *valueAxis, QCPAxis *
     //    valueAxis->setTickLabelRotation(30);
 }
 
-void SequenceDiagram::setData(seq_analysis_info_t *sainfo)
+SequenceDiagram::~SequenceDiagram()
+{
+    delete data_;
+}
+
+void SequenceDiagram::setData(_seq_analysis_info *sainfo)
 {
     data_->clear();
+    sainfo_ = sainfo;
+    if (!sainfo) return;
 
-    WSCPSeqData new_data;
     double cur_key = 0.0;
     QVector<double> key_ticks, val_ticks;
     QVector<QString> key_labels, val_labels, com_labels;
     QFontMetrics com_fm(comment_axis_->tickLabelFont());
     int elide_w = com_fm.height() * max_comment_em_width_;
+    char* addr_str;
 
-    for (GList *cur = g_list_first(sainfo->list); cur; cur = g_list_next(cur)) {
+    for (GList *cur = g_queue_peek_nth_link(sainfo->items, 0); cur; cur = g_list_next(cur)) {
         seq_analysis_item_t *sai = (seq_analysis_item_t *) cur->data;
+        if (sai->display) {
+            WSCPSeqData new_data;
 
-        new_data.key = cur_key;
-        new_data.value = sai;
-        data_->insertMulti(new_data.key, new_data);
+            new_data.key = cur_key;
+            new_data.value = sai;
+            data_->insertMulti(new_data.key, new_data);
 
-        key_ticks.append(cur_key);
-        key_labels.append(sai->time_str);
+            key_ticks.append(cur_key);
+            key_labels.append(sai->time_str);
 
-        com_labels.append(com_fm.elidedText(sai->comment, Qt::ElideRight, elide_w));
+            com_labels.append(com_fm.elidedText(sai->comment, Qt::ElideRight, elide_w));
 
-        cur_key++;
+            cur_key++;
+        }
     }
-    sainfo_ = sainfo;
 
     for (unsigned int i = 0; i < sainfo_->num_nodes; i++) {
         val_ticks.append(i);
-        val_labels.append(ep_address_to_display(&(sainfo_->nodes[i])));
+        addr_str = (char*)address_to_display(NULL, &(sainfo_->nodes[i]));
+        val_labels.append(addr_str);
         if (i % 2 == 0) {
             val_labels.last().append("\n");
         }
+
+        wmem_free(NULL, addr_str);
     }
     keyAxis()->setTickVector(key_ticks);
     keyAxis()->setTickVectorLabels(key_labels);
@@ -147,7 +161,7 @@ void SequenceDiagram::setSelectedPacket(int selected_packet)
     mParentPlot->replot();
 }
 
-seq_analysis_item_t *SequenceDiagram::itemForPosY(int ypos)
+_seq_analysis_item *SequenceDiagram::itemForPosY(int ypos)
 {
     double key_pos = qRound(key_axis_->pixelToCoord(ypos));
 
@@ -157,11 +171,8 @@ seq_analysis_item_t *SequenceDiagram::itemForPosY(int ypos)
     return NULL;
 }
 
-double SequenceDiagram::selectTest(const QPointF &pos, bool onlySelectable, QVariant *details) const
+double SequenceDiagram::selectTest(const QPointF &pos, bool, QVariant *) const
 {
-    Q_UNUSED(details);
-    Q_UNUSED(onlySelectable);
-
     double key_pos = qRound(key_axis_->pixelToCoord(pos.y()));
 
     if (key_pos >= 0 && key_pos < data_->size()) {
@@ -183,6 +194,8 @@ void SequenceDiagram::draw(QCPPainter *painter)
     fg_pen.setStyle(Qt::DashLine);
     painter->setPen(fg_pen);
     for (int ll_x = value_axis_->range().lower; ll_x < value_axis_->range().upper; ll_x++) {
+        // Only draw where we have arrows.
+        if (ll_x < 0 || ll_x >= value_axis_->tickVector().size()) continue;
         QPoint ll_start(coordsToPixels(key_axis_->range().upper, ll_x).toPoint());
         QPoint ll_end(coordsToPixels(key_axis_->range().lower, ll_x).toPoint());
         painter->drawLine(ll_start, ll_end);
@@ -193,10 +206,10 @@ void SequenceDiagram::draw(QCPPainter *painter)
     WSCPSeqDataMap::const_iterator it;
     for (it = data_->constBegin(); it != data_->constEnd(); ++it) {
         double cur_key = it.key();
-        seq_analysis_item_t *sai = (seq_analysis_item_t *) it.value().value;
+        seq_analysis_item_t *sai = it.value().value;
         QPen fg_pen(mainPen());
 
-        if (sai->fd->num == selected_packet_) {
+        if (sai->frame_number == selected_packet_) {
             // Highlighted background
             painter->save();
             QRect bg_rect(
@@ -213,6 +226,8 @@ void SequenceDiagram::draw(QCPPainter *painter)
             painter->setPen(hl_pen);
             painter->setOpacity(alpha);
             for (int ll_x = value_axis_->range().lower; ll_x < value_axis_->range().upper; ll_x++) {
+                // Only draw where we have arrows.
+                if (ll_x < 0 || ll_x >= value_axis_->tickVector().size()) continue;
                 QPoint ll_start(coordsToPixels(cur_key - 0.5, ll_x).toPoint());
                 QPoint ll_end(coordsToPixels(cur_key + 0.5, ll_x).toPoint());
                 hl_pen.setDashOffset(bg_rect.top() - ll_start.x());
@@ -282,15 +297,12 @@ void SequenceDiagram::draw(QCPPainter *painter)
     }
 }
 
-void SequenceDiagram::drawLegendIcon(QCPPainter *painter, const QRectF &rect) const
+void SequenceDiagram::drawLegendIcon(QCPPainter *, const QRectF &) const
 {
-    Q_UNUSED(painter);
-    Q_UNUSED(rect);
 }
 
-QCPRange SequenceDiagram::getKeyRange(bool &validRange, QCPAbstractPlottable::SignDomain inSignDomain) const
+QCPRange SequenceDiagram::getKeyRange(bool &validRange, QCPAbstractPlottable::SignDomain) const
 {
-    Q_UNUSED(inSignDomain);
     QCPRange range;
     bool valid = false;
 
@@ -311,9 +323,8 @@ QCPRange SequenceDiagram::getKeyRange(bool &validRange, QCPAbstractPlottable::Si
     return range;
 }
 
-QCPRange SequenceDiagram::getValueRange(bool &validRange, QCPAbstractPlottable::SignDomain inSignDomain) const
+QCPRange SequenceDiagram::getValueRange(bool &validRange, QCPAbstractPlottable::SignDomain) const
 {
-    Q_UNUSED(inSignDomain);
     QCPRange range;
     bool valid = false;
 

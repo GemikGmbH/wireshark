@@ -35,7 +35,11 @@ public:
 
 signals:
 
+protected:
+    virtual bool event(QEvent *event);
+
 public slots:
+    bool checkDisplayFilter();
     void applyDisplayFilter();
 
 private slots:

@@ -36,12 +36,13 @@
 #include <glib.h>
 #include <epan/guid-utils.h>
 #include <epan/wmem/wmem.h>
+#include "wsutil/ws_mempbrk.h"
 
 #ifdef __cplusplus
 extern "C" {
 #endif /* __cplusplus */
 
-/** @file
+/**
  * "testy, virtual(-izable) buffer".  They are testy in that they get mad when
  * an attempt is made to access data beyond the bounds of their array. In that
  * case, they throw an exception.
@@ -224,29 +225,26 @@ WS_DLL_PUBLIC void tvb_composite_finalize(tvbuff_t *tvb);
  * length of the packet). You probably want tvb_reported_length instead. */
 WS_DLL_PUBLIC guint tvb_captured_length(const tvbuff_t *tvb);
 
-/* DEPRECATED, do not use in new code, call tvb_captured_length directly! */
-#define tvb_length tvb_captured_length
-
 /** Computes bytes to end of buffer, from offset (which can be negative,
  * to indicate bytes from end of buffer). Function returns 0 if offset is
  * either at the end of the buffer or out of bounds. No exception is thrown.
  * You probably want tvb_reported_length_remaining instead. */
 WS_DLL_PUBLIC gint tvb_captured_length_remaining(const tvbuff_t *tvb, const gint offset);
 
-/* DEPRECATED, do not use in new code, call tvb_captured_length_remaining directly! */
-#define tvb_length_remaining tvb_captured_length_remaining
-
 /** Same as above, but throws an exception if the offset is out of bounds. */
 WS_DLL_PUBLIC guint tvb_ensure_captured_length_remaining(const tvbuff_t *tvb,
     const gint offset);
-
-/* DEPRECATED, do not use in new code, call tvb_ensure_captured_length_remaining directly! */
-#define tvb_ensure_length_remaining tvb_ensure_captured_length_remaining
 
 /* Checks (w/o throwing exception) that the bytes referred to by
  * 'offset'/'length' actually exist in the buffer */
 WS_DLL_PUBLIC gboolean tvb_bytes_exist(const tvbuff_t *tvb, const gint offset,
     const gint length);
+
+/** Checks that the bytes referred to by 'offset'/'length', where 'length'
+ * is a 64-bit unsigned integer, actually exist in the buffer, and throws
+ * an exception if they aren't. */
+WS_DLL_PUBLIC void tvb_ensure_bytes_exist64(const tvbuff_t *tvb,
+    const gint offset, const guint64 length);
 
 /** Checks that the bytes referred to by 'offset'/'length' actually exist
  * in the buffer, and throws an exception if they aren't. */
@@ -318,6 +316,19 @@ WS_DLL_PUBLIC guint64 tvb_get_letoh64(tvbuff_t *tvb, const gint offset);
 WS_DLL_PUBLIC gfloat tvb_get_letohieee_float(tvbuff_t *tvb, const gint offset);
 WS_DLL_PUBLIC gdouble tvb_get_letohieee_double(tvbuff_t *tvb,
     const gint offset);
+
+WS_DLL_PUBLIC guint16 tvb_get_guint16(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC guint32 tvb_get_guint24(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC guint32 tvb_get_guint32(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC guint64 tvb_get_guint40(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC gint64 tvb_get_gint40(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC guint64 tvb_get_guint48(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC gint64 tvb_get_gint48(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC guint64 tvb_get_guint56(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC gint64 tvb_get_gint56(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC guint64 tvb_get_guint64(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC gfloat tvb_get_ieee_float(tvbuff_t *tvb, const gint offset, const guint encoding);
+WS_DLL_PUBLIC gdouble tvb_get_ieee_double(tvbuff_t *tvb, const gint offset, const guint encoding);
 
 /*
  * Fetch 16-bit and 32-bit values in host byte order.
@@ -395,7 +406,7 @@ WS_DLL_PUBLIC void tvb_get_ntohguid(tvbuff_t *tvb, const gint offset,
 WS_DLL_PUBLIC void tvb_get_letohguid(tvbuff_t *tvb, const gint offset,
     e_guid_t *guid);
 WS_DLL_PUBLIC void tvb_get_guid(tvbuff_t *tvb, const gint offset,
-    e_guid_t *guid, const guint representation);
+    e_guid_t *guid, const guint encoding);
 
 /* Fetch a specified number of bits from bit offset in a tvb.  All of these
  * functions are equivalent, except for the type of the return value.  Note
@@ -486,14 +497,18 @@ WS_DLL_PUBLIC const guint8 *tvb_get_ptr(tvbuff_t *tvb, const gint offset,
 WS_DLL_PUBLIC gint tvb_find_guint8(tvbuff_t *tvb, const gint offset,
     const gint maxlength, const guint8 needle);
 
-/** Find first occurrence of any of the needles in tvbuff, starting at offset.
+
+/** Find first occurrence of any of the needles of the pre-compiled pattern in
+ * tvbuff, starting at offset. The passed in pattern must have been "compiled"
+ * before-hand, using ws_mempbrk_compile().
  * Searches at most maxlength number of bytes. Returns the offset of the
  * found needle, or -1 if not found and the found needle.
  * Will not throw an exception, even if
  * maxlength exceeds boundary of tvbuff; in that case, -1 will be returned if
  * the boundary is reached before finding needle. */
-WS_DLL_PUBLIC gint tvb_pbrk_guint8(tvbuff_t *tvb, const gint offset,
-    const gint maxlength, const guint8 *needles, guchar *found_needle);
+WS_DLL_PUBLIC gint tvb_ws_mempbrk_pattern_guint8(tvbuff_t *tvb, const gint offset,
+    const gint maxlength, const ws_mempbrk_pattern* pattern, guchar *found_needle);
+
 
 /** Find size of stringz (NUL-terminated string) by looking for terminating
  * NUL.  The size of the string includes the terminating NUL.
@@ -824,15 +839,15 @@ WS_DLL_PUBLIC gint tvb_memeql(tvbuff_t *tvb, const gint offset,
  * to the string with the formatted data, with "punct" as a byte
  * separator.
  */
-WS_DLL_PUBLIC gchar *tvb_bytes_to_ep_str_punct(tvbuff_t *tvb, const gint offset,
+WS_DLL_PUBLIC gchar *tvb_bytes_to_str_punct(wmem_allocator_t *scope, tvbuff_t *tvb, const gint offset,
     const gint len, const gchar punct);
 
 /**
  * Format a bunch of data from a tvbuff as bytes, returning a pointer
  * to the string with the formatted data.
  */
-WS_DLL_PUBLIC gchar *tvb_bytes_to_ep_str(tvbuff_t *tvb, const gint offset,
-    const gint len);
+WS_DLL_PUBLIC gchar *tvb_bytes_to_str(wmem_allocator_t *allocator, tvbuff_t *tvb,
+    const gint offset, const gint len);
 
 /**
  * Given a tvbuff, an offset into the tvbuff, and a length that starts
@@ -840,9 +855,9 @@ WS_DLL_PUBLIC gchar *tvb_bytes_to_ep_str(tvbuff_t *tvb, const gint offset,
  * tvbuff"), fetch BCD encoded digits from a tvbuff starting from either
  * the low or high half byte, formatting the digits according to an input digit
  * set, if NUL a default digit set of 0-9 returning "?" for overdecadic digits
- * will be used.  A pointer to the EP allocated string will be returned.
- * Note a tvbuff content of 0xf is considered a 'filler' and will end the
- * conversion.
+ * will be used.  A pointer to the packet-scope (WMEM-allocated) string will
+ * be returned. Note a tvbuff content of 0xf is considered a 'filler' and will
+ * end the conversion.
  */
 typedef struct dgt_set_t
 {

@@ -34,16 +34,12 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <epan/conversation.h>
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
-
-#include <epan/dissectors/packet-tcp.h>
-#include <epan/dissectors/packet-ssl.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
 #include <epan/tap.h>
+#include "packet-tcp.h"
+#include "packet-ssl.h"
 
 #ifdef HAVE_LIBZ
 #include <zlib.h>
@@ -92,7 +88,6 @@ typedef struct _spdy_conv_t {
 #define SPDY_FLAG_SETTINGS_PERSISTED 0x02
 
 #define TCP_PORT_SPDY 6121
-#define SSL_PORT_SPDY 443
 
 static const value_string frame_type_names[] = {
   { SPDY_DATA,          "DATA" },
@@ -213,6 +208,8 @@ static int hf_spdy_header_value = -1;
 static int hf_spdy_streamid = -1;
 static int hf_spdy_associated_streamid = -1;
 static int hf_spdy_priority = -1;
+static int hf_spdy_unused = -1;
+static int hf_spdy_slot = -1;
 static int hf_spdy_num_headers = -1;
 static int hf_spdy_rst_stream_status = -1;
 static int hf_spdy_num_settings = -1;
@@ -238,6 +235,7 @@ static expert_field ei_spdy_mal_setting_frame = EI_INIT;
 static expert_field ei_spdy_invalid_rst_stream = EI_INIT;
 static expert_field ei_spdy_invalid_go_away = EI_INIT;
 static expert_field ei_spdy_invalid_frame_type = EI_INIT;
+static expert_field ei_spdy_reassembly_info = EI_INIT;
 
 static dissector_handle_t data_handle;
 static dissector_handle_t media_handle;
@@ -744,11 +742,10 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
     tvbuff_t *next_tvb = NULL;
     tvbuff_t    *data_tvb = NULL;
     spdy_stream_info_t *si = NULL;
-    void *save_private_data = NULL;
     guint8 *copied_data;
-    gboolean private_data_changed = FALSE;
     gboolean is_single_chunk = FALSE;
     gboolean have_entire_body;
+    char *media_str = NULL;
 
     /*
      * Create a tvbuff for the payload.
@@ -817,7 +814,6 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
        */
       tvbuff_t *uncomp_tvb = NULL;
       proto_item *e_ti = NULL;
-      proto_item *ce_ti = NULL;
       proto_tree *e_tree = NULL;
 
       if (spdy_decompress_body &&
@@ -829,31 +825,32 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
       /*
        * Add the encoded entity to the protocol tree
        */
-      e_ti = proto_tree_add_text(spdy_tree, data_tvb,
-                                 0, tvb_reported_length(data_tvb),
+      e_tree = proto_tree_add_subtree_format(spdy_tree, data_tvb,
+                                 0, tvb_reported_length(data_tvb), ett_spdy_encoded_entity, &e_ti,
                                  "Content-encoded entity body (%s): %u bytes",
                                  si->content_encoding,
                                  tvb_reported_length(data_tvb));
-      e_tree = proto_item_add_subtree(e_ti, ett_spdy_encoded_entity);
       if (si->num_data_frames > 1) {
         wmem_list_t *dflist = si->data_frames;
         wmem_list_frame_t *frame_item;
         spdy_data_frame_t *df;
-        guint32 framenum;
-        ce_ti = proto_tree_add_text(e_tree, data_tvb, 0,
-                                    tvb_reported_length(data_tvb),
-                                    "Assembled from %d frames in packet(s)",
-                                    si->num_data_frames);
-        framenum = 0;
+        guint32 framenum = 0;
+        wmem_strbuf_t *str_frames = wmem_strbuf_new(wmem_packet_scope(), "");
+
         frame_item = wmem_list_frame_next(wmem_list_head(dflist));
         while (frame_item != NULL) {
           df = (spdy_data_frame_t *)wmem_list_frame_data(frame_item);
           if (framenum != df->framenum) {
-            proto_item_append_text(ce_ti, " #%u", df->framenum);
+            wmem_strbuf_append_printf(str_frames, " #%u", df->framenum);
             framenum = df->framenum;
           }
           frame_item = wmem_list_frame_next(frame_item);
         }
+
+        proto_tree_add_expert_format(e_tree, pinfo, &ei_spdy_reassembly_info, data_tvb, 0,
+                                    tvb_reported_length(data_tvb),
+                                    "Assembled from %d frames in packet(s)%s",
+                                    si->num_data_frames, wmem_strbuf_get_str(str_frames));
       }
 
       if (uncomp_tvb != NULL) {
@@ -902,13 +899,8 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
        * Content-Type value.  Is there any subdissector
        * for that content type?
        */
-      save_private_data = pinfo->private_data;
-      private_data_changed = TRUE;
-
       if (si->content_type_parameters) {
-        pinfo->private_data = wmem_strdup(wmem_packet_scope(), si->content_type_parameters);
-      } else {
-        pinfo->private_data = NULL;
+        media_str = wmem_strdup(wmem_packet_scope(), si->content_type_parameters);
       }
       /*
        * Calling the string handle for the media type
@@ -923,7 +915,7 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
       /*
        * We have a subdissector - call it.
        */
-      dissected = call_dissector(handle, data_tvb, pinfo, spdy_tree);
+      dissected = call_dissector_with_data(handle, data_tvb, pinfo, spdy_tree, media_str);
     } else {
       dissected = FALSE;
     }
@@ -933,7 +925,7 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
        * Calling the default media handle if there is a content-type that
        * wasn't handled above.
        */
-      call_dissector(media_handle, next_tvb, pinfo, spdy_tree);
+      call_dissector_with_data(media_handle, next_tvb, pinfo, spdy_tree, media_str);
     } else {
       /* Call the default data dissector */
       call_dissector(data_handle, next_tvb, pinfo, spdy_tree);
@@ -941,17 +933,11 @@ static int dissect_spdy_data_payload(tvbuff_t *tvb,
 
 body_dissected:
     /*
-     * Do *not* attempt at freeing the private data;
-     * it may be in use by subdissectors.
-     */
-    if (private_data_changed) { /*restore even NULL value*/
-      pinfo->private_data = save_private_data;
-    }
-    /*
      * We've processed frame->length bytes worth of data
      * (which may be no data at all); advance the
      * offset past whatever data we've processed.
      */
+    ;
   }
   return frame->length;
 }
@@ -961,9 +947,9 @@ body_dissected:
  * Performs header decompression.
  *
  * The returned buffer is automatically scoped to the lifetime of the capture
- * (via se_memdup()).
+ * (via wmem_memdup() with file scope).
  */
-#define DECOMPRESS_BUFSIZE	16384
+#define DECOMPRESS_BUFSIZE   16384
 
 static guint8* spdy_decompress_header_block(tvbuff_t *tvb,
                                             z_streamp decomp,
@@ -1111,7 +1097,9 @@ static int dissect_spdy_header_payload(
     offset += 4;
 
     /* Get priority */
-    proto_tree_add_item(frame_tree, hf_spdy_priority, tvb, offset, 1, ENC_BIG_ENDIAN);
+    proto_tree_add_item(frame_tree, hf_spdy_priority, tvb, offset, 2, ENC_BIG_ENDIAN);
+    proto_tree_add_item(frame_tree, hf_spdy_unused, tvb, offset, 2, ENC_BIG_ENDIAN);
+    proto_tree_add_item(frame_tree, hf_spdy_slot, tvb, offset, 2, ENC_BIG_ENDIAN);
     offset += 2;
   }
 
@@ -1287,11 +1275,11 @@ static int dissect_spdy_header_payload(
 
       /* Add header name. */
       proto_tree_add_item(header_tree, hf_spdy_header_name, header_tvb,
-                          header_name_offset, 4, ENC_NA);
+                          header_name_offset, 4, ENC_ASCII|ENC_BIG_ENDIAN);
 
       /* Add header value. */
       proto_tree_add_item(header_tree, hf_spdy_header_value, header_tvb,
-                          header_value_offset, 4, ENC_NA);
+                          header_value_offset, 4, ENC_ASCII|ENC_BIG_ENDIAN);
     }
 
     /*
@@ -1411,7 +1399,7 @@ static int dissect_spdy_settings_payload(
 
     /* Set flags. */
     if (setting_tree) {
-      ti = proto_tree_add_item(setting_tree, hf_spdy_flags, tvb, offset, 1, ENC_NA);
+      ti = proto_tree_add_item(setting_tree, hf_spdy_flags, tvb, offset, 1, ENC_BIG_ENDIAN);
 
       /* TODO(hkhalil): Prettier output for flags sub-tree description. */
       flags_tree = proto_item_add_subtree(ti, ett_spdy_flags);
@@ -1509,7 +1497,7 @@ static int dissect_spdy_window_update_payload(
 /*
  * Performs SPDY frame dissection.
  */
-int dissect_spdy_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
+static int dissect_spdy_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
   guint8              control_bit;
   spdy_control_frame_info_t frame;
@@ -1650,7 +1638,7 @@ int dissect_spdy_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 }
 
 static guint get_spdy_message_len(packet_info *pinfo _U_, tvbuff_t *tvb,
-                                  int offset)
+                                  int offset, void *data _U_)
 {
   return (guint)tvb_get_ntoh24(tvb, offset + 5) + 8;
 }
@@ -1666,12 +1654,11 @@ static int dissect_spdy(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
   return tvb_captured_length(tvb);
 }
 
-#if 0 /* heuristic too weak */
 /*
  * Looks for SPDY frame at tvb start.
  * If not enough data for either, requests more via desegment struct.
  */
-gboolean dissect_spdy_heur(tvbuff_t *tvb,
+static gboolean dissect_spdy_heur(tvbuff_t *tvb,
                                   packet_info *pinfo,
                                   proto_tree *tree,
                                    void *data _U_)
@@ -1696,7 +1683,6 @@ gboolean dissect_spdy_heur(tvbuff_t *tvb,
 
   return FALSE;
 }
-#endif
 
 /*
  * Performs plugin registration.
@@ -1814,8 +1800,20 @@ void proto_register_spdy(void)
     },
     { &hf_spdy_priority,
       { "Priority",       "spdy.priority",
-          FT_UINT8, BASE_DEC, NULL, 0xE0,
+          FT_UINT16, BASE_DEC, NULL, 0xE000,
           NULL, HFILL
+      }
+    },
+    { &hf_spdy_unused,
+      { "Unused",       "spdy.unused",
+          FT_UINT16, BASE_HEX, NULL, 0x1F00,
+          "Reserved for future use", HFILL
+      }
+    },
+    { &hf_spdy_slot,
+      { "Slot",       "spdy.slot",
+          FT_UINT16, BASE_DEC, NULL, 0x00FF,
+          "Specifying the index in the server's CREDENTIAL vector of the client certificate to be used for this reques", HFILL
       }
     },
     { &hf_spdy_num_headers,
@@ -1895,6 +1893,7 @@ void proto_register_spdy(void)
     { &ei_spdy_invalid_rst_stream, { "spdy.rst_stream.invalid", PI_PROTOCOL, PI_WARN, "Invalid status code for RST_STREAM", EXPFILL }},
     { &ei_spdy_invalid_go_away, { "spdy.goaway.invalid", PI_PROTOCOL, PI_WARN, "Invalid status code for GOAWAY", EXPFILL }},
     { &ei_spdy_invalid_frame_type, { "spdy.type.invalid", PI_PROTOCOL, PI_WARN, "Invalid SPDY frame type", EXPFILL }},
+    { &ei_spdy_reassembly_info, { "spdy.reassembly_info", PI_REASSEMBLE, PI_CHAT, "Assembled from frames in packet(s)", EXPFILL }},
   };
 
   module_t *spdy_module;
@@ -1940,16 +1939,16 @@ void proto_register_spdy(void)
 void proto_reg_handoff_spdy(void) {
 
   dissector_add_uint("tcp.port", TCP_PORT_SPDY, spdy_handle);
-  ssl_dissector_add(SSL_PORT_SPDY, "spdy", TRUE);
+  /* Use "0" to avoid overwriting HTTPS port and still offer support over SSL */
+  ssl_dissector_add(0, "spdy", TRUE);
 
   data_handle = find_dissector("data");
   media_handle = find_dissector("media");
   port_subdissector_table = find_dissector_table("http.port");
   media_type_subdissector_table = find_dissector_table("media_type");
 
-#if 0 /* heuristic too weak */
-  heur_dissector_add("tcp", dissect_spdy_heur, proto_spdy);
-#endif
+  /* Weak heuristic, so disabled by default */
+  heur_dissector_add("tcp", dissect_spdy_heur, "SPDY over TCP", "spdy_tcp", proto_spdy, HEURISTIC_DISABLE);
 }
 
 /*

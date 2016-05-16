@@ -38,7 +38,7 @@ $(OBJECTS): ..\..\config.h
 	cd epan\dfilter
 
 clean:
-	rm -f $(OBJECTS) dfilter.lib *.pdb *.sbr
+	rm -f $(OBJECTS) dfilter.lib *.nativecodeanalysis.xml *.pdb *.sbr
 
 #
 # We remove the generated files with "distclean" because one of them,
@@ -58,7 +58,7 @@ distclean: clean
 
 maintainer-clean: distclean
 
-RUNLEX=..\..\tools\runlex.sh
+RUNLEX=../../tools/runlex.sh
 
 scanner_lex.h : scanner.c
 scanner.obj : scanner.c grammar.h
@@ -68,7 +68,7 @@ scanner.c: grammar.h
 
 grammar.h : grammar.c
 grammar.c : $(LEMON)\lemon.exe $(LEMON)\lempar.c grammar.lemon
-	$(LEMON)\lemon.exe t=$(LEMON)\lempar.c grammar.lemon
+	$(LEMON)\lemon.exe T=$(LEMON)\lempar.c grammar.lemon
 
 $(LEMON)\lemon.exe:
 	cd ../../tools

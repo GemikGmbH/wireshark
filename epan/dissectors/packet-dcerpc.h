@@ -57,13 +57,6 @@ extern "C" {
 #undef PT_R4
 #endif
 
-typedef struct _e_uuid_t {
-    guint32 Data1;
-    guint16 Data2;
-    guint16 Data3;
-    guint8 Data4[8];
-} e_uuid_t;
-
 #define DCERPC_UUID_NULL { 0,0,0, {0,0,0,0,0,0,0,0} }
 
 /* %08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x */
@@ -71,7 +64,7 @@ typedef struct _e_uuid_t {
 
 typedef struct _e_ctx_hnd {
     guint32 attributes;
-    e_uuid_t uuid;
+    e_guid_t uuid;
 } e_ctx_hnd;
 
 typedef struct _e_dce_cn_common_hdr_t {
@@ -92,9 +85,9 @@ typedef struct _e_dce_dg_common_hdr_t {
     guint8 flags2;
     guint8 drep[3];
     guint8 serial_hi;
-    e_uuid_t obj_id;
-    e_uuid_t if_id;
-    e_uuid_t act_id;
+    e_guid_t obj_id;
+    e_guid_t if_id;
+    e_guid_t act_id;
     guint32 server_boot;
     guint32 if_ver;
     guint32 seqnum;
@@ -115,6 +108,14 @@ typedef struct _dcerpc_auth_info {
   tvbuff_t *auth_data;
 } dcerpc_auth_info;
 
+typedef struct dcerpcstat_tap_data
+{
+	const char *prog;
+	e_guid_t uuid;
+	guint16 ver;
+	int num_procedures;
+} dcerpcstat_tap_data_t;
+
 /* Private data passed to subdissectors from the main DCERPC dissector.
  * One unique instance of this structure is created for each
  * DCERPC request/response transaction when we see the initial request
@@ -128,9 +129,9 @@ typedef struct _dcerpc_auth_info {
  * and can not be used to keep data hanging around.
  */
 typedef struct _dcerpc_call_value {
-    e_uuid_t uuid;          /* interface UUID */
+    e_guid_t uuid;          /* interface UUID */
     guint16 ver;            /* interface version */
-    e_uuid_t object_uuid;   /* optional object UUID (or DCERPC_UUID_NULL) */
+    e_guid_t object_uuid;   /* optional object UUID (or DCERPC_UUID_NULL) */
     guint16 opnum;
     guint32 req_frame;
     nstime_t req_time;
@@ -156,7 +157,7 @@ typedef struct _dcerpc_call_value {
 typedef struct _dcerpc_info {
 	conversation_t *conv;	/* Which TCP stream we are in */
 	guint32 call_id;	/* Call ID for this call */
-	guint16 smb_fid;	/* FID for DCERPC over SMB */
+	guint64 transport_salt; /* e.g. FID for DCERPC over SMB */
 	guint8 ptype;       /* packet type: PDU_REQ, PDU_RESP, ... */
 	gboolean conformant_run;
 	gboolean no_align; /* are data aligned? (default yes) */
@@ -202,7 +203,7 @@ typedef struct _dcerpc_info {
  */
 guint16 dcerpc_tvb_get_ntohs (tvbuff_t *tvb, gint offset, guint8 *drep);
 guint32 dcerpc_tvb_get_ntohl (tvbuff_t *tvb, gint offset, guint8 *drep);
-void dcerpc_tvb_get_uuid (tvbuff_t *tvb, gint offset, guint8 *drep, e_uuid_t *uuid);
+void dcerpc_tvb_get_uuid (tvbuff_t *tvb, gint offset, guint8 *drep, e_guid_t *uuid);
 WS_DLL_PUBLIC
 int dissect_dcerpc_uint8 (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                           proto_tree *tree, guint8 *drep,
@@ -231,7 +232,7 @@ int dissect_dcerpc_time_t (tvbuff_t *tvb, gint offset, packet_info *pinfo,
 WS_DLL_PUBLIC
 int dissect_dcerpc_uuid_t (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                            proto_tree *tree, guint8 *drep,
-                           int hfindex, e_uuid_t *pdata);
+                           int hfindex, e_guid_t *pdata);
 
 /*
  * NDR routines for subdissectors.
@@ -258,11 +259,13 @@ WS_DLL_PUBLIC
 int dissect_ndr_duint32 (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                         proto_tree *tree, dcerpc_info *di, guint8 *drep,
                         int hfindex, guint64 *pdata);
+WS_DLL_PUBLIC
 int dissect_ndr_uint64 (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                         proto_tree *tree, dcerpc_info *di, guint8 *drep,
                         int hfindex, guint64 *pdata);
 int PIDL_dissect_uint64 (tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree, dcerpc_info *di, guint8 *drep, int hfindex, guint32 param);
 int PIDL_dissect_uint64_val (tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree, dcerpc_info *di, guint8 *drep, int hfindex, guint32 param, guint64 *pval);
+WS_DLL_PUBLIC
 int dissect_ndr_float (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                         proto_tree *tree, dcerpc_info *di, guint8 *drep,
                         int hfindex, gfloat *pdata);
@@ -270,13 +273,15 @@ WS_DLL_PUBLIC
 int dissect_ndr_double (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                         proto_tree *tree, dcerpc_info *di, guint8 *drep,
                         int hfindex, gdouble *pdata);
+
+WS_DLL_PUBLIC
 int dissect_ndr_time_t (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                         proto_tree *tree, dcerpc_info *di, guint8 *drep,
                         int hfindex, guint32 *pdata);
 WS_DLL_PUBLIC
 int dissect_ndr_uuid_t (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                         proto_tree *tree, dcerpc_info *di, guint8 *drep,
-                        int hfindex, e_uuid_t *pdata);
+                        int hfindex, e_guid_t *pdata);
 int dissect_ndr_ctx_hnd (tvbuff_t *tvb, gint offset, packet_info *pinfo,
                         proto_tree *tree, dcerpc_info *di, guint8 *drep,
                         int hfindex, e_ctx_hnd *pdata);
@@ -380,13 +385,13 @@ typedef struct _dcerpc_sub_dissector {
 
 /* registration function for subdissectors */
 WS_DLL_PUBLIC
-void dcerpc_init_uuid (int proto, int ett, e_uuid_t *uuid, guint16 ver, dcerpc_sub_dissector *procs, int opnum_hf);
+void dcerpc_init_uuid (int proto, int ett, e_guid_t *uuid, guint16 ver, dcerpc_sub_dissector *procs, int opnum_hf);
 WS_DLL_PUBLIC
-const char *dcerpc_get_proto_name(e_uuid_t *uuid, guint16 ver);
+const char *dcerpc_get_proto_name(e_guid_t *uuid, guint16 ver);
 WS_DLL_PUBLIC
-int dcerpc_get_proto_hf_opnum(e_uuid_t *uuid, guint16 ver);
+int dcerpc_get_proto_hf_opnum(e_guid_t *uuid, guint16 ver);
 WS_DLL_PUBLIC
-dcerpc_sub_dissector *dcerpc_get_proto_sub_dissector(e_uuid_t *uuid, guint16 ver);
+dcerpc_sub_dissector *dcerpc_get_proto_sub_dissector(e_guid_t *uuid, guint16 ver);
 
 /* Create a opnum, name value_string from a subdissector list */
 
@@ -402,10 +407,13 @@ WS_DLL_PUBLIC void decode_dcerpc_add_show_list(decode_add_show_list_func func, g
 /* the registered subdissectors. With MSVC and a
  * libwireshark.dll, we need a special declaration.
  */
+/* Key: dcerpc_uuid_key *
+ * Value: dcerpc_uuid_value *
+ */
 WS_DLL_PUBLIC GHashTable *dcerpc_uuids;
 
 typedef struct _dcerpc_uuid_key {
-    e_uuid_t uuid;
+    e_guid_t uuid;
     guint16 ver;
 } dcerpc_uuid_key;
 
@@ -456,15 +464,15 @@ typedef struct decode_dcerpc_bind_values_s {
     guint32 port_b;
     /* dcerpc conversation specific */
     guint16 ctx_id;
-    guint16 smb_fid;
+    guint64 transport_salt;
     /* corresponding "interface" */
     GString *ifname;
-    e_uuid_t uuid;
+    e_guid_t uuid;
     guint16 ver;
 } decode_dcerpc_bind_values_t;
 
-WS_DLL_PUBLIC guint16 dcerpc_get_transport_salt(packet_info *pinfo);
-WS_DLL_PUBLIC void dcerpc_set_transport_salt(guint16 dcetransportsalt, packet_info *pinfo);
+WS_DLL_PUBLIC guint64 dcerpc_get_transport_salt(packet_info *pinfo);
+WS_DLL_PUBLIC void dcerpc_set_transport_salt(guint64 dcetransportsalt, packet_info *pinfo);
 
 /* Authentication services */
 
@@ -545,6 +553,7 @@ typedef struct pol_value {
 
 
 extern int hf_dcerpc_drep_byteorder;
+extern int hf_dcerpc_ndr_padding;
 
 #define FAKE_DCERPC_INFO_STRUCTURE      \
     /* Fake dcerpc_info structure */    \

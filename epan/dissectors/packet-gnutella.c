@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include "packet-gnutella.h"
 #include "packet-tcp.h"
@@ -131,11 +129,10 @@ static void dissect_gnutella_query(tvbuff_t *tvb, guint offset, proto_tree *tree
 			ENC_ASCII|ENC_NA);
 	}
 	else {
-		proto_tree_add_text(tree,
-			tvb,
+		proto_tree_add_string_format(tree,
+			hf_gnutella_query_search, tvb,
 			offset + GNUTELLA_QUERY_SEARCH_OFFSET,
-			0,
-			"Missing data for Query Search.");
+			0, "", "Missing data for Query Search.");
 	}
 }
 
@@ -318,7 +315,9 @@ static void dissect_gnutella_push(tvbuff_t *tvb, guint offset, proto_tree *tree)
 }
 
 static guint
-get_gnutella_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset) {
+get_gnutella_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                     int offset, void *data _U_)
+{
 	guint32 size;
 
 	size = tvb_get_letohl(
@@ -508,7 +507,7 @@ static int dissect_gnutella_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
 		}
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 
@@ -555,13 +554,13 @@ static int dissect_gnutella(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 					-1,
 					ENC_NA);
 			}
-			return tvb_length(tvb);
+			return tvb_captured_length(tvb);
 		}
 	}
 
 	tcp_dissect_pdus(tvb, pinfo, tree, TRUE, GNUTELLA_HEADER_SIZE_OFFSET+4,
 	    get_gnutella_pdu_len, dissect_gnutella_pdu, data);
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 void proto_register_gnutella(void) {
@@ -749,3 +748,16 @@ void proto_reg_handoff_gnutella(void) {
 			proto_gnutella);
 	dissector_add_uint("tcp.port", GNUTELLA_TCP_PORT, gnutella_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

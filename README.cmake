@@ -4,20 +4,18 @@
 
    To find out the current state of the cmake implementation for
    Wireshark, please take a look at "What needs to be done?" below.
-   Basically this is an experiment and if we find out that it works
-   and we like cmake more than autofoo we might switch one day.
 
 Table of contents
 =================
 
-How to get started with cmake?
+How to get started with cmake (Unix/Linux and Win32/64)?
 Why cmake?
 Why not cmake?
 What needs to be done?
 Links regarding cmake
 
-How to get started with cmake?
-==============================
+How to get started with cmake (Unix/Linux and Win32/64)?
+========================================================
 
 You can find documentation on cmake at: http://www.cmake.org/
 
@@ -30,72 +28,111 @@ How to do out of tree build (Unix/Linux):
    cd ..
 3) mkdir build
 4) cd build
-5) cmake ../<Name_of_WS_source_dir>
+5) cmake [options] ../<Name_of_WS_source_dir>
 6) make (or cmake --build .)
 7) (as root) umask 0022 && make install
 
 Note 1:
-in step 5), you may override the defaults for features:
- cmake -DENABLE_CAP=OFF ../<Name_of_WS_source_dir>
- will disable the capabilities check.
+  In step 5) you may need to override the defaults for features. Common
+  options include:
+
+  # Disable the POSIX capbabilities check
+  -DENABLE_CAP=OFF
+
+  # Enable debugging symbols
+  -DCMAKE_BUILD_TYPE=Debug
+
+  # Disable GTK+ 3
+  -DENABLE_GTK3=OFF
+
+  # Build documentation
+  -DENABLE_HTML_GUIDES=ON
+  -DENABLE_PDF_GUIDES=ON
+
+  # Make ccache and clang work together
+  -DCMAKE_C_FLAGS='-Qunused-arguments'
+
+  # Force Python path on Windows. May be needed if Cygwin's
+  # /usr/bin/python is present and is a symlink
+  # http://public.kitware.com/Bug/view.php?id=13818
+  -DPYTHON_EXECUTABLE=c:/Python27/python
+
+  # Disable building an application bundle (Wireshark.app) on OS X
+  -DENABLE_APPLICATION_BUNDLE=OFF
+
+  # Qt Creator expects .cbp files when used with CMake.
+  -G "CodeBlocks - Unix Makefiles"
+  -G "CodeBlocks - NMake Makefiles"
 
 Note 2:
- On OS X, you may want to run cmake like this:
- cmake -DENABLE_CAP=OFF -G "Unix Makefiles"
-
-Note 3:
   After running cmake, you can always run "make help" to see
   a list of all possible make targets.
 
-Note 4:
+Note 3:
   Cmake honors user umask for creating directories as of now:
   http://public.kitware.com/Bug/view.php?id=9620
   To get predictable results please set umask explicitly.
 
-How to do out of tree build (Win32/64):
-[This is advanced alpha and should build all executables except the GTK3
- Wireshark for 32-bit.]
-1) Follow http://www.wireshark.org/docs/wsdg_html_chunked/ChSetupWin32.html
+How to do an out of tree build using Visual C++ 2013:
+[This is used for the 2.x release builds, support for VS2010 and VS2012
+ is included, but hasn't been tested.]
+0) Install cmake (currently 3.1.3 or later is recommended).  You can use chocolatey,
+   choco inst cmake.
+1) Follow https://www.wireshark.org/docs/wsdg_html_chunked/ChSetupWin32.html
    Steps 1-9
-1a) Set WIRESHARK_BASE_DIR=c:\wireshark (the parent directory of the
-   library directory).
+1a) Set the library search path.
+    If you set WIRESHARK_BASE_DIR,
+    %WIRESHARK_BASE_DIR%\wireshark-%WIRESHARK_TARGET_PLATFORM%-libs will
+    be used as the top-level library directory.
+    If you set WIRESHARK_LIB_DIR, it will be used as the top-level library
+    directory.  This definition will require changing for different builds (x86 & x64).
 1b) set WIRESHARK_TARGET_PLATFORM=win32 (or win64)
-1c) set QT5_BASE_DIR=c:\Qt\Qt5.1.1\5.1.1\msvc2010 (or whatever)
-1d) In case you want to use Visual Studio, make sure that the paths
-    to python and cygwin are available to GUI applications.
-2) Install cmake
-2a) Build the zlib library, e.g.
-    cd %WIRESHARK_BASE_DIR%\wireshark-%WIRESHARK_TARGET_PLATFORM%-libs\zlib125
-    cmake -G "NMake Makefiles" . # msbuild will not do because of configuration path
-    cmake --build .
-3) mkdir c:\wireshark\build
-4) cd c:\wireshark\build
-5) cmake -G "NMake Makefiles" path\to\sources
-  (i.e. in case your sources are located at c:\wireshark\trunk, use "..\trunk")
-5a) cmake path\to\sources (this will build for the latest Visual Studio version found)
-6) nmake /X- VERBOSE=1 (or cmake --build . -- VERBOSE=1 )
-6a) Wireshark.sln (this will run up Visual Studio with the cmake built solution
-   (or use msbuild: cmake --build . -- /p:Configuration=RelWithDebInfo)
-7) In case you want to test the executable(s) inside the build tree:
-   Run setpath.bat whenever it gets updated (there is a message in each cmake
-   run whether it is necessary or not).
+1c) set QT5_BASE_DIR=C:\Qt\5.4.1\5.4\msvc2013_opengl (must match the Qt component path
+    on your system)
+1d) If you want to use Visual Studio to build rather than msbuild from the command line,
+    make sure that the path to Cygwin is available to GUI applications.
+2) mkdir c:\wireshark\build or as appropriate for you.
+   You will need one build directory for each bitness (win32, win64) you wish to build.
+3) cd into the directory from 2) above.
+4) Run the following to generate the build files:
+   cmake -DENABLE_CHM_GUIDES=on xxx path\to\sources
+   where path\to\sources is the absolute or relative path to the wireshark source tree
+   and xxx is replaced with one of the following:
+       nothing - This will build a VS solution for win32 using the latest version of VS found (preferred).
+       -G "Visual Studio 12" ("12" builds for VS2013. Use "11" for VS2012 or "10" for VS2010.)
+       -G "NMake Makefiles" - to build an nmake makefile.
+       -G "Visual Studio 12 Win64" (to build an x64 version you must add the "Win64", Win32 is the default)
+5) Run one of the following to build Wireshark:
+   msbuild /m /p:Configuration=RelWithDebInfo wireshark.sln (preferred).
+   Open Wireshark.sln in Windows Explorer to build in Visual Studio
+   nmake /X- VERBOSE=1 (or cmake --build . -- VERBOSE=1 ) (if you generated nmake files).
+   Subsequent changes to source files and CMakeLists.txt will be automagically detected
+   and new build files generated, i.e. step 4) doesn't need to be run again.
+   Changes to the build environment, e.g. QT_BASE_DIR aren't detected so you must delete the
+   build dir and start form step 2) again.
+6) The executables can be run from the appropriate directory, e.g. run\RelWithDebInfo for VS solutions
+   or run\ for NMake files.
+7) To build an installer, build the nsis_package_prep and then the nsis_package projects, e.g.
+   msbuild /m /p:Configuration=RelWithDebInfo nsis_package_prep.vcxproj
+   msbuild /m /p:Configuration=RelWithDebInfo nsis_package.vcxproj
+   nmake ???
 
 Why cmake?
 ==========
-- Can create project files for some MS and Apple IDEs.
-- Fast
+- Can create project files for many IDEs including Qt Creator, Visual Studio,
+  and XCode.
+- Fast, builds in parallel in Visual Studio or msbuild with the /m flag
 - Easier to understand/learn
-- Doesn't create any files in the source tree in case
-  of out of tree builds
-- One build infrastructure even including Windows
-...
+- Doesn't create any files in the source tree in case of out of tree builds
+- One build infrastructure for all of our tier 1 platforms (including Windows)
+- Out of tree builds permits both Win32 and Win64 builds without requiring a "clean" when swapping.
 
 Why not cmake?
 ==============
 - Lots of work to do
 - Everyone who wants to build from source needs cmake
 - Current state of documentation isn't really better than
-  autofoo documentation, in some respect it's even worse
+  Autotools documentation. In some respects it's even worse
   (you need to buy a book to get an explanation as to how
   cmake really works).
 ...
@@ -104,11 +141,20 @@ What works?
 ===========
 
 All the executables now build from clean source on:
-* 32bit openSUSE 11.3: (gnu)make and gcc
-* 64bit FedoraXXX
-* 32bit Ubuntu 9.04
-* 32bit Ubuntu 10.04
-* 64bit Debian Wheezy
+* 32 bit openSUSE 11.3: (gnu)make and gcc
+* 64 bit FedoraXXX
+* 32 bit Ubuntu 9.04
+* 32 bit Ubuntu 10.04
+* 64 bit Ubuntu 14.04
+* 64 bit Debian Wheezy
+* 32 bit OS X
+* 64 bit OS X
+* 32 bit Windows using Visual C++ 2013
+* 64 bit Windows using Visual C++ 2013
+* 64 bit Solaris 10
+
+The Buildbot runs CMake steps on Ubuntu, Win32, Win64, OS X, and Solaris.
+Windows packages are built using CMake steps.
 
 What needs to be done?
 ======================
@@ -118,19 +164,46 @@ What needs to be done?
 - Guides are not installed.
 - Build source package (using CPack).
   This is obsolete if we decide to release VCS snapshots instead
-- Build rpm package (using CPack).
-- Build dpkg package (using CPack).
-  This is obsolete, we should call CMake from debian/rules instead, using dh
-  (rbalint)
-- Add back checkAPI target.
-- Test and add support for other platforms (BSDs, OSX,
-  Solaris, Win32, Win64, ...)
+- Build packages using CPack: tarball, Windows installer + PortableApps, OS X
+  installer dmg, RPM, SVR4. This includes setting OS target version stuff
+  appropriately for OS X. We currently use NSIS for the Windows installer but
+  should probably use WiX instead.
 - Add support for cmake configurations.
-- Get plugins loading when running *shark from the build directory.
 - Automatically figure out if *shark is running from the build directory
   (making WIRESHARK_RUN_FROM_BUILD_DIRECTORY unnecessary like it is with
   autofoo).
-- Get cross-compilation working (or ensure it does). It works with autofoo.
+  Sadly:
+
+      $ file run/qtshark
+      run/qtshark: Mach-O 64-bit x86_64 executable
+
+  so what you're running from the build directory is the executable
+  itself.  autofoo includes libtool in our case, so what you're running
+  from the build directory is a script that then runs the executable,
+  and the executable is in a .libs directory; the code that checks for
+  "running from the build directory?" checks for that.  The actual
+  executable isn't supposed to be run directly - it's expected to be run
+  by the wrapper script and might not even work if run directly, as it
+  won't find the relevant shared libraries.
+
+  We could perhaps check for the executable being in a "run" directory
+  instead, if the build drops it there.  However, it's possible, at
+  least on OS X, to copy the executable to another directory and have
+  it run, so the guarantee that it's in a "run" directory is not as
+  strong.
+- Get plugins loading when running *shark from the build directory.
+  That might involve handling ".libs" and "run" differently.  The chance
+  that a random directory the executable was ultimately placed in would
+  be named "run" might also be a bit bigger than the chance that it's
+  named ".libs".
+- Get cross-compilation working (or ensure it does). It works with autofoo--and
+  people use it.
+- Handle -DFORTIFY_SOURCE=2 appropriately.  (Do a Web search for
+  "cmake fortify" for some information.)
+- Define the GTK_DISABLE_ and GDK_DISABLE_ values as appropriate if we
+  care about supporting the GTK+ version.
+- Install the freedesktop integration files (wireshark.desktop,
+  wireshark-mime-package.xml, etc.).
 ...
 
 Links regarding cmake

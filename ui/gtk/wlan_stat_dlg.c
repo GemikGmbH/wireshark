@@ -31,13 +31,14 @@
 #include <epan/addr_resolv.h>
 #include <epan/tap.h>
 #include <epan/dissectors/packet-ieee80211.h>
+#include <epan/conversation_table.h>
 #include <epan/strutil.h>
 
 #include "ui/recent.h"
 #include "ui/simple_dialog.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
-#include "../stat_menu.h"
+#include <epan/stat_groups.h>
 
 #include "ui/gtk/gtkglobals.h"
 #include "ui/gtk/dlg_utils.h"
@@ -47,7 +48,6 @@
 #include "ui/gtk/help_dlg.h"
 #include "ui/gtk/main.h"
 
-#include "ui/gtk/old-gtk-compat.h"
 
 void register_tap_listener_wlanstat(void);
 
@@ -122,7 +122,6 @@ typedef struct wlan_ep {
 static GtkWidget *wlanstat_dlg_w   = NULL;
 static GtkWidget *wlanstat_pane    = NULL;
 static GtkWidget *wlanstat_name_lb = NULL;
-static address    broadcast;
 
 /* used to keep track of the statistics for an entire program interface */
 typedef struct _wlan_stat_t {
@@ -147,6 +146,7 @@ dealloc_wlan_details_ep (wlan_details_ep_t *details)
     while (details) {
         tmp = details;
         details = details->next;
+        g_free ((void*)tmp->addr.data);
         g_free (tmp);
     }
 }
@@ -206,6 +206,7 @@ wlanstat_reset (void *phs)
         tmp  = list;
         dealloc_wlan_details_ep(tmp->details);
         list = tmp->next;
+        g_free((void*)tmp->bssid.data);
         g_free(tmp);
     }
 
@@ -239,7 +240,7 @@ alloc_wlan_ep (const struct _wlan_hdr *si, const packet_info *pinfo _U_)
 
     ep = (wlan_ep_t *)g_malloc (sizeof(wlan_ep_t));
 
-    SE_COPY_ADDRESS (&ep->bssid, &si->bssid);
+    COPY_ADDRESS (&ep->bssid, &si->bssid);
     ep->stats.channel      = si->stats.channel;
     memcpy (ep->stats.ssid, si->stats.ssid, MAX_SSID_LEN);
     ep->stats.ssid_len     = si->stats.ssid_len;
@@ -266,7 +267,7 @@ alloc_wlan_details_ep (const address *addr)
     if (!(d_ep = (wlan_details_ep_t *)g_malloc (sizeof(wlan_details_ep_t))))
         return NULL;
 
-    SE_COPY_ADDRESS (&d_ep->addr, addr);
+    COPY_ADDRESS (&d_ep->addr, addr);
     d_ep->probe_req         = 0;
     d_ep->probe_rsp         = 0;
     d_ep->auth              = 0;
@@ -316,29 +317,29 @@ wlanstat_packet_details (wlan_ep_t *te, guint32 type, const address *addr, gbool
     wlan_details_ep_t *d_te = get_details_ep (te, addr);
 
     switch (type) {
-    case 0x04:
+    case MGT_PROBE_REQ:
         d_te->probe_req++;
         break;
-    case 0x05:
+    case MGT_PROBE_RESP:
         d_te->probe_rsp++;
         break;
-    case 0x08:
+    case MGT_BEACON:
         /* No counting for beacons */
         break;
-    case 0x0B:
+    case MGT_AUTHENTICATION:
         d_te->auth++;
         break;
-    case 0x0C:
+    case MGT_DEAUTHENTICATION:
         d_te->deauth++;
         break;
-    case 0x20:
-    case 0x21:
-    case 0x22:
-    case 0x23:
-    case 0x28:
-    case 0x29:
-    case 0x2A:
-    case 0x2B:
+    case DATA:
+    case DATA_CF_ACK:
+    case DATA_CF_POLL:
+    case DATA_CF_ACK_POLL:
+    case DATA_QOS_DATA:
+    case DATA_QOS_DATA_CF_ACK:
+    case DATA_QOS_DATA_CF_POLL:
+    case DATA_QOS_DATA_CF_ACK_POLL:
         if (src) {
             d_te->data_sent++;
         } else {
@@ -350,51 +351,64 @@ wlanstat_packet_details (wlan_ep_t *te, guint32 type, const address *addr, gbool
         break;
     }
 
-    if (type != 0x08) {
+    if (type != MGT_BEACON) {
         /* Do not count beacons in details */
         d_te->number_of_packets++;
     }
 }
 
+#if 0
 static gboolean
 is_broadcast(const address *addr)
 {
-#if 0
+    gboolean cmp_addr;
+    char* addr_str = address_to_display(NULL, addr);
+
+    cmp_addr = (strcmp(addr_str, "Broadcast") == 0);
+    wmem_free(NULL, addr_str);
+
     /* doesn't work if MAC resolution is disable */
-    return strcmp(ep_address_to_display(addr), "Broadcast") == 0;
-#endif
+    return cmp_addr;
     return ADDRESSES_EQUAL(&broadcast, addr);
 }
+#endif
 
 static gboolean
 ssid_equal(const struct _wlan_stats *st1, const struct _wlan_stats *st2 )
 {
-    return (st1->ssid_len == st2->ssid_len) && (memcmp(st1->ssid, st2->ssid, st1->ssid_len) == 0);
+    return ((st1->ssid_len <= sizeof(st1->ssid)) && st1->ssid_len == st2->ssid_len) && (memcmp(st1->ssid, st2->ssid, st1->ssid_len) == 0);
 }
 
-static int
+static gboolean
 wlanstat_packet (void *phs, packet_info *pinfo, epan_dissect_t *edt _U_, const void *phi)
 {
     wlanstat_t       *hs  = (wlanstat_t *)phs;
     wlan_ep_t        *tmp, *te = NULL;
     const struct _wlan_hdr *si  = (const struct _wlan_hdr *) phi;
+    guint16 frame_type = si->type & 0xff0;
 
     if (!hs)
-        return (0);
+        return FALSE;
+
+    if (!((frame_type == 0x0) || (frame_type == 0x20) || (frame_type == 0x30))
+        || ((frame_type == 0x20) && DATA_FRAME_IS_NULL(si->type))) {
+        /* Not a management or non null data or extension frame; let's skip it */
+        return FALSE;
+    }
 
     hs->number_of_packets++;
     if (!hs->ep_list) {
         hs->ep_list = alloc_wlan_ep (si, pinfo);
         te = hs->ep_list;
-        te->is_broadcast = is_broadcast(&si->bssid);
+        te->is_broadcast = is_broadcast_bssid(&si->bssid);
     } else {
         for (tmp = hs->ep_list; tmp; tmp = tmp->next) {
-            if ((((si->type == 0x04) && (
+            if ((((si->type == MGT_PROBE_REQ) && (
                       ((tmp->stats.ssid_len == 0) && (si->stats.ssid_len == 0) && tmp->is_broadcast)
                       || ((si->stats.ssid_len != 0) && (ssid_equal(&tmp->stats, &si->stats)))
                       )))
                 ||
-                ((si->type != 0x04) && !CMP_ADDRESS(&tmp->bssid, &si->bssid))) {
+                ((si->type != MGT_PROBE_REQ) && !CMP_ADDRESS(&tmp->bssid, &si->bssid))) {
                 te = tmp;
                 break;
             }
@@ -402,12 +416,12 @@ wlanstat_packet (void *phs, packet_info *pinfo, epan_dissect_t *edt _U_, const v
 
         if (!te) {
             te = alloc_wlan_ep (si, pinfo);
-            te->is_broadcast = is_broadcast(&si->bssid);
+            te->is_broadcast = is_broadcast_bssid(&si->bssid);
             te->next = hs->ep_list;
             hs->ep_list = te;
         }
 
-        if (!te->probe_req_searched && (si->type != 0x04) && (te->type[0x04] == 0) &&
+        if (!te->probe_req_searched && (si->type != MGT_PROBE_REQ) && (te->type[MGT_PROBE_REQ] == 0) &&
             (si->stats.ssid_len > 1 || si->stats.ssid[0] != 0)) {
             /*
              * We have found a matching entry without Probe Requests.
@@ -426,18 +440,18 @@ wlanstat_packet (void *phs, packet_info *pinfo, epan_dissect_t *edt _U_, const v
                      * Found a matching entry. Merge with the previous
                      * found entry and remove from list.
                      */
-                    te->type[0x04] += tmp->type[0x04];
+                    te->type[MGT_PROBE_REQ] += tmp->type[MGT_PROBE_REQ];
                     te->number_of_packets += tmp->number_of_packets;
 
                     if (tmp->details && tmp->details->next) {
                         /* Adjust received probe requests */
                         wlan_details_ep_t *d_te;
                         d_te = get_details_ep (te, &tmp->details->addr);
-                        d_te->probe_req += tmp->type[0x04];
-                        d_te->number_of_packets += tmp->type[0x04];
+                        d_te->probe_req += tmp->type[MGT_PROBE_REQ];
+                        d_te->number_of_packets += tmp->type[MGT_PROBE_REQ];
                         d_te = get_details_ep (te, &tmp->details->next->addr);
-                        d_te->probe_req += tmp->type[0x04];
-                        d_te->number_of_packets += tmp->type[0x04];
+                        d_te->probe_req += tmp->type[MGT_PROBE_REQ];
+                        d_te->number_of_packets += tmp->type[MGT_PROBE_REQ];
                     }
                     if (prev) {
                         prev->next = tmp->next;
@@ -448,7 +462,8 @@ wlanstat_packet (void *phs, packet_info *pinfo, epan_dissect_t *edt _U_, const v
                     if (tmp->iter_valid) {
                         gtk_list_store_remove(store, &tmp->iter);
                     }
-                    g_free (tmp);
+                    g_free((void*)tmp->bssid.data);
+                    g_free(tmp);
                     break;
                 }
                 prev = tmp;
@@ -472,14 +487,14 @@ wlanstat_packet (void *phs, packet_info *pinfo, epan_dissect_t *edt _U_, const v
     wlanstat_packet_details (te, si->type, &si->src, TRUE);  /* Register source */
     wlanstat_packet_details (te, si->type, &si->dst, FALSE); /* Register destination */
 
-    return (1);
+    return TRUE;
 }
 
 static void
 wlanstat_draw_details(wlanstat_t *hs, wlan_ep_t *wlan_ep, gboolean clear)
 {
     wlan_details_ep_t *tmp;
-    char               addr[256], comment[256], percent[256];
+    char              *addr_str, comment[256], percent[256];
     gboolean           broadcast_flag, basestation_flag;
     float              f;
     GtkListStore      *store;
@@ -492,20 +507,17 @@ wlanstat_draw_details(wlanstat_t *hs, wlan_ep_t *wlan_ep, gboolean clear)
     hs->num_details = 0;
 
     for (tmp = wlan_ep->details; tmp; tmp=tmp->next) {
-        broadcast_flag = is_broadcast(&tmp->addr);
-        basestation_flag = !broadcast_flag && !CMP_ADDRESS(&tmp->addr, &wlan_ep->bssid);
+        broadcast_flag = is_broadcast_bssid(&tmp->addr);
+        basestation_flag = !broadcast_flag && addresses_data_equal(&tmp->addr, &wlan_ep->bssid);
 
-        if ((wlan_ep->number_of_packets - wlan_ep->type[0x08]) > 0) {
-            f = (float)(((float)tmp->number_of_packets * 100.0) / (wlan_ep->number_of_packets - wlan_ep->type[0x08]));
+        if ((wlan_ep->number_of_packets - wlan_ep->type[MGT_BEACON]) > 0) {
+            f = (float)(((float)tmp->number_of_packets * 100.0) / (wlan_ep->number_of_packets - wlan_ep->type[MGT_BEACON]));
         } else {
             f = 0.0f;
         }
 
-        if (hs->resolve_names) {
-            g_strlcpy (addr, ep_address_to_display(&tmp->addr), sizeof(addr));
-        } else {
-            g_strlcpy (addr, ep_address_to_str(&tmp->addr), sizeof(addr));
-        }
+        addr_str = (char*)get_conversation_address(NULL, &tmp->addr, hs->resolve_names);
+
         if (basestation_flag) {
             g_strlcpy (comment, "Base station", sizeof(comment));
         } else {
@@ -518,7 +530,7 @@ wlanstat_draw_details(wlanstat_t *hs, wlan_ep_t *wlan_ep, gboolean clear)
             tmp->iter_valid = TRUE;
         }
         gtk_list_store_set(store, &tmp->iter,
-                           ADDRESS_COLUMN, addr,
+                           ADDRESS_COLUMN, addr_str,
                            PERCENT_2_COLUMN, percent,
                            DATA_SENT_COLUMN, tmp->data_sent,
                            DATA_REC_COLUMN, tmp->data_received,
@@ -533,6 +545,7 @@ wlanstat_draw_details(wlanstat_t *hs, wlan_ep_t *wlan_ep, gboolean clear)
                            -1);
 
         hs->num_details++;
+        wmem_free(NULL, addr_str);
     }
 }
 
@@ -542,7 +555,7 @@ wlanstat_draw(void *phs)
     wlanstat_t       *hs   = (wlanstat_t *)phs;
     wlan_ep_t        *list = hs->ep_list, *tmp;
     guint32           data = 0, other = 0;
-    char              bssid[256], channel[256], ssid[256], percent[256];
+    char             *bssid, channel[256], ssid[256], percent[256];
     float             f;
     GtkListStore     *store;
     GtkTreeSelection *sel;
@@ -562,17 +575,13 @@ wlanstat_draw(void *phs)
             continue;
         }
 
-        data = tmp->type[0x20] + tmp->type[0x21] + tmp->type[0x22] + tmp->type[0x23] +
-          tmp->type[0x28] + tmp->type[0x29] + tmp->type[0x2A] + tmp->type[0x2B];
-        other = tmp->number_of_packets - data - tmp->type[0x08] - tmp->type[0x04] -
-          tmp->type[0x05] - tmp->type[0x0B] - tmp->type[0x0C];
+        data = tmp->type[DATA] + tmp->type[DATA_CF_ACK] + tmp->type[DATA_CF_POLL] + tmp->type[DATA_CF_ACK_POLL] +
+          tmp->type[DATA_QOS_DATA] + tmp->type[DATA_QOS_DATA_CF_ACK] + tmp->type[DATA_QOS_DATA_CF_POLL] + tmp->type[DATA_QOS_DATA_CF_ACK_POLL];
+        other = tmp->number_of_packets - data - tmp->type[MGT_BEACON] - tmp->type[MGT_PROBE_REQ] -
+          tmp->type[MGT_PROBE_RESP] - tmp->type[MGT_AUTHENTICATION] - tmp->type[MGT_DEAUTHENTICATION];
         f = (float)(((float)tmp->number_of_packets * 100.0) / hs->number_of_packets);
 
-        if (hs->resolve_names) {
-            g_strlcpy (bssid, ep_address_to_display(&tmp->bssid), sizeof(bssid));
-        } else {
-            g_strlcpy (bssid, ep_address_to_str(&tmp->bssid), sizeof(bssid));
-        }
+        bssid = (char*)get_conversation_address(NULL, &tmp->bssid, hs->resolve_names);
         if (tmp->stats.channel) {
             g_snprintf (channel, sizeof(channel), "%u", tmp->stats.channel);
         } else {
@@ -596,12 +605,12 @@ wlanstat_draw(void *phs)
                     CHANNEL_COLUMN, channel,
                     SSID_COLUMN, ssid,
                     PERCENT_COLUMN, percent,
-                    BEACONS_COLUMN, tmp->type[0x08],
+                    BEACONS_COLUMN, tmp->type[MGT_BEACON],
                     DATA_COLUMN, data,
-                    PROBE_REQ_COLUMN, tmp->type[0x04],
-                    PROBE_RESP_COLUMN, tmp->type[0x05],
-                    AUTH_COLUMN, tmp->type[0x0B],
-                    DEAUTH_COLUMN, tmp->type[0x0C],
+                    PROBE_REQ_COLUMN, tmp->type[MGT_PROBE_REQ],
+                    PROBE_RESP_COLUMN, tmp->type[MGT_PROBE_RESP],
+                    AUTH_COLUMN, tmp->type[MGT_AUTHENTICATION],
+                    DEAUTH_COLUMN, tmp->type[MGT_DEAUTHENTICATION],
                     OTHER_COLUMN, other,
                     PROTECTION_COLUMN, tmp->stats.protection,
                     PERCENT_VALUE_COLUMN, f,
@@ -609,6 +618,7 @@ wlanstat_draw(void *phs)
                     -1);
 
         hs->num_entries++;
+        wmem_free(NULL, bssid);
     }
 
     sel = gtk_tree_view_get_selection (GTK_TREE_VIEW(hs->table));
@@ -650,8 +660,14 @@ static void
 wlan_filter_toggle_dest(GtkWidget *widget, gpointer data)
 {
     wlanstat_t *hs = (wlanstat_t *)data;
+    const char   *filter    = NULL;
 
     hs->use_dfilter = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON (widget));
+    if (hs->use_dfilter) {
+        filter = gtk_entry_get_text(GTK_ENTRY(main_display_filter_widget));
+    }
+
+    set_tap_dfilter(hs, filter);
 
     cf_retap_packets(&cfile);
     gdk_window_raise(gtk_widget_get_window(wlanstat_dlg_w));
@@ -755,6 +771,7 @@ wlan_select_filter_cb(GtkWidget *widget _U_, gpointer callback_data, guint callb
     GtkTreeSelection *sel;
     GtkTreeModel     *model;
     GtkTreeIter       iter;
+    char             *addr_str;
 
     sel = gtk_tree_view_get_selection (GTK_TREE_VIEW(hs->table));
     if (!gtk_tree_selection_get_selected(sel, &model, &iter))
@@ -763,24 +780,26 @@ wlan_select_filter_cb(GtkWidget *widget _U_, gpointer callback_data, guint callb
 
     value = FILTER_EXTRA(callback_action);
 
+    addr_str = (char*)address_to_str(NULL, &ep->bssid);
     switch (value) {
     case VALUE_BSSID_ONLY:
-        str = g_strdup_printf("wlan.bssid==%s", ep_address_to_str(&ep->bssid));
+        str = g_strdup_printf("wlan.bssid==%s", addr_str);
         break;
     case VALUE_SSID_ONLY:
         str = g_strdup_printf("wlan_mgt.ssid==\"%s\"", format_text(ep->stats.ssid, ep->stats.ssid_len));
         break;
     case VALUE_BSSID_AND_SSID:
         str = g_strdup_printf("wlan.bssid==%s && wlan_mgt.ssid==\"%s\"",
-                      ep_address_to_str(&ep->bssid), format_text(ep->stats.ssid, ep->stats.ssid_len));
+                      addr_str, format_text(ep->stats.ssid, ep->stats.ssid_len));
         break;
     case VALUE_BSSID_OR_SSID:
         str = g_strdup_printf("wlan.bssid==%s || wlan_mgt.ssid==\"%s\"",
-                      ep_address_to_str(&ep->bssid), format_text(ep->stats.ssid, ep->stats.ssid_len));
+                      addr_str, format_text(ep->stats.ssid, ep->stats.ssid_len));
         break;
     default:
         g_assert_not_reached();
     }
+    wmem_free(NULL, addr_str);
 
     apply_selected_filter (callback_action, str);
 
@@ -796,17 +815,20 @@ wlan_details_select_filter_cb(GtkWidget *widget _U_, gpointer callback_data, gui
     GtkTreeSelection  *sel;
     GtkTreeModel      *model;
     GtkTreeIter        iter;
+    char              *addr_str;
 
     sel = gtk_tree_view_get_selection (GTK_TREE_VIEW(hs->details));
     if (!gtk_tree_selection_get_selected(sel, &model, &iter))
         return;
     gtk_tree_model_get (model, &iter, DETAILS_COLUMN, &ep, -1);
 
-    str = g_strdup_printf("wlan.addr==%s", ep_address_to_str(&ep->addr));
+    addr_str = (char*)address_to_str(NULL, &ep->addr);
+    str = g_strdup_printf("wlan.addr==%s", addr_str);
 
     apply_selected_filter (callback_action, str);
 
     g_free (str);
+    wmem_free(NULL, addr_str);
 }
 
 static gboolean
@@ -1755,9 +1777,9 @@ wlanstat_dlg_create (void)
 
     display_name = cf_get_display_name(&cfile);
     g_snprintf (title, sizeof(title), "Wireshark: WLAN Traffic Statistics: %s",
-            display_name);
+                display_name);
     g_free(display_name);
-    wlanstat_dlg_w = window_new_with_geom (GTK_WINDOW_TOPLEVEL, title, "WLAN Statistics");
+    wlanstat_dlg_w = window_new_with_geom (GTK_WINDOW_TOPLEVEL, title, "WLAN Statistics", GTK_WIN_POS_CENTER_ON_PARENT);
     gtk_window_set_default_size (GTK_WINDOW(wlanstat_dlg_w), 750, 400);
 
     vbox=ws_gtk_box_new(GTK_ORIENTATION_VERTICAL, 3, FALSE);
@@ -1966,7 +1988,17 @@ wlanstat_launch (GtkAction *action _U_, gpointer user_data _U_)
 void
 register_tap_listener_wlanstat (void)
 {
-    static const unsigned char src[6] = {0xff, 0xff, 0xff, 0xff, 0xff, 0xff};
-
-    SET_ADDRESS(&broadcast, AT_ETHER, 6, src);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

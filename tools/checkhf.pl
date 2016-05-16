@@ -75,7 +75,7 @@
 #             (which may include strings which are not actually valid
 #              hf_... variable references).
 # 4. Checks:
-#            If entries in hf_defs not in hf_usage then "unused" (or static hf_defs only)
+#            If entries in hf_defs not in hf_usage then "unused" (for static hf_defs only)
 #            If entries in hf_defs not in hf_array_entries then "ERROR: NO ARRAY";
 
 use strict;
@@ -129,7 +129,7 @@ while (my $filename = $ARGV[0]) {
     print_list("Unused entry: $filename, ", $unused_href);
 
 # 2. Are all the hf_defs entries (static and global) in hf_array_entries ?
-#    (Note: if a static hfDef is "unused", don't check for same in hf_array_entries)
+#    (Note: if a static hf_def is "unused", don't check for same in hf_array_entries)
 #    if not: "ERROR: NO ARRAY"
 
 ##    Checking for missing global defs currently gives false positives
@@ -362,7 +362,6 @@ sub find_remove_hf_defs {
 
     # Build pattern to match any of the following
     #  static? g?int hf_foo = -1;
-    #  static? g?int hf_foo = HF_EMPTY;
     #  static? g?int hf_foo[xxx];
     #  static? g?int hf_foo[xxx] = {
 
@@ -376,11 +375,11 @@ sub find_remove_hf_defs {
                          (hf_[a-zA-Z0-9_]+)          # hf_..
                  }xmso;
 
-    # p2a: ' = -1;' or ' = HF_EMPTY;'
+    # p2a: ' = -1;'
     my  $p2a_regex = qr{
                            \s* = \s*
                            (?:
-                               - \s* 1 | HF_EMPTY
+                               - \s* 1
                            )
                            \s* ;
                    }xmso;

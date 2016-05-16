@@ -22,14 +22,15 @@
 #ifndef COLOR_UTILS_H
 #define COLOR_UTILS_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
 #include "color.h"
 
-#include <QObject>
+#include <QBrush>
 #include <QColor>
+#include <QObject>
 
 class ColorUtils : public QObject
 {
@@ -37,13 +38,30 @@ class ColorUtils : public QObject
 public:
     explicit ColorUtils(QObject *parent = 0);
 
-    static QColor fromColorT(color_t *color);
+    static QColor fromColorT(const color_t *color);
     static QColor fromColorT(color_t color);
+    static const color_t toColorT(const QColor color);
+    static QRgb alphaBlend(const QColor &color1, const QColor &color2, qreal alpha);
+    static QRgb alphaBlend(const QBrush &brush1, const QBrush &brush2, qreal alpha);
+
+    // ...because they don't really fit anywhere else?
+    static const QColor expert_color_comment;    /* green */
+    static const QColor expert_color_chat;       /* light blue */
+    static const QColor expert_color_note;       /* bright turquoise */
+    static const QColor expert_color_warn;       /* yellow */
+    static const QColor expert_color_error;      /* pale red */
+    static const QColor expert_color_foreground; /* black */
+    static const QColor hidden_proto_item;       /* gray */
+
+    static const QList<QRgb> graphColors() { return graph_colors_; }
+    static QRgb graphColor(int item) { return graph_colors_[item % graph_colors_.size()]; }
 
 signals:
 
 public slots:
 
+private:
+    static const QList<QRgb> graph_colors_;
 };
 
 #endif // COLOR_UTILS_H

@@ -1,6 +1,6 @@
 # lpp.cnf
-# llp conformation file
-# Copyright 2011-2013 Pascal Quantin
+# lpp conformation file
+# Copyright 2011-2015 Pascal Quantin
 
 #.OPT
 PER
@@ -52,6 +52,9 @@ Ellipsoid-PointWithUncertaintyCircle
 EllipsoidPointWithUncertaintyEllipse
 Polygon
 #.END
+
+#.MAKE_ENUM
+GNSS-ID/gnss-id TYPE_PREFIX UPPER_CASE
 
 #.FN_HDR RequestCapabilities
   col_append_sep_str(actx->pinfo->cinfo, COL_INFO, NULL, "Request Capabilities");
@@ -118,91 +121,91 @@ EPDU-ID STRINGS=VALS(lpp_ePDU_ID_vals)
   }
 
 #.TYPE_ATTR
-Ellipsoid-Point/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLatitude_fmt
+Ellipsoid-Point/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLatitude_fmt)
 
 #.TYPE_ATTR
-Ellipsoid-Point/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLongitude_fmt
+Ellipsoid-Point/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLongitude_fmt)
 
 #.TYPE_ATTR
-Ellipsoid-PointWithUncertaintyCircle/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLatitude_fmt
+Ellipsoid-PointWithUncertaintyCircle/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLatitude_fmt)
 
 #.TYPE_ATTR
-Ellipsoid-PointWithUncertaintyCircle/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLongitude_fmt
+Ellipsoid-PointWithUncertaintyCircle/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLongitude_fmt)
 
 #.TYPE_ATTR
-Ellipsoid-PointWithUncertaintyCircle/uncertainty DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertainty_fmt
+Ellipsoid-PointWithUncertaintyCircle/uncertainty DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertainty_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithUncertaintyEllipse/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLatitude_fmt
+EllipsoidPointWithUncertaintyEllipse/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLatitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithUncertaintyEllipse/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLongitude_fmt
+EllipsoidPointWithUncertaintyEllipse/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLongitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithUncertaintyEllipse/uncertaintySemiMajor DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertainty_fmt
+EllipsoidPointWithUncertaintyEllipse/uncertaintySemiMajor DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertainty_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithUncertaintyEllipse/uncertaintySemiMinor DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertainty_fmt
+EllipsoidPointWithUncertaintyEllipse/uncertaintySemiMinor DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertainty_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithUncertaintyEllipse/orientationMajorAxis DISPLAY=BASE_CUSTOM STRINGS=&lpp_angle_fmt
+EllipsoidPointWithUncertaintyEllipse/orientationMajorAxis DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_angle_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithUncertaintyEllipse/confidence DISPLAY=BASE_CUSTOM STRINGS=&lpp_confidence_fmt
+EllipsoidPointWithUncertaintyEllipse/confidence DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_confidence_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitude/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLatitude_fmt
+EllipsoidPointWithAltitude/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLatitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitude/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLongitude_fmt
+EllipsoidPointWithAltitude/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLongitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitude/altitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_altitude_fmt
+EllipsoidPointWithAltitude/altitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_altitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLatitude_fmt
+EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLatitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLongitude_fmt
+EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLongitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/altitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_altitude_fmt
+EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/altitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_altitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/uncertaintySemiMajor DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertainty_fmt
+EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/uncertaintySemiMajor DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertainty_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/uncertaintySemiMinor DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertainty_fmt
+EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/uncertaintySemiMinor DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertainty_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/orientationMajorAxis DISPLAY=BASE_CUSTOM STRINGS=&lpp_angle_fmt
+EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/orientationMajorAxis DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_angle_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/uncertaintyAltitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertaintyAltitude_fmt
+EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/uncertaintyAltitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertaintyAltitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/confidence DISPLAY=BASE_CUSTOM STRINGS=&lpp_confidence_fmt
+EllipsoidPointWithAltitudeAndUncertaintyEllipsoid/confidence DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_confidence_fmt)
 
 #.TYPE_ATTR
-EllipsoidArc/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLatitude_fmt
+EllipsoidArc/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLatitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidArc/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLongitude_fmt
+EllipsoidArc/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLongitude_fmt)
 
 #.TYPE_ATTR
-EllipsoidArc/innerRadius DISPLAY=BASE_CUSTOM STRINGS=&lpp_radius_fmt
+EllipsoidArc/innerRadius DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_radius_fmt)
 
 #.TYPE_ATTR
-EllipsoidArc/uncertaintyRadius DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertainty_fmt
+EllipsoidArc/uncertaintyRadius DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertainty_fmt)
 
 #.TYPE_ATTR
-EllipsoidArc/offsetAngle DISPLAY=BASE_CUSTOM STRINGS=&lpp_angle_fmt
+EllipsoidArc/offsetAngle DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_angle_fmt)
 
 #.TYPE_ATTR
-EllipsoidArc/includedAngle DISPLAY=BASE_CUSTOM STRINGS=&lpp_angle_fmt
+EllipsoidArc/includedAngle DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_angle_fmt)
 
 #.TYPE_ATTR
-EllipsoidArc/confidence DISPLAY=BASE_CUSTOM STRINGS=&lpp_confidence_fmt
+EllipsoidArc/confidence DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_confidence_fmt)
 
 #.FN_FTR HorizontalVelocity/bearing
   proto_item_append_text(actx->created_item, " degrees");
@@ -235,10 +238,10 @@ EllipsoidArc/confidence DISPLAY=BASE_CUSTOM STRINGS=&lpp_confidence_fmt
   proto_item_append_text(actx->created_item, " km/h");
 
 #.TYPE_ATTR
-PolygonPoints/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLatitude_fmt
+PolygonPoints/degreesLatitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLatitude_fmt)
 
 #.TYPE_ATTR
-PolygonPoints/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLongitude_fmt
+PolygonPoints/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_degreesLongitude_fmt)
 
 #.FN_BODY PositioningModes/posModes VAL_PTR = &posModes_tvb LEN_PTR = &len
   tvbuff_t *posModes_tvb = NULL;
@@ -282,28 +285,31 @@ PolygonPoints/degreesLongitude DISPLAY=BASE_CUSTOM STRINGS=&lpp_degreesLongitude
   }
 
 #.TYPE_ATTR
-HorizontalAccuracy/accuracy DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertainty_fmt
+HorizontalAccuracy/accuracy DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertainty_fmt)
 
 #.TYPE_ATTR
-HorizontalAccuracy/confidence DISPLAY=BASE_CUSTOM STRINGS=&lpp_confidence_fmt
+HorizontalAccuracy/confidence DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_confidence_fmt)
 
 #.TYPE_ATTR
-VerticalAccuracy/accuracy DISPLAY=BASE_CUSTOM STRINGS=&lpp_uncertainty_fmt
+VerticalAccuracy/accuracy DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_uncertainty_fmt)
 
 #.TYPE_ATTR
-VerticalAccuracy/confidence DISPLAY=BASE_CUSTOM STRINGS=&lpp_confidence_fmt
+VerticalAccuracy/confidence DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_confidence_fmt)
 
 #.FN_FTR ResponseTime/time
   proto_item_append_text(actx->created_item, " s");
 
-#.TYPE_ATTR
-OTDOA-NeighbourCellInfoElement/expectedRSTD DISPLAY=BASE_CUSTOM STRINGS=&lpp_expectedRSTD_fmt
+#.FN_FTR ResponseTime/eag_1/responseTimeEarlyFix-r12
+  proto_item_append_text(actx->created_item, " s");
 
 #.TYPE_ATTR
-OTDOA-NeighbourCellInfoElement/expectedRSTD-Uncertainty DISPLAY=BASE_CUSTOM STRINGS=&lpp_expectedRSTD_Uncertainty_fmt
+OTDOA-NeighbourCellInfoElement/expectedRSTD DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_expectedRSTD_fmt)
 
 #.TYPE_ATTR
-NeighbourMeasurementElement/rstd DISPLAY=BASE_CUSTOM STRINGS=&lpp_rstd_fmt
+OTDOA-NeighbourCellInfoElement/expectedRSTD-Uncertainty DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_expectedRSTD_Uncertainty_fmt)
+
+#.TYPE_ATTR
+NeighbourMeasurementElement/rstd DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_rstd_fmt)
 
 #.FN_BODY OTDOA-MeasQuality/error-Resolution VAL_PTR = &error_Resolution_tvb HF_INDEX=-1
   tvbuff_t *error_Resolution_tvb = NULL;
@@ -356,10 +362,10 @@ OTDOA-MeasQuality/error-NumSamples TYPE=FT_UINT8 DISPLAY=BASE_DEC STRINGS=VALS(l
   }
 
 #.TYPE_ATTR
-GNSS-ReferenceTime/referenceTimeUnc DISPLAY=BASE_CUSTOM STRINGS=&lpp_referenceTimeUnc_fmt
+GNSS-ReferenceTime/referenceTimeUnc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_referenceTimeUnc_fmt)
 
 #.TYPE_ATTR
-GNSS-ReferenceTimeForOneCell/referenceTimeUnc DISPLAY=BASE_CUSTOM STRINGS=&lpp_referenceTimeUnc_fmt
+GNSS-ReferenceTimeForOneCell/referenceTimeUnc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_referenceTimeUnc_fmt)
 
 #.FN_BODY GNSS-SystemTime/notificationOfLeapSecond VAL_PTR = &notificationOfLeapSecond_tvb HF_INDEX=-1
   tvbuff_t *notificationOfLeapSecond_tvb = NULL;
@@ -374,10 +380,10 @@ GNSS-ReferenceTimeForOneCell/referenceTimeUnc DISPLAY=BASE_CUSTOM STRINGS=&lpp_r
 GNSS-SystemTime/notificationOfLeapSecond TYPE=FT_UINT8 DISPLAY=BASE_DEC STRINGS=VALS(lpp_kp_vals)
 
 #.TYPE_ATTR
-NetworkTime/fractionalSecondsFromFrameStructureStart DISPLAY=BASE_CUSTOM STRINGS=&lpp_fractionalSecondsFromFrameStructureStart_fmt
+NetworkTime/fractionalSecondsFromFrameStructureStart DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_fractionalSecondsFromFrameStructureStart_fmt)
 
 #.TYPE_ATTR
-NetworkTime/frameDrift DISPLAY=BASE_CUSTOM STRINGS=&lpp_frameDrift_fmt
+NetworkTime/frameDrift DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_frameDrift_fmt)
 
 #.FN_BODY KlobucharModelParameter/dataID VAL_PTR = &dataID_tvb HF_INDEX=-1
   tvbuff_t *dataID_tvb = NULL;
@@ -392,70 +398,70 @@ NetworkTime/frameDrift DISPLAY=BASE_CUSTOM STRINGS=&lpp_frameDrift_fmt
 KlobucharModelParameter/dataID TYPE=FT_UINT8 DISPLAY=BASE_DEC STRINGS=VALS(lpp_dataID_vals)
 
 #.TYPE_ATTR
-KlobucharModelParameter/alfa0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_alpha0_fmt
+KlobucharModelParameter/alfa0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_alpha0_fmt)
 
 #.TYPE_ATTR
-KlobucharModelParameter/alfa1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_alpha1_fmt
+KlobucharModelParameter/alfa1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_alpha1_fmt)
 
 #.TYPE_ATTR
-KlobucharModelParameter/alfa2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_alpha2_3_fmt
+KlobucharModelParameter/alfa2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_alpha2_3_fmt)
 
 #.TYPE_ATTR
-KlobucharModelParameter/alfa3 DISPLAY=BASE_CUSTOM STRINGS=&lpp_alpha2_3_fmt
+KlobucharModelParameter/alfa3 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_alpha2_3_fmt)
 
 #.TYPE_ATTR
-KlobucharModelParameter/beta0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_beta0_fmt
+KlobucharModelParameter/beta0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_beta0_fmt)
 
 #.TYPE_ATTR
-KlobucharModelParameter/beta1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_beta1_fmt
+KlobucharModelParameter/beta1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_beta1_fmt)
 
 #.TYPE_ATTR
-KlobucharModelParameter/beta2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_beta2_3_fmt
+KlobucharModelParameter/beta2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_beta2_3_fmt)
 
 #.TYPE_ATTR
-KlobucharModelParameter/beta3 DISPLAY=BASE_CUSTOM STRINGS=&lpp_beta2_3_fmt
+KlobucharModelParameter/beta3 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_beta2_3_fmt)
 
 #.TYPE_ATTR
-NeQuickModelParameter/ai0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_ai0_fmt
+NeQuickModelParameter/ai0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_ai0_fmt)
 
 #.TYPE_ATTR
-NeQuickModelParameter/ai1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_ai1_fmt
+NeQuickModelParameter/ai1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_ai1_fmt)
 
 #.TYPE_ATTR
-NeQuickModelParameter/ai2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_ai2_fmt
+NeQuickModelParameter/ai2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_ai2_fmt)
 
 #.TYPE_ATTR
-GNSS-EarthOrientationParameters/teop DISPLAY=BASE_CUSTOM STRINGS=&lpp_teop_fmt
+GNSS-EarthOrientationParameters/teop DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_teop_fmt)
 
 #.TYPE_ATTR
-GNSS-EarthOrientationParameters/pmX DISPLAY=BASE_CUSTOM STRINGS=&lpp_pmX_Y_fmt
+GNSS-EarthOrientationParameters/pmX DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_pmX_Y_fmt)
 
 #.TYPE_ATTR
-GNSS-EarthOrientationParameters/pmXdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_pmX_Ydot_fmt
+GNSS-EarthOrientationParameters/pmXdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_pmX_Ydot_fmt)
 
 #.TYPE_ATTR
-GNSS-EarthOrientationParameters/pmY DISPLAY=BASE_CUSTOM STRINGS=&lpp_pmX_Y_fmt
+GNSS-EarthOrientationParameters/pmY DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_pmX_Y_fmt)
 
 #.TYPE_ATTR
-GNSS-EarthOrientationParameters/pmYdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_pmX_Ydot_fmt
+GNSS-EarthOrientationParameters/pmYdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_pmX_Ydot_fmt)
 
 #.TYPE_ATTR
-GNSS-EarthOrientationParameters/deltaUT1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_deltaUT1_fmt
+GNSS-EarthOrientationParameters/deltaUT1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_deltaUT1_fmt)
 
 #.TYPE_ATTR
-GNSS-EarthOrientationParameters/deltaUT1dot DISPLAY=BASE_CUSTOM STRINGS=&lpp_deltaUT1dot_fmt
+GNSS-EarthOrientationParameters/deltaUT1dot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_deltaUT1dot_fmt)
 
 #.TYPE_ATTR
-GNSS-TimeModelElement/gnss-TimeModelRefTime DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_TimeModelRefTime_fmt
+GNSS-TimeModelElement/gnss-TimeModelRefTime DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_TimeModelRefTime_fmt)
 
 #.TYPE_ATTR
-GNSS-TimeModelElement/tA0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_tA0_fmt
+GNSS-TimeModelElement/tA0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_tA0_fmt)
 
 #.TYPE_ATTR
-GNSS-TimeModelElement/tA1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_tA1_fmt
+GNSS-TimeModelElement/tA1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_tA1_fmt)
 
 #.TYPE_ATTR
-GNSS-TimeModelElement/tA2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_tA2_fmt
+GNSS-TimeModelElement/tA2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_tA2_fmt)
 
 #.TYPE_ATTR
 GNSS-TimeModelElement/gnss-TO-ID STRINGS=VALS(lpp_gnss_TO_ID_vals)
@@ -473,10 +479,10 @@ DGNSS-SgnTypeElement/gnss-StatusHealth STRINGS=VALS(lpp_gnss_StatusHealth_vals)
 DGNSS-CorrectionsElement/udre STRINGS=VALS(lpp_udre_vals)
 
 #.TYPE_ATTR
-DGNSS-CorrectionsElement/pseudoRangeCor DISPLAY=BASE_CUSTOM STRINGS=&lpp_pseudoRangeCor_fmt
+DGNSS-CorrectionsElement/pseudoRangeCor DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_pseudoRangeCor_fmt)
 
 #.TYPE_ATTR
-DGNSS-CorrectionsElement/rangeRateCor DISPLAY=BASE_CUSTOM STRINGS=&lpp_rangeRateCor_fmt
+DGNSS-CorrectionsElement/rangeRateCor DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_rangeRateCor_fmt)
 
 #.TYPE_ATTR
 DGNSS-CorrectionsElement/udreGrowthRate STRINGS=VALS(lpp_udreGrowthRate_vals)
@@ -484,205 +490,238 @@ DGNSS-CorrectionsElement/udreGrowthRate STRINGS=VALS(lpp_udreGrowthRate_vals)
 #.TYPE_ATTR
 DGNSS-CorrectionsElement/udreValidityTime STRINGS=VALS(lpp_udreValidityTime_vals)
 
-#.TYPE_ATTR
-StandardClockModelElement/stanClockToc DISPLAY=BASE_CUSTOM STRINGS=&lpp_stanClockToc_fmt
+#.FN_BODY GNSS-NavModelSatelliteElement/eag_1/svHealthExt-v1240 VAL_PTR = &svHealthExt_tvb
+  tvbuff_t *svHealthExt_tvb = NULL;
+  proto_tree *subtree;
+%(DEFAULT_BODY)s
+
+#.FN_FTR GNSS-NavModelSatelliteElement/eag_1/svHealthExt-v1240
+  if (svHealthExt_tvb) {
+    subtree = proto_item_add_subtree(actx->created_item, ett_lpp_svHealthExt_v1240);
+    proto_tree_add_bits_item(subtree, hf_lpp_svHealthExt_v1240_e5bhs, svHealthExt_tvb, 0, 2, ENC_BIG_ENDIAN);
+    proto_tree_add_bits_item(subtree, hf_lpp_svHealthExt_v1240_e1_bhs, svHealthExt_tvb, 2, 2, ENC_BIG_ENDIAN);
+  }
 
 #.TYPE_ATTR
-StandardClockModelElement/stanClockAF2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_stanClockAF2_fmt
+StandardClockModelElement/stanClockToc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_stanClockToc_fmt)
 
 #.TYPE_ATTR
-StandardClockModelElement/stanClockAF1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_stanClockAF1_fmt
+StandardClockModelElement/stanClockAF2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_stanClockAF2_fmt)
 
 #.TYPE_ATTR
-StandardClockModelElement/stanClockAF0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_stanClockAF0_fmt
+StandardClockModelElement/stanClockAF1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_stanClockAF1_fmt)
 
 #.TYPE_ATTR
-StandardClockModelElement/stanClockTgd DISPLAY=BASE_CUSTOM STRINGS=&lpp_stanClockTgd_fmt
+StandardClockModelElement/stanClockAF0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_stanClockAF0_fmt)
+
+#.TYPE_ATTR
+StandardClockModelElement/stanClockTgd DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_stanClockTgd_fmt)
+
+#.TYPE_ATTR
+StandardClockModelElement/sisa DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sisa_fmt)
 
 #.TYPE_ATTR
 StandardClockModelElement/stanModelID STRINGS=VALS(lpp_stanModelID_vals)
 
 #.TYPE_ATTR
-NAV-ClockModel/navToc DISPLAY=BASE_CUSTOM STRINGS=&lpp_navToc_fmt
+NAV-ClockModel/navToc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navToc_fmt)
 
 #.TYPE_ATTR
-NAV-ClockModel/navaf2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_navaf2_fmt
+NAV-ClockModel/navaf2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navaf2_fmt)
 
 #.TYPE_ATTR
-NAV-ClockModel/navaf1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_navaf1_fmt
+NAV-ClockModel/navaf1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navaf1_fmt)
 
 #.TYPE_ATTR
-NAV-ClockModel/navaf0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_navaf0_navTgd_fmt
+NAV-ClockModel/navaf0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navaf0_navTgd_fmt)
 
 #.TYPE_ATTR
-NAV-ClockModel/navTgd DISPLAY=BASE_CUSTOM STRINGS=&lpp_navaf0_navTgd_fmt
+NAV-ClockModel/navTgd DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navaf0_navTgd_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavToc DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavToc_cnavTop_fmt
+CNAV-ClockModel/cnavToc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavToc_cnavTop_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavTop DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavToc_cnavTop_fmt
+CNAV-ClockModel/cnavTop DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavToc_cnavTop_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavAf2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavAf2_fmt
+CNAV-ClockModel/cnavAf2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavAf2_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavAf1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavAf1_fmt
+CNAV-ClockModel/cnavAf1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavAf1_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavAf0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavX_fmt
+CNAV-ClockModel/cnavAf0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavX_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavTgd DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavX_fmt
+CNAV-ClockModel/cnavTgd DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavX_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavISCl1cp DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavX_fmt
+CNAV-ClockModel/cnavISCl1cp DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavX_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavISCl1cd DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavX_fmt
+CNAV-ClockModel/cnavISCl1cd DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavX_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavISCl1ca DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavX_fmt
+CNAV-ClockModel/cnavISCl1ca DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavX_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavISCl2c DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavX_fmt
+CNAV-ClockModel/cnavISCl2c DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavX_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavISCl5i5 DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavX_fmt
+CNAV-ClockModel/cnavISCl5i5 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavX_fmt)
 
 #.TYPE_ATTR
-CNAV-ClockModel/cnavISCl5q5 DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavX_fmt
+CNAV-ClockModel/cnavISCl5q5 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavX_fmt)
 
 #.TYPE_ATTR
-GLONASS-ClockModel/gloTau DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloTau_gloDeltaTau_fmt
+GLONASS-ClockModel/gloTau DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloTau_gloDeltaTau_fmt)
 
 #.TYPE_ATTR
-GLONASS-ClockModel/gloGamma DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloGamma_fmt
+GLONASS-ClockModel/gloGamma DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloGamma_fmt)
 
 #.TYPE_ATTR
-GLONASS-ClockModel/gloDeltaTau DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloTau_gloDeltaTau_fmt
+GLONASS-ClockModel/gloDeltaTau DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloTau_gloDeltaTau_fmt)
 
 #.TYPE_ATTR
-SBAS-ClockModel/sbasTo DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasTo_fmt
+SBAS-ClockModel/sbasTo DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasTo_fmt)
 
 #.TYPE_ATTR
-SBAS-ClockModel/sbasAgfo DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAgfo_fmt
+SBAS-ClockModel/sbasAgfo DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAgfo_fmt)
 
 #.TYPE_ATTR
-SBAS-ClockModel/sbasAgf1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAgf1_fmt
+SBAS-ClockModel/sbasAgf1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAgf1_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerToe DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerToe_fmt
+BDS-ClockModel-r12/bdsAODC-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAODC_AODE_r12_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerW DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerW_M0_I0_Omega0_fmt
+BDS-ClockModel-r12/bdsToc-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsToc_Toe_r12_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerDeltaN DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerDeltaN_OmegaDot_IDot_fmt
+BDS-ClockModel-r12/bdsA0-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsA0_r12_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerM0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerW_M0_I0_Omega0_fmt
+BDS-ClockModel-r12/bdsA1-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsA1_r12_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerOmegaDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerDeltaN_OmegaDot_IDot_fmt
+BDS-ClockModel-r12/bdsA2-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsA2_r12_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerE DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerE_fmt
+BDS-ClockModel-r12/bdsTgd1-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsTgd1_r12_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerIDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerDeltaN_OmegaDot_IDot_fmt
+NavModelKeplerianSet/keplerToe DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerToe_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerAPowerHalf DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerAPowerHalf_fmt
+NavModelKeplerianSet/keplerW DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerW_M0_I0_Omega0_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerI0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerW_M0_I0_Omega0_fmt
+NavModelKeplerianSet/keplerDeltaN DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerDeltaN_OmegaDot_IDot_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerOmega0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerW_M0_I0_Omega0_fmt
+NavModelKeplerianSet/keplerM0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerW_M0_I0_Omega0_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerCrs DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerCrs_Crc_fmt
+NavModelKeplerianSet/keplerOmegaDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerDeltaN_OmegaDot_IDot_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerCis DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerCx_fmt
+NavModelKeplerianSet/keplerE DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerE_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerCus DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerCx_fmt
+NavModelKeplerianSet/keplerIDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerDeltaN_OmegaDot_IDot_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerCrc DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerCrs_Crc_fmt
+NavModelKeplerianSet/keplerAPowerHalf DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerAPowerHalf_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerCic DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerCx_fmt
+NavModelKeplerianSet/keplerI0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerW_M0_I0_Omega0_fmt)
 
 #.TYPE_ATTR
-NavModelKeplerianSet/keplerCuc DISPLAY=BASE_CUSTOM STRINGS=&lpp_keplerCx_fmt
+NavModelKeplerianSet/keplerOmega0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerW_M0_I0_Omega0_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navToe DISPLAY=BASE_CUSTOM STRINGS=&lpp_navToe_fmt
+NavModelKeplerianSet/keplerCrs DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerCrs_Crc_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navOmega DISPLAY=BASE_CUSTOM STRINGS=&lpp_navOmega_M0_I0_OmegaA0_fmt
+NavModelKeplerianSet/keplerCis DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerCx_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navDeltaN DISPLAY=BASE_CUSTOM STRINGS=&lpp_navDeltaN_OmegaADot_IDot_fmt
+NavModelKeplerianSet/keplerCus DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerCx_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navM0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_navOmega_M0_I0_OmegaA0_fmt
+NavModelKeplerianSet/keplerCrc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerCrs_Crc_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navOmegaADot DISPLAY=BASE_CUSTOM STRINGS=&lpp_navDeltaN_OmegaADot_IDot_fmt
+NavModelKeplerianSet/keplerCic DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerCx_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navE DISPLAY=BASE_CUSTOM STRINGS=&lpp_navE_fmt
+NavModelKeplerianSet/keplerCuc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_keplerCx_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navIDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_navDeltaN_OmegaADot_IDot_fmt
+NavModelNAV-KeplerianSet/navToe DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navToe_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navAPowerHalf DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAPowerHalf_fmt
+NavModelNAV-KeplerianSet/navOmega DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navOmega_M0_I0_OmegaA0_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navI0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_navOmega_M0_I0_OmegaA0_fmt
+NavModelNAV-KeplerianSet/navDeltaN DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navDeltaN_OmegaADot_IDot_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navOmegaA0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_navOmega_M0_I0_OmegaA0_fmt
+NavModelNAV-KeplerianSet/navM0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navOmega_M0_I0_OmegaA0_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navCrs DISPLAY=BASE_CUSTOM STRINGS=&lpp_navCrs_Crc_fmt
+NavModelNAV-KeplerianSet/navOmegaADot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navDeltaN_OmegaADot_IDot_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navCis DISPLAY=BASE_CUSTOM STRINGS=&lpp_navCx_fmt
+NavModelNAV-KeplerianSet/navE DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navE_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navCus DISPLAY=BASE_CUSTOM STRINGS=&lpp_navCx_fmt
+NavModelNAV-KeplerianSet/navIDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navDeltaN_OmegaADot_IDot_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navCrc DISPLAY=BASE_CUSTOM STRINGS=&lpp_navCrs_Crc_fmt
+NavModelNAV-KeplerianSet/navAPowerHalf DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAPowerHalf_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navCic DISPLAY=BASE_CUSTOM STRINGS=&lpp_navCx_fmt
+NavModelNAV-KeplerianSet/navI0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navOmega_M0_I0_OmegaA0_fmt)
 
 #.TYPE_ATTR
-NavModelNAV-KeplerianSet/navCuc DISPLAY=BASE_CUSTOM STRINGS=&lpp_navCx_fmt
+NavModelNAV-KeplerianSet/navOmegaA0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navOmega_M0_I0_OmegaA0_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavTop DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavToc_cnavTop_fmt
+NavModelNAV-KeplerianSet/navCrs DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navCrs_Crc_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavDeltaA DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavDeltaA_fmt
+NavModelNAV-KeplerianSet/navCis DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navCx_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavAdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavAdot_fmt
+NavModelNAV-KeplerianSet/navCus DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navCx_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavDeltaNo DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavDeltaNo_fmt
+NavModelNAV-KeplerianSet/navCrc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navCrs_Crc_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavDeltaNoDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavDeltaNoDot_fmt
+NavModelNAV-KeplerianSet/navCic DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navCx_fmt)
 
-#.FN_BODY NavModelCNAV-KeplerianSet/cnavMo VAL_PTR=&cnavMo FN_VARIANT=_64b
+#.TYPE_ATTR
+NavModelNAV-KeplerianSet/navCuc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navCx_fmt)
+
+#.TYPE_ATTR
+NavModelCNAV-KeplerianSet/cnavTop DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavToc_cnavTop_fmt)
+
+#.TYPE_ATTR
+NavModelCNAV-KeplerianSet/cnavDeltaA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavDeltaA_fmt)
+
+#.TYPE_ATTR
+NavModelCNAV-KeplerianSet/cnavAdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavAdot_fmt)
+
+#.TYPE_ATTR
+NavModelCNAV-KeplerianSet/cnavDeltaNo DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavDeltaNo_fmt)
+
+#.TYPE_ATTR
+NavModelCNAV-KeplerianSet/cnavDeltaNoDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavDeltaNoDot_fmt)
+
+#.FN_BODY NavModelCNAV-KeplerianSet/cnavMo VAL_PTR=&cnavMo
   gint64 cnavMo;
   int curr_offset = offset;
 %(DEFAULT_BODY)s
@@ -690,13 +729,10 @@ NavModelCNAV-KeplerianSet/cnavDeltaNoDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavDe
 #.FN_FTR NavModelCNAV-KeplerianSet/cnavMo
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_int64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                         cnavMo, "%e semi-circles (%"G_GINT64_MODIFIER"d)",
+                                                         cnavMo, "%g semi-circles (%"G_GINT64_MODIFIER"d)",
                                                          (double)cnavMo*pow(2, -32), cnavMo);
 
-#.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavMo TYPE=FT_INT64
-
-#.FN_BODY NavModelCNAV-KeplerianSet/cnavE VAL_PTR=&cnavE FN_VARIANT=_64b
+#.FN_BODY NavModelCNAV-KeplerianSet/cnavE VAL_PTR=&cnavE
   guint64 cnavE;
   int curr_offset = offset;
 %(DEFAULT_BODY)s
@@ -704,13 +740,10 @@ NavModelCNAV-KeplerianSet/cnavMo TYPE=FT_INT64
 #.FN_FTR NavModelCNAV-KeplerianSet/cnavE
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_uint64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                          cnavE, "%e (%"G_GINT64_MODIFIER"u)",
+                                                          cnavE, "%g (%"G_GINT64_MODIFIER"u)",
                                                           (double)cnavE*pow(2, -34), cnavE);
 
-#.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavE TYPE=FT_UINT64
-
-#.FN_BODY NavModelCNAV-KeplerianSet/cnavOmega VAL_PTR=&cnavOmega FN_VARIANT=_64b
+#.FN_BODY NavModelCNAV-KeplerianSet/cnavOmega VAL_PTR=&cnavOmega
   gint64 cnavOmega;
   int curr_offset = offset;
 %(DEFAULT_BODY)s
@@ -718,13 +751,10 @@ NavModelCNAV-KeplerianSet/cnavE TYPE=FT_UINT64
 #.FN_FTR NavModelCNAV-KeplerianSet/cnavOmega
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_int64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                         cnavOmega, "%e semi-circles (%"G_GINT64_MODIFIER"d)",
+                                                         cnavOmega, "%g semi-circles (%"G_GINT64_MODIFIER"d)",
                                                          (double)cnavOmega*pow(2, -32), cnavOmega);
 
-#.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavOmega TYPE=FT_INT64
-
-#.FN_BODY NavModelCNAV-KeplerianSet/cnavOMEGA0 VAL_PTR=&cnavOMEGA0 FN_VARIANT=_64b
+#.FN_BODY NavModelCNAV-KeplerianSet/cnavOMEGA0 VAL_PTR=&cnavOMEGA0
   gint64 cnavOMEGA0;
   int curr_offset = offset;
 %(DEFAULT_BODY)s
@@ -732,16 +762,13 @@ NavModelCNAV-KeplerianSet/cnavOmega TYPE=FT_INT64
 #.FN_FTR NavModelCNAV-KeplerianSet/cnavOMEGA0
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_int64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                         cnavOMEGA0, "%e semi-circles (%"G_GINT64_MODIFIER"d)",
+                                                         cnavOMEGA0, "%g semi-circles (%"G_GINT64_MODIFIER"d)",
                                                          (double)cnavOMEGA0*pow(2, -32), cnavOMEGA0);
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavOMEGA0 TYPE=FT_INT64
+NavModelCNAV-KeplerianSet/cnavDeltaOmegaDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavDeltaOmegaDot_IoDot_fmt)
 
-#.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavDeltaOmegaDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavDeltaOmegaDot_IoDot_fmt
-
-#.FN_BODY NavModelCNAV-KeplerianSet/cnavIo VAL_PTR=&cnavIo FN_VARIANT=_64b
+#.FN_BODY NavModelCNAV-KeplerianSet/cnavIo VAL_PTR=&cnavIo
   gint64 cnavIo;
   int curr_offset = offset;
 %(DEFAULT_BODY)s
@@ -749,32 +776,29 @@ NavModelCNAV-KeplerianSet/cnavDeltaOmegaDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_cna
 #.FN_FTR NavModelCNAV-KeplerianSet/cnavIo
   PROTO_ITEM_SET_HIDDEN(actx->created_item);
   actx->created_item = proto_tree_add_int64_format_value(tree, hf_index, tvb, curr_offset>>3, (offset+7-curr_offset)>>3,
-                                                         cnavIo, "%e semi-circles (%"G_GINT64_MODIFIER"d)",
+                                                         cnavIo, "%g semi-circles (%"G_GINT64_MODIFIER"d)",
                                                          (double)cnavIo*pow(2, -32), cnavIo);
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavIo TYPE=FT_INT64
+NavModelCNAV-KeplerianSet/cnavIoDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavDeltaOmegaDot_IoDot_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavIoDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavDeltaOmegaDot_IoDot_fmt
+NavModelCNAV-KeplerianSet/cnavCis DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavCx_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavCis DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavCx_fmt
+NavModelCNAV-KeplerianSet/cnavCic DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavCx_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavCic DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavCx_fmt
+NavModelCNAV-KeplerianSet/cnavCrs DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavCrs_Crc_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavCrs DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavCrs_Crc_fmt
+NavModelCNAV-KeplerianSet/cnavCrc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavCrs_Crc_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavCrc DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavCrs_Crc_fmt
+NavModelCNAV-KeplerianSet/cnavCus DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavCx_fmt)
 
 #.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavCus DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavCx_fmt
-
-#.TYPE_ATTR
-NavModelCNAV-KeplerianSet/cnavCuc DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavCx_fmt
+NavModelCNAV-KeplerianSet/cnavCuc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_cnavCx_fmt)
 
 #.FN_FTR NavModel-GLONASS-ECEF/gloEn
   proto_item_append_text(actx->created_item, " days");
@@ -790,64 +814,118 @@ NavModelCNAV-KeplerianSet/cnavCuc DISPLAY=BASE_CUSTOM STRINGS=&lpp_cnavCx_fmt
   }
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloX DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloX_Y_Z_fmt
+NavModel-GLONASS-ECEF/gloX DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloX_Y_Z_fmt)
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloXdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloXdot_Ydot_Zdot_fmt
+NavModel-GLONASS-ECEF/gloXdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloXdot_Ydot_Zdot_fmt)
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloXdotdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloXdotdot_Ydotdot_Zdotdot_fmt
+NavModel-GLONASS-ECEF/gloXdotdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloXdotdot_Ydotdot_Zdotdot_fmt)
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloY DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloX_Y_Z_fmt
+NavModel-GLONASS-ECEF/gloY DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloX_Y_Z_fmt)
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloYdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloXdot_Ydot_Zdot_fmt
+NavModel-GLONASS-ECEF/gloYdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloXdot_Ydot_Zdot_fmt)
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloYdotdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloXdotdot_Ydotdot_Zdotdot_fmt
+NavModel-GLONASS-ECEF/gloYdotdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloXdotdot_Ydotdot_Zdotdot_fmt)
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloZ DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloX_Y_Z_fmt
+NavModel-GLONASS-ECEF/gloZ DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloX_Y_Z_fmt)
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloZdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloXdot_Ydot_Zdot_fmt
+NavModel-GLONASS-ECEF/gloZdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloXdot_Ydot_Zdot_fmt)
 
 #.TYPE_ATTR
-NavModel-GLONASS-ECEF/gloZdotdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloXdotdot_Ydotdot_Zdotdot_fmt
+NavModel-GLONASS-ECEF/gloZdotdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloXdotdot_Ydotdot_Zdotdot_fmt)
 
 #.TYPE_ATTR
 NavModel-GLONASS-ECEF/gloP1 TYPE=FT_UINT8 DISPLAY=BASE_DEC
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasTo DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasTo_fmt
+NavModel-SBAS-ECEF/sbasTo DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasTo_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasXg DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasXg_Yg_fmt
+NavModel-SBAS-ECEF/sbasXg DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasXg_Yg_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasYg DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasXg_Yg_fmt
+NavModel-SBAS-ECEF/sbasYg DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasXg_Yg_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasZg DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasZg_fmt
+NavModel-SBAS-ECEF/sbasZg DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasZg_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasXgDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasXgDot_YgDot_fmt
+NavModel-SBAS-ECEF/sbasXgDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasXgDot_YgDot_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasYgDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasXgDot_YgDot_fmt
+NavModel-SBAS-ECEF/sbasYgDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasXgDot_YgDot_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasZgDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasZgDot_fmt
+NavModel-SBAS-ECEF/sbasZgDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasZgDot_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasXgDotDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasXgDotDot_YgDotDot_fmt
+NavModel-SBAS-ECEF/sbasXgDotDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasXgDotDot_YgDotDot_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasYgDotDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasXgDotDot_YgDotDot_fmt
+NavModel-SBAS-ECEF/sbasYgDotDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasXgDotDot_YgDotDot_fmt)
 
 #.TYPE_ATTR
-NavModel-SBAS-ECEF/sbasZgDotDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasZgDotDot_fmt
+NavModel-SBAS-ECEF/sbasZgDotDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasZgDotDot_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsAODE-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAODC_AODE_r12_fmt)
+
+#.FN_FTR NavModel-BDS-KeplerianSet-r12/bdsURAI-r12
+  proto_item_append_text(actx->created_item, " m");
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsToe-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsToc_Toe_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsAPowerHalf-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAPowerHalf_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsE-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsE_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsW-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsW_M0_Omega0_I0_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsDeltaN-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsDeltaN_OmegaDot_IDot_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsM0-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsW_M0_Omega0_I0_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsOmega0-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsW_M0_Omega0_I0_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsOmegaDot-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsDeltaN_OmegaDot_IDot_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsI0-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsW_M0_Omega0_I0_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsIDot-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsDeltaN_OmegaDot_IDot_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsCuc-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsCuc_Cus_Cic_Cis_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsCus-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsCuc_Cus_Cic_Cis_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsCrc-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsCrc_Crs_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsCrs-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsCrc_Crs_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsCic-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsCuc_Cus_Cic_Cis_r12_fmt)
+
+#.TYPE_ATTR
+NavModel-BDS-KeplerianSet-r12/bdsCis-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsCuc_Cus_Cic_Cis_r12_fmt)
 
 #.FN_FTR GNSS-DataBitAssistance/gnss-TOD
   proto_item_append_text(actx->created_item, " s");
@@ -859,16 +937,16 @@ NavModel-SBAS-ECEF/sbasZgDotDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasZgDotDot_fm
   proto_item_append_text(actx->created_item, " %%");
 
 #.TYPE_ATTR
-GNSS-AcquisitionAssistElement/doppler0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_doppler0_fmt
+GNSS-AcquisitionAssistElement/doppler0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_doppler0_fmt)
 
 #.TYPE_ATTR
-GNSS-AcquisitionAssistElement/doppler1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_doppler1_fmt
+GNSS-AcquisitionAssistElement/doppler1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_doppler1_fmt)
 
 #.TYPE_ATTR
 GNSS-AcquisitionAssistElement/dopplerUncertainty STRINGS=VALS(lpp_dopplerUncertainty_vals)
 
 #.TYPE_ATTR
-GNSS-AcquisitionAssistElement/codePhase DISPLAY=BASE_CUSTOM STRINGS=&lpp_codePhase_fmt
+GNSS-AcquisitionAssistElement/codePhase DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_codePhase_fmt)
 
 #.FN_FTR GNSS-AcquisitionAssistElement/intCodePhase
   proto_item_append_text(actx->created_item, " ms");
@@ -877,157 +955,255 @@ GNSS-AcquisitionAssistElement/codePhase DISPLAY=BASE_CUSTOM STRINGS=&lpp_codePha
 GNSS-AcquisitionAssistElement/codePhaseSearchWindow DISPLAY=BASE_DEC|BASE_EXT_STRING STRINGS=&lpp_codePhaseSearchWindow_vals_ext
 
 #.TYPE_ATTR
-GNSS-AcquisitionAssistElement/azimuth DISPLAY=BASE_CUSTOM STRINGS=&lpp_azimuth_elevation_fmt
+GNSS-AcquisitionAssistElement/azimuth DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_azimuth_elevation_fmt)
 
 #.TYPE_ATTR
-GNSS-AcquisitionAssistElement/elevation DISPLAY=BASE_CUSTOM STRINGS=&lpp_azimuth_elevation_fmt
+GNSS-AcquisitionAssistElement/elevation DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_azimuth_elevation_fmt)
+
+#.FN_BODY GNSS-Almanac/toa VAL_PTR = &toa
+  guint32 toa, val;
+  int len, old_offset = offset;
+  T_GNSS_ID_enum gnss_id = (T_GNSS_ID_enum)GPOINTER_TO_UINT(actx->private_data);
+%(DEFAULT_BODY)s
+
+#.FN_FTR GNSS-Almanac/toa
+  len = (offset-old_offset) >> 3 ? (offset-old_offset) >> 3 : 1;
+  val = (gnss_id == T_GNSS_ID_GALILEO) ? 600*toa : 4096*toa;
+  actx->created_item = proto_tree_add_uint_format_value(tree, hf_lpp_toa, tvb, old_offset, len,
+                                                        toa, "%u s (%u)", val, toa);
+
+#.FN_BODY GNSS-Almanac/eag_1/toa-ext-v1240 VAL_PTR = &toa_ext
+  guint32 toa_ext, val;
+  int len, old_offset = offset;
+  T_GNSS_ID_enum gnss_id = (T_GNSS_ID_enum)GPOINTER_TO_UINT(actx->private_data);
+%(DEFAULT_BODY)s
+
+#.FN_FTR GNSS-Almanac/eag_1/toa-ext-v1240
+  len = (offset-old_offset) >> 3 ? (offset-old_offset) >> 3 : 1;
+  val = (gnss_id == T_GNSS_ID_GALILEO) ? 600*toa_ext : 4096*toa_ext;
+  actx->created_item = proto_tree_add_uint_format_value(tree, hf_lpp_toa_ext_v1240, tvb, old_offset, len,
+                                                        toa_ext, "%u s (%u)", val, toa_ext);
 
 #.TYPE_ATTR
-GNSS-Almanac/toa DISPLAY=BASE_CUSTOM STRINGS=&lpp_toa_fmt
+AlmanacKeplerianSet/kepAlmanacE DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacE_fmt)
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacE DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacE_fmt
+AlmanacKeplerianSet/kepAlmanacDeltaI DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacDeltaI_fmt)
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacDeltaI DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacDeltaI_fmt
+AlmanacKeplerianSet/kepAlmanacOmegaDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacOmegaDot_fmt)
+
+#.FN_BODY AlmanacKeplerianSet/kepSV-StatusINAV VAL_PTR = &statusINAV_tvb
+  tvbuff_t *statusINAV_tvb = NULL;
+  proto_tree *subtree;
+%(DEFAULT_BODY)s
+
+#.FN_FTR AlmanacKeplerianSet/kepSV-StatusINAV
+  if (statusINAV_tvb) {
+    subtree = proto_item_add_subtree(actx->created_item, ett_kepSV_StatusINAV);
+    proto_tree_add_bits_item(subtree, hf_lpp_kepSV_StatusINAV_e5bhs, statusINAV_tvb, 0, 2, ENC_BIG_ENDIAN);
+    proto_tree_add_bits_item(subtree, hf_lpp_kepSV_StatusINAV_e1_bhs, statusINAV_tvb, 2, 2, ENC_BIG_ENDIAN);
+  }
+
+#.FN_BODY AlmanacKeplerianSet/kepSV-StatusFNAV VAL_PTR = &statusFNAV_tvb
+  tvbuff_t *statusFNAV_tvb = NULL;
+  proto_tree *subtree;
+%(DEFAULT_BODY)s
+
+#.FN_FTR AlmanacKeplerianSet/kepSV-StatusFNAV
+  if (statusFNAV_tvb) {
+    subtree = proto_item_add_subtree(actx->created_item, ett_kepSV_StatusFNAV);
+    proto_tree_add_bits_item(subtree, hf_lpp_kepSV_StatusFNAV_e5ahs, statusFNAV_tvb, 0, 2, ENC_BIG_ENDIAN);
+  }
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacOmegaDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacOmegaDot_fmt
+AlmanacKeplerianSet/kepAlmanacAPowerHalf DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacAPowerHalf_fmt)
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacAPowerHalf DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacAPowerHalf_fmt
+AlmanacKeplerianSet/kepAlmanacOmega0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacOmega0_W_M0_fmt)
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacOmega0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacOmega0_W_M0_fmt
+AlmanacKeplerianSet/kepAlmanacW DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacOmega0_W_M0_fmt)
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacW DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacOmega0_W_M0_fmt
+AlmanacKeplerianSet/kepAlmanacM0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacOmega0_W_M0_fmt)
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacM0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacOmega0_W_M0_fmt
+AlmanacKeplerianSet/kepAlmanacAF0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacAF0_fmt)
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacAF0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacAF0_fmt
+AlmanacKeplerianSet/kepAlmanacAF1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_kepAlmanacAF1_fmt)
 
 #.TYPE_ATTR
-AlmanacKeplerianSet/kepAlmanacAF1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_kepAlmanacAF1_fmt
+AlmanacNAV-KeplerianSet/navAlmE DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmE_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmE DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmE_fmt
+AlmanacNAV-KeplerianSet/navAlmDeltaI DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmDeltaI_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmDeltaI DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmDeltaI_fmt
+AlmanacNAV-KeplerianSet/navAlmOMEGADOT DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmOMEGADOT_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmOMEGADOT DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmOMEGADOT_fmt
+AlmanacNAV-KeplerianSet/navAlmSqrtA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmSqrtA_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmSqrtA DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmSqrtA_fmt
+AlmanacNAV-KeplerianSet/navAlmOMEGAo DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmOMEGAo_Omega_Mo_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmOMEGAo DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmOMEGAo_Omega_Mo_fmt
+AlmanacNAV-KeplerianSet/navAlmOmega DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmOMEGAo_Omega_Mo_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmOmega DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmOMEGAo_Omega_Mo_fmt
+AlmanacNAV-KeplerianSet/navAlmMo DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmOMEGAo_Omega_Mo_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmMo DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmOMEGAo_Omega_Mo_fmt
+AlmanacNAV-KeplerianSet/navAlmaf0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmaf0_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmaf0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmaf0_fmt
+AlmanacNAV-KeplerianSet/navAlmaf1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_navAlmaf1_fmt)
 
 #.TYPE_ATTR
-AlmanacNAV-KeplerianSet/navAlmaf1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_navAlmaf1_fmt
+AlmanacReducedKeplerianSet/redAlmDeltaA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_redAlmDeltaA_fmt)
 
 #.TYPE_ATTR
-AlmanacReducedKeplerianSet/redAlmDeltaA DISPLAY=BASE_CUSTOM STRINGS=&lpp_redAlmDeltaA_fmt
+AlmanacReducedKeplerianSet/redAlmOmega0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_redAlmOmega0_Phi0_fmt)
 
 #.TYPE_ATTR
-AlmanacReducedKeplerianSet/redAlmOmega0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_redAlmOmega0_Phi0_fmt
+AlmanacMidiAlmanacSet/midiAlmE DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmE_fmt)
 
 #.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmE DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmE_fmt
+AlmanacMidiAlmanacSet/midiAlmDeltaI DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmDeltaI_fmt)
 
 #.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmDeltaI DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmDeltaI_fmt
+AlmanacMidiAlmanacSet/midiAlmOmegaDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmOmegaDot_fmt)
 
 #.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmOmegaDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmOmegaDot_fmt
+AlmanacMidiAlmanacSet/midiAlmSqrtA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmSqrtA_fmt)
 
 #.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmSqrtA DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmSqrtA_fmt
+AlmanacMidiAlmanacSet/midiAlmOmega0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmOmega0_Omega_Mo_fmt)
 
 #.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmOmega0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmOmega0_Omega_Mo_fmt
+AlmanacMidiAlmanacSet/midiAlmOmega DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmOmega0_Omega_Mo_fmt)
 
 #.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmOmega DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmOmega0_Omega_Mo_fmt
+AlmanacMidiAlmanacSet/midiAlmMo DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmOmega0_Omega_Mo_fmt)
 
 #.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmMo DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmOmega0_Omega_Mo_fmt
+AlmanacMidiAlmanacSet/midiAlmaf0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmaf0_fmt)
 
 #.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmaf0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmaf0_fmt
-
-#.TYPE_ATTR
-AlmanacMidiAlmanacSet/midiAlmaf1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_midiAlmaf1_fmt
+AlmanacMidiAlmanacSet/midiAlmaf1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_midiAlmaf1_fmt)
 
 #.FN_FTR AlmanacGLONASS-AlmanacSet/gloAlm-NA
   proto_item_append_text(actx->created_item, " days");
 
 #.TYPE_ATTR
-AlmanacGLONASS-AlmanacSet/gloAlmLambdaA DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloAlmLambdaA_DeltaIa_fmt
+AlmanacGLONASS-AlmanacSet/gloAlmLambdaA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloAlmLambdaA_DeltaIa_fmt)
 
 #.TYPE_ATTR
-AlmanacGLONASS-AlmanacSet/gloAlmtlambdaA DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloAlmtlambdaA_fmt
+AlmanacGLONASS-AlmanacSet/gloAlmtlambdaA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloAlmtlambdaA_fmt)
 
 #.TYPE_ATTR
-AlmanacGLONASS-AlmanacSet/gloAlmDeltaIa DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloAlmLambdaA_DeltaIa_fmt
+AlmanacGLONASS-AlmanacSet/gloAlmDeltaIa DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloAlmLambdaA_DeltaIa_fmt)
 
 #.TYPE_ATTR
-AlmanacGLONASS-AlmanacSet/gloAlmDeltaTA DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloAlmDeltaTA_fmt
+AlmanacGLONASS-AlmanacSet/gloAlmDeltaTA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloAlmDeltaTA_fmt)
 
 #.TYPE_ATTR
-AlmanacGLONASS-AlmanacSet/gloAlmDeltaTdotA DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloAlmDeltaTdotA_fmt
+AlmanacGLONASS-AlmanacSet/gloAlmDeltaTdotA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloAlmDeltaTdotA_fmt)
 
 #.TYPE_ATTR
-AlmanacGLONASS-AlmanacSet/gloAlmEpsilonA DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloAlmEpsilonA_fmt
+AlmanacGLONASS-AlmanacSet/gloAlmEpsilonA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloAlmEpsilonA_fmt)
 
 #.TYPE_ATTR
-AlmanacGLONASS-AlmanacSet/gloAlmOmegaA DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloAlmOmegaA_fmt
+AlmanacGLONASS-AlmanacSet/gloAlmOmegaA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloAlmOmegaA_fmt)
 
 #.TYPE_ATTR
-AlmanacGLONASS-AlmanacSet/gloAlmTauA DISPLAY=BASE_CUSTOM STRINGS=&lpp_gloAlmTauA_fmt
+AlmanacGLONASS-AlmanacSet/gloAlmTauA DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gloAlmTauA_fmt)
 
 #.TYPE_ATTR
-AlmanacECEF-SBAS-AlmanacSet/sbasAlmXg DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAlmXg_Yg_fmt
+AlmanacECEF-SBAS-AlmanacSet/sbasAlmXg DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAlmXg_Yg_fmt)
 
 #.TYPE_ATTR
-AlmanacECEF-SBAS-AlmanacSet/sbasAlmYg DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAlmXg_Yg_fmt
+AlmanacECEF-SBAS-AlmanacSet/sbasAlmYg DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAlmXg_Yg_fmt)
 
 #.TYPE_ATTR
-AlmanacECEF-SBAS-AlmanacSet/sbasAlmZg DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAlmZg_fmt
+AlmanacECEF-SBAS-AlmanacSet/sbasAlmZg DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAlmZg_fmt)
 
 #.TYPE_ATTR
-AlmanacECEF-SBAS-AlmanacSet/sbasAlmXgdot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAlmXgdot_YgDot_fmt
+AlmanacECEF-SBAS-AlmanacSet/sbasAlmXgdot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAlmXgdot_YgDot_fmt)
 
 #.TYPE_ATTR
-AlmanacECEF-SBAS-AlmanacSet/sbasAlmYgDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAlmXgdot_YgDot_fmt
+AlmanacECEF-SBAS-AlmanacSet/sbasAlmYgDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAlmXgdot_YgDot_fmt)
 
 #.TYPE_ATTR
-AlmanacECEF-SBAS-AlmanacSet/sbasAlmZgDot DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAlmZgDot_fmt
+AlmanacECEF-SBAS-AlmanacSet/sbasAlmZgDot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAlmZgDot_fmt)
 
 #.TYPE_ATTR
-AlmanacECEF-SBAS-AlmanacSet/sbasAlmTo DISPLAY=BASE_CUSTOM STRINGS=&lpp_sbasAlmTo_fmt
+AlmanacECEF-SBAS-AlmanacSet/sbasAlmTo DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_sbasAlmTo_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet1/gnss-Utc-A1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_Utc_A1_fmt
+AlmanacBDS-AlmanacSet-r12/bdsAlmToa-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmToa_r12_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet1/gnss-Utc-A0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_Utc_A0_fmt
+AlmanacBDS-AlmanacSet-r12/bdsAlmSqrtA-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmSqrtA_r12_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet1/gnss-Utc-Tot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_Utc_Tot_fmt
+AlmanacBDS-AlmanacSet-r12/bdsAlmE-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmE_r12_fmt)
+
+#.TYPE_ATTR
+AlmanacBDS-AlmanacSet-r12/bdsAlmW-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmW_M0_Omega0_r12_fmt)
+
+#.TYPE_ATTR
+AlmanacBDS-AlmanacSet-r12/bdsAlmM0-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmW_M0_Omega0_r12_fmt)
+
+#.TYPE_ATTR
+AlmanacBDS-AlmanacSet-r12/bdsAlmOmega0-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmW_M0_Omega0_r12_fmt)
+
+#.TYPE_ATTR
+AlmanacBDS-AlmanacSet-r12/bdsAlmOmegaDot-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmOmegaDot_r12_fmt)
+
+#.TYPE_ATTR
+AlmanacBDS-AlmanacSet-r12/bdsAlmDeltaI-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmDeltaI_r12_fmt)
+
+#.TYPE_ATTR
+AlmanacBDS-AlmanacSet-r12/bdsAlmA0-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmA0_r12_fmt)
+
+#.TYPE_ATTR
+AlmanacBDS-AlmanacSet-r12/bdsAlmA1-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bdsAlmA1_r12_fmt)
+
+#.FN_BODY AlmanacBDS-AlmanacSet-r12/bdsSvHealth-r12 VAL_PTR = &bdsSvHealth_tvb
+  tvbuff_t *bdsSvHealth_tvb = NULL;
+  proto_tree *subtree;
+%(DEFAULT_BODY)s
+
+#.FN_FTR AlmanacBDS-AlmanacSet-r12/bdsSvHealth-r12
+  if (bdsSvHealth_tvb) {
+    guint16 bits;
+    subtree = proto_item_add_subtree(actx->created_item, ett_lpp_bdsSvHealth_r12);
+    bits = tvb_get_bits16(bdsSvHealth_tvb, 0, 9,ENC_BIG_ENDIAN);
+    if (bits == 0x1ff) {
+      proto_tree_add_boolean_bits_format_value(subtree, hf_lpp_bdsSvHealth_r12_sat_clock, bdsSvHealth_tvb, 0, 1, 1,
+                                               "Satellite is in failure or permanently shut off (1)");
+    } else if (bits == 0x100) {
+      proto_tree_add_boolean_bits_format_value(subtree, hf_lpp_bdsSvHealth_r12_sat_clock, bdsSvHealth_tvb, 0, 1, 1,
+                                               "Satellite clock is unavailable (1)");
+    } else {
+      proto_tree_add_bits_item(subtree, hf_lpp_bdsSvHealth_r12_sat_clock, bdsSvHealth_tvb, 0, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_bits_item(subtree, hf_lpp_bdsSvHealth_r12_b1i, bdsSvHealth_tvb, 1, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_bits_item(subtree, hf_lpp_bdsSvHealth_r12_b2i, bdsSvHealth_tvb, 2, 1, ENC_BIG_ENDIAN);
+      proto_tree_add_bits_item(subtree, hf_lpp_bdsSvHealth_r12_nav, bdsSvHealth_tvb, 7, 1, ENC_BIG_ENDIAN);
+    }
+  }
+
+#.TYPE_ATTR
+UTC-ModelSet1/gnss-Utc-A1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_Utc_A1_fmt)
+
+#.TYPE_ATTR
+UTC-ModelSet1/gnss-Utc-A0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_Utc_A0_fmt)
+
+#.TYPE_ATTR
+UTC-ModelSet1/gnss-Utc-Tot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_Utc_Tot_fmt)
 
 #.FN_FTR UTC-ModelSet1/gnss-Utc-WNt
   proto_item_append_text(actx->created_item, " weeks");
@@ -1045,19 +1221,19 @@ UTC-ModelSet1/gnss-Utc-Tot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_Utc_Tot_fmt
   proto_item_append_text(actx->created_item, " s");
 
 #.TYPE_ATTR
-UTC-ModelSet2/utcA0 DISPLAY=BASE_CUSTOM STRINGS=&lpp_tA0_fmt
+UTC-ModelSet2/utcA0 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_tA0_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet2/utcA1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_tA1_fmt
+UTC-ModelSet2/utcA1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_tA1_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet2/utcA2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_tA2_fmt
+UTC-ModelSet2/utcA2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_tA2_fmt)
 
 #.FN_FTR UTC-ModelSet2/utcDeltaTls
   proto_item_append_text(actx->created_item, " s");
 
 #.TYPE_ATTR
-UTC-ModelSet2/utcTot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_TimeModelRefTime_fmt
+UTC-ModelSet2/utcTot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_TimeModelRefTime_fmt)
 
 #.FN_FTR UTC-ModelSet2/utcWNot
   proto_item_append_text(actx->created_item, " weeks");
@@ -1075,13 +1251,13 @@ UTC-ModelSet2/utcTot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_TimeModelRefTime_fmt
   proto_item_append_text(actx->created_item, " days");
 
 #.TYPE_ATTR
-UTC-ModelSet3/tauC DISPLAY=BASE_CUSTOM STRINGS=&lpp_tauC_fmt
+UTC-ModelSet3/tauC DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_tauC_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet3/b1 DISPLAY=BASE_CUSTOM STRINGS=&lpp_b1_fmt
+UTC-ModelSet3/b1 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_b1_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet3/b2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_b2_fmt
+UTC-ModelSet3/b2 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_b2_fmt)
 
 #.FN_BODY UTC-ModelSet3/kp VAL_PTR = &kp_tvb HF_INDEX=-1
   tvbuff_t *kp_tvb = NULL;
@@ -1096,13 +1272,13 @@ UTC-ModelSet3/b2 DISPLAY=BASE_CUSTOM STRINGS=&lpp_b2_fmt
 UTC-ModelSet3/kp TYPE=FT_UINT8 DISPLAY=BASE_DEC STRINGS=VALS(lpp_kp_vals)
 
 #.TYPE_ATTR
-UTC-ModelSet4/utcA1wnt DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_Utc_A1_fmt
+UTC-ModelSet4/utcA1wnt DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_Utc_A1_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet4/utcA0wnt DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_Utc_A0_fmt
+UTC-ModelSet4/utcA0wnt DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_Utc_A0_fmt)
 
 #.TYPE_ATTR
-UTC-ModelSet4/utcTot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_Utc_Tot_fmt
+UTC-ModelSet4/utcTot DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_Utc_Tot_fmt)
 
 #.FN_FTR UTC-ModelSet4/utcWNt
   proto_item_append_text(actx->created_item, " weeks");
@@ -1121,6 +1297,45 @@ UTC-ModelSet4/utcTot DISPLAY=BASE_CUSTOM STRINGS=&lpp_gnss_Utc_Tot_fmt
 
 #.TYPE_ATTR
 UTC-ModelSet4/utcStandardID TYPE=FT_UINT8 DISPLAY=BASE_DEC STRINGS=VALS(lpp_utcStandardID_vals)
+
+#.TYPE_ATTR
+UTC-ModelSet5-r12/utcA0-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_Utc_A0_fmt)
+
+#.TYPE_ATTR
+UTC-ModelSet5-r12/utcA1-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_gnss_Utc_A1_fmt)
+
+#.FN_FTR UTC-ModelSet5-r12/utcDeltaTls-r12
+  proto_item_append_text(actx->created_item, " s");
+
+#.FN_FTR UTC-ModelSet5-r12/utcWNlsf-r12
+  proto_item_append_text(actx->created_item, " weeks");
+
+#.FN_FTR UTC-ModelSet5-r12/utcDN-r12
+  proto_item_append_text(actx->created_item, " days");
+
+#.FN_FTR UTC-ModelSet5-r12/utcDeltaTlsf-r12
+  proto_item_append_text(actx->created_item, " s");
+
+#.FN_FTR BDS-DifferentialCorrections-r12/dbds-RefTime-r12
+  proto_item_append_text(actx->created_item, " s");
+
+#.TYPE_ATTR
+DBDS-CorrectionElement-r12/bds-UDREI-r12 TYPE=FT_UINT8 DISPLAY=BASE_DEC|BASE_EXT_STRING STRINGS=&lpp_bds_UDREI_vals_ext
+
+#.TYPE_ATTR
+DBDS-CorrectionElement-r12/bds-RURAI-r12 TYPE=FT_UINT8 DISPLAY=BASE_DEC|BASE_EXT_STRING STRINGS=&lpp_bds_RURAI_vals_ext
+
+#.TYPE_ATTR
+DBDS-CorrectionElement-r12/bds-ECC-DeltaT-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bds_ECC_DeltaT_r12_fmt)
+
+#.FN_FTR BDS-GridModelParameter-r12/bds-RefTime-r12
+  proto_item_append_text(actx->created_item, " s");
+
+#.TYPE_ATTR
+GridIonElement-r12/dt-r12 DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_bds_GridIonElement_dt_r12_fmt)
+
+#.TYPE_ATTR
+GridIonElement-r12/givei-r12 TYPE=FT_UINT8 DISPLAY=BASE_DEC|BASE_EXT_STRING STRINGS=&lpp_bds_givei_vals_ext
 
 #.FN_FTR StoredNavListInfo/gnss-WeekOrDay
   proto_item_append_text(actx->created_item, " (days for glonass, weeks otherwise)");
@@ -1144,10 +1359,10 @@ GNSS-DataBitAssistanceReq/dataBitInterval TYPE=FT_UINT8 DISPLAY=BASE_DEC|BASE_EX
   proto_item_append_text(actx->created_item, " ms");
 
 #.TYPE_ATTR
-MeasurementReferenceTime/gnss-TOD-frac DISPLAY=BASE_CUSTOM STRINGS=&lpp_fractionalSecondsFromFrameStructureStart_fmt
+MeasurementReferenceTime/gnss-TOD-frac DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_fractionalSecondsFromFrameStructureStart_fmt)
 
 #.TYPE_ATTR
-MeasurementReferenceTime/gnss-TOD-unc DISPLAY=BASE_CUSTOM STRINGS=&lpp_referenceTimeUnc_fmt
+MeasurementReferenceTime/gnss-TOD-unc DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_referenceTimeUnc_fmt)
 
 #.FN_FTR MeasurementReferenceTime/networkTime/gSM/deltaGNSS-TOD
   proto_item_append_text(actx->created_item, " ms");
@@ -1162,19 +1377,19 @@ MeasurementReferenceTime/gnss-TOD-unc DISPLAY=BASE_CUSTOM STRINGS=&lpp_reference
 GNSS-SatMeasElement/carrierQualityInd TYPE=FT_UINT8 DISPLAY=BASE_DEC STRINGS=VALS(lpp_carrierQualityInd_vals)
 
 #.TYPE_ATTR
-GNSS-SatMeasElement/codePhase DISPLAY=BASE_CUSTOM STRINGS=&lpp_GNSS_SatMeas_codePhase_fmt
+GNSS-SatMeasElement/codePhase DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_GNSS_SatMeas_codePhase_fmt)
 
 #.FN_FTR GNSS-SatMeasElement/integerCodePhase
   proto_item_append_text(actx->created_item, " ms");
 
 #.TYPE_ATTR
-GNSS-SatMeasElement/codePhaseRMSError DISPLAY=BASE_CUSTOM STRINGS=&lpp_codePhaseRMSError_fmt
+GNSS-SatMeasElement/codePhaseRMSError DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_codePhaseRMSError_fmt)
 
 #.TYPE_ATTR
-GNSS-SatMeasElement/doppler DISPLAY=BASE_CUSTOM STRINGS=&lpp_doppler_fmt
+GNSS-SatMeasElement/doppler DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_doppler_fmt)
 
 #.TYPE_ATTR
-GNSS-SatMeasElement/adr DISPLAY=BASE_CUSTOM STRINGS=&lpp_adr_fmt
+GNSS-SatMeasElement/adr DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_adr_fmt)
 
 #.FN_BODY GNSS-IonosphericModelSupport/ionoModel VAL_PTR = &ionoModel_tvb LEN_PTR = &len
   tvbuff_t *ionoModel_tvb = NULL;
@@ -1217,6 +1432,9 @@ GNSS-SatMeasElement/adr DISPLAY=BASE_CUSTOM STRINGS=&lpp_adr_fmt
     if (len >= 5) {
       proto_tree_add_item(subtree, hf_lpp_T_clockModel_model_5, clockModel_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
+    if (len >= 6) {
+      proto_tree_add_item(subtree, hf_lpp_T_clockModel_model_6, clockModel_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
   }
 
 #.FN_BODY GNSS-NavigationModelSupport/orbitModel VAL_PTR = &orbitModel_tvb LEN_PTR = &len
@@ -1242,6 +1460,9 @@ GNSS-SatMeasElement/adr DISPLAY=BASE_CUSTOM STRINGS=&lpp_adr_fmt
     }
     if (len >= 5) {
       proto_tree_add_item(subtree, hf_lpp_T_orbitModel_model_5, orbitModel_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
+    if (len >= 6) {
+      proto_tree_add_item(subtree, hf_lpp_T_orbitModel_model_6, orbitModel_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
   }
 
@@ -1272,6 +1493,9 @@ GNSS-SatMeasElement/adr DISPLAY=BASE_CUSTOM STRINGS=&lpp_adr_fmt
     if (len >= 6) {
       proto_tree_add_item(subtree, hf_lpp_T_almanacModel_model_6, almanacModel_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
+    if (len >= 7) {
+      proto_tree_add_item(subtree, hf_lpp_T_almanacModel_model_7, almanacModel_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
   }
 
 #.FN_BODY GNSS-UTC-ModelSupport/utc-Model VAL_PTR = &utc_Model_tvb LEN_PTR = &len
@@ -1295,7 +1519,15 @@ GNSS-SatMeasElement/adr DISPLAY=BASE_CUSTOM STRINGS=&lpp_adr_fmt
     if (len >= 4) {
       proto_tree_add_item(subtree, hf_lpp_T_utc_Model_model_4, utc_Model_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
+    if (len >= 5) {
+      proto_tree_add_item(subtree, hf_lpp_T_utc_Model_model_5, utc_Model_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
   }
+
+#.FN_BODY GNSS-ID/gnss-id VAL_PTR = &gnss_id
+  guint32 gnss_id;
+%(DEFAULT_BODY)s
+  actx->private_data = GUINT_TO_POINTER(gnss_id);
 
 #.FN_BODY GNSS-ID-Bitmap/gnss-ids VAL_PTR = &gnss_ids_tvb LEN_PTR = &len
   tvbuff_t *gnss_ids_tvb = NULL;
@@ -1320,6 +1552,9 @@ GNSS-SatMeasElement/adr DISPLAY=BASE_CUSTOM STRINGS=&lpp_adr_fmt
     }
     if (len >= 5) {
       proto_tree_add_item(subtree, hf_lpp_T_gnss_ids_glonass, gnss_ids_tvb, 0, 1, ENC_BIG_ENDIAN);
+    }
+    if (len >= 6) {
+      proto_tree_add_item(subtree, hf_lpp_T_gnss_ids_bds, gnss_ids_tvb, 0, 1, ENC_BIG_ENDIAN);
     }
   }
 
@@ -1347,13 +1582,13 @@ GNSS-SatMeasElement/adr DISPLAY=BASE_CUSTOM STRINGS=&lpp_adr_fmt
   }
 
 #.TYPE_ATTR
-MeasuredResultsElement/rsrp-Result DISPLAY=BASE_CUSTOM STRINGS=&lpp_rsrp_Result_fmt
+MeasuredResultsElement/rsrp-Result DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_rsrp_Result_fmt)
 
 #.TYPE_ATTR
-MeasuredResultsElement/rsrq-Result DISPLAY=BASE_CUSTOM STRINGS=&lpp_rsrq_Result_fmt
+MeasuredResultsElement/rsrq-Result DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_rsrq_Result_fmt)
 
 #.TYPE_ATTR
-MeasuredResultsElement/ue-RxTxTimeDiff DISPLAY=BASE_CUSTOM STRINGS=&lpp_ue_RxTxTimeDiff_fmt
+MeasuredResultsElement/ue-RxTxTimeDiff DISPLAY=BASE_CUSTOM STRINGS=CF_FUNC(lpp_ue_RxTxTimeDiff_fmt)
 
 #.FN_BODY ECID-RequestLocationInformation/requestedMeasurements VAL_PTR = &requestedMeasurements_tvb LEN_PTR = &len
   tvbuff_t *requestedMeasurements_tvb = NULL;

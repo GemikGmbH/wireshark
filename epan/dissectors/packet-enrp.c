@@ -176,10 +176,10 @@ dissect_error_cause(tvbuff_t *cause_tvb, proto_tree *parameter_tree)
 
   code           = tvb_get_ntohs(cause_tvb, CAUSE_CODE_OFFSET);
   length         = tvb_get_ntohs(cause_tvb, CAUSE_LENGTH_OFFSET);
-  padding_length = tvb_length(cause_tvb) - length;
+  padding_length = tvb_captured_length(cause_tvb) - length;
 
-  cause_item = proto_tree_add_text(parameter_tree, cause_tvb, CAUSE_HEADER_OFFSET, tvb_length(cause_tvb), "%s", val_to_str_const(code, cause_code_values, "Unknown error cause"));
-  cause_tree = proto_item_add_subtree(cause_item, ett_enrp_cause);
+  cause_tree = proto_tree_add_subtree(parameter_tree, cause_tvb, CAUSE_HEADER_OFFSET, -1,
+                    ett_enrp_cause, &cause_item, val_to_str_const(code, cause_code_values, "Unknown error cause"));
 
   proto_tree_add_item(cause_tree, hf_cause_code,   cause_tvb, CAUSE_CODE_OFFSET,   CAUSE_CODE_LENGTH,   ENC_BIG_ENDIAN);
   proto_tree_add_item(cause_tree, hf_cause_length, cause_tvb, CAUSE_LENGTH_OFFSET, CAUSE_LENGTH_LENGTH, ENC_BIG_ENDIAN);
@@ -234,7 +234,7 @@ dissect_error_causes(tvbuff_t *error_causes_tvb, proto_tree *parameter_tree)
   while(tvb_reported_length_remaining(error_causes_tvb, offset) > 0) {
     length          = tvb_get_ntohs(error_causes_tvb, offset + CAUSE_LENGTH_OFFSET);
     total_length    = ADD_PADDING(length);
-    error_cause_tvb = tvb_new_subset(error_causes_tvb, offset , total_length, total_length);
+    error_cause_tvb = tvb_new_subset_length(error_causes_tvb, offset, total_length);
     dissect_error_cause(error_cause_tvb, parameter_tree);
     offset += total_length;
   }
@@ -475,7 +475,7 @@ dissect_pool_member_selection_policy_parameter(tvbuff_t *parameter_tvb, proto_tr
     proto_tree_add_item(parameter_tree, hf_policy_distance, parameter_tvb, POLICY_WRANDDPF_DISTANCE_OFFSET, POLICY_WRANDDPF_DISTANCE_LENGTH, ENC_BIG_ENDIAN);
     break;
   default:
-    length = tvb_length(parameter_tvb) - POLICY_VALUE_OFFSET;
+    length = tvb_reported_length(parameter_tvb) - POLICY_VALUE_OFFSET;
     if (length > 0) {
       proto_tree_add_item(parameter_tree, hf_policy_value, parameter_tvb, POLICY_VALUE_OFFSET, length, ENC_NA);
     }
@@ -490,13 +490,12 @@ dissect_pool_handle_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tre
 {
   guint16 handle_length;
   proto_item*    pi;
-  char*          tmp;
 
   handle_length = tvb_get_ntohs(parameter_tvb, PARAMETER_LENGTH_OFFSET) - PARAMETER_HEADER_LENGTH;
   pi = proto_tree_add_item(parameter_tree, hf_pool_handle, parameter_tvb, POOL_HANDLE_OFFSET, handle_length, ENC_NA);
 
-  tmp = (gchar*)tvb_get_string(wmem_packet_scope(), parameter_tvb, POOL_HANDLE_OFFSET, handle_length);
-  proto_item_append_text(pi, " (%s)", tmp);
+  proto_item_append_text(pi, " (%s)",
+                         tvb_format_text(parameter_tvb, POOL_HANDLE_OFFSET, handle_length) );
 }
 
 #define PE_PE_IDENTIFIER_LENGTH         4
@@ -636,17 +635,17 @@ static void
 dissect_parameter(tvbuff_t *parameter_tvb, proto_tree *enrp_tree)
 {
   guint16 type, length, padding_length;
-  proto_item *parameter_item;
+  proto_tree *parameter_item;
   proto_tree *parameter_tree;
 
   /* extract tag and length from the parameter */
   type           = tvb_get_ntohs(parameter_tvb, PARAMETER_TYPE_OFFSET);
   length         = tvb_get_ntohs(parameter_tvb, PARAMETER_LENGTH_OFFSET);
-  padding_length = tvb_length(parameter_tvb) - length;
+  padding_length = tvb_captured_length(parameter_tvb) - length;
 
   /* create proto_tree stuff */
-  parameter_item   = proto_tree_add_text(enrp_tree, parameter_tvb, PARAMETER_HEADER_OFFSET, tvb_length(parameter_tvb), "%s", val_to_str_const(type, parameter_type_values, "Unknown Parameter"));
-  parameter_tree   = proto_item_add_subtree(parameter_item, ett_enrp_parameter);
+  parameter_tree   = proto_tree_add_subtree(enrp_tree, parameter_tvb, PARAMETER_HEADER_OFFSET, -1,
+      ett_enrp_parameter, &parameter_item, val_to_str_const(type, parameter_type_values, "Unknown Parameter"));
 
   /* add tag and length to the enrp tree */
   proto_tree_add_item(parameter_tree, hf_parameter_type,   parameter_tvb, PARAMETER_TYPE_OFFSET,   PARAMETER_TYPE_LENGTH,   ENC_BIG_ENDIAN);
@@ -714,13 +713,13 @@ dissect_parameters(tvbuff_t *parameters_tvb, proto_tree *tree)
   tvbuff_t *parameter_tvb;
 
   offset = 0;
-  while((remaining_length = tvb_length_remaining(parameters_tvb, offset)) > 0) {
+  while((remaining_length = tvb_reported_length_remaining(parameters_tvb, offset)) > 0) {
     length       = tvb_get_ntohs(parameters_tvb, offset + PARAMETER_LENGTH_OFFSET);
     total_length = ADD_PADDING(length);
     if (remaining_length >= length)
       total_length = MIN(total_length, remaining_length);
     /* create a tvb for the parameter including the padding bytes */
-    parameter_tvb  = tvb_new_subset(parameters_tvb, offset, total_length, total_length);
+    parameter_tvb  = tvb_new_subset_length(parameters_tvb, offset, total_length);
     dissect_parameter(parameter_tvb, tree);
     /* get rid of the handled parameter */
     offset += total_length;
@@ -905,7 +904,7 @@ dissect_enrp_error_message(tvbuff_t *message_tvb, proto_tree *message_tree, prot
 static void
 dissect_unknown_message(tvbuff_t *message_tvb, proto_tree *message_tree, proto_tree *flags_tree _U_)
 {
-  proto_tree_add_item(message_tree, hf_message_value, message_tvb, MESSAGE_VALUE_OFFSET, tvb_length(message_tvb) - MESSAGE_HEADER_LENGTH, ENC_NA);
+  proto_tree_add_item(message_tree, hf_message_value, message_tvb, MESSAGE_VALUE_OFFSET, tvb_captured_length(message_tvb) - MESSAGE_HEADER_LENGTH, ENC_NA);
 }
 
 #define ENRP_PRESENCE_MESSAGE_TYPE              0x01
@@ -1097,3 +1096,16 @@ proto_reg_handoff_enrp(void)
   dissector_add_uint("sctp.port", ENRP_SCTP_PORT,           enrp_handle);
   dissector_add_uint("udp.port",  ENRP_UDP_PORT,            enrp_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

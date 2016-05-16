@@ -35,9 +35,9 @@ http://www.openbsd.org/cgi-bin/cvsweb/src/sys/net/if_pflog.h
 #include <epan/packet.h>
 
 #include <epan/aftypes.h>
-#include <epan/etypes.h>
 #include <epan/addr_resolv.h>
 #include <epan/expert.h>
+#include <epan/prefs.h>
 
 void proto_register_pflog(void);
 void proto_reg_handoff_pflog(void);
@@ -85,6 +85,8 @@ static int hf_old_pflog_action = -1;
 static int hf_old_pflog_dir = -1;
 
 static gint ett_old_pflog = -1;
+
+static gboolean uid_endian = TRUE;
 
 #define LEN_PFLOG_BSD34 48
 #define LEN_PFLOG_BSD38 64
@@ -160,7 +162,7 @@ static void
 dissect_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
   tvbuff_t *next_tvb;
-  proto_tree *pflog_tree = NULL;
+  proto_tree *pflog_tree;
   proto_item *ti = NULL, *ti_len;
   int length;
   guint8 af, action;
@@ -171,11 +173,9 @@ dissect_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "PFLOG");
 
-  if (tree) {
-    ti = proto_tree_add_item(tree, proto_pflog, tvb, offset, 0, ENC_NA);
+  ti = proto_tree_add_item(tree, proto_pflog, tvb, offset, 0, ENC_NA);
+  pflog_tree = proto_item_add_subtree(ti, ett_pflog);
 
-    pflog_tree = proto_item_add_subtree(ti, ett_pflog);
-  }
   length = tvb_get_guint8(tvb, offset) + pad_len;
 
   ti_len = proto_tree_add_item(pflog_tree, hf_pflog_length, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -198,7 +198,7 @@ dissect_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   offset += 1;
 
   proto_tree_add_item(pflog_tree, hf_pflog_ifname, tvb, offset, 16, ENC_ASCII|ENC_NA);
-  ifname = tvb_get_string(wmem_packet_scope(), tvb, offset, 16);
+  ifname = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 16, ENC_ASCII);
   offset += 16;
 
   proto_tree_add_item(pflog_tree, hf_pflog_ruleset, tvb, offset, 16, ENC_ASCII|ENC_NA);
@@ -213,16 +213,17 @@ dissect_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
   if(length >= LEN_PFLOG_BSD38)
   {
-    proto_tree_add_item(pflog_tree, hf_pflog_uid, tvb, offset, 4, ENC_BIG_ENDIAN);
+    int endian = uid_endian ? ENC_BIG_ENDIAN : ENC_LITTLE_ENDIAN;
+    proto_tree_add_item(pflog_tree, hf_pflog_uid, tvb, offset, 4, endian);
     offset += 4;
 
-    proto_tree_add_item(pflog_tree, hf_pflog_pid, tvb, offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(pflog_tree, hf_pflog_pid, tvb, offset, 4, endian);
     offset += 4;
 
-    proto_tree_add_item(pflog_tree, hf_pflog_rule_uid, tvb, offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(pflog_tree, hf_pflog_rule_uid, tvb, offset, 4, endian);
     offset += 4;
 
-    proto_tree_add_item(pflog_tree, hf_pflog_rule_pid, tvb, offset, 4, ENC_BIG_ENDIAN);
+    proto_tree_add_item(pflog_tree, hf_pflog_rule_pid, tvb, offset, 4, endian);
     offset += 4;
   }
   proto_tree_add_item(pflog_tree, hf_pflog_dir, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -389,6 +390,7 @@ proto_register_pflog(void)
   };
 
   expert_module_t* expert_pflog;
+  module_t *pflog_module;
 
   proto_pflog = proto_register_protocol("OpenBSD Packet Filter log file",
                                         "PFLOG", "pflog");
@@ -396,6 +398,14 @@ proto_register_pflog(void)
   proto_register_subtree_array(ett, array_length(ett));
   expert_pflog = expert_register_protocol(proto_pflog);
   expert_register_field_array(expert_pflog, ei, array_length(ei));
+
+  pflog_module = prefs_register_protocol(proto_pflog, NULL);
+
+  prefs_register_bool_preference(pflog_module, "uid_endian",
+        "Display UID as big endian value",
+        "Whether or not UID and PID fields are dissected in big or little endian",
+        &uid_endian);
+
 }
 
 void
@@ -415,8 +425,8 @@ static int
 dissect_old_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
   tvbuff_t *next_tvb;
-  proto_tree *pflog_tree = NULL;
-  proto_item *ti = NULL;
+  proto_tree *pflog_tree;
+  proto_item *ti;
   guint32 af;
   guint8 *ifname;
   guint16 rnr, action;
@@ -424,53 +434,38 @@ dissect_old_pflog(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "PFLOG-OLD");
 
-  if (tree) {
-    ti = proto_tree_add_item(tree, proto_old_pflog, tvb, 0, 0, ENC_NA);
+  ti = proto_tree_add_item(tree, proto_old_pflog, tvb, 0, 0, ENC_NA);
+  pflog_tree = proto_item_add_subtree(ti, ett_pflog);
 
-    pflog_tree = proto_item_add_subtree(ti, ett_pflog);
+  proto_tree_add_item(pflog_tree, hf_old_pflog_af, tvb, offset, 4, ENC_BIG_ENDIAN);
 
-    proto_tree_add_item(pflog_tree, hf_old_pflog_af, tvb, offset, 4, ENC_BIG_ENDIAN);
-  }
   af = tvb_get_ntohl(tvb, offset);
   offset +=4;
 
-  if (tree) {
-    proto_tree_add_item(pflog_tree, hf_old_pflog_ifname, tvb, offset, 16, ENC_ASCII|ENC_NA);
-  }
-  ifname = tvb_get_string(wmem_packet_scope(), tvb, offset, 16);
+  proto_tree_add_item(pflog_tree, hf_old_pflog_ifname, tvb, offset, 16, ENC_ASCII|ENC_NA);
+  ifname = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 16, ENC_ASCII);
   offset +=16;
 
-  if (tree) {
-    proto_tree_add_item(pflog_tree, hf_old_pflog_rnr, tvb, offset, 2, ENC_BIG_ENDIAN);
-  }
+  proto_tree_add_item(pflog_tree, hf_old_pflog_rnr, tvb, offset, 2, ENC_BIG_ENDIAN);
   rnr = tvb_get_ntohs(tvb, offset);
   offset +=2;
 
-  if (tree) {
-    proto_tree_add_item(pflog_tree, hf_old_pflog_reason, tvb, offset, 2, ENC_BIG_ENDIAN);
-  }
+  proto_tree_add_item(pflog_tree, hf_old_pflog_reason, tvb, offset, 2, ENC_BIG_ENDIAN);
   offset +=2;
 
-  if (tree) {
-    proto_tree_add_item(pflog_tree, hf_old_pflog_action, tvb, offset, 2, ENC_BIG_ENDIAN);
-  }
+  proto_tree_add_item(pflog_tree, hf_old_pflog_action, tvb, offset, 2, ENC_BIG_ENDIAN);
   action = tvb_get_ntohs(tvb, offset);
   offset +=2;
 
-  if (tree) {
-    proto_tree_add_item(pflog_tree, hf_old_pflog_dir, tvb, offset, 2, ENC_BIG_ENDIAN);
-  }
+  proto_tree_add_item(pflog_tree, hf_old_pflog_dir, tvb, offset, 2, ENC_BIG_ENDIAN);
   offset +=2;
 
-  if (tree) {
-    proto_item_set_text(ti, "PF Log (pre 3.4) %s %s on %s by rule %d",
+  proto_item_set_text(ti, "PF Log (pre 3.4) %s %s on %s by rule %d",
       val_to_str(af, pflog_af_vals, "unknown (%u)"),
       val_to_str(action, pflog_action_vals, "unknown (%u)"),
       ifname,
       rnr);
-    proto_item_set_len(ti, offset);
-
-  }
+  proto_item_set_len(ti, offset);
 
   /* Set the tvbuff for the payload after the header */
   next_tvb = tvb_new_subset_remaining(tvb, offset);

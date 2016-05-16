@@ -26,7 +26,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 
 #include <epan/oids.h>
@@ -133,8 +132,7 @@ static int dissect_cmp_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *pa
 		proto_tree_add_item(tree, hf_cmp_tcptrans_type, tvb, offset++, 1, ENC_BIG_ENDIAN);
 	} else {
 		/* post RFC2510 TCP transport - the former "type" field is now "version" */
-		ti = proto_tree_add_text(tree, tvb, offset, 7, "TCP transport");
-		tcptrans_tree = proto_item_add_subtree(ti, ett_cmp);
+		tcptrans_tree = proto_tree_add_subtree(tree, tvb, offset, 7, ett_cmp, NULL, "TCP transport");
 		pdu_type=tvb_get_guint8(tvb, 6);
 		proto_tree_add_item(tcptrans_tree, hf_cmp_tcptrans_len, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
@@ -147,9 +145,9 @@ static int dissect_cmp_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *pa
 
 	switch(pdu_type){
 		case CMP_TYPE_PKIMSG:
-			next_tvb = tvb_new_subset(tvb, offset, tvb_length_remaining(tvb, offset), pdu_len);
+			next_tvb = tvb_new_subset(tvb, offset, tvb_reported_length_remaining(tvb, offset), pdu_len);
 			dissect_cmp_pdu(next_tvb, tree, &asn1_ctx);
-			offset += tvb_length_remaining(tvb, offset);
+			offset += tvb_reported_length_remaining(tvb, offset);
 			break;
 		case CMP_TYPE_POLLREP:
 			proto_tree_add_item(tcptrans_tree, hf_cmp_tcptrans_poll_ref, tvb, offset, 4, ENC_BIG_ENDIAN);
@@ -175,14 +173,14 @@ static int dissect_cmp_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *pa
 			proto_tree_add_time(tcptrans_tree, hf_cmp_tcptrans_ttcb, tvb, offset, 4, &ts);
 			offset += 4;
 
-			next_tvb = tvb_new_subset(tvb, offset, tvb_length_remaining(tvb, offset), pdu_len);
+			next_tvb = tvb_new_subset(tvb, offset, tvb_reported_length_remaining(tvb, offset), pdu_len);
 			dissect_cmp_pdu(next_tvb, tree, &asn1_ctx);
-			offset += tvb_length_remaining(tvb, offset);
+			offset += tvb_reported_length_remaining(tvb, offset);
 			break;
 		case CMP_TYPE_FINALMSGREP:
-			next_tvb = tvb_new_subset(tvb, offset, tvb_length_remaining(tvb, offset), pdu_len);
+			next_tvb = tvb_new_subset(tvb, offset, tvb_reported_length_remaining(tvb, offset), pdu_len);
 			dissect_cmp_pdu(next_tvb, tree, &asn1_ctx);
-			offset += tvb_length_remaining(tvb, offset);
+			offset += tvb_reported_length_remaining(tvb, offset);
 			break;
 		case CMP_TYPE_ERRORMSGREP:
 			/*XXX to be added*/
@@ -192,7 +190,8 @@ static int dissect_cmp_tcp_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *pa
 	return offset;
 }
 
-static guint get_cmp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+static guint get_cmp_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                             int offset, void *data _U_)
 {
 	guint32 plen;
 
@@ -259,7 +258,7 @@ dissect_cmp_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void
 	tcp_dissect_pdus(tvb, pinfo, parent_tree, cmp_desegment, offset, get_cmp_pdu_len,
 			dissect_cmp_tcp_pdu, data);
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 
@@ -397,8 +396,6 @@ void proto_reg_handoff_cmp(void) {
 		oid_add_from_string("HMAC SHA-1","1.3.6.1.5.5.8.1.2");
 		oid_add_from_string("HMAC TIGER","1.3.6.1.5.5.8.1.3");
 		oid_add_from_string("HMAC RIPEMD-160","1.3.6.1.5.5.8.1.4");
-
-		oid_add_from_string("sha256WithRSAEncryption","1.2.840.113549.1.1.11");
 
 #include "packet-cmp-dis-tab.c"
 		inited = TRUE;

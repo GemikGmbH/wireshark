@@ -9,6 +9,12 @@
 include( FindWSWinLibs )
 FindWSWinLibs( "WpdPack" "PCAP_HINTS" )
 
+# The 64-bit wpcap.lib is under /x64
+set ( _PLATFORM_SUBDIR "" )
+if( WIN32 AND "${WIRESHARK_TARGET_PLATFORM}" STREQUAL "win64" )
+  set ( _PLATFORM_SUBDIR "/x64" )
+endif()
+
 find_path( PCAP_INCLUDE_DIR
   NAMES
   pcap/pcap.h
@@ -22,7 +28,7 @@ find_library( PCAP_LIBRARY
     pcap
     wpcap
   HINTS
-    "${PCAP_HINTS}/lib"
+    "${PCAP_HINTS}/lib${_PLATFORM_SUBDIR}"
 )
 
 
@@ -55,7 +61,22 @@ check_function_exists( "pcap_freecode" HAVE_PCAP_FREECODE )
 # update libpcap without updating the headers.
 #
 check_function_exists( "pcap_breakloop" HAVE_PCAP_BREAKLOOP )
-check_function_exists( "pcap_create" HAVE_PCAP_CREATE )
+# FIXME: The code (at least) in dumpcap assumes that PCAP_CREATE is not
+#        available on Windows
+if( WIN32 )
+  #
+  # This is always the case with WinPcap.
+  #
+  set(CAN_SET_CAPTURE_BUFFER_SIZE TRUE)
+else()
+  check_function_exists( "pcap_create" HAVE_PCAP_CREATE )
+  if ( HAVE_PCAP_CREATE )
+    #
+    # For libpcap, we can set the buffer size if we have pcap_create().
+    #
+    set( CAN_SET_CAPTURE_BUFFER_SIZE TRUE )
+  endif()
+endif()
 check_function_exists( "pcap_datalink_name_to_val" HAVE_PCAP_DATALINK_NAME_TO_VAL )
 check_function_exists( "pcap_datalink_val_to_description" HAVE_PCAP_DATALINK_VAL_TO_DESCRIPTION )
 check_function_exists( "pcap_datalink_val_to_name" HAVE_PCAP_DATALINK_VAL_TO_NAME )
@@ -66,11 +87,11 @@ check_function_exists( "pcap_lib_version" HAVE_PCAP_LIB_VERSION )
 check_function_exists( "pcap_list_datalinks" HAVE_PCAP_LIST_DATALINKS )
 check_function_exists( "pcap_set_datalink" HAVE_PCAP_SET_DATALINK )
 check_function_exists( "bpf_image" HAVE_BPF_IMAGE )
+check_function_exists( "pcap_setsampling" HAVE_PCAP_SETSAMPLING )
+check_function_exists( "pcap_set_tstamp_precision" HAVE_PCAP_SET_TSTAMP_PRECISION )
 # Remote pcap checks
-check_function_exists( "pcap_open" H_PCAP_OPEN )
-check_function_exists( "pcap_findalldevs_ex" H_FINDALLDEVS_EX )
-check_function_exists( "pcap_createsrcstr" H_CREATESRCSTR )
-if( H_PCAP_OPEN AND H_FINDALLDEVS_EX AND H_CREATESRCSTR )
+check_function_exists( "pcap_open" HAVE_PCAP_OPEN )
+if( HAVE_PCAP_OPEN )
   set( HAVE_PCAP_REMOTE 1 )
   set( HAVE_REMOTE 1 )
 endif()

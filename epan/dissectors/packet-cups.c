@@ -23,9 +23,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <wsutil/str_util.h>
 #include <epan/packet.h>
+#include <wsutil/str_util.h>
 
 /**********************************************************************/
 
@@ -96,9 +95,16 @@ static int hf_cups_ptype_bw = -1;
 static int hf_cups_ptype_remote = -1;
 static int hf_cups_ptype_class = -1;
 static int hf_cups_state = -1;
+static int hf_cups_uri = -1;
+static int hf_cups_location = -1;
+static int hf_cups_information = -1;
+static int hf_cups_make_model = -1;
 
 static gint ett_cups = -1;
 static gint ett_cups_ptype = -1;
+
+/* patterns used for tvb_ws_mempbrk_pattern_guint8 */
+static ws_mempbrk_pattern pbrk_whitespace;
 
 /* This protocol is heavily related to IPP, but it is CUPS-specific
    and non-standard. */
@@ -181,8 +187,7 @@ dissect_cups(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     if (str == NULL)
         return;    /* separator/terminator not found */
 
-    proto_tree_add_text(cups_tree, tvb, offset, len,
-            "URI: %.*s", (guint16) len, str);
+    proto_tree_add_string(cups_tree, hf_cups_uri, tvb, offset, len, str);
     col_add_fstr(pinfo->cinfo, COL_INFO, "%.*s (%s)",
             (guint16) len, str, val_to_str(state, cups_state_values, "0x%x"));
     offset = next_offset;
@@ -197,8 +202,7 @@ dissect_cups(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     str = get_quoted_string(tvb, offset, &next_offset, &len);
     if (str == NULL)
         return;    /* separator/terminator not found */
-    proto_tree_add_text(cups_tree, tvb, offset+1, len,
-        "Location: \"%.*s\"", (guint16) len, str);
+    proto_tree_add_string(cups_tree, hf_cups_location, tvb, offset+1, len, str);
     offset = next_offset;
 
     if (!skip_space(tvb, offset, &next_offset))
@@ -208,8 +212,7 @@ dissect_cups(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     str = get_quoted_string(tvb, offset, &next_offset, &len);
     if (str == NULL)
         return;    /* separator/terminator not found */
-    proto_tree_add_text(cups_tree, tvb, offset+1, len,
-        "Information: \"%.*s\"", (guint16) len, str);
+    proto_tree_add_string(cups_tree, hf_cups_information, tvb, offset+1, len, str);
     offset = next_offset;
 
     if (!skip_space(tvb, offset, &next_offset))
@@ -219,8 +222,7 @@ dissect_cups(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     str = get_quoted_string(tvb, offset, &next_offset, &len);
     if (str == NULL)
         return;    /* separator/terminator not found */
-    proto_tree_add_text(cups_tree, tvb, offset+1, len,
-            "Make and model: \"%.*s\"", (guint16) len, str);
+    proto_tree_add_string(cups_tree, hf_cups_make_model, tvb, offset+1, len, str);
 }
 
 static guint
@@ -287,7 +289,7 @@ get_unquoted_string(tvbuff_t *tvb, gint offset, gint *next_offset, guint *len)
     guint l = 0;
     gint o;
 
-    o = tvb_pbrk_guint8(tvb, offset, -1, " \t\r\n", NULL);
+    o = tvb_ws_mempbrk_pattern_guint8(tvb, offset, -1, &pbrk_whitespace, NULL);
     if (o != -1) {
         l = o - offset;
         s = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, l, ENC_ASCII);
@@ -365,7 +367,19 @@ proto_register_cups(void)
                 TFS(&tfs_printer_class), CUPS_PRINTER_CLASS, NULL, HFILL }},
         { &hf_cups_state,
             { "State",    "cups.state", FT_UINT8, BASE_HEX,
-                VALS(cups_state_values), 0x0, NULL, HFILL }}
+                VALS(cups_state_values), 0x0, NULL, HFILL }},
+        { &hf_cups_uri,
+            { "URI",    "cups.uri", FT_STRING, BASE_NONE,
+                NULL, 0x0, NULL, HFILL }},
+        { &hf_cups_location,
+            { "Location",    "cups.location", FT_STRING, BASE_NONE,
+                NULL, 0x0, NULL, HFILL }},
+        { &hf_cups_information,
+            { "Information",    "cups.information", FT_STRING, BASE_NONE,
+                NULL, 0x0, NULL, HFILL }},
+        { &hf_cups_make_model,
+            { "Make and model", "cups.make_model", FT_STRING, BASE_NONE,
+                NULL, 0x0, NULL, HFILL }},
     };
 
     static gint *ett[] = {
@@ -378,6 +392,9 @@ proto_register_cups(void)
             "CUPS", "cups");
     proto_register_field_array(proto_cups, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+
+    /* compile patterns */
+    ws_mempbrk_compile(&pbrk_whitespace, " \t\r\n");
 }
 
 void

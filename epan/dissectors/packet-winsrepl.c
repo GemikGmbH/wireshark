@@ -26,17 +26,12 @@
 
 #include "config.h"
 
-#include <time.h>
-#include <glib.h>
-#include <ctype.h>
-
 #include <epan/packet.h>
+#include <epan/expert.h>
 #include <epan/exceptions.h>
 #include <epan/prefs.h>
-#include <epan/tap.h>
 #include <epan/to_str.h>
 
-#include "packet-windows-common.h"
 #include "packet-netbios.h"
 
 #include "packet-tcp.h"
@@ -101,6 +96,8 @@ static gint ett_winsrepl_name = -1;
 static gint ett_winsrepl_send_reply = -1;
 
 static gint ett_winsrepl_flags = -1;
+
+static expert_field ei_winsrepl_name_len = EI_INIT;
 
 #define WINS_REPLICATION_PORT	( 42 )
 #define WREPL_OPCODE_BITS	( 0x7800 )
@@ -180,13 +177,10 @@ static int
 dissect_winsrepl_start(tvbuff_t *winsrepl_tvb, _U_ packet_info *pinfo,
 		       int winsrepl_offset, proto_tree *winsrepl_tree)
 {
-	proto_item *start_item = NULL;
-	proto_tree *start_tree = NULL;
+	proto_tree *start_tree;
 
-	if (winsrepl_tree) {
-		start_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1 , "WREPL_START_ASSOCIATION");
-		start_tree = proto_item_add_subtree(start_item, ett_winsrepl_start);
-	}
+	start_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1,
+									ett_winsrepl_start, NULL, "WREPL_START_ASSOCIATION");
 
 	/* ASSOC_CTX */
 	proto_tree_add_item(start_tree, hf_winsrepl_assoc_ctx, winsrepl_tvb, winsrepl_offset, 4, ENC_BIG_ENDIAN);
@@ -208,13 +202,11 @@ dissect_winsrepl_stop(tvbuff_t *winsrepl_tvb, _U_ packet_info *pinfo,
 		      int winsrepl_offset, proto_tree *winsrepl_tree)
 {
 	guint32 reason;
-	proto_item *stop_item = NULL;
-	proto_tree *stop_tree = NULL;
+	proto_item *stop_item;
+	proto_tree *stop_tree;
 
-	if (winsrepl_tree) {
-		stop_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1 , "WREPL_STOP_ASSOCIATION");
-		stop_tree = proto_item_add_subtree(stop_item, ett_winsrepl_stop);
-	}
+	stop_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1,
+							ett_winsrepl_stop, &stop_item, "WREPL_STOP_ASSOCIATION");
 
 	/* REASON */
 	reason = tvb_get_ntohl(winsrepl_tvb, winsrepl_offset);
@@ -239,15 +231,14 @@ dissect_winsrepl_wins_owner(tvbuff_t *winsrepl_tvb, _U_ packet_info *pinfo,
 			    int winsrepl_offset, proto_tree *winsrepl_tree,
 			    proto_tree *sub_tree, guint32 idx)
 {
-	proto_item *owner_item = NULL;
 	proto_tree *owner_tree = NULL;
 
 	if (sub_tree) {
-		owner_item = proto_tree_add_text(sub_tree, winsrepl_tvb, winsrepl_offset, 24 , "WINS Owner [%u]", idx);
-		owner_tree = proto_item_add_subtree(owner_item, ett_winsrepl_owner);
+		owner_tree = proto_tree_add_subtree_format(sub_tree, winsrepl_tvb, winsrepl_offset, 24,
+												ett_winsrepl_owner, NULL, "WINS Owner [%u]", idx);
 	} else if (winsrepl_tree) {
-		owner_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, 24 , "WINS Owner");
-		owner_tree = proto_item_add_subtree(owner_item, ett_winsrepl_owner);
+		owner_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, 24,
+												ett_winsrepl_owner, NULL, "WINS Owner");
 	}
 
 	/* ADDRESS */
@@ -273,15 +264,12 @@ static int
 dissect_winsrepl_table_reply(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 			     int winsrepl_offset, proto_tree *winsrepl_tree)
 {
-	proto_item *table_item = NULL;
-	proto_tree *table_tree = NULL;
+	proto_tree *table_tree;
 	guint32 partner_count;
 	guint32 i;
 
-	if (winsrepl_tree) {
-		table_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1 , "WREPL_REPL_TABLE_REPLY");
-		table_tree = proto_item_add_subtree(table_item, ett_winsrepl_table_reply);
-	}
+	table_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1,
+									ett_winsrepl_table_reply, NULL, "WREPL_REPL_TABLE_REPLY");
 
 	/* PARTNER COUNT */
 	partner_count = tvb_get_ntohl(winsrepl_tvb, winsrepl_offset);
@@ -321,11 +309,11 @@ dissect_winsrepl_wins_ip(tvbuff_t *winsrepl_tvb, _U_ packet_info *pinfo,
 	proto_tree *ip_tree = NULL;
 
 	if (sub_tree) {
-		ip_item = proto_tree_add_text(sub_tree, winsrepl_tvb, winsrepl_offset, 8 , "WINS IP [%u]", idx);
-		ip_tree = proto_item_add_subtree(ip_item, ett_winsrepl_ip);
+		ip_tree = proto_tree_add_subtree_format(sub_tree, winsrepl_tvb, winsrepl_offset, 8,
+				ett_winsrepl_ip, &ip_item, "WINS IP [%u]", idx);
 	} else if (winsrepl_tree) {
-		ip_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, 8 , "WINS IP");
-		ip_tree = proto_item_add_subtree(ip_item, ett_winsrepl_ip);
+		ip_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, 8,
+				ett_winsrepl_ip, &ip_item, "WINS IP");
 	}
 
 	/* OWNER */
@@ -335,7 +323,7 @@ dissect_winsrepl_wins_ip(tvbuff_t *winsrepl_tvb, _U_ packet_info *pinfo,
 	/* IP */
 	*addr = tvb_get_ipv4(winsrepl_tvb, winsrepl_offset);
 	proto_tree_add_ipv4(ip_tree, hf_winsrepl_ip_ip, winsrepl_tvb, winsrepl_offset, 4, *addr);
-	proto_item_append_text(ip_item, ": %s", ip_to_str((guint8 *)addr));
+	proto_item_append_text(ip_item, ": %s", tvb_ip_to_str(winsrepl_tvb, winsrepl_offset));
 	winsrepl_offset += 4;
 
 	return winsrepl_offset;
@@ -346,17 +334,17 @@ dissect_winsrepl_wins_address_list(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 				   int winsrepl_offset, proto_tree *winsrepl_tree,
 				   proto_item *parent_item)
 {
-	proto_item *addr_list_item = NULL;
-	proto_tree *addr_list_tree = NULL;
+	proto_item *addr_list_item;
+	proto_tree *addr_list_tree;
 	int old_offset = winsrepl_offset;
 	guint32 num_ips;
 	guint32 ip;
 	guint32 i;
+	address addr;
+	gchar* addr_str;
 
-	if (winsrepl_tree) {
-		addr_list_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1 , "WINS Address List");
-		addr_list_tree = proto_item_add_subtree(addr_list_item, ett_winsrepl_addr_list);
-	}
+	addr_list_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1,
+							ett_winsrepl_addr_list, &addr_list_item, "WINS Address List");
 
 	/* NUM_IPS */
 	num_ips = tvb_get_letohl(winsrepl_tvb, winsrepl_offset);
@@ -367,12 +355,14 @@ dissect_winsrepl_wins_address_list(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 		winsrepl_offset = dissect_winsrepl_wins_ip(winsrepl_tvb, pinfo,
 							   winsrepl_offset, addr_list_tree,
 							   &ip, addr_list_tree, i);
+		SET_ADDRESS(&addr, AT_IPv4, 4, &ip);
+		addr_str = address_to_str(wmem_packet_scope(), &addr);
 		if (i == 0) {
-			proto_item_append_text(parent_item, ": %s", ip_to_str((guint8 *)&ip));
-			proto_item_append_text(addr_list_item, ": %s", ip_to_str((guint8 *)&ip));
+			proto_item_append_text(parent_item, ": %s", addr_str);
+			proto_item_append_text(addr_list_item, ": %s", addr_str);
 		} else {
-			proto_item_append_text(parent_item, ", %s", ip_to_str((guint8 *)&ip));
-			proto_item_append_text(addr_list_item, ", %s", ip_to_str((guint8 *)&ip));
+			proto_item_append_text(parent_item, ", %s", addr_str);
+			proto_item_append_text(addr_list_item, ", %s", addr_str);
 		}
 	}
 
@@ -386,34 +376,38 @@ dissect_winsrepl_wins_name(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 			   int winsrepl_offset, proto_tree *winsrepl_tree,
 			   proto_tree *sub_tree, guint32 idx)
 {
-	proto_item *name_item = NULL;
+	proto_item *name_item = NULL, *ti;
 	proto_tree *name_tree = NULL;
-	proto_item *flags_item;
-	proto_tree *flags_tree;
 	int old_offset = winsrepl_offset;
 	tvbuff_t *name_tvb = NULL;
 	guint32 name_len;
 	char  name_str[(NETBIOS_NAME_LEN - 1)*4 + 1];
 	int   name_type;
 	guint32 flags;
-	guint32 addr;
+	static const int * name_flags[] = {
+		&hf_winsrepl_name_flags_rectype,
+		&hf_winsrepl_name_flags_recstate,
+		&hf_winsrepl_name_flags_local,
+		&hf_winsrepl_name_flags_hosttype,
+		&hf_winsrepl_name_flags_static,
+		NULL
+	};
 
 	if (sub_tree) {
-		name_item = proto_tree_add_text(sub_tree, winsrepl_tvb, winsrepl_offset, -1 , "WINS Name [%u]", idx);
-		name_tree = proto_item_add_subtree(name_item, ett_winsrepl_name);
+		name_tree = proto_tree_add_subtree_format(sub_tree, winsrepl_tvb, winsrepl_offset, -1,
+										ett_winsrepl_name, &name_item, "WINS Name [%u]", idx);
 	} else if (winsrepl_tree) {
-		name_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1 , "WINS Name");
-		name_tree = proto_item_add_subtree(name_item, ett_winsrepl_name);
+		name_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1,
+												ett_winsrepl_name, &name_item, "WINS Name");
 	}
 
 	/* NAME_LEN */
 	name_len = tvb_get_ntohl(winsrepl_tvb, winsrepl_offset);
+	ti = proto_tree_add_uint(name_tree, hf_winsrepl_name_len, winsrepl_tvb, winsrepl_offset, 4, name_len);
 	if ((gint) name_len < 1) {
-		proto_tree_add_text(name_tree, winsrepl_tvb, winsrepl_offset,
-			4, "Bad name length: %u", name_len);
+		expert_add_info(pinfo, ti, &ei_winsrepl_name_len);
 		THROW(ReportedBoundsError);
 	}
-	proto_tree_add_uint(name_tree, hf_winsrepl_name_len, winsrepl_tvb, winsrepl_offset, 4, name_len);
 	winsrepl_offset += 4;
 
 	/* NAME: TODO! */
@@ -425,7 +419,7 @@ dissect_winsrepl_wins_name(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 	 * the type is 0x1b.  I think I've seen this in at least
 	 * one capture.
 	 */
-	name_tvb = tvb_new_subset(winsrepl_tvb, winsrepl_offset, name_len, name_len);
+	name_tvb = tvb_new_subset_length(winsrepl_tvb, winsrepl_offset, name_len);
 	netbios_add_name("Name", name_tvb, 0, name_tree);
 	name_type = get_netbios_name(name_tvb, 0, name_str, (NETBIOS_NAME_LEN - 1)*4 + 1);
 	proto_item_append_text(name_item, ": %s<%02x>", name_str, name_type);
@@ -444,13 +438,7 @@ dissect_winsrepl_wins_name(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 	 * anything in the Samba code about them.
 	 */
 	flags = tvb_get_ntohl(winsrepl_tvb, winsrepl_offset);
-	flags_item = proto_tree_add_uint(name_tree, hf_winsrepl_name_flags, winsrepl_tvb, winsrepl_offset, 4, flags);
-	flags_tree = proto_item_add_subtree(flags_item, ett_winsrepl_flags);
-	proto_tree_add_uint(flags_tree, hf_winsrepl_name_flags_rectype, winsrepl_tvb, winsrepl_offset, 4, flags);
-	proto_tree_add_uint(flags_tree, hf_winsrepl_name_flags_recstate, winsrepl_tvb, winsrepl_offset, 4, flags);
-	proto_tree_add_boolean(flags_tree, hf_winsrepl_name_flags_local, winsrepl_tvb, winsrepl_offset, 4, flags);
-	proto_tree_add_uint(flags_tree, hf_winsrepl_name_flags_hosttype, winsrepl_tvb, winsrepl_offset, 4, flags);
-	proto_tree_add_boolean(flags_tree, hf_winsrepl_name_flags_static, winsrepl_tvb, winsrepl_offset, 4, flags);
+	proto_tree_add_bitmask(name_tree, winsrepl_tvb, winsrepl_offset, hf_winsrepl_name_flags, ett_winsrepl_flags, name_flags, ENC_BIG_ENDIAN);
 	winsrepl_offset += 4;
 
 	/* GROUP_FLAG */
@@ -467,9 +455,8 @@ dissect_winsrepl_wins_name(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 	case WREPL_NAME_TYPE_UNIQUE:
 	case WREPL_NAME_TYPE_NORMAL_GROUP:
 		/* Single address */
-		addr = tvb_get_ipv4(winsrepl_tvb, winsrepl_offset);
-		proto_tree_add_ipv4(name_tree, hf_winsrepl_ip_ip, winsrepl_tvb, winsrepl_offset, 4, addr);
-		proto_item_append_text(name_item, ": %s", ip_to_str((guint8 *)&addr));
+		proto_tree_add_item(name_tree, hf_winsrepl_ip_ip, winsrepl_tvb, winsrepl_offset, 4, ENC_BIG_ENDIAN);
+		proto_item_append_text(name_item, ": %s", tvb_ip_to_str(winsrepl_tvb, winsrepl_offset));
 		winsrepl_offset += 4;
 		break;
 
@@ -495,15 +482,12 @@ static int
 dissect_winsrepl_send_reply(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 			    int winsrepl_offset, proto_tree *winsrepl_tree)
 {
-	proto_item *rep_item = NULL;
-	proto_tree *rep_tree = NULL;
+	proto_tree *rep_tree;
 	guint32 num_names;
 	guint32 i;
 
-	if (winsrepl_tree) {
-		rep_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1 , "WREPL_REPL_SEND_REPLY");
-		rep_tree = proto_item_add_subtree(rep_item, ett_winsrepl_send_reply);
-	}
+	rep_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1,
+								ett_winsrepl_send_reply, NULL, "WREPL_REPL_SEND_REPLY");
 
 	/* NUM NAMES */
 	num_names = tvb_get_ntohl(winsrepl_tvb, winsrepl_offset);
@@ -559,14 +543,12 @@ static int
 dissect_winsrepl_replication(tvbuff_t *winsrepl_tvb, packet_info *pinfo,
 			     int winsrepl_offset, proto_item *winsrepl_item, proto_tree *winsrepl_tree)
 {
-	proto_item *repl_item = NULL;
-	proto_tree *repl_tree = NULL;
+	proto_item *repl_item;
+	proto_tree *repl_tree;
 	enum wrepl_replication_cmd command;
 
-	if (winsrepl_tree) {
-		repl_item = proto_tree_add_text(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1 , "WREPL_REPLICATION");
-		repl_tree = proto_item_add_subtree(repl_item, ett_winsrepl_replication);
-	}
+	repl_tree = proto_tree_add_subtree(winsrepl_tree, winsrepl_tvb, winsrepl_offset, -1,
+							ett_winsrepl_replication, &repl_item, "WREPL_REPLICATION");
 
 	/* REPLIICATION_CMD */
 	command = (enum wrepl_replication_cmd)tvb_get_ntohl(winsrepl_tvb, winsrepl_offset);
@@ -691,23 +673,24 @@ dissect_winsrepl_pdu(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree,
 			break;
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 static guint
-get_winsrepl_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_winsrepl_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                     int offset, void *data _U_)
 {
-    guint pdu_len;
+	guint pdu_len;
 
-    pdu_len=tvb_get_ntohl(tvb, offset);
-    return pdu_len+4;
+	pdu_len=tvb_get_ntohl(tvb, offset);
+	return pdu_len+4;
 }
 
 static int
 dissect_winsrepl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* data)
 {
 	tcp_dissect_pdus(tvb, pinfo, parent_tree, winsrepl_reassemble, 4, get_winsrepl_pdu_len, dissect_winsrepl_pdu, data);
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -869,12 +852,19 @@ proto_register_winsrepl(void)
 		&ett_winsrepl_flags,
 	};
 
+	static ei_register_info ei[] = {
+		{ &ei_winsrepl_name_len, { "winsrepl.name_len.invalid", PI_MALFORMED, PI_ERROR, "Bad name length", EXPFILL }},
+	};
+
 	module_t *winsrepl_module;
+	expert_module_t* expert_winsrepl;
 
 	proto_winsrepl = proto_register_protocol("WINS (Windows Internet Name Service) Replication",
 						 "WINS-Replication", "winsrepl");
 	proto_register_subtree_array(ett, array_length(ett));
 	proto_register_field_array(proto_winsrepl, hf, array_length(hf));
+	expert_winsrepl = expert_register_protocol(proto_winsrepl);
+	expert_register_field_array(expert_winsrepl, ei, array_length(ei));
 
 	winsrepl_module = prefs_register_protocol(proto_winsrepl, NULL);
 	prefs_register_bool_preference(winsrepl_module, "reassemble",
@@ -892,3 +882,16 @@ proto_reg_handoff_winsrepl(void)
 	winsrepl_handle = new_create_dissector_handle(dissect_winsrepl, proto_winsrepl);
 	dissector_add_uint("tcp.port", glb_winsrepl_tcp_port, winsrepl_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

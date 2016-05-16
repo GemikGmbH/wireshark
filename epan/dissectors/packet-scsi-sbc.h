@@ -41,6 +41,7 @@
 #define SCSI_SBC_READ16                 0x88
 #define SCSI_SBC_READCAPACITY10         0x25
 #define SCSI_SBC_SERVICEACTIONIN16      0x9E
+#define SCSI_SBC_SERVICEACTIONOUT16     0x9F
 #define SCSI_SBC_READDEFDATA10          0x37
 #define SCSI_SBC_READDEFDATA12          0xB7
 #define SCSI_SBC_READLONG               0x3E
@@ -65,6 +66,7 @@
 #define SCSI_SBC_WRITE12                0xAA
 #define SCSI_SBC_COMPARENWRITE          0x89
 #define SCSI_SBC_WRITE16                0x8A
+#define SCSI_SBC_WRITEATOMIC16          0x9C
 #define SCSI_SBC_ORWRITE                0x8B
 #define SCSI_SBC_WRITENVERIFY10         0x2E
 #define SCSI_SBC_WRITENVERIFY12         0xAE

@@ -1,4 +1,5 @@
 /* export_pdu_dialog.cpp
+ * Dialog for exporting PDUs to file
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -22,7 +23,7 @@
 #include "config.h"
 
 #include "export_pdu_dialog.h"
-#include "ui_export_pdu_dialog.h"
+#include <ui_export_pdu_dialog.h>
 
 #include "globals.h"
 #include "pcap-encap.h"

@@ -35,12 +35,19 @@
      <property name="text">
       <string>Hint.</string>
      </property>
+     <property name="wordWrap">
+      <bool>true</bool>
+     </property>
     </widget>
    </item>
    <item>
     <layout class="QHBoxLayout" name="horizontalLayout" stretch="0,0,0,0,1,0,0">
      <item>
-      <widget class="QComboBox" name="cbDirections"/>
+      <widget class="QComboBox" name="cbDirections">
+       <property name="sizeAdjustPolicy">
+        <enum>QComboBox::AdjustToContents</enum>
+       </property>
+      </widget>
      </item>
      <item>
       <spacer name="horizontalSpacer">

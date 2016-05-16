@@ -27,7 +27,6 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 
@@ -48,7 +47,7 @@ static gint ett_rs_acct = -1;
 
 
 
-static e_uuid_t uuid_rs_acct = { 0x4c878280, 0x2000, 0x0000, { 0x0d, 0x00, 0x02, 0x87, 0x14, 0x00, 0x00, 0x00 } };
+static e_guid_t uuid_rs_acct = { 0x4c878280, 0x2000, 0x0000, { 0x0d, 0x00, 0x02, 0x87, 0x14, 0x00, 0x00, 0x00 } };
 static guint16  ver_rs_acct = 1;
 
 
@@ -66,7 +65,7 @@ rs_acct_dissect_lookup_rqst (tvbuff_t *tvb, int offset,
 
 	if (key_size){ /* Not able to yet decipher the OTHER versions of this call just yet. */
 		proto_tree_add_item (tree, hf_rs_acct_lookup_rqst_key_t, tvb, offset, key_size, ENC_ASCII|ENC_NA);
-		keyx_t = tvb_get_string(wmem_packet_scope(), tvb, offset, key_size);
+		keyx_t = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, key_size, ENC_ASCII);
 		offset += key_size;
 
 		col_append_fstr(pinfo->cinfo, COL_INFO,
@@ -95,7 +94,7 @@ rs_acct_dissect_get_projlist_rqst (tvbuff_t *tvb, int offset,
 
 	proto_tree_add_item (tree, hf_rs_acct_get_projlist_rqst_key_t,
 			     tvb, offset, key_size, ENC_ASCII|ENC_NA);
-	keyx_t = tvb_get_string(wmem_packet_scope(), tvb, offset, key_size);
+	keyx_t = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, key_size, ENC_ASCII);
 	offset += key_size;
 
 	col_append_fstr(pinfo->cinfo, COL_INFO,
@@ -106,13 +105,13 @@ rs_acct_dissect_get_projlist_rqst (tvbuff_t *tvb, int offset,
 
 
 static dcerpc_sub_dissector rs_acct_dissectors[] = {
-        { 0, "add",          NULL,                              NULL},
-        { 1, "delete",       NULL,                              NULL},
-        { 2, "rename",       NULL,                              NULL},
-        { 3, "lookup",       rs_acct_dissect_lookup_rqst,       NULL},
-        { 4, "replace",      NULL,                              NULL},
-        { 5, "get_projlist", rs_acct_dissect_get_projlist_rqst, NULL},
-        { 0, NULL, NULL, NULL }
+	{ 0, "add",	     NULL,				NULL},
+	{ 1, "delete",	     NULL,				NULL},
+	{ 2, "rename",	     NULL,				NULL},
+	{ 3, "lookup",	     rs_acct_dissect_lookup_rqst,	NULL},
+	{ 4, "replace",	     NULL,				NULL},
+	{ 5, "get_projlist", rs_acct_dissect_get_projlist_rqst, NULL},
+	{ 0, NULL, NULL, NULL }
 };
 
 void
@@ -151,3 +150,16 @@ proto_reg_handoff_rs_acct (void)
 	/* Register the protocol as dcerpc */
 	dcerpc_init_uuid (proto_rs_acct, ett_rs_acct, &uuid_rs_acct, ver_rs_acct, rs_acct_dissectors, hf_rs_acct_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -139,6 +139,7 @@ profile_apply(GtkWidget *main_w, GtkTreeView *profile_l, gboolean destroy)
 
   if ((err_msg = apply_profile_changes()) != NULL) {
     simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK, "%s", err_msg);
+    g_free((gchar*)err_msg);
     return;
   }
 
@@ -643,11 +644,11 @@ profile_show_popup_cb(GtkWidget *w _U_, GdkEvent *event, gpointer user_data _U_)
 {
   GdkEventButton *bevent       = (GdkEventButton *)event;
   const gchar    *profile_name = get_profile_name();
+  gboolean        separator_added = FALSE;
   GList          *fl_entry;
   profile_def    *profile;
   GtkWidget      *menu;
   GtkWidget      *menu_item;
-  GtkWidget      *sub_menu = NULL;
 
   menu = gtk_menu_new();
 
@@ -678,7 +679,13 @@ profile_show_popup_cb(GtkWidget *w _U_, GdkEvent *event, gpointer user_data _U_)
   while (fl_entry && fl_entry->data) {
     profile = (profile_def *)fl_entry->data;
 
-    if (!profile->is_global) {
+    if (!profile->is_global || !profile_exists(profile->name, FALSE)) {
+      if (profile->is_global && !separator_added) {
+        menu_item =  gtk_separator_menu_item_new();
+        gtk_menu_shell_append(GTK_MENU_SHELL(menu), menu_item);
+        gtk_widget_show(menu_item);
+        separator_added = TRUE;
+      }
       menu_item = gtk_check_menu_item_new_with_label(profile->name);
       if (strcmp(profile->name, profile_name)==0) {
         /* Check current profile */
@@ -687,27 +694,6 @@ profile_show_popup_cb(GtkWidget *w _U_, GdkEvent *event, gpointer user_data _U_)
       g_object_set(G_OBJECT(menu_item), "draw-as-radio", TRUE, NULL);
       g_signal_connect(menu_item, "activate", G_CALLBACK(select_profile_cb), g_strdup(profile->name));
       gtk_menu_shell_append(GTK_MENU_SHELL(menu), menu_item);
-      gtk_widget_show(menu_item);
-    } else {
-      if (!sub_menu) {
-        menu_item =  gtk_separator_menu_item_new();
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), menu_item);
-        gtk_widget_show(menu_item);
-
-        menu_item = gtk_menu_item_new_with_label("New from Global");
-        gtk_menu_shell_append(GTK_MENU_SHELL(menu), menu_item);
-        gtk_widget_show(menu_item);
-
-        sub_menu = gtk_menu_new();
-        gtk_menu_item_set_submenu(GTK_MENU_ITEM(menu_item), sub_menu);
-      }
-
-      menu_item = gtk_menu_item_new_with_label(profile->name);
-      g_signal_connect(menu_item, "activate", G_CALLBACK(select_profile_cb), g_strdup(profile->name));
-      if (profile_exists(profile->name, FALSE)) {
-        gtk_widget_set_sensitive(menu_item, FALSE);
-      }
-      gtk_menu_shell_append(GTK_MENU_SHELL(sub_menu), menu_item);
       gtk_widget_show(menu_item);
     }
     fl_entry = g_list_next(fl_entry);
@@ -735,9 +721,14 @@ profile_name_edit_ok(GtkWidget *w _U_, gpointer parent_w)
   const gchar  *new_name     = gtk_entry_get_text(GTK_ENTRY(entry));
   const gchar  *profile_name = "";
   gboolean      from_global  = FALSE;
-  char         *pf_dir_path, *pf_dir_path2, *pf_filename;
+  char         *pf_dir_path, *pf_dir_path2, *pf_filename, *valid_name;
 
-  if ((strlen(new_name) == 0) || (profile_name_is_valid(new_name) != NULL)) {
+  if (strlen(new_name) == 0) {
+    return;
+  }
+  valid_name = (char*)profile_name_is_valid(new_name);
+  if (valid_name != NULL) {
+    g_free(valid_name);
     return;
   }
 
@@ -994,3 +985,16 @@ profile_dialog_cb(GtkWidget *w _U_)
     global_profile_w = profile_dialog_new();
   }
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

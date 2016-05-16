@@ -60,12 +60,37 @@
 #define ERF_TYPE_DSM_COLOR_ETH      16
 #define ERF_TYPE_COLOR_MC_HDLC_POS  17
 #define ERF_TYPE_AAL2               18
+#define ERF_TYPE_COLOR_HASH_POS     19
+#define ERF_TYPE_COLOR_HASH_ETH     20
 #define ERF_TYPE_INFINIBAND         21
 #define ERF_TYPE_IPV4               22
 #define ERF_TYPE_IPV6               23
 #define ERF_TYPE_RAW_LINK           24
 #define ERF_TYPE_INFINIBAND_LINK    25
+/* XXX - what about 26? */
+#define ERF_TYPE_META               27
 
+/* 28-31 reserved for future public ERF types */
+
+/* Record types reserved for local and internal use */
+#define ERF_TYPE_INTERNAL0          32
+#define ERF_TYPE_INTERNAL1          33
+#define ERF_TYPE_INTERNAL2          34
+#define ERF_TYPE_INTERNAL3          35
+#define ERF_TYPE_INTERNAL4          36
+#define ERF_TYPE_INTERNAL5          37
+#define ERF_TYPE_INTERNAL6          38
+#define ERF_TYPE_INTERNAL7          39
+#define ERF_TYPE_INTERNAL8          40
+#define ERF_TYPE_INTERNAL9          41
+#define ERF_TYPE_INTERNAL10         42
+#define ERF_TYPE_INTERNAL11         43
+#define ERF_TYPE_INTERNAL12         44
+#define ERF_TYPE_INTERNAL13         45
+#define ERF_TYPE_INTERNAL14         46
+#define ERF_TYPE_INTERNAL15         47
+
+/* Pad records */
 #define ERF_TYPE_PAD                48
 
 #define ERF_TYPE_MIN  1   /* sanity checking */
@@ -103,10 +128,23 @@ union erf_subhdr {
 #define RECORDS_FOR_ERF_CHECK 20
 #define FCS_BITS	32
 
-int erf_open(wtap *wth, int *err, gchar **err_info);
+wtap_open_return_val erf_open(wtap *wth, int *err, gchar **err_info);
 int erf_dump_can_write_encap(int encap);
 int erf_dump_open(wtap_dumper *wdh, int *err);
 
 int erf_populate_interfaces(wtap *wth);
 
 #endif /* __W_ERF_H__ */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

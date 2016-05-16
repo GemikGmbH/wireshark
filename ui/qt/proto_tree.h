@@ -22,9 +22,11 @@
 #ifndef PROTO_TREE_H
 #define PROTO_TREE_H
 
-#include "config.h"
+#include <config.h>
 
 #include <epan/proto.h>
+
+#include "protocol_preferences_menu.h"
 
 #include <QTreeWidget>
 #include <QMenu>
@@ -36,24 +38,40 @@ class ProtoTree : public QTreeWidget
     Q_OBJECT
 public:
     explicit ProtoTree(QWidget *parent = 0);
+    QMenu *colorizeMenu() { return &colorize_menu_; }
     void fillProtocolTree(proto_tree *protocol_tree);
-    void emitRelatedFrame(int related_frame);
+    void emitRelatedFrame(int related_frame, ft_framenum_type_t framenum_type = FT_FRAMENUM_NONE);
+    void goToField(int hf_id);
+    void selectField(field_info *fi);
+    void closeContextMenu();
     void clear();
 
 protected:
-     void contextMenuEvent(QContextMenuEvent *event);
+    virtual void contextMenuEvent(QContextMenuEvent *event);
+    virtual void timerEvent(QTimerEvent *event);
+    virtual void keyReleaseEvent(QKeyEvent *event);
 
 private:
-     QMenu ctx_menu_;
-     QAction *decode_as_;
+    QMenu ctx_menu_;
+    QMenu conv_menu_;
+    QMenu colorize_menu_;
+    ProtocolPreferencesMenu proto_prefs_menu_;
+    QAction *decode_as_;
+    QList<QAction *> copy_actions_;
+    QFont mono_font_;
+    int column_resize_timer_;
 
 signals:
-    void protoItemSelected(QString &);
+    void protoItemSelected(const QString &);
     void protoItemSelected(field_info *);
-    void goToFrame(int);
-    void relatedFrame(int);
+    void openPacketInNewWindow(bool);
+    void goToPacket(int);
+    void relatedFrame(int, ft_framenum_type_t);
+    void showProtocolPreferences(const QString module_name);
+    void editProtocolPreference(struct preference *pref, struct pref_module *module);
 
 public slots:
+    void setMonospaceFont(const QFont &mono_font);
     void updateSelectionStatus(QTreeWidgetItem*);
     void expand(const QModelIndex & index);
     void collapse(const QModelIndex & index);
@@ -61,6 +79,9 @@ public slots:
     void expandAll();
     void collapseAll();
     void itemDoubleClick(QTreeWidgetItem *item, int column);
+
+private slots:
+    void updateContentWidth();
 };
 
 #endif // PROTO_TREE_H

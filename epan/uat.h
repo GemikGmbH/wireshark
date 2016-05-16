@@ -30,8 +30,6 @@
 
 #include <stdlib.h>
 
-#include <epan/emem.h>
-
 #include "ws_symbol_export.h"
 
 #ifdef __cplusplus
@@ -54,7 +52,7 @@ extern "C" {
  *
  * UATs are meant for short tables of user data (passwords and such) there's
  * no quick access, you must iterate through them each time to fetch the record
- * you are looking for. Use uat_dup() or uat_se_dup() if necessary.
+ * you are looking for.
  *
  * Only users via gui or editing the file can add/remove records your code cannot.
  */
@@ -86,31 +84,36 @@ typedef void (*uat_post_update_cb_t)(void);
 
 /*
  * Copy CB
+ * copy(dest,orig,len)
+ *
  * used to copy a record
  * optional, memcpy will be used if not given
- * copy(dest,orig,len)
  */
 typedef void* (*uat_copy_cb_t)(void*, const void*, size_t);
 
 /*
- *
  * Free CB
+ * free(record)
  *
  * destroy a record's child data
  * (do not free the container, it will be handled by uat)
  * it is optional, no child data will be freed if no present
- * free(record)
  */
 typedef void (*uat_free_cb_t)(void*);
 
 /*
  * Update CB
+ * update(record,&error)
  *
  * to be called after any record fields had been updated
  * optional, record will be updated always if not given
- * update(record,&error)
+ * it will return TRUE if OK or else
+ * it will return FALSE and set *error to inform the user on what's
+ * wrong with the given input
+ * The error string must be allocated with g_malloc() or
+ * a routine that calls it.
  */
-typedef void (*uat_update_cb_t)(void* , const char** );
+typedef gboolean (*uat_update_cb_t)(void *, char**);
 
 
 /*******
@@ -119,31 +122,34 @@ typedef void (*uat_update_cb_t)(void* , const char** );
  ********/
 
 /*
+ * Check CB
+ * chk(record, ptr, len, chk_data, fld_data, &error)
+ *
  * given an input string (ptr, len) checks if the value is OK for a field in the record.
  * it will return TRUE if OK or else
- * it will return FALSE and may set *error to inform the user on what's
+ * it will return FALSE and set *error to inform the user on what's
  * wrong with the given input
+ * The error string must be allocated with g_malloc() or
+ * a routine that calls it.
  * optional, if not given any input is considered OK and the set cb will be called
- * chk(record, ptr, len, chk_data, fld_data, &error)
  */
-typedef gboolean (*uat_fld_chk_cb_t)(void*, const char*, unsigned, const void*, const void*, const char**);
+typedef gboolean (*uat_fld_chk_cb_t)(void*, const char*, unsigned, const void*, const void*, char**);
 
 /*
  * Set Field CB
+ * set(record, ptr, len, set_data, fld_data)
  *
  * given an input string (ptr, len) sets the value of a field in the record,
- * it will return TRUE if OK or else
- * it will return FALSE and may set *error to inform the user on what's
- * wrong with the given input
  * it is mandatory
- * set(record, ptr, len, set_data, fld_data)
  */
 typedef void (*uat_fld_set_cb_t)(void*, const char*, unsigned, const void*, const void*);
 
 /*
+ * Convert-to-string CB
+ * tostr(record, &out_ptr, &out_len, tostr_data, fld_data)
+ *
  * given a record returns a string representation of the field
  * mandatory
- * tostr(record, &out_ptr, &out_len, tostr_data, fld_data)
  */
 typedef void (*uat_fld_tostr_cb_t)(void*, const char**, unsigned*, const void*, const void*);
 
@@ -278,7 +284,7 @@ uat_t* uat_new(const char* name,
  * @return TRUE on success, FALSE on failure.
  */
 WS_DLL_PUBLIC
-gboolean uat_load(uat_t* uat_in, const char** err);
+gboolean uat_load(uat_t* uat_in, char** err);
 
 /** Create or update a single uat entry using a string.
  *
@@ -299,15 +305,6 @@ gboolean uat_load_str(uat_t* uat_in, char* entry, char** err);
  */
 uat_t *uat_find(gchar *name);
 
-/*
- * uat_dup()
- * uat_se_dup()
- * make a reliable copy of an uat for internal use,
- * so that pointers to records can be kept through calls.
- * return NULL on zero len.
- */
-void* uat_dup(uat_t*, guint* len_p); /* to be freed */
-void* uat_se_dup(uat_t*, guint* len_p);
 WS_DLL_PUBLIC
 uat_t* uat_get_table_by_name(const char* name);
 
@@ -315,21 +312,21 @@ uat_t* uat_get_table_by_name(const char* name);
  * Some common uat_fld_chk_cbs
  */
 WS_DLL_PUBLIC
-gboolean uat_fld_chk_str(void*, const char*, unsigned, const void*, const void*, const char** err);
-gboolean uat_fld_chk_oid(void*, const char*, unsigned, const void*, const void*, const char** err);
+gboolean uat_fld_chk_str(void*, const char*, unsigned, const void*, const void*, char** err);
+gboolean uat_fld_chk_oid(void*, const char*, unsigned, const void*, const void*, char** err);
 WS_DLL_PUBLIC
-gboolean uat_fld_chk_proto(void*, const char*, unsigned, const void*, const void*, const char** err);
+gboolean uat_fld_chk_proto(void*, const char*, unsigned, const void*, const void*, char** err);
 WS_DLL_PUBLIC
-gboolean uat_fld_chk_num_dec(void*, const char*, unsigned, const void*, const void*, const char** err);
+gboolean uat_fld_chk_num_dec(void*, const char*, unsigned, const void*, const void*, char** err);
 WS_DLL_PUBLIC
-gboolean uat_fld_chk_num_hex(void*, const char*, unsigned, const void*, const void*, const char** err);
+gboolean uat_fld_chk_num_hex(void*, const char*, unsigned, const void*, const void*, char** err);
 WS_DLL_PUBLIC
-gboolean uat_fld_chk_enum(void*, const char*, unsigned, const void*, const void*, const char**);
+gboolean uat_fld_chk_enum(void*, const char*, unsigned, const void*, const void*, char**);
 WS_DLL_PUBLIC
-gboolean uat_fld_chk_range(void*, const char*, unsigned, const void*, const void*, const char**);
+gboolean uat_fld_chk_range(void*, const char*, unsigned, const void*, const void*, char**);
 
 #define CHK_STR_IS_DECL(what) \
-gboolean uat_fld_chk_str_ ## what (void*, const char*, unsigned, const void*, const void*, const char**)
+gboolean uat_fld_chk_str_ ## what (void*, const char*, unsigned, const void*, const void*, char**)
 
 typedef void (*uat_cb_t)(void* uat,void* user_data);
 WS_DLL_PUBLIC
@@ -340,6 +337,12 @@ char* uat_undquote(const char* si, guint in_len, guint* len_p);
 char* uat_unbinstring(const char* si, guint in_len, guint* len_p);
 char* uat_unesc(const char* si, guint in_len, guint* len_p);
 char* uat_esc(const char* buf, guint len);
+
+#ifdef __cplusplus
+#define UNUSED_PARAMETER(n)
+#else
+#define UNUSED_PARAMETER(n) n _U_
+#endif
 
 /* Some strings entirely made of ... already declared */
 WS_DLL_PUBLIC
@@ -354,11 +357,11 @@ WS_DLL_PUBLIC
 CHK_STR_IS_DECL(isxdigit);
 
 #define CHK_STR_IS_DEF(what) \
-gboolean uat_fld_chk_str_ ## what (void* u1 _U_, const char* strptr, guint len, const void* u2 _U_, const void* u3 _U_, const char** err) { \
+gboolean uat_fld_chk_str_ ## what (void* UNUSED_PARAMETER(u1), const char* strptr, guint len, const void* UNUSED_PARAMETER(u2), const void* UNUSED_PARAMETER(u3), char** err) { \
 	guint i; for (i=0;i<len;i++) { \
 		char c = strptr[i]; \
 			if (! g_ascii_ ## what(c)) { \
-				*err = ep_strdup_printf("invalid char pos=%d value=%.2x",i,c); return FALSE;  } } \
+				*err = g_strdup_printf("invalid char pos=%d value=%.2x",i,c); return FALSE;  } } \
 		*err = NULL; return TRUE; }
 
 
@@ -373,16 +376,16 @@ gboolean uat_fld_chk_str_ ## what (void* u1 _U_, const char* strptr, guint len, 
  *    a simple c-string contained in (((rec_t*)rec)->(field_name))
  */
 #define UAT_CSTRING_CB_DEF(basename,field_name,rec_t) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* u1 _U_, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
     char* new_buf = g_strndup(buf,len); \
 	g_free((((rec_t*)rec)->field_name)); \
 	(((rec_t*)rec)->field_name) = new_buf; } \
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* u1 _U_, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
 		if (((rec_t*)rec)->field_name ) { \
-			*out_ptr = (((rec_t*)rec)->field_name); \
+			*out_ptr = g_strdup((((rec_t*)rec)->field_name)); \
 			*out_len = (unsigned)strlen((((rec_t*)rec)->field_name)); \
 		} else { \
-			*out_ptr = ""; *out_len = 0; } }
+			*out_ptr = g_strdup(""); *out_len = 0; } }
 
 #define UAT_FLD_CSTRING(basename,field_name,title,desc) \
 	{#field_name, title, PT_TXTMOD_STRING,{uat_fld_chk_str,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{0,0,0},0,desc,FLDFILL}
@@ -399,9 +402,16 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out
  */
 #define UAT_FILENAME_CB_DEF(basename,field_name,rec_t) UAT_CSTRING_CB_DEF(basename,field_name,rec_t)
 
+/* XXX UAT_FLD_FILENAME is currently unused. */
 #define UAT_FLD_FILENAME(basename,field_name,title,desc) \
 	{#field_name, title, PT_TXTMOD_FILENAME,{uat_fld_chk_str,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{0,0,0},0,desc,FLDFILL}
 
+/*
+ * Both the Qt and GTK+ UIs assume that we're opening a preexisting
+ * file. We might want to split the ..._FILENAME defines into
+ * ..._FILE_OPEN and ..._FILE_SAVE if we ever need to specify a
+ * file that we're creating.
+ */
 #define UAT_FLD_FILENAME_OTHER(basename,field_name,title,chk,desc) \
 	{#field_name, title, PT_TXTMOD_FILENAME,{chk,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{0,0,0},0,desc,FLDFILL}
 
@@ -421,16 +431,19 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out
  * LSTRING MACROS
  */
 #define UAT_LSTRING_CB_DEF(basename,field_name,rec_t,ptr_element,len_element) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* u1 _U_, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
 	char* new_val = uat_unesc(buf,len,&(((rec_t*)rec)->len_element)); \
         g_free((((rec_t*)rec)->ptr_element)); \
 	(((rec_t*)rec)->ptr_element) = new_val; }\
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* u1 _U_, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
 	if (((rec_t*)rec)->ptr_element ) { \
 		*out_ptr = uat_esc(((rec_t*)rec)->ptr_element, (((rec_t*)rec)->len_element)); \
 		*out_len = (unsigned)strlen(*out_ptr); \
 	} else { \
-		*out_ptr = ""; *out_len = 0; } }
+		*out_ptr = g_strdup(""); \
+		*out_len = 0; \
+	} \
+}
 
 #define UAT_FLD_LSTRING(basename,field_name,title, desc) \
 {#field_name, title, PT_TXTMOD_STRING,{0,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{0,0,0},0,desc,FLDFILL}
@@ -443,13 +456,13 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out
  *  XXX: UNTESTED and probably BROKEN
  */
 #define UAT_BUFFER_CB_DEF(basename,field_name,rec_t,ptr_element,len_element) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* u1 _U_, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
         char* new_buf = len ? (char *)g_memdup(buf,len) : NULL; \
 	g_free((((rec_t*)rec)->ptr_element)); \
 	(((rec_t*)rec)->ptr_element) = new_buf; \
 	(((rec_t*)rec)->len_element) = len; } \
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* u1 _U_, const void* u2 _U_) {\
-	*out_ptr = ((rec_t*)rec)->ptr_element ? (const char*)ep_memdup(((rec_t*)rec)->ptr_element,((rec_t*)rec)->len_element) : ""; \
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
+	*out_ptr = ((rec_t*)rec)->ptr_element ? (const char*)g_memdup(((rec_t*)rec)->ptr_element,((rec_t*)rec)->len_element) : g_strdup(""); \
 	*out_len = ((rec_t*)rec)->len_element; }
 
 #define UAT_FLD_BUFFER(basename,field_name,title,desc) \
@@ -461,10 +474,12 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out
  *   a decimal number contained in
  */
 #define UAT_DEC_CB_DEF(basename,field_name,rec_t) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* u1 _U_, const void* u2 _U_) {\
-	((rec_t*)rec)->field_name = (guint)strtol(ep_strndup(buf,len),NULL,10); } \
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* u1 _U_, const void* u2 _U_) {\
-	*out_ptr = ep_strdup_printf("%d",((rec_t*)rec)->field_name); \
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
+	char* tmp_str = g_strndup(buf,len); \
+	((rec_t*)rec)->field_name = (guint)strtol(tmp_str,NULL,10); \
+	g_free(tmp_str); } \
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
+	*out_ptr = g_strdup_printf("%d",((rec_t*)rec)->field_name); \
 	*out_len = (unsigned)strlen(*out_ptr); }
 
 #define UAT_FLD_DEC(basename,field_name,title,desc) \
@@ -479,10 +494,12 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out
  *   an hexadecimal number contained in
  */
 #define UAT_HEX_CB_DEF(basename,field_name,rec_t) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* u1 _U_, const void* u2 _U_) {\
-	((rec_t*)rec)->field_name = (guint)strtol(ep_strndup(buf,len),NULL,16); } \
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* u1 _U_, const void* u2 _U_) {\
-	*out_ptr = ep_strdup_printf("%x",((rec_t*)rec)->field_name); \
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
+	char* tmp_str = g_strndup(buf,len); \
+	((rec_t*)rec)->field_name = (guint)strtol(tmp_str,NULL,16); \
+	g_free(tmp_str); } \
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
+	*out_ptr = g_strdup_printf("%x",((rec_t*)rec)->field_name); \
 	*out_len = (unsigned)strlen(*out_ptr); }
 
 #define UAT_FLD_HEX(basename,field_name,title,desc) \
@@ -497,36 +514,52 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out
  *        value
  */
 #define UAT_VS_DEF(basename,field_name,rec_t,default_t,default_val,default_str) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* vs, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* vs, const void* UNUSED_PARAMETER(u2)) {\
 	guint i; \
-	char* str = ep_strndup(buf,len); \
-	const char* cstr; ((rec_t*)rec)->field_name = default_val; \
+	char* str = g_strndup(buf,len); \
+	const char* cstr; \
+	((rec_t*)rec)->field_name = default_val; \
 	for(i=0; ( cstr = ((const value_string*)vs)[i].strptr ) ;i++) { \
 		if (g_str_equal(cstr,str)) { \
-			((rec_t*)rec)->field_name = (default_t)((const value_string*)vs)[i].value; return; } } } \
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* vs, const void* u2 _U_) {\
+			((rec_t*)rec)->field_name = (default_t)((const value_string*)vs)[i].value; \
+			g_free(str); \
+			return; \
+		} \
+	} \
+	g_free(str); } \
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* vs, const void* UNUSED_PARAMETER(u2)) {\
 	guint i; \
-	*out_ptr = ep_strdup(default_str); \
+	*out_ptr = g_strdup(default_str); \
 	*out_len = (unsigned)strlen(default_str);\
 	for(i=0;((const value_string*)vs)[i].strptr;i++) { \
 		if ( ((const value_string*)vs)[i].value == ((rec_t*)rec)->field_name ) { \
-			*out_ptr = ep_strdup(((const value_string*)vs)[i].strptr); \
-			*out_len = (unsigned)strlen(*out_ptr); return; } } }
+			g_free((char*)*out_ptr); \
+			*out_ptr = g_strdup(((const value_string*)vs)[i].strptr); \
+			*out_len = (unsigned)strlen(*out_ptr); \
+			return; \
+		} \
+    } } \
 
 #define UAT_VS_CSTRING_DEF(basename,field_name,rec_t,default_val,default_str) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* vs, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* vs, const void* UNUSED_PARAMETER(u2)) {\
 	guint i; \
-	char* str = ep_strndup(buf,len); \
-	const char* cstr; ((rec_t*)rec)->field_name = default_val; \
+	char* str = g_strndup(buf,len); \
+	const char* cstr; \
+	((rec_t*)rec)->field_name = default_val; \
 	for(i=0; ( cstr = ((const value_string*)vs)[i].strptr ) ;i++) { \
 		if (g_str_equal(cstr,str)) { \
-		  ((rec_t*)rec)->field_name = g_strdup(((const value_string*)vs)[i].strptr); return; } } } \
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* vs _U_, const void* u2 _U_) {\
+		  ((rec_t*)rec)->field_name = g_strdup(((const value_string*)vs)[i].strptr); \
+		  g_free(str); \
+		  return; \
+		} \
+	} \
+	g_free(str);} \
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(vs), const void* UNUSED_PARAMETER(u2)) {\
 		if (((rec_t*)rec)->field_name ) { \
-			*out_ptr = (((rec_t*)rec)->field_name); \
+			*out_ptr = g_strdup((((rec_t*)rec)->field_name)); \
 			*out_len = (unsigned)strlen((((rec_t*)rec)->field_name)); \
 		} else { \
-			*out_ptr = ""; *out_len = 0; } }
+			*out_ptr = g_strdup(""); *out_len = 0; } }
 
 #define UAT_FLD_VS(basename,field_name,title,enum,desc) \
 	{#field_name, title, PT_TXTMOD_ENUM,{uat_fld_chk_enum,basename ## _ ## field_name ## _set_cb,basename ## _ ## field_name ## _tostr_cb},{&(enum),&(enum),&(enum)},&(enum),desc,FLDFILL}
@@ -537,7 +570,7 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out
  */
 
 #define UAT_PROTO_DEF(basename, field_name, dissector_field, name_field, rec_t) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* u1 _U_, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
 	if (len) { \
 		gchar *tmp = g_strndup(buf,len); \
 		((rec_t*)rec)->name_field = g_ascii_strdown(tmp, -1); \
@@ -548,12 +581,12 @@ static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, g
 		((rec_t*)rec)->dissector_field = find_dissector("data"); \
 		((rec_t*)rec)->name_field = NULL; \
 		} } \
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* u1 _U_, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
 	if ( ((rec_t*)rec)->name_field ) { \
-		*out_ptr = (((rec_t*)rec)->name_field); \
+		*out_ptr = g_strdup((((rec_t*)rec)->name_field)); \
 		*out_len = (unsigned)strlen(*out_ptr); \
 	} else { \
-		*out_ptr = ""; *out_len = 0; } }
+		*out_ptr = g_strdup(""); *out_len = 0; } }
 
 
 #define UAT_FLD_PROTO(basename,field_name,title,desc) \
@@ -564,16 +597,17 @@ static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out
  */
 
 #define UAT_RANGE_CB_DEF(basename,field_name,rec_t) \
-static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* u1 _U_, const void* u2) {\
-	char* rng = ep_strndup(buf,len);\
+static void basename ## _ ## field_name ## _set_cb(void* rec, const char* buf, guint len, const void* UNUSED_PARAMETER(u1), const void* u2) {\
+	char* rng = g_strndup(buf,len);\
 		range_convert_str(&(((rec_t*)rec)->field_name), rng,GPOINTER_TO_UINT(u2)); \
+		g_free(rng); \
 	} \
-static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* u1 _U_, const void* u2 _U_) {\
+static void basename ## _ ## field_name ## _tostr_cb(void* rec, const char** out_ptr, unsigned* out_len, const void* UNUSED_PARAMETER(u1), const void* UNUSED_PARAMETER(u2)) {\
 	if ( ((rec_t*)rec)->field_name ) { \
-		*out_ptr = range_convert_range(((rec_t*)rec)->field_name); \
+		*out_ptr = range_convert_range(NULL, ((rec_t*)rec)->field_name); \
 		*out_len = (unsigned)strlen(*out_ptr); \
 	} else { \
-		*out_ptr = ""; *out_len = 0; } }
+		*out_ptr = g_strdup(""); *out_len = 0; } }
 
 
 #define UAT_FLD_RANGE(basename,field_name,title,max,desc) \

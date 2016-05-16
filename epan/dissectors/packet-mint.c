@@ -38,20 +38,16 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/etypes.h>
-#include <epan/wmem/wmem.h>
-#include <epan/expert.h>
 #include <epan/show_exception.h>
 
 void proto_register_mint(void);
 void proto_reg_handoff_mint(void);
 
 #define PROTO_SHORT_NAME "MiNT"
-#define PROTO_LONG_NAME "Media indepentend Network Transport"
+#define PROTO_LONG_NAME "Media independent Network Transport"
 
 /* 0x8783 ETHERTYPE_MINT */
 /* 0x6000 */
@@ -288,10 +284,10 @@ dissect_eth_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *mint_tree,
 	tvbuff_t *eth_tvb;
 
 #ifdef MINT_DEVELOPMENT
-        col_set_writable(pinfo->cinfo, FALSE);
+	col_set_writable(pinfo->cinfo, FALSE);
 #endif
 
-	eth_tvb = tvb_new_subset(tvb, offset, length, length);
+	eth_tvb = tvb_new_subset_length(tvb, offset, length);
 	/* Continue after Ethernet dissection errors */
 	TRY {
 		call_dissector(eth_handle, eth_tvb, pinfo, mint_tree);
@@ -301,7 +297,7 @@ dissect_eth_frame(tvbuff_t *tvb, packet_info *pinfo, proto_tree *mint_tree,
 	offset += length;
 
 #ifdef MINT_DEVELOPMENT
-        col_set_writable(pinfo->cinfo, TRUE);
+	col_set_writable(pinfo->cinfo, TRUE);
 #endif
 	return offset;
 }
@@ -321,9 +317,6 @@ dissect_mint_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 	guint32 message_type;
 	guint8 element_length;
 	static header_field_info *display_hfi_tlv_vals;
-
-	if (!tree)
-		return packet_length;
 
 	packet_type = tvb_get_ntohs(tvb, offset + 12);
 
@@ -357,7 +350,7 @@ dissect_mint_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 	offset += 2;
 	/* FIXME: This is probably not the right way to determine the packet type.
 	 *	  It's more likely something in mint_header_unknown1 but I haven't
-         *        found out what. */
+	 *        found out what. */
 	switch(packet_type) {
 	case MINT_TYPE_DATA_UC:
 		ti = proto_tree_add_item(mint_tree, &hfi_mint_data, tvb,
@@ -391,7 +384,7 @@ dissect_mint_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 			offset += dissect_eth_frame(tvb, pinfo, tree,
 				offset, packet_length - offset);
 		break;
-        case MINT_TYPE_CTRL_0x0c:
+	case MINT_TYPE_CTRL_0x0c:
 		ti = proto_tree_add_item(mint_tree, &hfi_mint_control, tvb,
 			offset, packet_length - 16, ENC_NA);
 		mint_ctrl_tree = proto_item_add_subtree(ti, ett_mint_ctrl);
@@ -479,7 +472,7 @@ dissect_mint_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 			}
 		}
 		break;
-        case MINT_TYPE_CTRL_0x1e:
+	case MINT_TYPE_CTRL_0x1e:
 		ti = proto_tree_add_item(mint_tree, &hfi_mint_control, tvb,
 			offset, packet_length - 16, ENC_NA);
 		mint_ctrl_tree = proto_item_add_subtree(ti, ett_mint_ctrl);
@@ -491,7 +484,7 @@ dissect_mint_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 			offset, bytes_remaining, ENC_NA);
 		offset += bytes_remaining;
 		break;
-        case MINT_TYPE_ETH_0x22:
+	case MINT_TYPE_ETH_0x22:
 		ti = proto_tree_add_item(mint_tree, &hfi_mint_control, tvb,
 			offset, packet_length - 16, ENC_NA);
 		mint_ctrl_tree = proto_item_add_subtree(ti, ett_mint_ctrl);
@@ -549,25 +542,19 @@ dissect_mint_common(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
 static int
 dissect_mint_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	guint32 offset = 0;
-	guint32 packet_length = tvb_length_remaining(tvb, 0);
+	guint32 packet_length = tvb_captured_length(tvb);
 
-	offset += dissect_mint_common(tvb, pinfo, tree, 0, packet_length,
+	return dissect_mint_common(tvb, pinfo, tree, 0, packet_length,
 		PORT_MINT_CONTROL_TUNNEL);
-
-	return offset;
 }
 
 static int
 dissect_mint_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-	guint32 offset = 0;
-	guint32 packet_length = tvb_length_remaining(tvb, 0);
+	guint32 packet_length = tvb_captured_length(tvb);
 
-	offset += dissect_mint_common(tvb, pinfo, tree, 0, packet_length,
+	return dissect_mint_common(tvb, pinfo, tree, 0, packet_length,
 		PORT_MINT_DATA_TUNNEL);
-
-	return offset;
 }
 
 static int
@@ -731,15 +718,18 @@ proto_register_mint(void)
 		&ett_mint_data,
 	};
 
-	int proto_mint;
+	int proto_mint, proto_mint_data;
 
 	proto_mint = proto_register_protocol(PROTO_LONG_NAME, PROTO_SHORT_NAME, "mint");
+	/* Created to remove Decode As confusion */
+	proto_mint_data = proto_register_protocol("Media independent Network Transport Data", "MiNT (Data)", "mint_data");
+
 	hfi_mint = proto_registrar_get_nth(proto_mint);
 	proto_register_fields(proto_mint, hfi, array_length(hfi));
 	proto_register_subtree_array(ett, array_length(ett));
 
 	mint_control_handle = new_create_dissector_handle(dissect_mint_control_static, proto_mint);
-	mint_data_handle = new_create_dissector_handle(dissect_mint_data_static, proto_mint);
+	mint_data_handle = new_create_dissector_handle(dissect_mint_data_static, proto_mint_data);
 	mint_eth_handle = new_create_dissector_handle(dissect_mint_ethshim_static, proto_mint);
 }
 
@@ -753,3 +743,15 @@ proto_reg_handoff_mint(void)
 	eth_handle = find_dissector("eth_withoutfcs");
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

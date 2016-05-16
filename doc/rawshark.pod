@@ -172,6 +172,8 @@ B<t> to enable transport-layer port number resolution
 
 B<C> to enable concurrent (asynchronous) DNS lookups
 
+B<d> to enable resolution from captured DNS packets
+
 =item -o  E<lt>preferenceE<gt>:E<lt>valueE<gt>
 
 Set a preference value, overriding the default value and any value read
@@ -337,6 +339,26 @@ Capture filter name resolution is handled by libpcap on UNIX-compatible
 systems and WinPcap on Windows.  As such the Wireshark personal F<hosts> file
 will not be consulted for capture filter name resolution.
 
+=item Name Resolution (subnets)
+
+If the an IPv4 address cannot be translated via name resolution (no exact
+match is found) then a partial match is attempted via the F<subnets> file.
+
+Each line of this file consists of an IPv4 address, a subnet mask length
+separated only by a / and a name separated by whitespace. While the address
+must be a full IPv4 address, any values beyond the mask length are subsequently
+ignored.
+
+An example is:
+
+# Comments must be prepended by the # sign!
+192.168.0.0/24 ws_test_network
+
+A partially matched name will be printed as "subnet-name.remaining-address".
+For example, "192.168.0.1" under the subnet above would be printed as
+"ws_test_network.1"; if the mask length above had been 16 rather than 24, the
+printed address would be ``ws_test_network.0.1".
+
 =item Name Resolution (ethers)
 
 The F<ethers> files are consulted to correlate 6-byte hardware addresses to
@@ -387,6 +409,20 @@ multiple of 8.
 The F<manuf> file is looked for in the same directory as the global
 preferences file.
 
+=item Name Resolution (services)
+
+The F<services> file is used to translate port numbers into names.
+
+The file has the standard F<services> file syntax; each line contains one
+(service) name and one transport identifier separated by white space.  The
+transport identifier includes one port number and one transport protocol name
+(typically tcp, udp, or sctp) separated by a /.
+
+An example is:
+
+mydns       5045/udp     # My own Domain Name Server
+mydns       5045/tcp     # My own Domain Name Server
+
 =item Name Resolution (ipxnets)
 
 The F<ipxnets> files are used to correlate 4-byte IPX network numbers to
@@ -423,39 +459,6 @@ On Windows, Wireshark normally stores all application data in %APPDATA% or
 %USERPROFILE%.  You can override the default location by exporting this
 environment variable to specify an alternate location.
 
-=item WIRESHARK_DEBUG_EP_NO_CHUNKS
-
-Normally per-packet memory is allocated in large "chunks."  This behavior
-doesn't work well with debugging tools such as Valgrind or ElectricFence.
-Export this environment variable to force individual allocations.
-Note: disabling chunks also disables canaries (see below).
-
-=item WIRESHARK_DEBUG_SE_NO_CHUNKS
-
-Normally per-file memory is allocated in large "chunks."  This behavior
-doesn't work well with debugging tools such as Valgrind or ElectricFence.
-Export this environment variable to force individual allocations.
-Note: disabling chunks also disables canaries (see below).
-
-=item WIRESHARK_DEBUG_EP_NO_CANARY
-
-Normally per-packet memory allocations are separated by "canaries" which
-allow detection of memory overruns.  This comes at the expense of some extra
-memory usage.  Exporting this environment variable disables these canaries.
-
-=item WIRESHARK_DEBUG_SE_USE_CANARY
-
-Exporting this environment variable causes per-file memory allocations to be
-protected with "canaries" which allow for detection of memory overruns.
-This comes at the expense of significant extra memory usage.
-
-=item WIRESHARK_DEBUG_SCRUB_MEMORY
-
-If this environment variable is set, the contents of per-packet and
-per-file memory is initialized to 0xBADDCAFE when the memory is allocated
-and is reset to 0xDEADBEEF when the memory is freed.  This functionality is
-useful mainly to developers looking for bugs in the way memory is handled.
-
 =item WIRESHARK_DEBUG_WMEM_OVERRIDE
 
 Setting this environment variable forces the wmem framework to use the
@@ -476,12 +479,6 @@ with root (or setuid) permissions on *NIX.
 This environment variable causes the various data files to be loaded from
 a directory other than the standard locations.  It has no effect when the
 program in question is running with root (or setuid) permissions on *NIX.
-
-=item WIRESHARK_PYTHON_DIR
-
-This environment variable points to an alternate location for Python.
-It has no effect when the program in question is running with root (or setuid)
-permissions on *NIX.
 
 =item ERF_RECORDS_TO_CHECK
 
@@ -519,27 +516,6 @@ inspection of the process, and, if you are not running it in a debugger,
 it will, on some OSes, assuming your environment is configured correctly,
 generate a core dump file.  This can be useful to developers attempting to
 troubleshoot a problem with a protocol dissector.
-
-=item WIRESHARK_EP_VERIFY_POINTERS
-
-This environment variable, if set, causes certain uses of pointers to be
-audited to ensure they do not point to memory that is deallocated after each
-packet has been fully dissected.  This can be useful to developers writing or
-auditing code.
-
-=item WIRESHARK_SE_VERIFY_POINTERS
-
-This environment variable, if set, causes certain uses of pointers to be
-audited to ensure they do not point to memory that is deallocated after when
-a capture file is closed.  This can be useful to developers writing or
-auditing code.
-
-=item WIRESHARK_ABORT_ON_OUT_OF_MEMORY
-
-This environment variable, if present, causes abort(3) to be called if certain
-out-of-memory conditions (which normally result in an exception and an
-explanatory error message) are experienced.  This can be useful to developers
-debugging out-of-memory conditions.
 
 =back
 

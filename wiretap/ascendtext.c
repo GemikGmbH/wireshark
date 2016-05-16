@@ -20,11 +20,9 @@
 
 #include "config.h"
 #include "wtap-int.h"
-#include <wsutil/buffer.h>
 #include "ascendtext.h"
 #include "ascend-int.h"
 #include "file_wrappers.h"
-#include <wsutil/file_util.h>
 
 #include <errno.h>
 
@@ -32,7 +30,6 @@
 #include <unistd.h>
 #endif
 
-#include <ctype.h>
 #include <string.h>
 
 /* Last updated: Feb 03 2005: Josh Bailey (joshbailey@lucent.com).
@@ -40,10 +37,10 @@
    This module reads the text hex dump output of various TAOS
    (Lucent/Ascend Max, Max TNT, APX, etc) debug commands, including:
 
-   * pridisplay		traces primary rate ISDN
-   * ether-display	traces Ethernet packets (dangerous! CPU intensive)
+   * pridisplay         traces primary rate ISDN
+   * ether-display      traces Ethernet packets (dangerous! CPU intensive)
    * wanopening, wandisplay, wannext, wandsess
-			traces PPP or other WAN connections
+                        traces PPP or other WAN connections
 
    Please see ascend.y for examples.
 
@@ -56,29 +53,29 @@ typedef struct _ascend_magic_string {
   const gchar   *strptr;
 } ascend_magic_string;
 
-#define ASCEND_MAGIC_STRINGS	11
-#define ASCEND_DATE		"Date:"
+#define ASCEND_MAGIC_STRINGS    11
+#define ASCEND_DATE             "Date:"
 
 /* these magic strings signify the headers of a supported debug commands */
 static const ascend_magic_string ascend_magic[] = {
-  { ASCEND_PFX_ISDN_X,	"PRI-XMIT-" },
-  { ASCEND_PFX_ISDN_R,	"PRI-RCV-" },
-  { ASCEND_PFX_WDS_X,	"XMIT-" },
-  { ASCEND_PFX_WDS_R,	"RECV-" },
-  { ASCEND_PFX_WDS_X,	"XMIT:" },
-  { ASCEND_PFX_WDS_R,	"RECV:" },
+  { ASCEND_PFX_ISDN_X,  "PRI-XMIT-" },
+  { ASCEND_PFX_ISDN_R,  "PRI-RCV-" },
+  { ASCEND_PFX_WDS_X,   "XMIT-" },
+  { ASCEND_PFX_WDS_R,   "RECV-" },
+  { ASCEND_PFX_WDS_X,   "XMIT:" },
+  { ASCEND_PFX_WDS_R,   "RECV:" },
   { ASCEND_PFX_WDS_X,   "PPP-OUT" },
   { ASCEND_PFX_WDS_R,   "PPP-IN" },
-  { ASCEND_PFX_WDD,	ASCEND_DATE },
-  { ASCEND_PFX_WDD,	"WD_DIALOUT_DISP:" },
-  { ASCEND_PFX_ETHER,	"ETHER" },
+  { ASCEND_PFX_WDD,     ASCEND_DATE },
+  { ASCEND_PFX_WDD,     "WD_DIALOUT_DISP:" },
+  { ASCEND_PFX_ETHER,   "ETHER" },
 };
 
 static gboolean ascend_read(wtap *wth, int *err, gchar **err_info,
-	gint64 *data_offset);
+        gint64 *data_offset);
 static gboolean ascend_seek_read(wtap *wth, gint64 seek_off,
-	struct wtap_pkthdr *phdr, Buffer *buf,
-	int *err, gchar **err_info);
+        struct wtap_pkthdr *phdr, Buffer *buf,
+        int *err, gchar **err_info);
 
 /* Seeks to the beginning of the next packet, and returns the
    byte offset at which the header for that packet begins.
@@ -117,8 +114,9 @@ static gint64 ascend_seek(wtap *wth, int *err, gchar **err_info)
 
           /* Date: header is a special case. Remember the offset,
              but keep looking for other headers. */
-	  if (strcmp(strptr, ASCEND_DATE) == 0) {
+          if (strcmp(strptr, ASCEND_DATE) == 0) {
             date_off = cur_off - len;
+            string_level[string_i] = 0;
           } else {
             if (date_off == -1) {
               /* Back up over the header we just read; that's where a read
@@ -156,7 +154,7 @@ found:
   return packet_off;
 }
 
-int ascend_open(wtap *wth, int *err, gchar **err_info)
+wtap_open_return_val ascend_open(wtap *wth, int *err, gchar **err_info)
 {
   gint64 offset;
   ws_statb64 statbuf;
@@ -170,14 +168,14 @@ int ascend_open(wtap *wth, int *err, gchar **err_info)
   offset = ascend_seek(wth, err, err_info);
   if (offset == -1) {
     if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-      return -1;
-    return 0;
+      return WTAP_OPEN_ERROR;
+    return WTAP_OPEN_NOT_MINE;
   }
 
   /* Do a trial parse of the first packet just found to see if we might really have an Ascend file */
   init_parse_ascend();
   if (!check_ascend(wth->fh, &wth->phdr)) {
-    return 0;
+    return WTAP_OPEN_NOT_MINE;
   }
 
   wth->file_type_subtype = WTAP_FILE_TYPE_SUBTYPE_ASCEND;
@@ -213,20 +211,20 @@ int ascend_open(wtap *wth, int *err, gchar **err_info)
      offset that we can apply to each packet.
    */
   if (wtap_fstat(wth, &statbuf, err) == -1) {
-    return -1;
+    return WTAP_OPEN_ERROR;
   }
   ascend->inittime = statbuf.st_ctime;
   ascend->adjusted = FALSE;
-  wth->tsprecision = WTAP_FILE_TSPREC_USEC;
+  wth->file_tsprec = WTAP_TSPREC_USEC;
 
   init_parse_ascend();
 
-  return 1;
+  return WTAP_OPEN_MINE;
 }
 
 /* Read the next packet; called from wtap_read(). */
 static gboolean ascend_read(wtap *wth, int *err, gchar **err_info,
-	gint64 *data_offset)
+        gint64 *data_offset)
 {
   ascend_t *ascend = (ascend_t *)wth->priv;
   gint64 offset;
@@ -254,8 +252,8 @@ static gboolean ascend_read(wtap *wth, int *err, gchar **err_info,
 }
 
 static gboolean ascend_seek_read(wtap *wth, gint64 seek_off,
-	struct wtap_pkthdr *phdr, Buffer *buf,
-	int *err, gchar **err_info)
+        struct wtap_pkthdr *phdr, Buffer *buf,
+        int *err, gchar **err_info)
 {
   ascend_t *ascend = (ascend_t *)wth->priv;
 
@@ -270,3 +268,16 @@ static gboolean ascend_seek_read(wtap *wth, gint64 seek_off,
 
   return TRUE;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

@@ -23,12 +23,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-
-#include <epan/wmem/wmem.h>
 #include <epan/packet.h>
 #include <epan/conversation.h>
-#include <epan/etypes.h>
 #include "packet-scsi.h"
 #include "packet-fc.h"
 #include "packet-fcp.h"
@@ -54,6 +50,7 @@ static int hf_fcp_wrdata = -1;
 static int hf_fcp_dl = -1;
 static int hf_fcp_bidir_dl = -1;
 static int hf_fcp_data_ro = -1;
+static int hf_fcp_r_ctl = -1;
 static int hf_fcp_burstlen = -1;
 static int hf_fcp_rspflags = -1;
 static int hf_fcp_retry_delay_timer = -1;
@@ -81,10 +78,9 @@ static int hf_fcp_rsp_flags_res_vld = -1;
 static int hf_fcp_request_in = -1;
 static int hf_fcp_response_in = -1;
 static int hf_fcp_time = -1;
-/* static int hf_fcp_srr_op = -1; */
+static int hf_fcp_els_op = -1;
 static int hf_fcp_srr_ox_id = -1;
 static int hf_fcp_srr_rx_id = -1;
-/* static int hf_fcp_srr_r_ctl = -1; */
 
 /* Initialize the subtree pointers */
 static gint ett_fcp = -1;
@@ -180,72 +176,53 @@ static const true_false_string fcp_mgmt_flags_abort_task_set_tfs = {
 static void
 dissect_task_mgmt_flags(packet_info *pinfo, proto_tree *parent_tree, tvbuff_t *tvb, int offset)
 {
-    proto_item *item = NULL;
-    proto_tree *tree = NULL;
+    proto_item *item;
+    static const int * mgmt_flags[] = {
+        &hf_fcp_mgmt_flags_obsolete,
+        &hf_fcp_mgmt_flags_clear_aca,
+        &hf_fcp_mgmt_flags_target_reset,
+        &hf_fcp_mgmt_flags_lu_reset,
+        &hf_fcp_mgmt_flags_rsvd,
+        &hf_fcp_mgmt_flags_clear_task_set,
+        &hf_fcp_mgmt_flags_abort_task_set,
+        NULL
+    };
 
     guint8 flags;
 
-    if (parent_tree) {
-        item = proto_tree_add_item(parent_tree, hf_fcp_taskmgmt, tvb, offset, 1, ENC_LITTLE_ENDIAN);
-        tree = proto_item_add_subtree(item, ett_fcp_taskmgmt);
-    }
-
     flags = tvb_get_guint8(tvb, offset);
+    item = proto_tree_add_bitmask_with_flags(parent_tree, tvb, offset, hf_fcp_taskmgmt,
+                                   ett_fcp_taskmgmt, mgmt_flags, ENC_NA, BMT_NO_FALSE|BMT_NO_TFS);
 
     if (!flags)
         proto_item_append_text(item, " (No values set)");
 
-    proto_tree_add_boolean(tree, hf_fcp_mgmt_flags_obsolete, tvb, offset, 1, flags);
     if (flags & 0x80) {
-        proto_item_append_text(item, "  OBSOLETE");
         col_prepend_fence_fstr(pinfo->cinfo, COL_INFO, "[FCP OBSOLETE] ");
     }
-    flags &= (~( 0x80 ));
 
-    proto_tree_add_boolean(tree, hf_fcp_mgmt_flags_clear_aca, tvb, offset, 1, flags);
     if (flags & 0x40) {
-        proto_item_append_text(item, "  CLEAR ACA");
         col_prepend_fence_fstr(pinfo->cinfo, COL_INFO, "[FCP CLEAR_ACA] ");
     }
-    flags &= (~( 0x40 ));
 
-    proto_tree_add_boolean(tree, hf_fcp_mgmt_flags_target_reset, tvb, offset, 1, flags);
     if (flags & 0x20) {
-        proto_item_append_text(item, "  TARGET RESET");
         col_prepend_fence_fstr(pinfo->cinfo, COL_INFO, "[FCP TARGET_RESET] ");
     }
-    flags &= (~( 0x20 ));
 
-    proto_tree_add_boolean(tree, hf_fcp_mgmt_flags_lu_reset, tvb, offset, 1, flags);
     if (flags & 0x10) {
-        proto_item_append_text(item, "  LU RESET");
         col_prepend_fence_fstr(pinfo->cinfo, COL_INFO, "[FCP LU_RESET] ");
     }
-    flags &= (~( 0x10 ));
 
-    proto_tree_add_boolean(tree, hf_fcp_mgmt_flags_rsvd, tvb, offset, 1, flags);
     if (flags & 0x08) {
-        proto_item_append_text(item, "  RSVD");
         col_prepend_fence_fstr(pinfo->cinfo, COL_INFO, "[FCP RSVD] ");
     }
-    flags &= (~( 0x08 ));
 
-    proto_tree_add_boolean(tree, hf_fcp_mgmt_flags_clear_task_set, tvb, offset, 1, flags);
     if (flags & 0x04) {
-        proto_item_append_text(item, "  CLEAR TASK SET");
         col_prepend_fence_fstr(pinfo->cinfo, COL_INFO, "[FCP CLEAR_TASK_SET] ");
     }
-    flags &= (~( 0x04 ));
 
-    proto_tree_add_boolean(tree, hf_fcp_mgmt_flags_abort_task_set, tvb, offset, 1, flags);
     if (flags & 0x02) {
-        proto_item_append_text(item, "  ABORT TASK SET");
         col_prepend_fence_fstr(pinfo->cinfo, COL_INFO, "[FCP ABORT_TASK_SET] ");
-    }
-    flags &= (~( 0x02 ));
-
-    if (flags) {
-        proto_item_append_text(item, " Unknown bitmap value 0x%x", flags);
     }
 }
 
@@ -285,100 +262,41 @@ static const true_false_string fcp_rsp_flags_res_vld_tfs = {
 static void
 dissect_rsp_flags(proto_tree *parent_tree, tvbuff_t *tvb, int offset)
 {
-    proto_item *item               = NULL;
-    proto_tree *tree               = NULL;
-    gboolean    bidi_resid_present = FALSE;
+    proto_item *item;
     guint8      flags;
+    static const int * resid_present_flags[] = {
+        &hf_fcp_rsp_flags_bidi,
+        &hf_fcp_rsp_flags_bidi_rru,
+        &hf_fcp_rsp_flags_bidi_rro,
+        &hf_fcp_rsp_flags_conf_req,
+        &hf_fcp_rsp_flags_resid_under,
+        &hf_fcp_rsp_flags_resid_over,
+        &hf_fcp_rsp_flags_sns_vld,
+        &hf_fcp_rsp_flags_res_vld,
+        NULL
+    };
 
-    if (parent_tree) {
-        item = proto_tree_add_item(parent_tree, hf_fcp_rspflags, tvb, offset, 1, ENC_LITTLE_ENDIAN);
-        tree = proto_item_add_subtree(item, ett_fcp_rsp_flags);
-    }
+    static const int * no_resid_flags[] = {
+        &hf_fcp_rsp_flags_bidi,
+        &hf_fcp_rsp_flags_conf_req,
+        &hf_fcp_rsp_flags_resid_under,
+        &hf_fcp_rsp_flags_resid_over,
+        &hf_fcp_rsp_flags_sns_vld,
+        &hf_fcp_rsp_flags_res_vld,
+        NULL
+    };
 
     flags = tvb_get_guint8(tvb, offset);
+    if (flags & 0x80) {
+        item = proto_tree_add_bitmask_with_flags(parent_tree, tvb, offset, hf_fcp_rspflags,
+                                   ett_fcp_rsp_flags, resid_present_flags, ENC_NA, BMT_NO_FALSE|BMT_NO_TFS);
+    } else {
+        item = proto_tree_add_bitmask_with_flags(parent_tree, tvb, offset, hf_fcp_rspflags,
+                                   ett_fcp_rsp_flags, no_resid_flags, ENC_NA, BMT_NO_FALSE|BMT_NO_TFS);
+    }
 
     if (!flags)
         proto_item_append_text(item, " (No values set)");
-
-    /* BIDI RSP */
-    proto_tree_add_boolean(tree, hf_fcp_rsp_flags_bidi, tvb, offset, 1, flags);
-    if (flags & 0x80) {
-        bidi_resid_present = TRUE;
-        proto_item_append_text(item, " BIDI_RSP");
-        if (flags & (~( 0x80 )))
-            proto_item_append_text(item, ",");
-    }
-    flags &= (~( 0x80 ));
-
-    /* these two bits are only defined if the bidi bit is set */
-    if (bidi_resid_present) {
-        /* BIDI READ RESID UNDER */
-        proto_tree_add_boolean(tree, hf_fcp_rsp_flags_bidi_rru, tvb, offset, 1, flags);
-        if (flags & 0x40) {
-            proto_item_append_text(item, " BIDI_RRU");
-            if (flags & (~( 0x40 )))
-                proto_item_append_text(item, ",");
-        }
-        flags &= (~( 0x40 ));
-
-        /* BIDI READ RESID OVER */
-        proto_tree_add_boolean(tree, hf_fcp_rsp_flags_bidi_rro, tvb, offset, 1, flags);
-        if (flags & 0x20) {
-            proto_item_append_text(item, " BIDI_RRO");
-            if (flags & (~( 0x20 )))
-                proto_item_append_text(item, ",");
-        }
-        flags &= (~( 0x20 ));
-    }
-
-    /* Conf Req */
-    proto_tree_add_boolean(tree, hf_fcp_rsp_flags_conf_req, tvb, offset, 1, flags);
-    if (flags & 0x10) {
-        proto_item_append_text(item, " CONF REQ");
-        if (flags & (~( 0x10 )))
-            proto_item_append_text(item, ",");
-    }
-    flags &= (~( 0x10 ));
-
-    /* Resid Under */
-    proto_tree_add_boolean(tree, hf_fcp_rsp_flags_resid_under, tvb, offset, 1, flags);
-    if (flags & 0x08) {
-        proto_item_append_text(item, " RESID UNDER");
-        if (flags & (~( 0x08 )))
-            proto_item_append_text(item, ",");
-    }
-    flags &= (~( 0x08 ));
-
-    /* Resid Over */
-    proto_tree_add_boolean(tree, hf_fcp_rsp_flags_resid_over, tvb, offset, 1, flags);
-    if (flags & 0x04) {
-        proto_item_append_text(item, " RESID OVER");
-        if (flags & (~( 0x04 )))
-            proto_item_append_text(item, ",");
-    }
-    flags &= (~( 0x04 ));
-
-    /* SNS len valid */
-    proto_tree_add_boolean(tree, hf_fcp_rsp_flags_sns_vld, tvb, offset, 1, flags);
-    if (flags & 0x02) {
-        proto_item_append_text(item, " SNS VLD");
-        if (flags & (~( 0x02 )))
-            proto_item_append_text(item, ",");
-    }
-    flags &= (~( 0x02 ));
-
-    /* rsp len valid */
-    proto_tree_add_boolean(tree, hf_fcp_rsp_flags_res_vld, tvb, offset, 1, flags);
-    if (flags & 0x01) {
-        proto_item_append_text(item, " RES VLD");
-        if (flags & (~( 0x01 )))
-            proto_item_append_text(item, ",");
-    }
-    flags &= (~( 0x01 ));
-
-    if (flags) {
-        proto_item_append_text(item, " Unknown bitmap value 0x%x", flags);
-    }
 }
 
 static void
@@ -389,7 +307,7 @@ dissect_fcp_cmnd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, pro
     guint8       flags, rwflags, lun0;
     guint16      lun     = 0xffff;
     tvbuff_t    *cdb_tvb;
-    int          tvb_len, tvb_rlen;
+    int          tvb_len;
     fcp_request_data_t *request_data = NULL;
     itl_nexus_t itl;
     fcp_proto_data_t *proto_data;
@@ -480,17 +398,14 @@ dissect_fcp_cmnd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, pro
     proto_tree_add_item(tree, hf_fcp_rddata, tvb, offset+11, 1, ENC_BIG_ENDIAN);
     proto_tree_add_item(tree, hf_fcp_wrdata, tvb, offset+11, 1, ENC_BIG_ENDIAN);
 
-    tvb_len = tvb_length_remaining(tvb, offset+12);
+    tvb_len = tvb_captured_length_remaining(tvb, offset+12);
     if (tvb_len > (16 + add_len))
       tvb_len = 16 + add_len;
-    tvb_rlen = tvb_reported_length_remaining(tvb, offset+12);
-    if (tvb_rlen > (16 + add_len))
-      tvb_rlen = 16 + add_len;
 
     itl.cmdset = 0xff;
     itl.conversation = conversation;
 
-    cdb_tvb = tvb_new_subset(tvb, offset+12, tvb_len, tvb_rlen);
+    cdb_tvb = tvb_new_subset_length(tvb, offset+12, tvb_len);
     dissect_scsi_cdb(cdb_tvb, pinfo, parent_tree, SCSI_DEV_UNKNOWN, request_data->itlq, &itl);
 
     proto_tree_add_item(tree, hf_fcp_dl, tvb, offset+12+16+add_len,
@@ -500,7 +415,7 @@ dissect_fcp_cmnd(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, pro
     }
 
     if ( ((rwflags & 0x03) == 0x03)
-    &&  tvb_length_remaining(tvb, offset+12+16+add_len+4) >= 4) {
+    &&  tvb_reported_length_remaining(tvb, offset+12+16+add_len+4) >= 4) {
         proto_tree_add_item(tree, hf_fcp_bidir_dl, tvb, offset+12+16+add_len+4,
                             4, ENC_BIG_ENDIAN);
         if (request_data->itlq) {
@@ -632,7 +547,7 @@ dissect_fcp_rsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, prot
     if (rsplen) {
         tvbuff_t *rspinfo_tvb;
 
-        rspinfo_tvb = tvb_new_subset(tvb, offset, MIN(rsplen, tvb_length_remaining(tvb, offset)), rsplen);
+        rspinfo_tvb = tvb_new_subset(tvb, offset, MIN(rsplen, tvb_captured_length_remaining(tvb, offset)), rsplen);
         dissect_fcp_rspinfo(rspinfo_tvb, tree, 0);
 
         offset += rsplen;
@@ -642,7 +557,7 @@ dissect_fcp_rsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, prot
     if (snslen) {
         tvbuff_t *sns_tvb;
 
-        sns_tvb = tvb_new_subset(tvb, offset, MIN(snslen, tvb_length_remaining(tvb, offset)), snslen);
+        sns_tvb = tvb_new_subset(tvb, offset, MIN(snslen, tvb_captured_length_remaining(tvb, offset)), snslen);
         dissect_scsi_snsinfo(sns_tvb, pinfo, parent_tree, 0,
                               snslen,
                               (request_data != NULL) ? request_data->itlq : &empty_itlq, &itl);
@@ -678,9 +593,7 @@ dissect_fcp_srr(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, fc_hdr 
         proto_tree_add_item(tree, hf_fcp_srr_ox_id, tvb, 4, 2, ENC_BIG_ENDIAN);
         proto_tree_add_item(tree, hf_fcp_srr_rx_id, tvb, 6, 2, ENC_BIG_ENDIAN);
         proto_tree_add_item(tree, hf_fcp_data_ro, tvb, 8, 4, ENC_BIG_ENDIAN);
-        r_ctl = tvb_get_guint8(tvb, 12);
-        proto_tree_add_text(tree, tvb, 12, 1, "R_CTL: %s",
-                            val_to_str(r_ctl, fcp_iu_val, "0x%02x"));
+        proto_tree_add_item(tree, hf_fcp_r_ctl, tvb, 12, 1, ENC_NA);
     }
 }
 
@@ -700,9 +613,7 @@ dissect_fcp_els(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, fc_hdr *fch
 
     op = tvb_get_guint8(tvb, 0);
     col_add_str(pinfo->cinfo, COL_INFO, val_to_str_ext(op, &fc_els_proto_val_ext, "0x%x"));
-    proto_tree_add_text(tree, tvb, 0, 1, "Opcode: %s",
-                                   val_to_str_ext(op, &fc_els_proto_val_ext,
-                                              "ELS 0x%02x"));
+    proto_tree_add_item(tree, hf_fcp_els_op, tvb, 0, 1, ENC_NA);
 
     switch (op) {   /* XXX should switch based on conv for LS_ACC */
     case FC_ELS_SRR:
@@ -805,7 +716,7 @@ dissect_fcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 
     if (els) {
         dissect_fcp_els(tvb, pinfo, fcp_tree, fchdr);
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
 
     switch (r_ctl) {
@@ -829,7 +740,7 @@ dissect_fcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
         break;
     }
 /*xxx once the subdissectors return bytes consumed:  proto_item_set_end(ti, tvb, offset);*/
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 /* Register the protocol with Wireshark */
@@ -892,7 +803,12 @@ proto_register_fcp(void)
 
         { &hf_fcp_data_ro,
           {"FCP_DATA_RO", "fcp.data_ro",
-           FT_UINT32, BASE_DEC, NULL, 0x0,
+           FT_UINT32, BASE_DEC, VALS(fcp_iu_val), 0x0,
+           NULL, HFILL}},
+
+        { &hf_fcp_r_ctl,
+          {"R_CTL", "fcp.r_ctl",
+           FT_UINT8, BASE_HEX, NULL, 0x0,
            NULL, HFILL}},
 
         { &hf_fcp_burstlen,
@@ -1030,12 +946,10 @@ proto_register_fcp(void)
             FT_RELATIVE_TIME, BASE_NONE, NULL, 0,
             "Time since the FCP_CMND frame", HFILL }},
 
-#if 0
-        { &hf_fcp_srr_op,
+        { &hf_fcp_els_op,
           {"Opcode", "fcp.els.op",
-           FT_UINT8, BASE_HEX, NULL, 0x0,
+           FT_UINT8, BASE_HEX|BASE_EXT_STRING, &fc_els_proto_val_ext, 0x0,
            NULL, HFILL}},
-#endif
 
         { &hf_fcp_srr_ox_id,
           {"OX_ID", "fcp.els.srr.ox_id",
@@ -1046,13 +960,6 @@ proto_register_fcp(void)
           {"RX_ID", "fcp.els.srr.rx_id",
            FT_UINT16, BASE_HEX, NULL, 0x0,
            NULL, HFILL}},
-
-#if 0
-        { &hf_fcp_srr_r_ctl,
-          {"R_CTL", "fcp.els.srr.r_ctl",
-           FT_UINT8, BASE_HEX, NULL, 0x0,
-           NULL, HFILL}},
-#endif
     };
 
     /* Setup protocol subtree array */
@@ -1081,3 +988,16 @@ proto_reg_handoff_fcp(void)
 
     data_handle = find_dissector("data");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

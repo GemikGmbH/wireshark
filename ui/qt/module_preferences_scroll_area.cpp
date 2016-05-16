@@ -20,12 +20,15 @@
  */
 
 #include "module_preferences_scroll_area.h"
-#include "ui_module_preferences_scroll_area.h"
+#include <ui_module_preferences_scroll_area.h>
 #include "syntax_line_edit.h"
 #include "qt_ui_utils.h"
 #include "uat_dialog.h"
+#include "wireshark_application.h"
 
 #include <epan/prefs-int.h>
+
+#include <wsutil/utf8_entities.h>
 
 #include <QAbstractButton>
 #include <QButtonGroup>
@@ -39,12 +42,23 @@
 #include <QRadioButton>
 #include <QScrollBar>
 #include <QSpacerItem>
-
-#include <QDebug>
+#if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
+// Qt::escape
+#include <QTextDocument>
+#endif
 
 Q_DECLARE_METATYPE(pref_t *)
 
 const char *pref_prop_ = "pref_ptr";
+
+// Escape our ampersands so that Qt won't try to interpret them as
+// mnemonics.
+static const QString title_to_shortcut(const char *title) {
+    QString shortcut_str(title);
+    shortcut_str.replace('&', "&&");
+    return shortcut_str;
+}
+
 
 extern "C" {
 // Callbacks prefs routines
@@ -56,7 +70,16 @@ pref_show(pref_t *pref, gpointer layout_ptr)
     QVBoxLayout *vb = static_cast<QVBoxLayout *>(layout_ptr);
 
     if (!pref || !vb) return 0;
-    QString tooltip = QString("<span>%1</span>").arg(pref->description);
+
+    // Convert the pref description from plain text to rich text.
+    QString description;
+#if QT_VERSION < QT_VERSION_CHECK(5, 0, 0)
+    description = Qt::escape(pref->description);
+#else
+    description = QString(pref->description).toHtmlEscaped();
+#endif
+    description.replace('\n', "<br>");
+    QString tooltip = QString("<span>%1</span>").arg(description);
 
     switch (pref->type) {
     case PREF_UINT:
@@ -76,7 +99,7 @@ pref_show(pref_t *pref, gpointer layout_ptr)
     }
     case PREF_BOOL:
     {
-        QCheckBox *bool_cb = new QCheckBox(pref->title);
+        QCheckBox *bool_cb = new QCheckBox(title_to_shortcut(pref->title));
         bool_cb->setToolTip(tooltip);
         bool_cb->setProperty(pref_prop_, qVariantFromValue(pref));
         vb->addWidget(bool_cb);
@@ -91,9 +114,9 @@ pref_show(pref_t *pref, gpointer layout_ptr)
             QLabel *label = new QLabel(pref->title);
             label->setToolTip(tooltip);
             vb->addWidget(label);
-            QButtonGroup *enum_bg = new QButtonGroup();
+            QButtonGroup *enum_bg = new QButtonGroup(vb);
             for (ev = pref->info.enum_info.enumvals; ev && ev->description; ev++) {
-                QRadioButton *enum_rb = new QRadioButton(ev->description);
+                QRadioButton *enum_rb = new QRadioButton(title_to_shortcut(ev->description));
                 enum_rb->setToolTip(tooltip);
                 QStyleOption style_opt;
                 enum_rb->setProperty(pref_prop_, qVariantFromValue(pref));
@@ -164,7 +187,7 @@ pref_show(pref_t *pref, gpointer layout_ptr)
         QLabel *label = new QLabel(pref->title);
         label->setToolTip(tooltip);
         hb->addWidget(label);
-        QPushButton *uat_pb = new QPushButton(QObject::tr("Edit..."));
+        QPushButton *uat_pb = new QPushButton(QObject::tr("Edit" UTF8_HORIZONTAL_ELLIPSIS));
         uat_pb->setToolTip(tooltip);
         uat_pb->setProperty(pref_prop_, qVariantFromValue(pref));
         hb->addWidget(uat_pb);
@@ -191,7 +214,7 @@ pref_show(pref_t *pref, gpointer layout_ptr)
                               )
                           .arg(path_le->style()->subElementRect(QStyle::SE_CheckBoxContents, &style_opt).left()));
         hb->addWidget(path_le);
-        QPushButton *path_pb = new QPushButton(QObject::tr("Browse..."));
+        QPushButton *path_pb = new QPushButton(QObject::tr("Browse" UTF8_HORIZONTAL_ELLIPSIS));
         path_pb->setProperty(pref_prop_, qVariantFromValue(pref));
         hb->addWidget(path_pb);
         hb->addSpacerItem(new QSpacerItem(1, 1, QSizePolicy::Expanding, QSizePolicy::Minimum));
@@ -220,6 +243,13 @@ ModulePreferencesScrollArea::ModulePreferencesScrollArea(module_t *module, QWidg
     ui->setupUi(this);
 
     if (!module) return;
+
+    /* Show the preference's description at the top of the page */
+    QFont font;
+    font.setBold(TRUE);
+    QLabel *label = new QLabel(module->description);
+    label->setFont(font);
+    ui->verticalLayout->addWidget(label);
 
     /* Add items for each of the preferences */
     prefs_pref_foreach(module, pref_show, (gpointer) ui->verticalLayout);
@@ -293,9 +323,8 @@ ModulePreferencesScrollArea::~ModulePreferencesScrollArea()
     delete ui;
 }
 
-void ModulePreferencesScrollArea::showEvent(QShowEvent *evt)
+void ModulePreferencesScrollArea::showEvent(QShowEvent *)
 {
-    Q_UNUSED(evt)
     updateWidgets();
 }
 
@@ -365,7 +394,7 @@ void ModulePreferencesScrollArea::uintLineEditTextEdited(const QString &new_str)
     if (!pref) return;
 
     bool ok;
-    uint new_uint = new_str.toUInt(&ok);
+    uint new_uint = new_str.toUInt(&ok, 0);
     if (ok) {
         pref->stashed_val.uint = new_uint;
     }
@@ -467,9 +496,9 @@ void ModulePreferencesScrollArea::filenamePushButtonPressed()
     pref_t *pref = filename_pb->property(pref_prop_).value<pref_t *>();
     if (!pref) return;
 
-    QString filename = QFileDialog::getSaveFileName(this,
-                                            QString(tr("Wireshark: ")) + pref->description,
-                                            pref->stashed_val.string);
+    QString filename = QFileDialog::getSaveFileName(this, wsApp->windowTitleString(pref->title),
+                                                    pref->stashed_val.string, QString(), NULL,
+                                                    QFileDialog::DontConfirmOverwrite);
 
     if (!filename.isEmpty()) {
         g_free((void *)pref->stashed_val.string);
@@ -486,8 +515,7 @@ void ModulePreferencesScrollArea::dirnamePushButtonPressed()
     pref_t *pref = dirname_pb->property(pref_prop_).value<pref_t *>();
     if (!pref) return;
 
-    QString dirname = QFileDialog::getExistingDirectory(this,
-                                                 QString(tr("Wireshark: ")) + pref->description,
+    QString dirname = QFileDialog::getExistingDirectory(this, wsApp->windowTitleString(pref->title),
                                                  pref->stashed_val.string);
 
     if (!dirname.isEmpty()) {

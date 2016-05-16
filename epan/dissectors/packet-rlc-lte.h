@@ -20,6 +20,9 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#ifndef PACKET_RLC_LTE_H
+#define PACKET_RLC_LTE_H
+
 /* rlcMode */
 #define RLC_TM_MODE 1
 #define RLC_UM_MODE 2
@@ -52,11 +55,12 @@ typedef struct rlc_lte_info
     guint8          rlcMode;
     guint8          direction;
     guint8          priority;
+    guint8          UMSequenceNumberLength;
     guint16         ueid;
     guint16         channelType;
     guint16         channelId;
     guint16         pduLength;
-    guint8          UMSequenceNumberLength;
+    gboolean        extendedLiField;
 } rlc_lte_info;
 
 
@@ -71,7 +75,7 @@ typedef struct rlc_lte_tap_info {
     guint16         pduLength;
     guint8          UMSequenceNumberLength;
 
-    nstime_t        time;
+    nstime_t        rlc_lte_time;
     guint8          loggedInMACFrame;
     guint16         sequenceNumber;
     guint8          isResegmented;
@@ -86,8 +90,10 @@ typedef struct rlc_lte_tap_info {
 
 
 /* Configure number of PDCP SN bits to use for DRB channels. */
-void set_rlc_lte_drb_pdcp_seqnum_length(guint16 ueid, guint8 drbid, guint8 userplane_seqnum_length);
+void set_rlc_lte_drb_pdcp_seqnum_length(packet_info *pinfo, guint16 ueid, guint8 drbid, guint8 userplane_seqnum_length);
 
+/* Configure LI field for AM DRB channels. */
+void set_rlc_lte_drb_li_field(packet_info *pinfo, guint16 ueid, guint8 drbid, gboolean ul_ext_li_field, gboolean dl_ext_li_field);
 
 /*****************************************************************/
 /* UDP framing format                                            */
@@ -97,7 +103,7 @@ void set_rlc_lte_drb_pdcp_seqnum_length(guint16 ueid, guint8 drbid, guint8 userp
 /* and implemented by this dissector, using the definitions      */
 /* below. A link to an example program showing you how to encode */
 /* these headers and send LTE RLC PDUs on a UDP socket is        */
-/* provided at http://wiki.wireshark.org/RLC-LTE                 */
+/* provided at https://wiki.wireshark.org/RLC-LTE                 */
 /*                                                               */
 /* A heuristic dissecter (enabled by a preference) will          */
 /* recognise a signature at the beginning of these frames.       */
@@ -143,9 +149,12 @@ void set_rlc_lte_drb_pdcp_seqnum_length(guint16 ueid, guint8 drbid, guint8 userp
 #define RLC_LTE_CHANNEL_ID_TAG      0x07
 /* 2 bytes, network order */
 
+#define RLC_LTE_EXT_LI_FIELD_TAG    0x08
+/* 0 byte, tag presence indicates that AM DRB PDU is using an extended LI field of 15 bits */
 
 /* RLC PDU. Following this tag comes the actual RLC PDU (there is no length, the PDU
    continues until the end of the frame) */
 #define RLC_LTE_PAYLOAD_TAG         0x01
 
+#endif
 

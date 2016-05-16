@@ -10,9 +10,6 @@
     <height>300</height>
    </rect>
   </property>
-  <property name="windowTitle">
-   <string>Wireshark: Configuration Profiles</string>
-  </property>
   <layout class="QVBoxLayout" name="verticalLayout">
    <item>
     <widget class="QTreeWidget" name="profileTreeWidget">
@@ -36,7 +33,7 @@
      </property>
      <column>
       <property name="text">
-       <string notr="true">Name</string>
+       <string>Name</string>
       </property>
      </column>
     </widget>
@@ -60,7 +57,7 @@
      <item>
       <widget class="QToolButton" name="deleteToolButton">
        <property name="toolTip">
-        <string>Remove this profile.</string>
+        <string>Remove this profile. The Default profile and system provided profiles cannot be removed.</string>
        </property>
        <property name="icon">
         <iconset resource="../../image/toolbar.qrc">
@@ -96,7 +93,7 @@
       </spacer>
      </item>
      <item>
-      <widget class="ElidedLabel" name="pathLabel">
+      <widget class="ElidedLabel" name="infoLabel">
        <property name="sizePolicy">
         <sizepolicy hsizetype="Expanding" vsizetype="Preferred">
          <horstretch>1</horstretch>

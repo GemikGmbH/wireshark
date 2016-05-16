@@ -28,14 +28,10 @@
 #include "config.h"
 
 #include <stdlib.h>
-#include <string.h>
-
-#include <glib.h>
 
 #include <epan/packet.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
-#include <epan/conversation.h>
 
 #include "packet-tcp.h"
 #include "packet-ssl.h"
@@ -118,8 +114,8 @@ tag_search(int key)
 static int fix_next_header(tvbuff_t *tvb, int offset)
 {
     /* try to resync to the next start */
-    guint         min_len = tvb_length_remaining(tvb, offset);
-    const guint8 *data    = tvb_get_string(wmem_packet_scope(), tvb, offset, min_len);
+    guint         min_len = tvb_captured_length_remaining(tvb, offset);
+    const guint8 *data    = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, min_len, ENC_ASCII);
     const guint8 *start   = data;
 
     while ((start = strstr(start, "\0018"))) {
@@ -127,7 +123,7 @@ static int fix_next_header(tvbuff_t *tvb, int offset)
         /*  if remaining length < 6 return and let the next desegment round
             test for 8=FIX
         */
-        if (tvb_length_remaining(tvb, min_len + offset) < MARKER_LEN)
+        if (tvb_reported_length_remaining(tvb, min_len + offset) < MARKER_LEN)
            break;
         if (!fix_marker(tvb, min_len +offset) )
             break;
@@ -193,12 +189,12 @@ static int fix_header_len(tvbuff_t *tvb, int offset)
         return fix_next_header(tvb, offset);
     }
 
-    value = tvb_get_string(wmem_packet_scope(), tvb, tag->value_offset, tag->value_len);
+    value = tvb_get_string_enc(wmem_packet_scope(), tvb, tag->value_offset, tag->value_len, ENC_ASCII);
     /* Fix version, msg type, length and checksum aren't in body length.
      * If the packet is big enough find the checksum
     */
     size = atoi(value) +tag->ctrla_offset - base_offset +1;
-    if (tvb_length_remaining(tvb, base_offset) > size +4) {
+    if (tvb_reported_length_remaining(tvb, base_offset) > size +4) {
         /* 10= should be there */
         offset = base_offset +size;
         if (tvb_strneql(tvb, offset, "10=", 3) != 0) {
@@ -245,7 +241,7 @@ dissect_fix_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
         ti = proto_tree_add_item(tree, proto_fix, tvb, 0, -1, ENC_NA);
         fix_tree = proto_item_add_subtree(ti, ett_fix);
         proto_tree_add_item(fix_tree, hf_fix_data, tvb, 0, -1, ENC_NA);
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
 
     pdu_len = tvb_reported_length(tvb);
@@ -255,23 +251,23 @@ dissect_fix_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
     /* begin string */
     ctrla_offset = tvb_find_guint8(tvb, offset, -1, 0x01);
     if (ctrla_offset == -1) {
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
     offset = ctrla_offset + 1;
 
     /* msg length */
     ctrla_offset = tvb_find_guint8(tvb, offset, -1, 0x01);
     if (ctrla_offset == -1) {
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
     offset = ctrla_offset + 1;
 
     /* msg type */
     if (!(tag = fix_param(tvb, offset)) || tag->value_len < 1) {
-        return tvb_length(tvb);
+        return tvb_captured_length(tvb);
     }
 
-    value = tvb_get_string(wmem_packet_scope(), tvb, tag->value_offset, tag->value_len);
+    value = tvb_get_string_enc(wmem_packet_scope(), tvb, tag->value_offset, tag->value_len, ENC_ASCII);
     msg_type = str_to_str(value, messages_val, "FIX Message (%s)");
     col_add_str(pinfo->cinfo, COL_INFO, msg_type);
 
@@ -288,7 +284,7 @@ dissect_fix_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
             continue;
         }
 
-        tag_str = tvb_get_string(wmem_packet_scope(), tvb, field_offset, tag->tag_len);
+        tag_str = tvb_get_string_enc(wmem_packet_scope(), tvb, field_offset, tag->tag_len, ENC_ASCII);
         tag_value = atoi(tag_str);
         if (tag->value_len < 1) {
             proto_tree *field_tree;
@@ -299,8 +295,7 @@ dissect_fix_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
                tree) and then gives up, it leaves crud behind that
                messes up other dissectors that might process the
                packet. */
-            ti = proto_tree_add_text(fix_tree, tvb, field_offset, tag->field_len, "%i: <missing value>", tag_value);
-            field_tree = proto_item_add_subtree(ti, ett_badfield);
+            field_tree = proto_tree_add_subtree_format(fix_tree, tvb, field_offset, tag->field_len, ett_badfield, NULL, "%i: <missing value>", tag_value);
             proto_tree_add_uint(field_tree, hf_fix_field_tag, tvb, field_offset, tag->tag_len, tag_value);
             field_offset =  tag->ctrla_offset + 1;
             continue;
@@ -312,7 +307,7 @@ dissect_fix_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
             found = 1;
         }
 
-        value = tvb_get_string(wmem_packet_scope(), tvb, tag->value_offset, tag->value_len);
+        value = tvb_get_string_enc(wmem_packet_scope(), tvb, tag->value_offset, tag->value_len, ENC_ASCII);
         if (found) {
             if (fix_fields[i].table) {
                 if (tree) {
@@ -376,8 +371,8 @@ dissect_fix_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
           proto_tree *field_tree;
 
           /* XXX - it could be -1 if the tag isn't a number */
-          ti = proto_tree_add_text(fix_tree, tvb, field_offset, tag->field_len, "%i: %s", tag_value, value);
-          field_tree = proto_item_add_subtree(ti, ett_unknow);
+          field_tree = proto_tree_add_subtree_format(fix_tree, tvb, field_offset, tag->field_len, ett_unknow, NULL,
+              "%i: %s", tag_value, value);
           proto_tree_add_uint(field_tree, hf_fix_field_tag, tvb, field_offset, tag->tag_len, tag_value);
           proto_tree_add_item(field_tree, hf_fix_field_value, tvb, tag->value_offset, tag->value_len, ENC_ASCII|ENC_NA);
         }
@@ -386,11 +381,11 @@ dissect_fix_packet(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* da
 
         tag_str = NULL;
     }
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 static guint
-get_fix_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_fix_pdu_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset, void *data _U_)
 {
     int fix_len;
 
@@ -416,7 +411,7 @@ dissect_fix_pdus(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
     tcp_dissect_pdus(tvb, pinfo, tree, fix_desegment, FIX_MIN_LEN,
                      get_fix_pdu_len, dissect_fix_packet, data);
 
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 static int
@@ -447,10 +442,10 @@ dissect_fix_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data
 /* Register the protocol with Wireshark */
 static void fix_prefs(void)
 {
-	dissector_delete_uint_range("tcp.port", fix_tcp_range, fix_handle);
+    dissector_delete_uint_range("tcp.port", fix_tcp_range, fix_handle);
     g_free(fix_tcp_range);
     fix_tcp_range = range_copy(global_fix_tcp_range);
-	dissector_add_uint_range("tcp.port", fix_tcp_range, fix_handle);
+    dissector_add_uint_range("tcp.port", fix_tcp_range, fix_handle);
 }
 
 /* this format is require because a script is used to build the C function
@@ -532,8 +527,20 @@ void
 proto_reg_handoff_fix(void)
 {
     /* Let the tcp dissector know that we're interested in traffic      */
-    heur_dissector_add("tcp", dissect_fix_heur, proto_fix);
+    heur_dissector_add("tcp", dissect_fix_heur, "FIX over TCP", "fix_tcp", proto_fix, HEURISTIC_ENABLE);
     /* Register a fix handle to "tcp.port" to be able to do 'decode-as' */
-    dissector_add_handle("tcp.port", fix_handle);
+    dissector_add_for_decode_as("tcp.port", fix_handle);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

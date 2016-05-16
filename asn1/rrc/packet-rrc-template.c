@@ -22,7 +22,7 @@
  * along with this program; if not, write to the Free Software
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
- * Ref: 3GPP TS 25.331 V11.8.0 (2013-12) + CR5591
+ * Ref: 3GPP TS 25.331 V12.6.0 (2015-06)
  */
 
 /**
@@ -33,10 +33,8 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/asn1.h>
-#include <epan/wmem/wmem.h>
 #include <epan/conversation.h>
 #include <epan/expert.h>
 
@@ -90,6 +88,7 @@ static int dissect_SysInfoTypeSB2_PDU(tvbuff_t *tvb, packet_info *pinfo, proto_t
 static int dissect_SysInfoType5_PDU(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *);
 static int dissect_SysInfoType11_PDU(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *);
 static int dissect_SysInfoType11bis_PDU(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *);
+static int dissect_SysInfoType11ter_PDU(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *);
 static int dissect_SysInfoType22_PDU(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *);
 
 /* Include constants */
@@ -107,6 +106,7 @@ static int ett_rrc = -1;
 
 static gint ett_rrc_eutraFeatureGroupIndicators = -1;
 static gint ett_rrc_cn_CommonGSM_MAP_NAS_SysInfo = -1;
+static gint ett_rrc_ims_info = -1;
 
 static expert_field ei_rrc_no_hrnti = EI_INIT;
 
@@ -117,6 +117,10 @@ static int hf_rrc_eutra_feat_group_ind_1 = -1;
 static int hf_rrc_eutra_feat_group_ind_2 = -1;
 static int hf_rrc_eutra_feat_group_ind_3 = -1;
 static int hf_rrc_eutra_feat_group_ind_4 = -1;
+static int hf_rrc_ims_info_atgw_trans_det_cont_type = -1;
+static int hf_rrc_ims_info_atgw_udp_port = -1;
+static int hf_rrc_ims_info_atgw_ipv4 = -1;
+static int hf_rrc_ims_info_atgw_ipv6 = -1;
 
 static const true_false_string rrc_eutra_feat_group_ind_1_val = {
   "UTRA CELL_PCH to EUTRA RRC_IDLE cell reselection - Supported",
@@ -133,6 +137,12 @@ static const true_false_string rrc_eutra_feat_group_ind_3_val = {
 static const true_false_string rrc_eutra_feat_group_ind_4_val = {
   "UTRA CELL_FACH absolute priority cell reselection for all layers - Supported",
   "UTRA CELL_FACH absolute priority cell reselection for all layers - Not supported"
+};
+static const value_string rrc_ims_info_atgw_trans_det_cont_type[] = {
+    {0, "ATGW-IPv4-address-and-port"},
+    {1, "ATGW-IPv6-address-and-port"},
+    {2, "ATGW-not-available"},
+    {0, NULL}
 };
 static int flowd,type;
 
@@ -182,7 +192,6 @@ static void rrc_free_value(gpointer value ){
 }
 #include "packet-rrc-fn.c"
 
-#include "packet-rrc.h"
 
 
 static void
@@ -234,14 +243,8 @@ dissect_rrc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     }
 }
 
-static void rrc_init(void){
-    /*Cleanup*/
-    if(hsdsch_muxed_flows){
-        g_tree_destroy(hsdsch_muxed_flows);
-    }
-    if(rrc_ciph_inf){
-        g_tree_destroy(rrc_ciph_inf);
-    }
+static void
+rrc_init(void) {
     /*Initialize structure for muxed flow indication*/
     hsdsch_muxed_flows = g_tree_new_full(rrc_key_cmp,
                        NULL,      /* data pointer, optional */
@@ -254,6 +257,14 @@ static void rrc_init(void){
                        NULL,
                        rrc_free_value);
 }
+
+static void
+rrc_cleanup(void) {
+    /*Cleanup*/
+    g_tree_destroy(hsdsch_muxed_flows);
+    g_tree_destroy(rrc_ciph_inf);
+}
+
 /*--- proto_register_rrc -------------------------------------------*/
 void proto_register_rrc(void) {
 
@@ -281,6 +292,22 @@ void proto_register_rrc(void) {
       { "Indicator 4", "rrc.eutra_feat_group_ind_4",
         FT_BOOLEAN, BASE_NONE, TFS(&rrc_eutra_feat_group_ind_4_val), 0,
         "EUTRA Feature Group Indicator 4", HFILL }},
+    { &hf_rrc_ims_info_atgw_trans_det_cont_type,
+      { "ATGW transfer details content type", "rrc.rsrvcc_info.ims_info_atgw_trans_det_cont",
+        FT_UINT8, BASE_DEC, VALS(rrc_ims_info_atgw_trans_det_cont_type), 0x3,
+        "rSR-VCC IMS information ATGW transfer details content type", HFILL }},
+    {&hf_rrc_ims_info_atgw_udp_port,
+        {"ATGW UDP port","rrc.rsrvcc_info.ims_info_atgw_udp_port",
+        FT_UINT16,BASE_DEC, NULL, 0x0,
+        "rSR-VCC IMS information ATGW UDP port", HFILL }},
+    { &hf_rrc_ims_info_atgw_ipv4,
+        {"ATGW IPv4", "rrc.rsrvcc_info.ims_info_atgw_ipv4",
+        FT_IPv4, BASE_NONE, NULL, 0x0,
+        "rSR-VCC IMS information ATGW IPv4", HFILL}},
+    { &hf_rrc_ims_info_atgw_ipv6,
+        {"ATGW IPv6", "rrc.rsrvcc_info.ims_info_atgw_ipv6",
+        FT_IPv6, BASE_NONE, NULL, 0x0,
+        "rSR-VCC IMS information ATGW IPv6", HFILL}},
   };
 
   /* List of subtrees */
@@ -289,6 +316,7 @@ void proto_register_rrc(void) {
 #include "packet-rrc-ettarr.c"
     &ett_rrc_eutraFeatureGroupIndicators,
     &ett_rrc_cn_CommonGSM_MAP_NAS_SysInfo,
+    &ett_rrc_ims_info,
   };
 
   static ei_register_info ei[] = {
@@ -313,6 +341,7 @@ void proto_register_rrc(void) {
 
 
     register_init_routine(rrc_init);
+    register_cleanup_routine(rrc_cleanup);
 }
 
 

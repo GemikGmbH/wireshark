@@ -22,8 +22,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 
 /*
@@ -39,6 +37,7 @@ void proto_reg_handoff_cgmp(void);
 static int proto_cgmp = -1;
 static int hf_cgmp_version = -1;
 static int hf_cgmp_type = -1;
+static int hf_cgmp_reserved = -1;
 static int hf_cgmp_count = -1;
 static int hf_cgmp_gda = -1;
 static int hf_cgmp_usa = -1;
@@ -73,7 +72,9 @@ dissect_cgmp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		    ENC_BIG_ENDIAN);
 		offset += 1;
 
-		offset += 2;	/* skip reserved field */
+		proto_tree_add_item(cgmp_tree, hf_cgmp_reserved, tvb, offset, 2,
+		    ENC_BIG_ENDIAN);
+		offset += 2;
 
 		count = tvb_get_guint8(tvb, offset);
 		proto_tree_add_uint(cgmp_tree, hf_cgmp_count, tvb, offset, 1,
@@ -106,6 +107,10 @@ proto_register_cgmp(void)
 		{ "Type",	"cgmp.type",	FT_UINT8, BASE_DEC, VALS(type_vals), 0x0F,
 			NULL, HFILL }},
 
+		{ &hf_cgmp_reserved,
+		{ "Reserved",	"cgmp.reserved", FT_UINT8, BASE_HEX, NULL, 0x0,
+			NULL, HFILL }},
+
 		{ &hf_cgmp_count,
 		{ "Count",	"cgmp.count", FT_UINT8, BASE_DEC, NULL, 0x0,
 			NULL, HFILL }},
@@ -117,14 +122,14 @@ proto_register_cgmp(void)
 		{ &hf_cgmp_usa,
 		{ "Unicast Source Address",	"cgmp.usa", FT_ETHER, BASE_NONE, NULL, 0x0,
 			NULL, HFILL }},
-        };
+	};
 	static gint *ett[] = {
 		&ett_cgmp,
 	};
 
-        proto_cgmp = proto_register_protocol("Cisco Group Management Protocol",
+	proto_cgmp = proto_register_protocol("Cisco Group Management Protocol",
 	    "CGMP", "cgmp");
-        proto_register_field_array(proto_cgmp, hf, array_length(hf));
+	proto_register_field_array(proto_cgmp, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
 }
 
@@ -137,3 +142,16 @@ proto_reg_handoff_cgmp(void)
 	dissector_add_uint("llc.cisco_pid", 0x2001, cgmp_handle);
 	dissector_add_uint("ethertype", 0x2001, cgmp_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

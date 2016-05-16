@@ -26,12 +26,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/conversation.h>
-#include <epan/wmem/wmem.h>
-
 void proto_register_classicstun(void);
 void proto_reg_handoff_classicstun(void);
 
@@ -235,7 +231,7 @@ dissect_classicstun(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *d
     /*
      * First check if the frame is really meant for us.
      */
-    len = tvb_length(tvb);
+    len = tvb_captured_length(tvb);
     /* First, make sure we have enough data to do the check. */
     if (len < CLASSICSTUN_HDR_LEN)
         return 0;
@@ -373,11 +369,10 @@ dissect_classicstun(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *d
                 att_type = tvb_get_ntohs(tvb, offset); /* Type field in attribute header */
                 att_length = tvb_get_ntohs(tvb, offset+2); /* Length field in attribute header */
 
-                ta = proto_tree_add_text(att_type_tree, tvb, offset,
-                             ATTR_HDR_LEN+att_length,
+                att_tree = proto_tree_add_subtree_format(att_type_tree, tvb, offset,
+                             ATTR_HDR_LEN+att_length, ett_classicstun_att, NULL,
                              "Attribute: %s",
                              val_to_str(att_type, attributes, "Unknown (0x%04x)"));
-                att_tree = proto_item_add_subtree(ta, ett_classicstun_att);
 
                 proto_tree_add_uint(att_tree, classicstun_att_type, tvb,
                             offset, 2, att_type);
@@ -501,8 +496,6 @@ dissect_classicstun(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *d
                                      (transaction_id_first_word >> 16));
                         PROTO_ITEM_SET_GENERATED(ti);
 
-                        if (att_length < 8)
-                            break;
                         switch( tvb_get_guint8(tvb, offset+1) ){
                             case 1:
                                 if (att_length < 8)
@@ -543,7 +536,7 @@ dissect_classicstun(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *d
             }
         }
     }
-    return tvb_length(tvb);
+    return tvb_reported_length(tvb);
 }
 
 
@@ -714,6 +707,19 @@ proto_reg_handoff_classicstun(void)
     dissector_add_uint("tcp.port", TCP_PORT_STUN, classicstun_handle);
     dissector_add_uint("udp.port", UDP_PORT_STUN, classicstun_handle);
 #endif
-    heur_dissector_add("udp", dissect_classicstun_heur, proto_classicstun);
-    heur_dissector_add("tcp", dissect_classicstun_heur, proto_classicstun);
+    heur_dissector_add("udp", dissect_classicstun_heur, "Classic STUN over UDP", "classicstun_udp", proto_classicstun, HEURISTIC_ENABLE);
+    heur_dissector_add("tcp", dissect_classicstun_heur, "Classic STUN over TCP", "classicstun_tcp", proto_classicstun, HEURISTIC_ENABLE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

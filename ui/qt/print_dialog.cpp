@@ -20,7 +20,9 @@
  */
 
 #include "print_dialog.h"
-#include "ui_print_dialog.h"
+#include <ui_print_dialog.h>
+
+#include <wsutil/utf8_entities.h>
 
 #include <QPrintDialog>
 #include <QPageSetupDialog>
@@ -36,11 +38,8 @@ extern "C" {
 // Page element callbacks
 
 static gboolean
-print_preamble_pd(print_stream_t *self, gchar *filename, const char *version_string )
+print_preamble_pd(print_stream_t *self, gchar *, const char *)
 {
-    Q_UNUSED(filename);
-    Q_UNUSED(version_string);
-
     if (!self) return FALSE;
     PrintDialog *print_dlg = static_cast<PrintDialog *>(self->data);
     if (!print_dlg) return FALSE;
@@ -76,12 +75,13 @@ PrintDialog::PrintDialog(QWidget *parent, capture_file *cf) :
     cur_printer_(NULL),
     cur_painter_(NULL),
     preview_(new QPrintPreviewWidget(&printer_)),
-    print_bt_(new QPushButton(tr("&Print..."))),
+    print_bt_(new QPushButton(tr("&Print" UTF8_HORIZONTAL_ELLIPSIS))),
     cap_file_(cf)
 {
     if (!cf) done(QDialog::Rejected); // ...or assert?
 
     pd_ui_->setupUi(this);
+    setWindowTitle(wsApp->windowTitleString(tr("Print")));
 
     pd_ui_->previewLayout->insertWidget(0, preview_, Qt::AlignTop);
 
@@ -117,7 +117,7 @@ PrintDialog::PrintDialog(QWidget *parent, capture_file *cf) :
     pd_ui_->rangeGroupBox->initRange(&print_args_.range);
 
     pd_ui_->buttonBox->addButton(print_bt_, QDialogButtonBox::ActionRole);
-    pd_ui_->buttonBox->addButton(tr("Page &Setup..."), QDialogButtonBox::ResetRole);
+    pd_ui_->buttonBox->addButton(tr("Page &Setup" UTF8_HORIZONTAL_ELLIPSIS), QDialogButtonBox::ResetRole);
     print_bt_->setDefault(true);
 
     connect(preview_, SIGNAL(paintRequested(QPrinter*)), this, SLOT(paintPreview(QPrinter*)));
@@ -145,6 +145,8 @@ gboolean PrintDialog::printHeader()
 
     if (page_pos_ > page_top) {
         if (in_preview_) {
+            // When generating a preview, only generate the first page;
+            // if we're past the first page, stop the printing process.
             return FALSE;
         }
         // Second and subsequent pages only
@@ -178,6 +180,8 @@ gboolean PrintDialog::printLine(int indent, const char *line)
 
     if (cur_printer_->pageRect().height() < page_pos_ + out_rect.height()) {
         if (in_preview_) {
+            // When generating a preview, only generate the first page;
+            // if we're past the first page, stop the printing process.
             return FALSE;
         }
         if (*line == '\0') { // Separator
@@ -257,12 +261,10 @@ void PrintDialog::printPackets(QPrinter *printer, bool in_preview)
                              QMessageBox::Ok);
         close();
     }
-    // cf_print_packets updates the progress bar which in turn calls
-    // WiresharkApplication::processEvents(), which can make the preview trip
-    // over itself.
-    preview_->setUpdatesEnabled(false);
-    cf_print_packets(cap_file_, &print_args_);
-    preview_->setUpdatesEnabled(true);
+    // Don't show a progress bar if we're previewing; if it takes a
+    // significant amount of time to generate a preview of the first
+    // page, We Have A Real Problem
+    cf_print_packets(cap_file_, &print_args_, in_preview ? FALSE : TRUE);
     cur_printer_ = NULL;
     cur_painter_ = NULL;
     painter.end();

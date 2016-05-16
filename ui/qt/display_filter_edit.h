@@ -22,44 +22,66 @@
 #ifndef DISPLAYFILTEREDIT_H
 #define DISPLAYFILTEREDIT_H
 
-#include <QToolButton>
+#include "preferences_dialog.h"
 #include "syntax_line_edit.h"
+
+class QEvent;
+class StockIconToolButton;
+
+typedef enum {
+    DisplayFilterToApply,
+    DisplayFilterToEnter,
+    ReadFilterToApply,
+} DisplayFilterEditType;
 
 class DisplayFilterEdit : public SyntaxLineEdit
 {
     Q_OBJECT
 public:
-    explicit DisplayFilterEdit(QWidget *parent = 0, bool plain = true);
+    explicit DisplayFilterEdit(QWidget *parent = 0, DisplayFilterEditType type = DisplayFilterToEnter);
 
 protected:
     void paintEvent(QPaintEvent *evt);
     void resizeEvent(QResizeEvent *);
-//    void focusInEvent(QFocusEvent *evt);
-//    void focusOutEvent(QFocusEvent *evt);
+    void keyPressEvent(QKeyEvent *event) { completionKeyPressEvent(event); }
+    void focusInEvent(QFocusEvent *event) { completionFocusInEvent(event); }
+    void focusOutEvent(QFocusEvent *event);
 
 public slots:
+    bool checkFilter();
+    void updateBookmarkMenu();
     void applyDisplayFilter();
     void displayFilterSuccess(bool success);
 
 private slots:
-    void checkFilter(const QString &text);
-    void bookmarkClicked();
+    void checkFilter(const QString &filter_text);
     void clearFilter();
+    void changeEvent(QEvent* event);
+
+    void saveFilter();
+    void removeFilter();
+    void showFilters();
+    void showExpressionPrefs();
+    void prepareFilter();
 
 private:
-    bool plain_;
-    QString empty_filter_message_;
-    QToolButton *bookmark_button_;
-    QToolButton *clear_button_;
-    QToolButton *apply_button_;
+    DisplayFilterEditType type_;
+    QString placeholder_text_;
+    QAction *save_action_;
+    QAction *remove_action_;
+    StockIconToolButton *bookmark_button_;
+    StockIconToolButton *clear_button_;
+    StockIconToolButton *apply_button_;
+
+    void setDefaultPlaceholderText();
+    void buildCompletionList(const QString& field_word);
 
 signals:
-    void pushFilterSyntaxStatus(QString&);
+    void pushFilterSyntaxStatus(const QString&);
     void popFilterSyntaxStatus();
-    void pushFilterSyntaxWarning(QString&);
-    void filterPackets(QString& new_filter, bool force);
-    void addBookmark(QString filter);
-
+    void pushFilterSyntaxWarning(const QString&);
+    void filterPackets(QString new_filter, bool force);
+    void showPreferencesDialog(PreferencesDialog::PreferencesPane start_pane);
 };
 
 #endif // DISPLAYFILTEREDIT_H

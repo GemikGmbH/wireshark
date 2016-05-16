@@ -24,8 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/strutil.h>
 
@@ -51,7 +49,7 @@ static int dissect_aim_snac_signon_logon(tvbuff_t *tvb, packet_info *pinfo,
 					  proto_tree *tree)
 {
 	int offset = 0;
-	while (tvb_length_remaining(tvb, offset) > 0) {
+	while (tvb_reported_length_remaining(tvb, offset) > 0) {
 		offset = dissect_aim_tlv(tvb, pinfo, offset, tree, aim_client_tlvs);
 	}
 	return offset;
@@ -62,7 +60,7 @@ static int dissect_aim_snac_signon_logon_reply(tvbuff_t *tvb,
 					       proto_tree *tree)
 {
 	int offset = 0;
-	while (tvb_length_remaining(tvb, offset) > 0) {
+	while (tvb_reported_length_remaining(tvb, offset) > 0) {
 		offset = dissect_aim_tlv(tvb, pinfo, offset, tree, aim_client_tlvs);
 	}
 	return offset;
@@ -181,3 +179,16 @@ proto_reg_handoff_aim_signon(void)
 {
 	aim_init_family(proto_aim_signon, ett_aim_signon, FAMILY_SIGNON, aim_fnac_family_signon);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -27,13 +27,8 @@
 
 #include "config.h"
 
-#include <string.h>
-#include <time.h>
 #include <math.h>
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/addr_resolv.h>
 
 /*
   Sebek v2:
@@ -120,19 +115,19 @@ static gint ett_sebek = -1;
 static int
 dissect_sebek(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-	proto_tree      *sebek_tree;
-	proto_item	*ti;
-	int offset = 0;
-	nstime_t ts;
-	int sebek_ver = 0;
-	int sebek_type = 0;
-	int cmd_len = 0;
+	proto_tree *sebek_tree;
+	proto_item *ti;
+	int         offset     = 0;
+	nstime_t    ts;
+	int         sebek_ver  = 0;
+	int         sebek_type = 0;
+	int         cmd_len    = 0;
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "SEBEK");
 
 	col_set_str(pinfo->cinfo, COL_INFO, "SEBEK - ");
 
-	if (tvb_length(tvb)<6)
+	if (tvb_captured_length(tvb)<6)
 		sebek_ver = 0;
 	else
 		sebek_ver = tvb_get_ntohs(tvb, 4);
@@ -161,7 +156,7 @@ dissect_sebek(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
 		sebek_tree = proto_item_add_subtree(ti, ett_sebek);
 
 		/* check for minimum length before deciding where to go*/
-		if (tvb_length(tvb)<6)
+		if (tvb_captured_length(tvb)<6)
 			sebek_ver = 0;
 		else
 			sebek_ver = tvb_get_ntohs(tvb, 4);
@@ -257,7 +252,7 @@ dissect_sebek(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
 					proto_tree_add_item(sebek_tree, hf_sebek_socket_proto, tvb, offset, 1, ENC_BIG_ENDIAN);
 					offset += 1;
 				} else {
-                			proto_tree_add_item(sebek_tree, hf_sebek_data, tvb, offset, -1, ENC_ASCII|ENC_NA);
+					proto_tree_add_item(sebek_tree, hf_sebek_data, tvb, offset, -1, ENC_ASCII|ENC_NA);
 				}
 
 				break;
@@ -349,3 +344,16 @@ proto_reg_handoff_sebek(void)
 	sebek_handle = new_create_dissector_handle(dissect_sebek, proto_sebek);
 	dissector_add_uint("udp.port", UDP_PORT_SEBEK, sebek_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

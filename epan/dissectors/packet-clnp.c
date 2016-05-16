@@ -25,19 +25,14 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/reassemble.h>
 #include <epan/expert.h>
 #include <epan/nlpid.h>
-#include <epan/ipproto.h>
 
 #include "packet-osi.h"
 #include "packet-osi-options.h"
-#include "packet-isis.h"
-#include "packet-esis.h"
 
 void proto_register_clnp(void);
 void proto_reg_handoff_clnp(void);
@@ -61,6 +56,9 @@ static int hf_clnp_cnf_more_segments        = -1;
 static int hf_clnp_cnf_report_error         = -1;
 static int hf_clnp_cnf_type    = -1;
 static int hf_clnp_pdu_length  = -1;
+static int hf_clnp_data_unit_identifier     = -1;
+static int hf_clnp_segment_offset           = -1;
+static int hf_clnp_total_length             = -1;
 static int hf_clnp_checksum    = -1;
 static int hf_clnp_dest_length = -1;
 static int hf_clnp_dest        = -1;
@@ -227,7 +225,6 @@ dissect_clnp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     cksum_status_t  cksum_status;
     int             offset;
     guchar          src_len, dst_len, nsel, opt_len = 0;
-    const guint8   *dst_addr, *src_addr;
     guint           next_length;
     proto_tree     *discpdu_tree;
     gboolean        save_in_error_pkt;
@@ -304,14 +301,14 @@ dissect_clnp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     proto_tree_add_item(type_tree, hf_clnp_cnf_segmentation, tvb, P_CLNP_TYPE, 1, ENC_NA);
     proto_tree_add_item(type_tree, hf_clnp_cnf_more_segments, tvb, P_CLNP_TYPE, 1, ENC_NA);
     proto_tree_add_item(type_tree, hf_clnp_cnf_report_error, tvb, P_CLNP_TYPE, 1, ENC_NA);
-    proto_tree_add_item(type_tree, hf_clnp_cnf_type, tvb, P_CLNP_TYPE, 1, ENC_NA);
+    proto_tree_add_item(type_tree, hf_clnp_cnf_type, tvb, P_CLNP_TYPE, 1, ENC_BIG_ENDIAN);
 
     /* If we don't have the full header - i.e., not enough to see the
        segmentation part and determine whether this datagram is segmented
        or not - set the Info column now; we'll get an exception before
        we set it otherwise. */
 
-    if (tvb_length(tvb) < cnf_hdr_len) {
+    if (tvb_reported_length(tvb) < cnf_hdr_len) {
         col_add_fstr(pinfo->cinfo, COL_INFO, "%s NPDU %s", pdu_type_string, flag_string);
     }
 
@@ -391,14 +388,13 @@ dissect_clnp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                 FIXED_PART_LEN + 1 + dst_len);
         return;
     }
-    dst_addr = tvb_get_ptr(tvb, offset, dst_len);
     nsel     = tvb_get_guint8(tvb, offset + dst_len - 1);
-    SET_ADDRESS(&pinfo->net_dst, AT_OSI, dst_len, dst_addr);
-    SET_ADDRESS(&pinfo->dst, AT_OSI, dst_len, dst_addr);
+    TVB_SET_ADDRESS(&pinfo->net_dst, get_osi_address_type(), tvb, offset, dst_len);
+    COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->net_dst);
     proto_tree_add_bytes_format_value(clnp_tree, hf_clnp_dest, tvb, offset, dst_len,
-            dst_addr,
+            NULL,
             "%s",
-            print_nsap_net(dst_addr, dst_len));
+            print_nsap_net(tvb, offset, dst_len));
     offset += dst_len;
     opt_len -= dst_len;
 
@@ -429,14 +425,13 @@ dissect_clnp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                 FIXED_PART_LEN + 1 + dst_len + 1 + src_len);
         return;
     }
-    src_addr = tvb_get_ptr(tvb, offset, src_len);
-    SET_ADDRESS(&pinfo->net_src, AT_OSI, src_len, src_addr);
-    SET_ADDRESS(&pinfo->src, AT_OSI, src_len, src_addr);
+    TVB_SET_ADDRESS(&pinfo->net_src, get_osi_address_type(), tvb, offset, src_len);
+    COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->net_src);
     proto_tree_add_bytes_format_value(clnp_tree, hf_clnp_src, tvb,
             offset, src_len,
-            src_addr,
+            NULL,
             "%s",
-            print_nsap_net(src_addr, src_len));
+            print_nsap_net(tvb, offset, src_len));
 
     offset += src_len;
     opt_len -= src_len;
@@ -454,18 +449,13 @@ dissect_clnp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                     FIXED_PART_LEN + 1 + dst_len + 1 + SEGMENTATION_PART_LEN);
             return;
         }
+
         du_id = tvb_get_ntohs(tvb, offset);
-        proto_tree_add_text(clnp_tree, tvb, offset, 2,
-                "Data unit identifier: %06u",
-                du_id);
+        proto_tree_add_item(clnp_tree, hf_clnp_data_unit_identifier, tvb, offset, 2, ENC_BIG_ENDIAN);
         segment_offset = tvb_get_ntohs(tvb, offset + 2);
-        proto_tree_add_text(clnp_tree, tvb, offset + 2 , 2,
-                "Segment offset      : %6u",
-                segment_offset);
+        proto_tree_add_item(clnp_tree, hf_clnp_segment_offset, tvb, offset + 2 , 2, ENC_BIG_ENDIAN);
         total_length = tvb_get_ntohs(tvb, offset + 4);
-        ti_tot_len = proto_tree_add_text(clnp_tree, tvb, offset + 4 , 2,
-                "Total length        : %6u",
-                total_length);
+        ti_tot_len = proto_tree_add_item(clnp_tree, hf_clnp_total_length, tvb, offset + 4 , 2, ENC_BIG_ENDIAN);
         if (total_length < segment_length) {
             /* Reassembled length is less than the length of this segment. */
             expert_add_info_format(pinfo, ti_tot_len, &ei_clnp_length,
@@ -476,7 +466,7 @@ dissect_clnp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         opt_len -= SEGMENTATION_PART_LEN;
     }
 
-    dissect_osi_options(opt_len, tvb, offset, clnp_tree);
+    dissect_osi_options(opt_len, tvb, offset, clnp_tree, pinfo);
 
     offset += opt_len;
 
@@ -577,12 +567,11 @@ dissect_clnp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                    dissect it as a CLNP PDU. */
 
                 col_add_fstr(pinfo->cinfo, COL_INFO, "%s NPDU %s", pdu_type_string, flag_string);
-                next_length = tvb_length_remaining(tvb, offset);
+                next_length = tvb_reported_length_remaining(tvb, offset);
                 if (next_length != 0) {
                     /* We have payload; dissect it. */
-                    ti = proto_tree_add_text(clnp_tree, tvb, offset, next_length,
-                            "Discarded PDU");
-                    discpdu_tree = proto_item_add_subtree(ti, ett_clnp_disc_pdu);
+                    discpdu_tree = proto_tree_add_subtree(clnp_tree, tvb, offset, next_length,
+                            ett_clnp_disc_pdu, NULL, "Discarded PDU");
 
                     /* Save the current value of the "we're inside an error packet"
                        flag, and set that flag; subdissectors may treat packets
@@ -615,6 +604,12 @@ clnp_reassemble_init(void)
 {
     reassembly_table_init(&clnp_reassembly_table,
             &addresses_reassembly_table_functions);
+}
+
+static void
+clnp_reassemble_cleanup(void)
+{
+    reassembly_table_destroy(&clnp_reassembly_table);
 }
 
 void
@@ -651,6 +646,15 @@ proto_register_clnp(void)
 
         { &hf_clnp_pdu_length,
             { "PDU length", "clnp.pdu.len",  FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+
+        { &hf_clnp_data_unit_identifier,
+            { "Data unit identifier", "clnp.data_unit_identifier",  FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+
+        { &hf_clnp_segment_offset,
+            { "Segment offset", "clnp.segment_offset",  FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
+
+        { &hf_clnp_total_length,
+            { "Total length", "clnp.total_length",  FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
 
         { &hf_clnp_checksum,
             { "Checksum", "clnp.checksum", FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }},
@@ -734,8 +738,11 @@ proto_register_clnp(void)
     expert_clnp = expert_register_protocol(proto_clnp);
     expert_register_field_array(expert_clnp, ei, array_length(ei));
     register_dissector("clnp", dissect_clnp, proto_clnp);
-    register_heur_dissector_list("clnp", &clnp_heur_subdissector_list);
+    clnp_heur_subdissector_list = register_heur_dissector_list("clnp");
     register_init_routine(clnp_reassemble_init);
+    register_cleanup_routine(clnp_reassemble_cleanup);
+
+    register_osi_address_type();
 
     clnp_module = prefs_register_protocol(proto_clnp, NULL);
     prefs_register_uint_preference(clnp_module, "tp_nsap_selector",

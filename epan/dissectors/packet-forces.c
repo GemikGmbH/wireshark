@@ -24,8 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
@@ -306,8 +304,7 @@ dissect_path_data_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint 
 
     while (tvb_reported_length_remaining(tvb, offset) >= TLV_TL_LENGTH)
     {
-        ti = proto_tree_add_text(tree, tvb, offset, TLV_TL_LENGTH, "TLV");
-        tlv_tree = proto_item_add_subtree(ti, ett_forces_path_data_tlv);
+        tlv_tree = proto_tree_add_subtree(tree, tvb, offset, TLV_TL_LENGTH, ett_forces_path_data_tlv, &ti, "TLV");
 
         type = tvb_get_ntohs(tvb, offset);
         proto_tree_add_item(tlv_tree, hf_forces_lfbselect_tlv_type_operation_path_type,
@@ -324,8 +321,8 @@ dissect_path_data_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint 
 
         if (type == PATH_DATA_TLV)
         {
-            ti = proto_tree_add_text(tree, tvb, offset+TLV_TL_LENGTH, length_TLV-TLV_TL_LENGTH, "Path Data TLV");
-            path_data_tree = proto_item_add_subtree(ti, ett_forces_path_data_tlv);
+            path_data_tree = proto_tree_add_subtree(tree, tvb, offset+TLV_TL_LENGTH, length_TLV-TLV_TL_LENGTH,
+                                    ett_forces_path_data_tlv, NULL, "Path Data TLV");
 
             flag = tvb_get_ntohs(tvb, offset+TLV_TL_LENGTH);
             flag_item = proto_tree_add_item(path_data_tree, hf_forces_lfbselect_tlv_type_operation_path_flags,
@@ -367,8 +364,8 @@ dissect_operation_tlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint 
 
     while (tvb_reported_length_remaining(tvb, offset) >= TLV_TL_LENGTH)
     {
-        ti = proto_tree_add_text(tree, tvb, offset, length_count, "Operation TLV");
-        oper_tree = proto_item_add_subtree(ti, ett_forces_lfbselect_tlv_type_operation);
+        oper_tree = proto_tree_add_subtree(tree, tvb, offset, length_count,
+            ett_forces_lfbselect_tlv_type_operation, &ti, "Operation TLV");
 
         type = tvb_get_ntohs(tvb,offset);
         ti = proto_tree_add_item(oper_tree, hf_forces_lfbselect_tlv_type_operation_type,
@@ -419,8 +416,8 @@ dissect_redirecttlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint of
                 dst_addr     = pinfo->dst,
                 dst_net_addr = pinfo->net_dst;
 
-    ti = proto_tree_add_text(tree, tvb, offset, TLV_TL_LENGTH, "Meta Data TLV");
-    meta_data_tree = proto_item_add_subtree(ti, ett_forces_redirect_tlv_meta_data_tlv);
+    meta_data_tree = proto_tree_add_subtree(tree, tvb, offset, TLV_TL_LENGTH,
+        ett_forces_redirect_tlv_meta_data_tlv, &ti, "Meta Data TLV");
     proto_tree_add_item(meta_data_tree, hf_forces_redirect_tlv_meta_data_tlv_type, tvb, offset, 2, ENC_BIG_ENDIAN);
 
     length_meta = tvb_get_ntohs(tvb, offset+2);
@@ -431,26 +428,31 @@ dissect_redirecttlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint of
     start_offset = offset;
     while ((tvb_reported_length_remaining(tvb, offset) >= 8) && (start_offset+length_meta > offset))
     {
-        ti = proto_tree_add_text(tree, tvb, offset, TLV_TL_LENGTH, "Meta Data ILV");
-        meta_data_ilv_tree =  proto_item_add_subtree(ti, ett_forces_redirect_tlv_meta_data_tlv_meta_data_ilv);
+        meta_data_ilv_tree = proto_tree_add_subtree(tree, tvb, offset, TLV_TL_LENGTH,
+            ett_forces_redirect_tlv_meta_data_tlv_meta_data_ilv, &ti, "Meta Data ILV");
 
         proto_tree_add_item(meta_data_ilv_tree, hf_forces_redirect_tlv_meta_data_tlv_meta_data_ilv_id,
                                    tvb, offset+8, 4, ENC_BIG_ENDIAN);
         length_ilv = tvb_get_ntohl(tvb, offset+12);
         proto_tree_add_uint_format_value(meta_data_ilv_tree, hf_forces_redirect_tlv_meta_data_tlv_meta_data_ilv_length,
                                    tvb,  offset+12, 4, length_ilv, "%u Bytes", length_ilv);
-        if (length_ilv > 0)
+        offset += 8;
+        if (length_ilv > 0) {
             proto_tree_add_item(meta_data_ilv_tree, hf_forces_redirect_tlv_meta_data_tlv_meta_data_ilv,
-                                   tvb, offset+8, length_ilv, ENC_NA);
+                                   tvb, offset, length_ilv, ENC_NA);
+
+            if (offset + length_ilv > offset) {
+                offset += length_ilv;
+            }
+        }
 
         proto_item_set_len(ti, length_ilv + 8);
-        offset += length_ilv + 8;
     }
 
     if (tvb_reported_length_remaining(tvb, offset) > 0)
     {
-        ti = proto_tree_add_text(tree, tvb, offset, TLV_TL_LENGTH, "Redirect Data TLV");
-        redirect_data_tree = proto_item_add_subtree(ti, ett_forces_redirect_tlv_redirect_data_tlv);
+        redirect_data_tree = proto_tree_add_subtree(tree, tvb, offset, TLV_TL_LENGTH,
+            ett_forces_redirect_tlv_redirect_data_tlv, &ti, "Redirect Data TLV");
 
         proto_tree_add_item(redirect_data_tree, hf_forces_redirect_tlv_redirect_data_tlv_type,
                             tvb, offset, 2,  ENC_BIG_ENDIAN);
@@ -470,7 +472,7 @@ dissect_redirecttlv(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint of
         {
             tvbuff_t  *next_tvb;
 
-            next_tvb = tvb_new_subset(tvb, offset+4, length_redirect-TLV_TL_LENGTH, length_redirect-TLV_TL_LENGTH);
+            next_tvb = tvb_new_subset_length(tvb, offset+4, length_redirect-TLV_TL_LENGTH);
             call_dissector(ip_handle, next_tvb, pinfo, redirect_data_tree);
 
             /* Restore IP info */
@@ -501,8 +503,8 @@ dissect_forces(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offs
     ti = proto_tree_add_item(tree, proto_forces, tvb, 0, -1, ENC_NA);
     forces_tree = proto_item_add_subtree(ti, ett_forces);
 
-    ti = proto_tree_add_text(forces_tree, tvb, 0, ForCES_HEADER_LENGTH, "Common Header");
-    forces_main_header_tree = proto_item_add_subtree(ti, ett_forces_main_header);
+    forces_main_header_tree = proto_tree_add_subtree(forces_tree, tvb, 0, ForCES_HEADER_LENGTH,
+                ett_forces_main_header, NULL, "Common Header");
 
     proto_tree_add_item(forces_main_header_tree, hf_forces_version, tvb, 0, 1, ENC_BIG_ENDIAN);
     proto_tree_add_item(forces_main_header_tree, hf_forces_rsvd,    tvb, 0, 1, ENC_BIG_ENDIAN);
@@ -541,8 +543,7 @@ dissect_forces(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offs
     offset += 24;
     while (tvb_reported_length_remaining(tvb, offset) >= TLV_TL_LENGTH)
     {
-        ti = proto_tree_add_text(forces_tree, tvb, offset, TLV_TL_LENGTH, "TLV");
-        forces_tlv_tree = proto_item_add_subtree(ti, ett_forces_tlv);
+        forces_tlv_tree = proto_tree_add_subtree(forces_tree, tvb, offset, TLV_TL_LENGTH, ett_forces_tlv, &ti, "TLV");
 
         tlv_type = tvb_get_ntohs(tvb, offset);
         tlv_item = proto_tree_add_item(forces_tlv_tree, hf_forces_tlv_type, tvb, offset, 2, ENC_BIG_ENDIAN);
@@ -565,33 +566,33 @@ dissect_forces(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, guint32 offs
         switch(tlv_type)
         {
         case LFBselect_TLV:
-            ti = proto_tree_add_text(forces_tlv_tree, tvb, offset, length_count, "LFB select TLV");
-            tlv_tree = proto_item_add_subtree(ti, ett_forces_lfbselect_tlv_type);
+            tlv_tree = proto_tree_add_subtree(forces_tlv_tree, tvb, offset, length_count,
+                    ett_forces_lfbselect_tlv_type, NULL, "LFB select TLV");
             dissect_lfbselecttlv(tvb, pinfo, tlv_tree, offset, length_count);
             break;
 
         case REDIRECT_TLV:
-            ti = proto_tree_add_text(forces_tlv_tree, tvb, offset, length_count, "Redirect TLV");
-            tlv_tree = proto_item_add_subtree(ti, ett_forces_redirect_tlv_type);
+            tlv_tree = proto_tree_add_subtree(forces_tlv_tree, tvb, offset, length_count,
+                            ett_forces_redirect_tlv_type, NULL, "Redirect TLV");
             dissect_redirecttlv(tvb, pinfo, tlv_tree, offset);
             break;
 
         case ASResult_TLV:
-            ti = proto_tree_add_text(forces_tlv_tree, tvb, offset, length_count, "ASResult TLV");
-            tlv_tree = proto_item_add_subtree(ti, ett_forces_asresult_tlv);
+            tlv_tree = proto_tree_add_subtree(forces_tlv_tree, tvb, offset, length_count,
+                        ett_forces_asresult_tlv, NULL, "ASResult TLV");
             proto_tree_add_item(tlv_tree, hf_forces_asresult_association_setup_result, tvb, offset, 4, ENC_BIG_ENDIAN);
             break;
 
         case ASTreason_TLV:
-            ti = proto_tree_add_text(forces_tlv_tree, tvb, offset, length_count, "ASTreason TLV");
-            tlv_tree = proto_item_add_subtree(ti, ett_forces_astreason_tlv);
+            tlv_tree = proto_tree_add_subtree(forces_tlv_tree, tvb, offset, length_count,
+                            ett_forces_astreason_tlv, NULL, "ASTreason TLV");
             proto_tree_add_item(tlv_tree, hf_forces_astreason_tlv_teardown_reason, tvb, offset, 4, ENC_BIG_ENDIAN);
             break;
 
         default:
             expert_add_info(pinfo, tlv_item, &ei_forces_tlv_type);
-            ti = proto_tree_add_text(forces_tlv_tree, tvb, offset, length_count, "Unknown TLV");
-            tlv_tree = proto_item_add_subtree(ti, ett_forces_unknown_tlv);
+            tlv_tree = proto_tree_add_subtree(forces_tlv_tree, tvb, offset, length_count,
+                ett_forces_unknown_tlv, NULL, "Unknown TLV");
             proto_tree_add_item(tlv_tree, hf_forces_unknown_tlv, tvb, offset, length_count, ENC_NA);
             break;
         }
@@ -899,19 +900,19 @@ proto_reg_handoff_forces(void)
     /* Register SCTP port for medium priority dissection */
     if ((alternate_sctp_med_prio_channel_port != 0) &&
         (alternate_sctp_med_prio_channel_port != forces_alternate_sctp_med_prio_channel_port))
-        dissector_delete_uint("udp.port", alternate_sctp_med_prio_channel_port, forces_handle);
+        dissector_delete_uint("sctp.port", alternate_sctp_med_prio_channel_port, forces_handle);
     if ((forces_alternate_sctp_med_prio_channel_port != 0) &&
         (alternate_sctp_med_prio_channel_port != forces_alternate_sctp_med_prio_channel_port))
-        dissector_add_uint("udp.port", forces_alternate_sctp_med_prio_channel_port, forces_handle);
+        dissector_add_uint("sctp.port", forces_alternate_sctp_med_prio_channel_port, forces_handle);
     alternate_sctp_med_prio_channel_port = forces_alternate_sctp_med_prio_channel_port;
 
     /* Register SCTP port for low priority dissection */
     if ((alternate_sctp_low_prio_channel_port != 0) &&
         (alternate_sctp_low_prio_channel_port != forces_alternate_sctp_low_prio_channel_port))
-        dissector_delete_uint("udp.port", alternate_sctp_low_prio_channel_port, forces_handle);
+        dissector_delete_uint("sctp.port", alternate_sctp_low_prio_channel_port, forces_handle);
     if ((forces_alternate_sctp_low_prio_channel_port != 0) &&
         (alternate_sctp_low_prio_channel_port != forces_alternate_sctp_low_prio_channel_port))
-        dissector_add_uint("udp.port", forces_alternate_sctp_low_prio_channel_port, forces_handle);
+        dissector_add_uint("sctp.port", forces_alternate_sctp_low_prio_channel_port, forces_handle);
     alternate_sctp_low_prio_channel_port = forces_alternate_sctp_low_prio_channel_port;
 }
 

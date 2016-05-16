@@ -36,7 +36,6 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <string.h>
 
 #include <gtk/gtk.h>
@@ -44,21 +43,16 @@
 #include <epan/prefs.h>
 #include <epan/funnel.h>
 
-#include "../file.h"
-#include "../stat_menu.h"
 #include "ui/progress_dlg.h"
 #include "../color_filters.h"
 
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/dlg_utils.h"
-#include "ui/gtk/tap_param_dlg.h"
 #include "ui/gtk/font_utils.h"
 #include "ui/gtk/gui_stat_menu.h"
-#include "ui/gtk/prefs_dlg.h"
 #include "ui/gtk/main.h"
 #include "ui/gtk/webbrowser.h"
 #include "ui/gtk/gtkglobals.h"
-#include "ui/gtk/old-gtk-compat.h"
 
 void register_tap_listener_gtkfunnel(void);
 
@@ -147,7 +141,7 @@ static gboolean text_window_delete_event_cb(GtkWidget *win _U_, GdkEvent *event 
     return TRUE;
 }
 
-static funnel_text_window_t* new_text_window(const gchar* title) {
+static funnel_text_window_t* new_text_window(const char* title) {
     funnel_text_window_t* tw = (funnel_text_window_t *)g_malloc(sizeof(funnel_text_window_t));
     GtkWidget *txt_scrollw, *main_vb, *hbox;
 
@@ -249,7 +243,7 @@ static void text_window_append(funnel_text_window_t*  tw, const char *str)
 }
 
 
-static void text_window_set_text(funnel_text_window_t*  tw, const gchar* text)
+static void text_window_set_text(funnel_text_window_t*  tw, const char* text)
 {
     if (! tw->win) return;
 
@@ -416,12 +410,11 @@ static void funnel_new_dialog(const gchar* title,
     dd->dlg_cb = dlg_cb;
     dd->data = data;
 
-    for (i=0; fieldnames[i]; i++);
-
     win = dlg_window_new(title);
 
     dd->win = win;
 
+    for (i=0; fieldnames[i]; i++);
     gtk_window_resize(GTK_WINDOW(win),400,10*(i+2));
 
     main_vb = ws_gtk_box_new(GTK_ORIENTATION_VERTICAL, 5, FALSE);
@@ -463,11 +456,11 @@ static void funnel_new_dialog(const gchar* title,
     gtk_widget_show(win);
 }
 
-static gchar * funnel_get_filter(void) {
-    return (gchar *)gtk_entry_get_text(GTK_ENTRY(main_display_filter_widget));
+static const gchar * funnel_get_filter(funnel_ops_id_t *ops_id _U_ _U_) {
+    return gtk_entry_get_text(GTK_ENTRY(main_display_filter_widget));
 }
 
-static void funnel_set_filter(const char* filter_string) {
+static void funnel_set_filter(funnel_ops_id_t *ops_id _U_, const char* filter_string) {
     gtk_entry_set_text(GTK_ENTRY(main_display_filter_widget), filter_string);
 }
 
@@ -475,7 +468,7 @@ static void funnel_set_color_filter_slot(guint8 filt_nr, const gchar* filter_str
     color_filters_set_tmp(filt_nr, (gchar *)filter_string, FALSE);
 }
 
-static void funnel_apply_filter(void) {
+static void funnel_apply_filter(funnel_ops_id_t *ops_id _U_) {
     const char* filter_string = gtk_entry_get_text(GTK_ENTRY(main_display_filter_widget));
     main_filter_packets(&cfile, filter_string, FALSE);
 }
@@ -488,15 +481,15 @@ static void funnel_logger(const gchar *log_domain _U_,
     fputs(message,stderr);
 }
 
-static void funnel_retap_packets(void) {
+static void funnel_retap_packets(funnel_ops_id_t *ops_id _U_) {
     cf_retap_packets(&cfile);
 }
 
-static gboolean funnel_open_file(const char* fname, const char* filter, const char** err_str) {
+static gboolean funnel_open_file(funnel_ops_id_t *ops_id _U_, const char* fname, const char* filter, char** err_str) {
     int err = 0;
     dfilter_t   *rfcode = NULL;
 
-    *err_str = "no error";
+    *err_str = NULL;
 
     switch (cfile.state) {
         case FILE_CLOSED:
@@ -504,20 +497,19 @@ static gboolean funnel_open_file(const char* fname, const char* filter, const ch
         case FILE_READ_ABORTED:
             break;
         case FILE_READ_IN_PROGRESS:
-            *err_str = "file read in progress";
+            *err_str = g_strdup("file read in progress");
             return FALSE;
     }
 
     if (filter) {
-        if (!dfilter_compile(filter, &rfcode)) {
-            *err_str = dfilter_error_msg ? dfilter_error_msg : "cannot compile filter";
+        if (!dfilter_compile(filter, &rfcode, err_str)) {
             return FALSE;
         }
     }
 
     /* This closes the current file if it succeeds. */
     if (cf_open(&cfile, fname, WTAP_TYPE_AUTO, FALSE, &err) != CF_OK) {
-        *err_str = g_strerror(err);
+        *err_str = g_strdup(g_strerror(err));
         if (rfcode != NULL) dfilter_free(rfcode);
         return FALSE;
     }
@@ -529,30 +521,31 @@ static gboolean funnel_open_file(const char* fname, const char* filter, const ch
         case CF_READ_ERROR:
             break;
         default:
-            *err_str = "problem while reading file";
+            *err_str = g_strdup("problem while reading file");
             return FALSE;
     }
 
     return TRUE;
 }
 
-static funnel_progress_window_t* funnel_new_progress_window(const gchar* label, const gchar* task, gboolean terminate_is_stop, gboolean *stop_flag) {
-    return (funnel_progress_window_t*)create_progress_dlg(top_level, label, task, terminate_is_stop, stop_flag);
+static struct progdlg* funnel_new_progress_window(funnel_ops_id_t *ops_id _U_, const gchar* label, const gchar* task, gboolean terminate_is_stop, gboolean *stop_flag) {
+    return create_progress_dlg(top_level, label, task, terminate_is_stop, stop_flag);
 }
 
-static void funnel_update_progress(funnel_progress_window_t* win, float pr, const gchar* task) {
-    update_progress_dlg((progdlg_t*)win, pr, task);
+static void funnel_update_progress(struct progdlg* win, float pr, const gchar* task) {
+    update_progress_dlg(win, pr, task);
 }
 
-static void funnel_destroy_progress_window(funnel_progress_window_t* win) {
-    destroy_progress_dlg((progdlg_t*)win);
+static void funnel_destroy_progress_window(struct progdlg* win) {
+    destroy_progress_dlg(win);
 }
 
-static void funnel_reload(void) {
+static void funnel_reload(funnel_ops_id_t *ops_id _U_) {
     if (cfile.state == FILE_READ_DONE) cf_reload(&cfile);
 }
 
 static const funnel_ops_t funnel_ops = {
+    NULL, /* ops_id */
     new_text_window,
     text_window_set_text,
     text_window_append,
@@ -565,6 +558,7 @@ static const funnel_ops_t funnel_ops = {
     text_window_add_button,
     /*...,*/
     funnel_new_dialog,
+    NULL,
     funnel_logger,
     funnel_retap_packets,
     copy_to_clipboard,
@@ -637,3 +631,16 @@ register_tap_listener_gtkfunnel(void)
 {
     funnel_register_all_menus(register_menu_cb);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

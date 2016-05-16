@@ -36,8 +36,6 @@
 	 ** diam_dict.h
 	 ** Diameter Dictionary Import Routines
 	 **
-	 ** $Id$
-	 **
 	 ** (c) 2007, Luis E. Garcia Ontanon <luis@ontanon.org>
 	 **
 	 ** This library is free software; you can redistribute it and/or
@@ -180,6 +178,8 @@ grouped_start <grouped>
 grouped_end <\/grouped>
 
 vendor_start <vendor
+vendor_end<\/vendor>
+
 gavp_start <gavp
 
 ignored_attr [a-z0-9-]+=
@@ -397,12 +397,12 @@ description_attr description=\042
 }
 
 <COMMAND_ATTRS>{name_attr}		{ ATTR_STR(cmd->name); }
-<COMMAND_ATTRS>{vendor_attr}	{ ATTR_STR(cmd->vendor); }
+<COMMAND_ATTRS>{vendor_attr}		{ ATTR_STR(cmd->vendor); }
 <COMMAND_ATTRS>{code_attr}		{ ATTR_UINT(cmd->code); }
 <COMMAND_ATTRS>{stop}			|
 <COMMAND_ATTRS>{stop_end}		{ BEGIN IN_APPL; }
 
-<IN_APPL>{vendor_start} {
+<IN_DICT>{vendor_start} {
 	D(("vendor_start\n"));
 
 	vnd = g_new(ddict_vendor_t,1);
@@ -419,8 +419,8 @@ description_attr description=\042
 <VENDOR_ATTRS>{name_attr}		{ ATTR_STR(vnd->desc); }
 <VENDOR_ATTRS>{vendor_attr}		{ ATTR_STR(vnd->name); }
 <VENDOR_ATTRS>{code_attr}		{ ATTR_UINT(vnd->code); }
-<VENDOR_ATTRS>{stop}			|
-<VENDOR_ATTRS>{stop_end}		{ BEGIN IN_APPL; }
+<VENDOR_ATTRS>{stop}			{ BEGIN IN_APPL; }
+<VENDOR_ATTRS>{stop_end}		{ BEGIN IN_DICT; }
 
 <IN_APPL>{typedefn_start} {
 	D(("typedefn_start\n"));
@@ -462,10 +462,10 @@ description_attr description=\042
 }
 
 <AVP_ATTRS>{name_attr}			{ ATTR_STR(avp->name); }
-<AVP_ATTRS>{description_attr}	{ ATTR_STR(avp->description); }
+<AVP_ATTRS>{description_attr}		{ ATTR_STR(avp->description); }
 <AVP_ATTRS>{vendor_attr}		{ ATTR_STR(avp->vendor); }
 <AVP_ATTRS>{code_attr}			{ ATTR_UINT(avp->code); }
-<AVP_ATTRS>{stop}				{ BEGIN IN_AVP;  }
+<AVP_ATTRS>{stop}			{ BEGIN IN_AVP;  }
 <AVP_ATTRS>{stop_end}			{ BEGIN IN_APPL; }
 
 
@@ -511,14 +511,22 @@ description_attr description=\042
 <ENUM_ATTRS>{name_attr}			{ ATTR_STR(enumitem->name); }
 <ENUM_ATTRS>{code_attr}			{ ATTR_UINT(enumitem->code); }
 
-<TYPE_ATTRS,GAVP_ATTRS,ENUM_ATTRS>{stop}			{ BEGIN IN_AVP; }
+<TYPE_ATTRS,GAVP_ATTRS,ENUM_ATTRS>{stop}		{ BEGIN IN_AVP; }
 <TYPE_ATTRS,GAVP_ATTRS,ENUM_ATTRS>{stop_end}		{ BEGIN IN_AVP; }
 
-<IN_AVP>{avp_end} { D(("avp_end")); BEGIN IN_APPL; }
+<IN_AVP>{avp_end} { D(("avp_end\n")); BEGIN IN_APPL; }
 
-<IN_APPL>{application_end} |
+<IN_APPL>{application_end} {
+	D(("application_end\n")); BEGIN IN_DICT;
+}
+<IN_APPL>{stop_end} {
+	D(("application_stop_end\n")); BEGIN IN_DICT;
+}
+<IN_APPL>{vendor_end} {
+	D(("vendor_end\n")); BEGIN IN_DICT;
+}
 <IN_APPL>{base_end} {
-	BEGIN IN_DICT;
+	D(("base_end\n")); BEGIN IN_DICT;
 }
 
 <IN_DICT>{dictionary_end} {
@@ -557,11 +565,15 @@ static unsigned size_strbuf = 8192;
 static unsigned len_strbuf = 0;
 
 extern void ddict_unused(void);
-void ddict_unused(void) {
+void
+ddict_unused(void)
+{
 	yy_top_state();
 }
 
-static void append_to_buffer(const char* txt, unsigned len) {
+static void
+append_to_buffer(const char* txt, unsigned len)
+{
 
 	if (strbuf == NULL) {
 		read_ptr = write_ptr = strbuf = (char*)g_malloc(size_strbuf);
@@ -577,7 +589,9 @@ static void append_to_buffer(const char* txt, unsigned len) {
 
 }
 
-static size_t file_input(char* buf, size_t max) {
+static size_t
+file_input(char* buf, size_t max)
+{
 	size_t read_cnt;
 
 	read_cnt = fread(buf,1,max,yyin);
@@ -592,7 +606,9 @@ static size_t file_input(char* buf, size_t max) {
 }
 
 
-static size_t string_input(char* buf, size_t max) {
+static size_t
+string_input(char* buf, size_t max)
+{
 	if (read_ptr >= write_ptr ) {
 		return YY_NULL;
 	} else if ( read_ptr + max > write_ptr ) {
@@ -605,7 +621,9 @@ static size_t string_input(char* buf, size_t max) {
 	return max;
 }
 
-static FILE* ddict_open(const char* system_directory, const char* filename) {
+static FILE *
+ddict_open(const char* system_directory, const char* filename)
+{
 	FILE* fh;
 	char* fname;
 	if (system_directory) {
@@ -625,7 +643,9 @@ static FILE* ddict_open(const char* system_directory, const char* filename) {
 	return fh;
 }
 
-ddict_t* ddict_scan(const char* system_directory, const char* filename, int dbg) {
+ddict_t *
+ddict_scan(const char* system_directory, const char* filename, int dbg)
+{
 
 	debugging = dbg;
 
@@ -686,7 +706,9 @@ ddict_t* ddict_scan(const char* system_directory, const char* filename, int dbg)
 	return dict;
 }
 
-void ddict_free(ddict_t* d) {
+void
+ddict_free(ddict_t* d)
+{
 	ddict_application_t *p, *pn;
 	ddict_vendor_t *v, *vn;
 	ddict_cmd_t *c, *cn;
@@ -741,7 +763,9 @@ void ddict_free(ddict_t* d) {
 	g_free(d);
 }
 
-void ddict_print(FILE* fh, ddict_t* d) {
+void
+ddict_print(FILE* fh, ddict_t* d)
+{
 	ddict_application_t* p;
 	ddict_vendor_t* v;
 	ddict_cmd_t* c;
@@ -803,12 +827,16 @@ void ddict_print(FILE* fh, ddict_t* d) {
  * warnings by the Windows VC compiler).
  */
 
-int yywrap(void) {
+int
+yywrap(void)
+{
     return 1;
 }
 
 #ifdef TEST_DIAM_DICT_STANDALONE
-int main(int argc, char** argv) {
+int
+main(int argc, char** argv)
+{
 	ddict_t* d;
 	char* dname = NULL;
 	char* fname;

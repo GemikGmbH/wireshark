@@ -22,9 +22,7 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include <epan/expert.h>
 #include <epan/dissectors/packet-dcerpc.h>
 #include <epan/dissectors/packet-dcom.h>
@@ -81,93 +79,93 @@ static int hf_cba_save_result = -1;
 
 static expert_field ei_cba_acco_interface_pointer_unresolved = EI_INIT;
 
-static e_uuid_t uuid_coclass_CBAPhysicalDevice = { 0xcba00000, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_coclass_CBAPhysicalDevice = { 0xcba00000, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 
 
 /* CBA interfaces */
 static int proto_ICBAPhysicalDevice = -1;
 static gint ett_ICBAPhysicalDevice = -1;
-static e_uuid_t uuid_ICBAPhysicalDevice = { 0xcba00001, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAPhysicalDevice = { 0xcba00001, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAPhysicalDevice = 0;
 
 static int proto_ICBAPhysicalDevice2 = -1;
-static e_uuid_t uuid_ICBAPhysicalDevice2 = { 0xcba00006, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAPhysicalDevice2 = { 0xcba00006, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAPhysicalDevice2 = 0;
 
 static int proto_ICBABrowse = -1;
 static gint ett_ICBABrowse = -1;
-static e_uuid_t uuid_ICBABrowse = { 0xcba00002, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBABrowse = { 0xcba00002, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBABrowse = 0;
 
 static int proto_ICBABrowse2 = -1;
-static e_uuid_t uuid_ICBABrowse2 = { 0xcba00007, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBABrowse2 = { 0xcba00007, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBABrowse2 = 0;
 
 static int proto_ICBAPhysicalDevicePC = -1;
 static gint ett_ICBAPhysicalDevicePC = -1;
-static e_uuid_t uuid_ICBAPhysicalDevicePC = { 0xcba00003, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAPhysicalDevicePC = { 0xcba00003, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAPhysicalDevicePC = 0;
 
 static int proto_ICBAPhysicalDevicePCEvent = -1;
 static gint ett_ICBAPhysicalDevicePCEvent = -1;
-static e_uuid_t uuid_ICBAPhysicalDevicePCEvent = { 0xcba00004, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAPhysicalDevicePCEvent = { 0xcba00004, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAPhysicalDevicePCEvent = 0;
 
 static int proto_ICBAPersist = -1;
 static gint ett_ICBAPersist = -1;
-static e_uuid_t uuid_ICBAPersist = { 0xcba00005, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAPersist = { 0xcba00005, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAPersist = 0;
 
 static int proto_ICBAPersist2 = -1;
-static e_uuid_t uuid_ICBAPersist2 = { 0xcba00008, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAPersist2 = { 0xcba00008, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAPersist2 = 0;
 
 static int proto_ICBALogicalDevice = -1;
 static gint ett_ICBALogicalDevice = -1;
-static e_uuid_t uuid_ICBALogicalDevice = { 0xcba00011, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBALogicalDevice = { 0xcba00011, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBALogicalDevice = 0;
 
 static int proto_ICBALogicalDevice2 = -1;
-static e_uuid_t uuid_ICBALogicalDevice2 = { 0xcba00017, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBALogicalDevice2 = { 0xcba00017, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBALogicalDevice2 = 0;
 
 static int proto_ICBAState = -1;
 static gint ett_ICBAState = -1;
-static e_uuid_t uuid_ICBAState = { 0xcba00012, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAState = { 0xcba00012, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAState = 0;
 
 static int proto_ICBAStateEvent = -1;
 static gint ett_ICBAStateEvent = -1;
-static e_uuid_t uuid_ICBAStateEvent = { 0xcba00013, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAStateEvent = { 0xcba00013, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAStateEvent = 0;
 
 static int proto_ICBATime = -1;
 static gint ett_ICBATime = -1;
-static e_uuid_t uuid_ICBATime = { 0xcba00014, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBATime = { 0xcba00014, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBATime = 0;
 
 static int proto_ICBAGroupError = -1;
 static gint ett_ICBAGroupError = -1;
-static e_uuid_t uuid_ICBAGroupError = { 0xcba00015, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAGroupError = { 0xcba00015, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAGroupError = 0;
 
 static int proto_ICBAGroupErrorEvent = -1;
 static gint ett_ICBAGroupErrorEvent = -1;
-static e_uuid_t uuid_ICBAGroupErrorEvent = { 0xcba00016, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBAGroupErrorEvent = { 0xcba00016, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBAGroupErrorEvent = 0;
 
 static int proto_ICBARTAuto = -1;
 static gint ett_ICBARTAuto = -1;
-static e_uuid_t uuid_ICBARTAuto = { 0xcba00051, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBARTAuto = { 0xcba00051, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBARTAuto = 0;
 
 static int proto_ICBARTAuto2 = -1;
-static e_uuid_t uuid_ICBARTAuto2 = { 0xcba00052, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBARTAuto2 = { 0xcba00052, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBARTAuto2 = 0;
 
 static int proto_ICBASystemProperties = -1;
 static gint ett_ICBASystemProperties = -1;
-static e_uuid_t uuid_ICBASystemProperties = { 0xcba00062, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
+static e_guid_t uuid_ICBASystemProperties = { 0xcba00062, 0x6c97, 0x11d1, { 0x82, 0x71, 0x00, 0xa0, 0x24, 0x42, 0xdf, 0x7d } };
 static guint16  ver_ICBASystemProperties = 0;
 
 
@@ -604,9 +602,9 @@ dissect_ICBAPhysicalDevice_get_LogicalDevice_resp(tvbuff_t *tvb, int offset,
     if (ldev_name != NULL && ldev_interf != NULL) {
         /* XXX - this is a hack to create a pdev interface */
         /* as I currently don't understand the objref process for a root interface! */
-        pdev_interf = dcom_interface_new(pinfo, (const guint8 *)pinfo->net_dst.data, &uuid_ICBAPhysicalDevice, 0, 0, &di->call_data->object_uuid);
+        pdev_interf = dcom_interface_new(pinfo, &pinfo->net_dst, &uuid_ICBAPhysicalDevice, 0, 0, &di->call_data->object_uuid);
         if (pdev_interf != NULL) {
-            pdev = cba_pdev_add(pinfo, (const guint8 *)pinfo->net_dst.data);
+            pdev = cba_pdev_add(pinfo, &pinfo->net_dst);
             cba_pdev_link(pinfo, pdev, pdev_interf);
 
             ldev = cba_ldev_add(pinfo, pdev, ldev_name);
@@ -794,7 +792,7 @@ dissect_ICBALogicalDevice_get_ACCO_resp(tvbuff_t *tvb, int offset,
         expert_add_info(pinfo, NULL, &ei_cba_acco_interface_pointer_unresolved);
     }
 
-    ldev = cba_ldev_find(pinfo, pinfo->net_src.data, &di->call_data->object_uuid);
+    ldev = cba_ldev_find(pinfo, &pinfo->net_src, &di->call_data->object_uuid);
 
     /* "crosslink" interface and its object */
     if (ldev != NULL && acco_interf != NULL) {
@@ -1368,7 +1366,8 @@ static dcerpc_sub_dissector ICBASystemProperties_dissectors[] = {
 };
 
 
-static void cba_reinit( void) {
+static void cba_cleanup(void) {
+    g_list_free(cba_pdevs);
     cba_pdevs = NULL;
 }
 
@@ -1644,7 +1643,7 @@ proto_register_dcom_cba (void)
 
     proto_ICBASystemProperties = proto_register_protocol ("ICBASystemProperties", "ICBASysProp", "cba_sysprop");
 
-    register_init_routine(cba_reinit);
+    register_cleanup_routine(cba_cleanup);
 }
 
 
@@ -1728,3 +1727,16 @@ proto_reg_handoff_dcom_cba (void)
         &uuid_ICBASystemProperties, ver_ICBASystemProperties,
         ICBASystemProperties_dissectors, hf_cba_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

@@ -23,22 +23,18 @@
 #include "config.h"
 
 #include <string.h>
-#include <time.h>
 
 #include <gtk/gtk.h>
 
-#include <epan/strutil.h>
 
-#include <wiretap/wtap.h>
 
-#include "../globals.h"
+#include <wsutil/ws_version_info.h>
+
 #include "../file.h"
 #include "../summary.h"
-#include "../capture-pcap-util.h"
-#include "../version_info.h"
 
 #ifdef HAVE_LIBPCAP
-#include "../capture.h"
+#include "ui/capture.h"
 #include "ui/capture_globals.h"
 #endif
 #include "ui/main_statusbar.h"
@@ -666,7 +662,7 @@ summary_to_texbuff(GtkTextBuffer *buffer)
 #endif
 
   /* Add Wireshark version*/
-  g_snprintf(string_buff, SUM_STR_MAX, "Summary created by Wireshark %s\n\n", wireshark_gitversion);
+  g_snprintf(string_buff, SUM_STR_MAX, "Summary created by Wireshark %s\n\n", get_ws_vcs_version_info());
   gtk_text_buffer_insert_at_cursor (buffer, string_buff, -1);
 
   /* Info about file */

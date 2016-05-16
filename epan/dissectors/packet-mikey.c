@@ -37,13 +37,10 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include <epan/prefs.h>
 #include <epan/asn1.h>
-#include <epan/dissectors/packet-x509af.h>
+#include "packet-x509af.h"
 
 void proto_register_mikey(void);
 void proto_reg_handoff_mikey(void);
@@ -646,8 +643,6 @@ add_next_payload(tvbuff_t *tvb, proto_tree *tree, int offset)
 static int
 dissect_payload_cs_id_srtp(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_,  proto_tree *tree)
 {
-	tvb_ensure_bytes_exist(tvb, 0, 9);
-
 	if (tree) {
 		proto_item *id_ti;
 		proto_tree *id_tree;
@@ -683,7 +678,7 @@ dissect_payload_cs_id(int type, mikey_t *mikey, tvbuff_t *tvb, packet_info *pinf
 	entry = mikey_dissector_lookup(cs_id_map, type);
 
 	if (!entry || !entry->dissector) {
-		return -1;
+		return 0;
 	}
 
 	return entry->dissector(mikey, tvb, pinfo, tree);
@@ -733,7 +728,7 @@ dissect_payload_hdr(mikey_t *mikey, tvbuff_t *tvb, packet_info *pinfo, proto_tre
 		len = dissect_payload_cs_id(cs_id_map_type, mikey, sub_tvb, pinfo, tree);
 
 		if (len < 0)
-			return -1;
+			return 0;
 
 		offset += len;
 	}
@@ -750,7 +745,6 @@ dissect_payload_kemac(mikey_t *mikey, tvbuff_t *tvb, packet_info *pinfo, proto_t
 	guint16	mac_length;
 	guint8	mac_alg;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 4);
 	encr_alg    = tvb_get_guint8(tvb, offset+1);
 	encr_length = tvb_get_ntohs(tvb, offset+2);
 	tvb_ensure_bytes_exist(tvb, offset+4, encr_length+1);
@@ -768,7 +762,7 @@ dissect_payload_kemac(mikey_t *mikey, tvbuff_t *tvb, packet_info *pinfo, proto_t
 			key_data_item = proto_tree_add_item(tree, hf_mikey_pl[PL_KEY_DATA], tvb, 4, encr_length, ENC_NA);
 			key_data_tree = proto_item_add_subtree(key_data_item, ett_mikey_enc_data);
 
-			sub_tvb = tvb_new_subset(tvb, offset+4, encr_length, encr_length);
+			sub_tvb = tvb_new_subset_length(tvb, offset+4, encr_length);
 			dissect_payload(PL_KEY_DATA, mikey, sub_tvb, pinfo, key_data_tree);
 		} else {
 			/* If Key Data is encrypted, show only the encr_data */
@@ -785,13 +779,10 @@ dissect_payload_kemac(mikey_t *mikey, tvbuff_t *tvb, packet_info *pinfo, proto_t
 		mac_length = 160/8;
 		break;
 	default:
-		return -1;
+		return 0;
 	}
 
-	tvb_ensure_bytes_exist(tvb, offset+4+encr_length+1, mac_length);
-	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_KEMAC_MAC], tvb, 4+encr_length+1, mac_length, ENC_NA);
-	}
+	proto_tree_add_item(tree, hf_mikey[POS_KEMAC_MAC], tvb, 4+encr_length+1, mac_length, ENC_NA);
 
 	return 4+encr_length+1+mac_length;
 }
@@ -802,7 +793,6 @@ dissect_payload_pke(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, p
 	int	offset = 0;
 	guint16 length;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 3);
 	length = tvb_get_ntohs(tvb, offset+1) &0x3ff;
 
 	if (tree) {
@@ -811,10 +801,7 @@ dissect_payload_pke(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, p
 		proto_tree_add_item(tree, hf_mikey[POS_PKE_DATA_LEN], tvb, 1, 2, ENC_BIG_ENDIAN);
 	}
 
-	tvb_ensure_bytes_exist(tvb, offset+3, length);
-	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_PKE_DATA], tvb, 3, length, ENC_NA);
-	}
+	proto_tree_add_item(tree, hf_mikey[POS_PKE_DATA], tvb, 3, length, ENC_NA);
 	return 3 + length;
 }
 
@@ -826,7 +813,6 @@ dissect_payload_dh(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pr
 	int    dh_length;
 	guint8 kv;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 2);
 	dh_group = tvb_get_guint8(tvb, offset+1);
 
 	switch (dh_group) {
@@ -840,10 +826,9 @@ dissect_payload_dh(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pr
 		dh_length = 1024/8;
 		break;
 	default:
-		return -1;
+		return 0;
 	}
 
-	tvb_ensure_bytes_exist(tvb, offset+2, dh_length+1);
 	kv = tvb_get_guint8(tvb, offset+2+dh_length) & 0x0f;
 
 	if (tree) {
@@ -854,7 +839,7 @@ dissect_payload_dh(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pr
 	}
 
 	if (kv != 0) {
-		return -1;
+		return 0;
 	}
 
 	return 2 + dh_length + 1;
@@ -866,7 +851,6 @@ dissect_payload_sign(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, 
 	int	offset = 0;
 	guint16 length;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 2);
 	length = ((tvb_get_guint8(tvb, offset+0) & 0x0f) << 8) + tvb_get_guint8(tvb, offset+1);
 
 	if (tree) {
@@ -874,10 +858,7 @@ dissect_payload_sign(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, 
 		proto_tree_add_uint(tree, hf_mikey[POS_SIGNATURE_LEN], tvb, 0, 2, length);
 	}
 
-	tvb_ensure_bytes_exist(tvb, offset+2, length);
-	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_SIGNATURE], tvb, 2, length, ENC_NA);
-	}
+	proto_tree_add_item(tree, hf_mikey[POS_SIGNATURE], tvb, 2, length, ENC_NA);
 	return 2 + length;
 }
 
@@ -888,7 +869,6 @@ dissect_payload_t(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pro
 	int    offset = 0;
 	int    len    = 0;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 2);
 	ts_type = tvb_get_guint8(tvb, offset+1);
 
 	if (tree) {
@@ -908,7 +888,7 @@ dissect_payload_t(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pro
 		len = 6;
 		break;
 	default:
-		len = -1;
+		len = 0;
 		break;
 	}
 
@@ -922,7 +902,6 @@ dissect_payload_id(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pr
 	guint8	type;
 	guint16	length;
 
-	tvb_ensure_bytes_exist(tvb,  offset+0, 4);
 	type   = tvb_get_guint8(tvb, offset+1);
 	length = tvb_get_ntohs(tvb,  offset+2);
 	if (tree) {
@@ -930,7 +909,6 @@ dissect_payload_id(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pr
 		proto_tree_add_item(tree, hf_mikey[POS_ID_LEN], tvb, 2, 2, ENC_BIG_ENDIAN);
 	}
 
-	tvb_ensure_bytes_exist(tvb, offset+4, length);
 	if (tree) {
 		proto_item* parent;
 		proto_tree_add_item(tree, hf_mikey[POS_ID], tvb, 4, length, ENC_ASCII|ENC_NA);
@@ -938,7 +916,7 @@ dissect_payload_id(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pr
 		parent = proto_tree_get_parent(tree);
 		proto_item_append_text(parent, " %s: %s",
 				       val_to_str_const(type, id_type_vals, "Unknown"),
-				       tvb_get_string(wmem_packet_scope(), tvb, 4, length));
+				       tvb_get_string_enc(wmem_packet_scope(), tvb, 4, length, ENC_ASCII));
 	}
 
 	return 4 + length;
@@ -951,16 +929,14 @@ dissect_payload_idr(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, p
 	guint8	type;
 	guint16	length;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 5);
 	type = tvb_get_guint8(tvb, offset+2);
 	length = tvb_get_ntohs(tvb, offset+3);
 	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_ID_ROLE], tvb, 1, 1, ENC_NA);
-		proto_tree_add_item(tree, hf_mikey[POS_ID_TYPE], tvb, 2, 1, ENC_NA);
-		proto_tree_add_item(tree, hf_mikey[POS_ID_LEN],  tvb, 3, 2, ENC_NA);
+		proto_tree_add_item(tree, hf_mikey[POS_ID_ROLE], tvb, 1, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(tree, hf_mikey[POS_ID_TYPE], tvb, 2, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(tree, hf_mikey[POS_ID_LEN],  tvb, 3, 2, ENC_BIG_ENDIAN);
 	}
 
-	tvb_ensure_bytes_exist(tvb, offset+5, length);
 	if (tree) {
 		proto_item *parent;
 		proto_tree_add_item(tree, hf_mikey[POS_ID], tvb, 5, length, ENC_ASCII|ENC_NA);
@@ -968,7 +944,7 @@ dissect_payload_idr(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, p
 		parent = proto_tree_get_parent(tree);
 		proto_item_append_text(parent, " %s: %s",
 				       val_to_str_const(type, id_type_vals, "Unknown"),
-				       tvb_get_string(wmem_packet_scope(), tvb, 5, length));
+				       tvb_get_string_enc(wmem_packet_scope(), tvb, 5, length, ENC_ASCII));
 	}
 
 	return 5 + length;
@@ -985,7 +961,6 @@ dissect_payload_cert(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo, prot
 
 	asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 4);
 	type   = tvb_get_guint8(tvb, offset+1);
 	length = tvb_get_ntohs(tvb, offset+2);
 
@@ -1000,7 +975,7 @@ dissect_payload_cert(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo, prot
 		proto_item_append_text(parent, " Type: %s", val_to_str_const(type, cert_type_vals, "Unknown"));
 	}
 
-	subtvb = tvb_new_subset(tvb, offset+4, length, length);
+	subtvb = tvb_new_subset_length(tvb, offset+4, length);
 	dissect_x509af_Certificate(FALSE, subtvb, 0, &asn1_ctx, tree, hf_mikey[POS_CERTIFICATE]);
 
 	return 4 + length;
@@ -1013,12 +988,9 @@ dissect_payload_v(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pro
 	guint16 length;
 	guint8	alg;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 2);
 	alg = tvb_get_guint8(tvb, offset+1);
 
-	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_V_AUTH_ALG], tvb, 1, 1, ENC_BIG_ENDIAN);
-	}
+	proto_tree_add_item(tree, hf_mikey[POS_V_AUTH_ALG], tvb, 1, 1, ENC_BIG_ENDIAN);
 
 	switch (alg) {
 	case MAC_NULL:
@@ -1028,13 +1000,10 @@ dissect_payload_v(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pro
 		length = 160/8;
 		break;
 	default:
-		return -1;
+		return 0;
 	}
 
-	tvb_ensure_bytes_exist(tvb, offset+2, length);
-	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_V_DATA], tvb, 2, length, ENC_NA);
-	}
+	proto_tree_add_item(tree, hf_mikey[POS_V_DATA], tvb, 2, length, ENC_NA);
 
 	return 2 + length;
 }
@@ -1047,10 +1016,8 @@ dissect_payload_sp_param(enum sp_prot_t proto, tvbuff_t *tvb, proto_tree *tree)
 	guint8 length;
 	int    hfindex;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 2);
 	type = tvb_get_guint8(tvb, offset+0);
 	length = tvb_get_guint8(tvb, offset+1);
-	tvb_ensure_bytes_exist(tvb, offset+2, length);
 
 	/* Default */
 	hfindex = hf_mikey[POS_SP_PARAM_F];
@@ -1092,7 +1059,6 @@ dissect_payload_sp(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pr
 	guint8	       no;
 	enum sp_prot_t type;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 5);
 	length = tvb_get_ntohs(tvb, offset+3);
 	no     = tvb_get_guint8(tvb, offset+1);
 	type   = (enum sp_prot_t)tvb_get_guint8(tvb, offset+2);
@@ -1118,11 +1084,11 @@ dissect_payload_sp(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, pr
 		int	  param_len;
 		tvbuff_t *subtvb;
 
-		subtvb = tvb_new_subset(tvb, offset+sub_pos, length-sub_pos, length-sub_pos);
+		subtvb = tvb_new_subset_length(tvb, offset+sub_pos, length-sub_pos);
 		param_len = dissect_payload_sp_param(type, subtvb, tree);
 
 		if (param_len < 0)
-			return -1;
+			return 0;
 
 		sub_pos += param_len;
 	}
@@ -1136,26 +1102,17 @@ dissect_payload_rand(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, 
 	int	offset = 0;
 	guint16 length;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 2);
 	length = tvb_get_guint8(tvb, offset+1);
 
-	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_RAND_LEN], tvb, 1, 1, ENC_BIG_ENDIAN);
-	}
+	proto_tree_add_item(tree, hf_mikey[POS_RAND_LEN], tvb, 1, 1, ENC_BIG_ENDIAN);
+	proto_tree_add_item(tree, hf_mikey[POS_RAND], tvb, 2, length, ENC_NA);
 
-	tvb_ensure_bytes_exist(tvb, offset+2, length);
-
-	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_RAND], tvb, 2, length, ENC_NA);
-	}
 	return 2 + length;
 }
 
 static int
 dissect_payload_err(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 {
-	tvb_ensure_bytes_exist(tvb, 0, 4);
-
 	if (tree) {
 		proto_item *parent;
 		guint8 err_no;
@@ -1178,12 +1135,10 @@ dissect_payload_keydata(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U
 	guint8	kv_type;
 
 	offset = 0;
-	tvb_ensure_bytes_exist(tvb, 0, 4);
 	key_type = tvb_get_guint8(tvb, 1) >> 4;
 	kv_type  = tvb_get_guint8(tvb, 1) & 0x0f;
 	data_len = tvb_get_ntohs(tvb, 2);
 
-	tvb_ensure_bytes_exist(tvb, 4, data_len);
 	offset += 4;
 
 	if (tree) {
@@ -1202,14 +1157,10 @@ dissect_payload_keydata(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U
 	/* Dissect SALT key */
 	if ((key_type == KD_TGK_SALT) || (key_type == KD_TEK_SALT)) {
 		guint16	salt_len;
-		tvb_ensure_bytes_exist(tvb, offset, 2);
 		salt_len = tvb_get_ntohs(tvb, offset);
 		if (salt_len > 0) {
-			tvb_ensure_bytes_exist(tvb, offset+2, salt_len);
-			if (tree) {
-				proto_tree_add_item(tree, hf_mikey[POS_KEY_SALT_LEN], tvb, offset, 2, ENC_BIG_ENDIAN);
-				proto_tree_add_item(tree, hf_mikey[POS_KEY_SALT], tvb, offset+2, salt_len, ENC_NA);
-			}
+			proto_tree_add_item(tree, hf_mikey[POS_KEY_SALT_LEN], tvb, offset, 2, ENC_BIG_ENDIAN);
+			proto_tree_add_item(tree, hf_mikey[POS_KEY_SALT], tvb, offset+2, salt_len, ENC_NA);
 		}
 		offset += 2+salt_len;
 	}
@@ -1219,31 +1170,25 @@ dissect_payload_keydata(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U
 		guint16	kv_from_len;
 		guint16	kv_to_len;
 
-		tvb_ensure_bytes_exist(tvb, offset, 1);
 		kv_from_len = tvb_get_guint8(tvb, offset);
 		proto_tree_add_item(tree, hf_mikey[POS_KEY_KV_FROM_LEN], tvb, offset, 1, ENC_BIG_ENDIAN);
 		if (kv_from_len > 0) {
-			tvb_ensure_bytes_exist(tvb, offset+1, kv_from_len);
 			proto_tree_add_item(tree, hf_mikey[POS_KEY_KV_FROM], tvb, offset+1, kv_from_len, ENC_NA);
 		}
 		offset += 1+kv_from_len;
 
-		tvb_ensure_bytes_exist(tvb, offset, 1);
 		kv_to_len = tvb_get_guint8(tvb, offset);
 		proto_tree_add_item(tree, hf_mikey[POS_KEY_KV_TO_LEN], tvb, offset, 1, ENC_BIG_ENDIAN);
 		if (kv_to_len > 0) {
-			tvb_ensure_bytes_exist(tvb, offset+1, kv_to_len);
 			proto_tree_add_item(tree, hf_mikey[POS_KEY_KV_TO], tvb, offset+1, kv_to_len, ENC_NA);
 		}
 		offset += 1+kv_to_len;
 	} else if (kv_type == KV_SPI) {
 		guint16	kv_spi_len;
 
-		tvb_ensure_bytes_exist(tvb, offset, 1);
 		kv_spi_len = tvb_get_guint8(tvb, offset);
 		proto_tree_add_item(tree, hf_mikey[POS_KEY_KV_SPI_LEN], tvb, offset, 1, ENC_BIG_ENDIAN);
 		if (kv_spi_len > 0) {
-			tvb_ensure_bytes_exist(tvb, offset+1, kv_spi_len);
 			proto_tree_add_item(tree, hf_mikey[POS_KEY_KV_SPI], tvb, offset+1, kv_spi_len, ENC_NA);
 		}
 		offset += 1+kv_spi_len;
@@ -1259,7 +1204,6 @@ dissect_payload_general_ext(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinf
 	guint8	type;
 	guint16	data_len;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 4);
 	type	 = tvb_get_guint8(tvb, offset+1);
 	data_len = tvb_get_ntohs(tvb, offset+2);
 
@@ -1267,8 +1211,6 @@ dissect_payload_general_ext(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinf
 		proto_tree_add_item(tree, hf_mikey[POS_GENERAL_EXT_TYPE], tvb, 1, 1, ENC_BIG_ENDIAN);
 		proto_tree_add_item(tree, hf_mikey[POS_GENERAL_EXT_LEN], tvb, 2, 2, ENC_BIG_ENDIAN);
 	}
-
-	tvb_ensure_bytes_exist(tvb, offset+3, data_len);
 
 	if (tree) {
 		proto_item *parent;
@@ -1291,7 +1233,6 @@ dissect_payload_sakke(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_,
 	int	offset = 0;
 	guint16 data_len;
 
-	tvb_ensure_bytes_exist(tvb, offset+0, 5);
 	data_len = tvb_get_ntohs(tvb, offset+3);
 
 	if (tree) {
@@ -1300,11 +1241,7 @@ dissect_payload_sakke(mikey_t *mikey _U_, tvbuff_t *tvb, packet_info *pinfo _U_,
 		proto_tree_add_item(tree, hf_mikey[POS_SAKKE_LEN],       tvb, 3, 2, ENC_BIG_ENDIAN);
 	}
 
-	tvb_ensure_bytes_exist(tvb, offset+5, data_len);
-
-	if (tree) {
-		proto_tree_add_item(tree, hf_mikey[POS_SAKKE_DATA], tvb, 5, data_len, ENC_NA);
-	}
+	proto_tree_add_item(tree, hf_mikey[POS_SAKKE_DATA], tvb, 5, data_len, ENC_NA);
 	return 5 + data_len;
 }
 
@@ -1336,7 +1273,7 @@ dissect_payload(int payload, mikey_t *mikey, tvbuff_t *tvb, packet_info *pinfo, 
 	entry = mikey_dissector_lookup(payload_map, payload);
 
 	if (!entry || !entry->dissector) {
-		return -1;
+		return 0;
 	}
 
 	return entry->dissector(mikey, tvb, pinfo, tree);
@@ -1398,8 +1335,10 @@ dissect_mikey(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
 		}
 
 		len = dissect_payload(payload, mikey, subtvb, pinfo, mikey_payload_tree);
-		if (len < 0) {
-			return -1;
+		if (len <= 0) {
+			/* protocol violation or invalid data, stop dissecting
+			 * but accept the data retrieved so far */
+			return tvb_captured_length(tvb);
 		}
 
 		if (sub_ti)
@@ -1424,7 +1363,7 @@ dissect_mikey(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U
 				val_to_str_ext_const(mikey->type, &data_type_vals_ext, "Unknown"));
 
 	/* Return the amount of data this dissector was able to dissect */
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 
@@ -1446,7 +1385,7 @@ proto_register_mikey(void)
 		    FT_NONE, BASE_NONE, NULL, 0x0,
 		    NULL, HFILL }},
 		{ &hf_mikey_pl[PL_PKE],
-		  { PL_PKE_TEXT, "mikey.",
+		  { PL_PKE_TEXT, "mikey.pke",
 		    FT_NONE, BASE_NONE, NULL, 0x0,
 		    NULL, HFILL }},
 		{ &hf_mikey_pl[PL_DH],
@@ -1946,3 +1885,15 @@ proto_reg_handoff_mikey(void)
 	mikey_udp_port = global_mikey_udp_port;
 	mikey_tcp_port = global_mikey_tcp_port;
 }
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

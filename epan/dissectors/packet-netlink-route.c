@@ -25,8 +25,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/aftypes.h>
 
@@ -360,7 +358,7 @@ hfi_netlink_route_ifi_flags_label(char *label, guint32 value)
 
 static header_field_info hfi_netlink_route_ifi_flags NETLINK_ROUTE_HFI_INIT =
 	{ "Device flags", "netlink-route.ifi_flags", FT_UINT32, BASE_CUSTOM,
-	  &hfi_netlink_route_ifi_flags_label, 0x00, NULL, HFILL };
+	  CF_FUNC(hfi_netlink_route_ifi_flags_label), 0x00, NULL, HFILL };
 
 static const true_false_string hfi_netlink_route_ifi_flags_iff_up_tfs = { "Up", "Down" };
 
@@ -413,17 +411,40 @@ dissect_netlink_route_ifinfomsg(tvbuff_t *tvb, struct netlink_route_info *info, 
 /* Interface Attributes */
 
 static const value_string netlink_route_ifla_attr_vals[] = {
-	{ WS_IFLA_UNSPEC,    "Unspecified" },
-	{ WS_IFLA_ADDRESS,   "Address" },
-	{ WS_IFLA_BROADCAST, "Broadcast" },
-	{ WS_IFLA_IFNAME,    "Device name" },
-	{ WS_IFLA_MTU,       "MTU" },
-	{ WS_IFLA_LINK,      "Link type" },
-	{ WS_IFLA_QDISC,     "Queueing discipline" },
-	{ WS_IFLA_STATS,     "Interface Statistics" },
-	{ WS_IFLA_COST,      "Cost" },
-	{ WS_IFLA_PRIORITY,  "Priority" },
-/* XXX from WS_IFLA_MASTER */
+	{ WS_IFLA_UNSPEC,         "Unspecified" },
+	{ WS_IFLA_ADDRESS,        "Address" },
+	{ WS_IFLA_BROADCAST,      "Broadcast" },
+	{ WS_IFLA_IFNAME,         "Device name" },
+	{ WS_IFLA_MTU,            "MTU" },
+	{ WS_IFLA_LINK,           "Link type" },
+	{ WS_IFLA_QDISC,          "Queueing discipline" },
+	{ WS_IFLA_STATS,          "Interface Statistics" },
+	{ WS_IFLA_COST,           "Cost" },
+	{ WS_IFLA_PRIORITY,       "Priority" },
+	{ WS_IFLA_MASTER,         "Master" },
+	{ WS_IFLA_WIRELESS,       "Wireless" },
+	{ WS_IFLA_PROTINFO,       "Prot info" },
+	{ WS_IFLA_TXQLEN,         "TxQueue length"},
+	{ WS_IFLA_MAP,            "Map"},
+	{ WS_IFLA_WEIGHT,         "Weight"},
+	{ WS_IFLA_OPERSTATE,      "Operstate"},
+	{ WS_IFLA_LINKMODE,       "Link mode"},
+	{ WS_IFLA_LINKINFO,       "Link info"},
+	{ WS_IFLA_NET_NS_PID,     "NetNs id"},
+	{ WS_IFLA_IFALIAS,        "Ifalias"},
+	{ WS_IFLA_NUM_VF,         "Num vf"},
+	{ WS_IFLA_VFINFO_LIST,    "Vf Info"},
+	{ WS_IFLA_STATS64,        "Stats" },
+	{ WS_IFLA_VF_PORTS,       "VF ports" },
+	{ WS_IFLA_PORT_SELF,      "Port self" },
+	{ WS_IFLA_AF_SPEC,        "AF spec" },
+	{ WS_IFLA_GROUP,          "Group" },
+	{ WS_IFLA_NET_NS_FD,      "NetNs fd" },
+	{ WS_IFLA_EXT_MASK,       "Ext mask" },
+	{ WS_IFLA_PROMISCUITY,    "Promiscuity" },
+	{ WS_IFLA_NUM_TX_QUEUES,  "Number of Tx queues" },
+	{ WS_IFLA_NUM_RX_QUEUES,  "Number of Rx queues" },
+	{ WS_IFLA_CARRIER,        "Carrier" },
 	{ 0, NULL }
 };
 
@@ -497,14 +518,14 @@ hfi_netlink_route_ifa_flags_label(char *label, guint32 value)
 
 static header_field_info hfi_netlink_route_ifa_flags NETLINK_ROUTE_HFI_INIT =
 	{ "Address flags", "netlink-route.ifa_flags", FT_UINT8, BASE_CUSTOM,
-	  &hfi_netlink_route_ifa_flags_label, 0x00, NULL, HFILL };
+	  CF_FUNC(hfi_netlink_route_ifa_flags_label), 0x00, NULL, HFILL };
 
 static header_field_info hfi_netlink_route_ifa_scope NETLINK_ROUTE_HFI_INIT =
 	{ "Address scope", "netlink-route.ifa_scope", FT_UINT8, BASE_DEC,
 	  NULL, 0x00, NULL, HFILL };
 
 static header_field_info hfi_netlink_route_ifa_index NETLINK_ROUTE_HFI_INIT =
-	{ "Inteface index", "netlink-route.ifa_index", FT_INT32, BASE_DEC,
+	{ "Interface index", "netlink-route.ifa_index", FT_INT32, BASE_DEC,
 	  NULL, 0x00, NULL, HFILL };
 
 static int
@@ -767,7 +788,7 @@ hfi_netlink_route_nd_states_label(char *label, guint32 value)
 
 static header_field_info hfi_netlink_route_nd_state NETLINK_ROUTE_HFI_INIT =
 	{ "State", "netlink-route.nd_state", FT_UINT16, BASE_CUSTOM,
-	  &hfi_netlink_route_nd_states_label, 0x00, NULL, HFILL };
+	  CF_FUNC(hfi_netlink_route_nd_states_label), 0x00, NULL, HFILL };
 
 static header_field_info hfi_netlink_route_nd_flags NETLINK_ROUTE_HFI_INIT =
 	{ "Flags", "netlink-route.nd_flags", FT_UINT8, BASE_HEX,
@@ -986,3 +1007,16 @@ proto_reg_handoff_netlink_route(void)
 {
 	dissector_add_uint("netlink.protocol", WS_NETLINK_ROUTE, netlink_route_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

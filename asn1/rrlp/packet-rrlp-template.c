@@ -26,7 +26,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/asn1.h>
 
@@ -83,7 +82,7 @@ void proto_register_rrlp(void) {
 
   /* Register protocol */
   proto_rrlp = proto_register_protocol(PNAME, PSNAME, PFNAME);
-  register_dissector("rrlp", dissect_PDU_PDU, proto_rrlp);
+  new_register_dissector("rrlp", dissect_PDU_PDU, proto_rrlp);
 
   /* Register fields and subtrees */
   proto_register_field_array(proto_rrlp, hf, array_length(hf));

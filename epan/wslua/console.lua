@@ -3,8 +3,6 @@
 --
 -- (c) 2006 Luis E. Garcia Ontanon <luis@ontanon.org>
 --
--- $Id$
--- 
 -- Wireshark - Network traffic analyzer
 -- By Gerald Combs <gerald@wireshark.org>
 -- Copyright 1998 Gerald Combs
@@ -102,11 +100,11 @@ if (gui_enabled()) then
 	end
 
 	function ref_manual()
-		browser_open_url("http://www.wireshark.org/docs/wsug_html_chunked/wsluarm.html")
+		browser_open_url("https://www.wireshark.org/docs/wsdg_html_chunked/wsluarm.html")
 	end
-	
+
 	function wiki_page()
-		browser_open_url("http://wiki.wireshark.org/Lua")
+		browser_open_url("https://wiki.wireshark.org/Lua")
 	end
 
 	register_menu("Lua/Evaluate", evaluate_lua, MENU_TOOLS_UNSORTED)

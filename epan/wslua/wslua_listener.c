@@ -28,8 +28,6 @@
 
 #include "config.h"
 
-#include <epan/emem.h>
-
 /* WSLUA_MODULE Listener Post-dissection packet analysis */
 
 #include "wslua.h"
@@ -47,9 +45,8 @@ static int tap_packet_cb_error_handler(lua_State* L) {
     static int repeated = 0;
     static int next = 2;
     const gchar* where =  (lua_pinfo) ?
-
-    ep_strdup_printf("Lua: on packet %i Error During execution of Listener Packet Callback",lua_pinfo->fd->num) :
-    ep_strdup_printf("Lua: Error During execution of Listener Packet Callback") ;
+        wmem_strdup_printf(NULL, "Lua: on packet %i Error During execution of Listener Packet Callback",lua_pinfo->fd->num) :
+        wmem_strdup_printf(NULL, "Lua: Error During execution of Listener Packet Callback") ;
 
     /* show the error the 1st, 3rd, 5th, 9th, 17th, 33th... time it appears to avoid window flooding */
     /* XXX the last series of identical errors won't be shown (the user however gets at least one message) */
@@ -59,6 +56,8 @@ static int tap_packet_cb_error_handler(lua_State* L) {
         last_error = g_strdup(error);
         repeated = 0;
         next = 2;
+        wmem_free(NULL, (void*) where);
+        where = NULL;
         return 0;
     }
 
@@ -77,15 +76,16 @@ static int tap_packet_cb_error_handler(lua_State* L) {
         report_failure("%s:\n %s",where,error);
     }
 
+    wmem_free(NULL, (void*) where);
     return 0;
 }
 
 
-static int lua_tap_packet(void *tapdata, packet_info *pinfo, epan_dissect_t *edt, const void *data) {
+static gboolean lua_tap_packet(void *tapdata, packet_info *pinfo, epan_dissect_t *edt, const void *data) {
     Listener tap = (Listener)tapdata;
-    int retval = 0;
+    gboolean retval = FALSE;
 
-    if (tap->packet_ref == LUA_NOREF) return 0;
+    if (tap->packet_ref == LUA_NOREF) return FALSE;
 
     lua_settop(tap->L,0);
 
@@ -103,14 +103,11 @@ static int lua_tap_packet(void *tapdata, packet_info *pinfo, epan_dissect_t *edt
 
     lua_pinfo = pinfo;
     lua_tvb = edt->tvb;
-    lua_tree = (struct _wslua_treeitem *)g_malloc(sizeof(struct _wslua_treeitem));
-    lua_tree->tree = edt->tree;
-    lua_tree->item = NULL;
-    lua_tree->expired = FALSE;
+    lua_tree = create_TreeItem(edt->tree, NULL);
 
     switch ( lua_pcall(tap->L,3,1,1) ) {
         case 0:
-            retval = luaL_optint(tap->L,-1,1);
+            retval = luaL_optinteger(tap->L,-1,1) == 0 ? FALSE : TRUE;
             break;
         case LUA_ERRRUN:
             break;
@@ -186,6 +183,22 @@ static void lua_tap_draw(void *tapdata) {
     }
 }
 
+/* TODO: we should probably use a Lua table here */
+static GPtrArray *listeners = NULL;
+
+static void deregister_Listener (lua_State* L _U_, Listener tap) {
+    if (tap->all_fields) {
+        epan_set_always_visible(FALSE);
+        tap->all_fields = FALSE;
+    }
+
+    remove_tap_listener(tap);
+
+    g_free(tap->filter);
+    g_free(tap->name);
+    g_free(tap);
+}
+
 WSLUA_CONSTRUCTOR Listener_new(lua_State* L) {
     /* Creates a new `Listener` listener object. */
 #define WSLUA_OPTARG_Listener_new_TAP 1 /* The name of this tap. */
@@ -234,6 +247,8 @@ WSLUA_CONSTRUCTOR Listener_new(lua_State* L) {
         epan_set_always_visible(TRUE);
     }
 
+    g_ptr_array_add(listeners, tap);
+
     pushListener(L,tap);
     WSLUA_RETURN(1); /* The newly created Listener listener object */
 }
@@ -275,12 +290,9 @@ WSLUA_METHOD Listener_remove(lua_State* L) {
     /* Removes a tap `Listener`. */
     Listener tap = checkListener(L,1);
 
-    if (tap->all_fields) {
-        epan_set_always_visible(FALSE);
-        tap->all_fields = FALSE;
+    if (listeners && g_ptr_array_remove(listeners, tap)) {
+        deregister_Listener(L, tap);
     }
-
-    remove_tap_listener(tap);
 
     return 0;
 }
@@ -288,10 +300,8 @@ WSLUA_METHOD Listener_remove(lua_State* L) {
 WSLUA_METAMETHOD Listener__tostring(lua_State* L) {
     /* Generates a string of debug info for the tap `Listener`. */
     Listener tap = checkListener(L,1);
-    gchar* str;
 
-    str = ep_strdup_printf("Listener(%s) filter: %s",tap->name, tap->filter ? tap->filter : "NONE");
-    lua_pushstring(L,str);
+    lua_pushfstring(L,"Listener(%s) filter: %s",tap->name, tap->filter ? tap->filter : "NONE");
 
     return 1;
 }
@@ -331,7 +341,7 @@ WSLUA_ATTRIBUTE_FUNC_SETTER(Listener,reset);
 
 
 static int Listener__gc(lua_State* L _U_) {
-    /* do NOT free Listener, it's never free'd */
+    /* do NOT free Listener here, only in deregister_Listener */
     return 0;
 }
 
@@ -360,8 +370,37 @@ WSLUA_META Listener_meta[] = {
 
 int Listener_register(lua_State* L) {
     wslua_set_tap_enums(L);
+
+    listeners = g_ptr_array_new();
+
     WSLUA_REGISTER_CLASS(Listener);
     WSLUA_REGISTER_ATTRIBUTES(Listener);
     return 0;
 }
 
+static void deregister_tap_listener (gpointer data, gpointer userdata) {
+    lua_State *L = (lua_State *) userdata;
+    Listener tap = (Listener) data;
+    deregister_Listener(L, tap);
+}
+
+int wslua_deregister_listeners(lua_State* L) {
+    g_ptr_array_foreach(listeners, deregister_tap_listener, L);
+    g_ptr_array_free(listeners, FALSE);
+    listeners = NULL;
+
+    return 0;
+}
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

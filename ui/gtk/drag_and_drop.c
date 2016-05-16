@@ -23,16 +23,13 @@
 #include "config.h"
 
 #include <string.h>
-#include <stdio.h>
 
 #include <gtk/gtk.h>
 
-#include <epan/prefs.h>
 
-#include "ui/util.h"
 #include "../file.h"
 #ifdef HAVE_LIBPCAP
-#include "../capture.h"
+#include "ui/capture.h"
 #endif
 
 #ifdef HAVE_LIBPCAP
@@ -213,7 +210,7 @@ dnd_open_file_cmd(gchar *cf_names_freeme)
         /* merge the files in chronological order */
         tmpname = NULL;
         if (cf_merge_files(&tmpname, in_file_count, in_filenames,
-                           WTAP_FILE_TYPE_SUBTYPE_PCAP, FALSE) == CF_OK) {
+                           WTAP_FILE_TYPE_SUBTYPE_PCAPNG, FALSE) == CF_OK) {
             /* Merge succeeded; close the currently-open file and try
                to open the merged capture file. */
             cf_close(&cfile);
@@ -335,4 +332,15 @@ dnd_init(GtkWidget *w)
 #endif
 }
 
-
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

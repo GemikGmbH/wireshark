@@ -29,8 +29,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include "packet-fc.h"
@@ -328,7 +326,7 @@ dissect_cpfi(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree, void *
   if (pinfo->dst.type != AT_ETHER || pinfo->src.type != AT_ETHER)
     return 0;
 
-  length = tvb_length_remaining(message_tvb, 8);
+  length = tvb_captured_length_remaining(message_tvb, 8);
   reported_length = tvb_reported_length_remaining(message_tvb, 8);
   if (reported_length < 8)
   {
@@ -343,7 +341,7 @@ dissect_cpfi(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree, void *
   if (body_length > reported_body_length)
     body_length = reported_body_length;
 
-  length = tvb_length_remaining(message_tvb, 8+body_length);
+  length = tvb_captured_length_remaining(message_tvb, 8+body_length);
   if (length < 0)
   {
     /* The footer wasn't captured at all.
@@ -368,7 +366,7 @@ dissect_cpfi(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree, void *
   /* dissect the message */
 
   /* extract and process the header */
-  header_tvb = tvb_new_subset(message_tvb, 0, 8, 8);
+  header_tvb = tvb_new_subset_length(message_tvb, 0, 8);
   dissect_cpfi_header(header_tvb, pinfo, cpfi_tree);
 
   body_tvb = tvb_new_subset(message_tvb, 8, body_length, reported_body_length);
@@ -383,7 +381,7 @@ dissect_cpfi(tvbuff_t *message_tvb, packet_info *pinfo, proto_tree *tree, void *
   footer_tvb = tvb_new_subset(message_tvb, 8+body_length, length, 8);
   dissect_cpfi_footer(footer_tvb, cpfi_tree);
 
-  return(tvb_length(message_tvb));
+  return(tvb_reported_length(message_tvb));
 
 }
 
@@ -532,7 +530,6 @@ proto_reg_handoff_cpfi(void)
 {
   static gboolean cpfi_init_complete = FALSE;
   static dissector_handle_t cpfi_handle;
-  static dissector_handle_t ttot_handle;
   static guint cpfi_udp_port;
   static guint cpfi_ttot_udp_port;
 
@@ -540,20 +537,19 @@ proto_reg_handoff_cpfi(void)
   {
     fc_handle     = find_dissector("fc");
     cpfi_handle   = new_create_dissector_handle(dissect_cpfi, proto_cpfi);
-    ttot_handle   = new_create_dissector_handle(dissect_cpfi, proto_cpfi);
     cpfi_init_complete = TRUE;
   }
   else
   {
     dissector_delete_uint("udp.port", cpfi_udp_port, cpfi_handle);
-    dissector_delete_uint("udp.port", cpfi_ttot_udp_port, ttot_handle);
+    dissector_delete_uint("udp.port", cpfi_ttot_udp_port, cpfi_handle);
   }
 
   cpfi_udp_port      = gbl_cpfi_udp_port;
   cpfi_ttot_udp_port = gbl_cpfi_ttot_udp_port;
 
   dissector_add_uint("udp.port", cpfi_udp_port, cpfi_handle);
-  dissector_add_uint("udp.port", cpfi_ttot_udp_port, ttot_handle);
+  dissector_add_uint("udp.port", cpfi_ttot_udp_port, cpfi_handle);
 }
 
 /*

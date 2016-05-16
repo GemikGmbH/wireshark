@@ -33,21 +33,18 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
+
 #include <epan/exceptions.h>
-#include <epan/prefs.h>
-#include <epan/req_resp_hdrs.h>
-#include <epan/wmem/wmem.h>
-#include <epan/strutil.h>
-#include <epan/tap.h>
 #include <epan/exported_pdu.h>
 #include <epan/expert.h>
+#include <epan/prefs.h>
+#include <epan/req_resp_hdrs.h>
+#include <epan/stat_tap_ui.h>
+#include <epan/tap.h>
 
 #include <wsutil/str_util.h>
 
-#include "packet-tcp.h"
 #include "packet-ssl.h"
 
 #include "packet-isup.h"
@@ -72,6 +69,7 @@ static gint sip_tap = -1;
 static gint exported_pdu_tap = -1;
 static dissector_handle_t sigcomp_handle;
 static dissector_handle_t sip_diag_handle;
+static dissector_handle_t sip_uri_userinfo_handle;
 
 /* Initialize the protocol and registered fields */
 static gint proto_sip                     = -1;
@@ -143,6 +141,16 @@ static gint hf_sip_record_route_user      = -1;
 static gint hf_sip_record_route_host      = -1;
 static gint hf_sip_record_route_port      = -1;
 static gint hf_sip_record_route_param     = -1;
+static gint hf_sip_service_route          = -1;
+static gint hf_sip_service_route_user     = -1;
+static gint hf_sip_service_route_host     = -1;
+static gint hf_sip_service_route_port     = -1;
+static gint hf_sip_service_route_param    = -1;
+static gint hf_sip_path                   = -1;
+static gint hf_sip_path_user              = -1;
+static gint hf_sip_path_host              = -1;
+static gint hf_sip_path_port              = -1;
+static gint hf_sip_path_param             = -1;
 
 static gint hf_sip_auth                   = -1;
 static gint hf_sip_auth_scheme            = -1;
@@ -182,6 +190,9 @@ static gint hf_sip_rack_rseq_no           = -1;
 static gint hf_sip_rack_cseq_no           = -1;
 static gint hf_sip_rack_cseq_method       = -1;
 
+static gint hf_sip_reason_protocols       = -1;
+static gint hf_sip_reason_cause           = -1;
+
 static gint hf_sip_msg_body               = -1;
 static gint hf_sip_sec_mechanism          = -1;
 static gint hf_sip_sec_mechanism_alg      = -1;
@@ -193,6 +204,11 @@ static gint hf_sip_sec_mechanism_port1    = -1;
 static gint hf_sip_sec_mechanism_port_c   = -1;
 static gint hf_sip_sec_mechanism_port2    = -1;
 static gint hf_sip_sec_mechanism_port_s   = -1;
+static gint hf_sip_session_id_sess_id     = -1;
+static gint hf_sip_session_id_param       = -1;
+static gint hf_sip_session_id_local_uuid  = -1;
+static gint hf_sip_session_id_remote_uuid = -1;
+static gint hf_sip_continuation           = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_sip                       = -1;
@@ -214,6 +230,8 @@ static gint ett_sip_security_verify       = -1;
 static gint ett_sip_rack                  = -1;
 static gint ett_sip_route                 = -1;
 static gint ett_sip_record_route          = -1;
+static gint ett_sip_service_route         = -1;
+static gint ett_sip_path                  = -1;
 static gint ett_sip_ruri                  = -1;
 static gint ett_sip_to_uri                = -1;
 static gint ett_sip_curi                  = -1;
@@ -222,11 +240,25 @@ static gint ett_sip_pai_uri               = -1;
 static gint ett_sip_pmiss_uri             = -1;
 static gint ett_sip_ppi_uri               = -1;
 static gint ett_sip_tc_uri                = -1;
+static gint ett_sip_session_id            = -1;
 
 static expert_field ei_sip_unrecognized_header = EI_INIT;
+static expert_field ei_sip_header_no_colon = EI_INIT;
 static expert_field ei_sip_header_not_terminated = EI_INIT;
 static expert_field ei_sip_odd_register_response = EI_INIT;
 static expert_field ei_sip_sipsec_malformed = EI_INIT;
+
+/* patterns used for tvb_ws_mempbrk_pattern_guint8 */
+static ws_mempbrk_pattern pbrk_comma_semi;
+static ws_mempbrk_pattern pbrk_whitespace;
+static ws_mempbrk_pattern pbrk_param_end;
+static ws_mempbrk_pattern pbrk_param_end_colon_brackets;
+static ws_mempbrk_pattern pbrk_header_end_dquote;
+static ws_mempbrk_pattern pbrk_quotes;
+static ws_mempbrk_pattern pbrk_tab_sp_fslash;
+static ws_mempbrk_pattern pbrk_addr_end;
+static ws_mempbrk_pattern pbrk_via_param_end;
+
 
 /* PUBLISH method added as per http://www.ietf.org/internet-drafts/draft-ietf-sip-publish-01.txt */
 static const char *sip_methods[] = {
@@ -478,40 +510,42 @@ static const sip_header_t sip_headers[] = {
 #define POS_SERVICE_ROUTE               96
     { "Session-Expires",                "x"  },  /*  97 RFC4028  */
 #define POS_SESSION_EXPIRES             97
-    { "SIP-ETag",                       NULL },  /*  98 RFC3903  */
-#define POS_SIP_ETAG                    98
-    { "SIP-If-Match",                   NULL },  /*  99 RFC3903  */
-#define POS_SIP_IF_MATCH                99
-    { "Subject",                        "s"  },  /* 100 RFC3261  */
-#define POS_SUBJECT                     100
-    { "Subscription-State",             NULL },  /* 101 RFC3265  */
-#define POS_SUBSCRIPTION_STATE          101
-    { "Supported",                      "k"  },  /* 102 RFC3261  */
-#define POS_SUPPORTED                   102
-    { "Suppress-If-Match",              NULL },  /* 103 RFC5839  */
-#define POS_SUPPRESS_IF_MATCH           103
-    { "Target-Dialog",                  NULL },  /* 104 RFC4538  */
-#define POS_TARGET_DIALOG               104
-    { "Timestamp",                      NULL },  /* 105 RFC3261  */
-#define POS_TIMESTAMP                   105
-    { "To",                             "t"  },  /* 106 RFC3261  */
-#define POS_TO                          106
-    { "Trigger-Consent",                NULL },  /* 107 RFC5360  */
-#define POS_TRIGGER_CONSENT             107
-    { "Unsupported",                    NULL },  /* 108 RFC3261  */
-#define POS_UNSUPPORTED                 108
-    { "User-Agent",                     NULL },  /* 109 RFC3261  */
-#define POS_USER_AGENT                  109
-    { "Via",                            "v"  },  /* 110 RFC3261  */
-#define POS_VIA                         110
-    { "Warning",                        NULL },  /* 111 RFC3261  */
-#define POS_WARNING                     111
-    { "WWW-Authenticate",               NULL },  /* 112 RFC3261  */
-#define POS_WWW_AUTHENTICATE            112
-    { "Diversion",                      NULL },  /* 113 RFC5806  */
-#define POS_DIVERSION                   113
-    { "User-to-User",                   NULL },  /* 106 draft-johnston-sipping-cc-uui-09  */
-#define POS_USER_TO_USER                114
+    { "Session-ID",                     NULL },  /*  98 RFC7329  */
+#define POS_SESSION_ID                  98
+    { "SIP-ETag",                       NULL },  /*  99 RFC3903  */
+#define POS_SIP_ETAG                    99
+    { "SIP-If-Match",                   NULL },  /* 100 RFC3903  */
+#define POS_SIP_IF_MATCH                100
+    { "Subject",                        "s"  },  /* 101 RFC3261  */
+#define POS_SUBJECT                     101
+    { "Subscription-State",             NULL },  /* 102 RFC3265  */
+#define POS_SUBSCRIPTION_STATE          102
+    { "Supported",                      "k"  },  /* 103 RFC3261  */
+#define POS_SUPPORTED                   103
+    { "Suppress-If-Match",              NULL },  /* 104 RFC5839  */
+#define POS_SUPPRESS_IF_MATCH           104
+    { "Target-Dialog",                  NULL },  /* 105 RFC4538  */
+#define POS_TARGET_DIALOG               105
+    { "Timestamp",                      NULL },  /* 106 RFC3261  */
+#define POS_TIMESTAMP                   106
+    { "To",                             "t"  },  /* 107 RFC3261  */
+#define POS_TO                          107
+    { "Trigger-Consent",                NULL },  /* 108 RFC5360  */
+#define POS_TRIGGER_CONSENT             108
+    { "Unsupported",                    NULL },  /* 109 RFC3261  */
+#define POS_UNSUPPORTED                 109
+    { "User-Agent",                     NULL },  /* 110 RFC3261  */
+#define POS_USER_AGENT                  110
+    { "Via",                            "v"  },  /* 111 RFC3261  */
+#define POS_VIA                         111
+    { "Warning",                        NULL },  /* 112 RFC3261  */
+#define POS_WARNING                     112
+    { "WWW-Authenticate",               NULL },  /* 113 RFC3261  */
+#define POS_WWW_AUTHENTICATE            113
+    { "Diversion",                      NULL },  /* 114 RFC5806  */
+#define POS_DIVERSION                   114
+    { "User-to-User",                   NULL },  /* 115 draft-johnston-sipping-cc-uui-09  */
+#define POS_USER_TO_USER                115
 };
 
 
@@ -616,23 +650,24 @@ static gint hf_header_array[] = {
     -1, /* 95"Server",                          RFC3261 */
     -1, /* 96"Service-Route",                   RFC3608 */
     -1, /* 97"Session-Expires",                 RFC4028 */
-    -1, /* 98"SIP-ETag",                        RFC3903 */
-    -1, /* 99"SIP-If-Match",                    RFC3903 */
-    -1, /* 100"Subject",                        RFC3261 */
-    -1, /* 101"Subscription-State",             RFC3265 */
-    -1, /* 102"Supported",                      RFC3261 */
-    -1, /* 103"Suppress-If-Match",              RFC4538 */
-    -1, /* 104"Target-Dialog",                  RFC4538 */
-    -1, /* 105"Timestamp",                      RFC3261 */
-    -1, /* 106"To",                             RFC3261 */
-    -1, /* 107"Trigger-Consent"                 RFC5380 */
-    -1, /* 108"Unsupported",                    RFC3261 */
-    -1, /* 109"User-Agent",                     RFC3261 */
-    -1, /* 110"Via",                            RFC3261 */
-    -1, /* 111"Warning",                        RFC3261 */
-    -1, /* 112"WWW-Authenticate",               RFC3261 */
-    -1, /* 113"Diversion",                      RFC5806 */
-    -1, /* 114"User-to-User",  draft-johnston-sipping-cc-uui-09 */
+    -1, /* 98"Session-ID",                      RFC7329 */
+    -1, /* 99"SIP-ETag",                        RFC3903 */
+    -1, /* 100"SIP-If-Match",                    RFC3903 */
+    -1, /* 101"Subject",                        RFC3261 */
+    -1, /* 102"Subscription-State",             RFC3265 */
+    -1, /* 103"Supported",                      RFC3261 */
+    -1, /* 104"Suppress-If-Match",              RFC4538 */
+    -1, /* 105"Target-Dialog",                  RFC4538 */
+    -1, /* 106"Timestamp",                      RFC3261 */
+    -1, /* 107"To",                             RFC3261 */
+    -1, /* 108"Trigger-Consent"                 RFC5380 */
+    -1, /* 109"Unsupported",                    RFC3261 */
+    -1, /* 110"User-Agent",                     RFC3261 */
+    -1, /* 111"Via",                            RFC3261 */
+    -1, /* 112"Warning",                        RFC3261 */
+    -1, /* 113"WWW-Authenticate",               RFC3261 */
+    -1, /* 114"Diversion",                      RFC5806 */
+    -1, /* 115"User-to-User",  draft-johnston-sipping-cc-uui-09 */
 
 };
 
@@ -773,6 +808,24 @@ static hf_sip_uri_t sip_record_route_uri = {
     &hf_sip_record_route_port,
     &hf_sip_record_route_param,
     &ett_sip_record_route
+};
+
+static hf_sip_uri_t sip_service_route_uri = {
+    &hf_sip_service_route,
+    &hf_sip_service_route_user,
+    &hf_sip_service_route_host,
+    &hf_sip_service_route_port,
+    &hf_sip_service_route_param,
+    &ett_sip_service_route
+};
+
+static hf_sip_uri_t sip_path_uri = {
+    &hf_sip_path,
+    &hf_sip_path_user,
+    &hf_sip_path_host,
+    &hf_sip_path_port,
+    &hf_sip_path_param,
+    &ett_sip_path
 };
 
 /*
@@ -966,26 +1019,22 @@ sip_init_protocol(void)
 {
      guint i;
      gchar *value_copy;
-
-    /* Destroy any existing hashes. */
-    if (sip_hash)
-        g_hash_table_destroy(sip_hash);
-
-    /* Now create them again */
     sip_hash = g_hash_table_new(g_str_hash , sip_equal);
-    /* Create a hashtable with the SIP headers; it will be used to find the related hf entry (POS_x).
-     * This is faster than the previously used for loop.
-     * There is no g_hash_table_destroy as the lifetime is the same as the lifetime of Wireshark.
-     */
-    if(!sip_headers_hash){
-        sip_headers_hash = g_hash_table_new(g_str_hash , g_str_equal);
-        for (i = 1; i < array_length(sip_headers); i++){
-            value_copy = g_strdup (sip_headers[i].name);
-            /* Store (and compare) the string in lower case) */
-            ascii_strdown_inplace(value_copy);
-            g_hash_table_insert(sip_headers_hash, (gpointer)value_copy, GINT_TO_POINTER(i));
-        }
+
+    /* Hash table for quick lookup of SIP headers names to hf entry (POS_x) */
+    sip_headers_hash = g_hash_table_new(g_str_hash , g_str_equal);
+    for (i = 1; i < array_length(sip_headers); i++){
+        value_copy = wmem_strdup(wmem_file_scope(), sip_headers[i].name);
+        ascii_strdown_inplace(value_copy);
+        g_hash_table_insert(sip_headers_hash, (gpointer)value_copy, GINT_TO_POINTER(i));
     }
+}
+
+static void
+sip_cleanup_protocol(void)
+{
+     g_hash_table_destroy(sip_hash);
+     g_hash_table_destroy(sip_headers_hash);
 }
 /* Call the export PDU tap with relevant data */
 static void
@@ -998,7 +1047,7 @@ export_sip_pdu(packet_info *pinfo, tvbuff_t *tvb)
   tags_bit_field = EXP_PDU_TAG_IP_SRC_BIT + EXP_PDU_TAG_IP_DST_BIT + EXP_PDU_TAG_SRC_PORT_BIT+
       EXP_PDU_TAG_DST_PORT_BIT + EXP_PDU_TAG_ORIG_FNO_BIT;
 
-  exp_pdu_data = load_export_pdu_tags(pinfo, "sip", -1, &tags_bit_field, 1);
+  exp_pdu_data = load_export_pdu_tags(pinfo, EXP_PDU_TAG_PROTO_NAME, "sip", &tags_bit_field, 1);
 
   exp_pdu_data->tvb_captured_length = tvb_captured_length(tvb);
   exp_pdu_data->tvb_reported_length = tvb_reported_length(tvb);
@@ -1055,11 +1104,9 @@ static gint
 dissect_sip_uri(tvbuff_t *tvb, packet_info *pinfo _U_, gint start_offset,
                 gint line_end_offset, uri_offset_info *uri_offsets)
 {
-    gchar c = '\0';
+    guchar c = '\0';
     gint current_offset;
     gint queried_offset;
-    gint comma_offset;
-    gint semicolon_offset;
     gint parameter_end_offset;
     gboolean in_ipv6 = FALSE;
 
@@ -1074,7 +1121,6 @@ dissect_sip_uri(tvbuff_t *tvb, packet_info *pinfo _U_, gint start_offset,
     uri_offsets->uri_start = current_offset;
 
     /* Check if it's really a sip uri ( it might be a tel uri, parse that?) */
-    tvb_find_guint8(tvb, current_offset, line_end_offset - current_offset, ':');
     if (tvb_strneql(tvb, current_offset, "sip", 3) != 0)
         return -1;
 
@@ -1084,36 +1130,20 @@ dissect_sip_uri(tvbuff_t *tvb, packet_info *pinfo _U_, gint start_offset,
         /* look for the first ',' or ';' which will mark the end of this URI
          * In this case a semicolon indicates a header field parameter, and not an uri parameter.
          */
-        comma_offset = tvb_find_guint8(tvb, current_offset, line_end_offset - current_offset, ',');
-        semicolon_offset = tvb_find_guint8(tvb, current_offset, line_end_offset - current_offset, ';');
+        int end_offset;
 
-        if (semicolon_offset != -1 && comma_offset != -1)
+        end_offset = tvb_ws_mempbrk_pattern_guint8(tvb, current_offset, line_end_offset - current_offset, &pbrk_comma_semi, NULL);
+
+        if (end_offset != -1)
         {
-            if(semicolon_offset < comma_offset)
-            {
-                uri_offsets->uri_end = semicolon_offset - 1;
-            }
-            else
-            {
-                uri_offsets->uri_end = comma_offset - 1;
-            }
+            uri_offsets->uri_end = end_offset - 1;
         }
         else
         {
-            if (semicolon_offset != -1)
-            {
-                uri_offsets->uri_end = semicolon_offset - 1;
-            }
-            else if (comma_offset != -1)
-            {
-                uri_offsets->uri_end = comma_offset - 1;
-            } else {
-
-                /* If both offsets are equal to -1, we don't have a semicolon or a comma.
-                * In that case, we assume that the end of the URI is at the line end
-                 */
-                uri_offsets->uri_end = line_end_offset - 3; /* remove '\r\n' */
-            }
+            /* We don't have a semicolon or a comma.
+             * In that case, we assume that the end of the URI is at the line end
+              */
+            uri_offsets->uri_end = line_end_offset - 3; /* remove '\r\n' */
         }
         uri_offsets->name_addr_end = uri_offsets->uri_end;
     }
@@ -1142,7 +1172,14 @@ dissect_sip_uri(tvbuff_t *tvb, packet_info *pinfo _U_, gint start_offset,
     while (parameter_end_offset < line_end_offset)
     {
         parameter_end_offset++;
-        c = tvb_get_guint8(tvb, parameter_end_offset);
+        parameter_end_offset = tvb_ws_mempbrk_pattern_guint8(tvb, parameter_end_offset, line_end_offset - parameter_end_offset, &pbrk_param_end_colon_brackets, &c);
+        if (parameter_end_offset == -1)
+        {
+            parameter_end_offset = line_end_offset;
+            break;
+        }
+
+        /* after adding character to this switch() , update also pbrk_param_end_colon_brackets */
         switch (c) {
             case '>':
             case ',':
@@ -1165,7 +1202,8 @@ dissect_sip_uri(tvbuff_t *tvb, packet_info *pinfo _U_, gint start_offset,
                 in_ipv6 = FALSE;
                 break;
             default :
-            break;
+                DISSECTOR_ASSERT_NOT_REACHED();
+                break;
         }
     }
 
@@ -1180,7 +1218,14 @@ uri_host_end_found:
         while (parameter_end_offset < line_end_offset)
         {
             parameter_end_offset++;
-            c = tvb_get_guint8(tvb, parameter_end_offset);
+            parameter_end_offset = tvb_ws_mempbrk_pattern_guint8(tvb, parameter_end_offset, line_end_offset - parameter_end_offset, &pbrk_param_end, &c);
+            if (parameter_end_offset == -1)
+            {
+                parameter_end_offset = line_end_offset;
+                break;
+            }
+
+            /* after adding character to this switch(), update also pbrk_param_end */
             switch (c) {
                 case '>':
                 case ',':
@@ -1193,7 +1238,8 @@ uri_host_end_found:
                 case '\r':
                     goto uri_host_port_end_found;
                 default :
-                break;
+                    DISSECTOR_ASSERT_NOT_REACHED();
+                    break;
             }
         }
 
@@ -1203,6 +1249,52 @@ uri_host_end_found:
     }
 
     return uri_offsets->name_addr_end;
+}
+
+void
+dfilter_store_sip_from_addr(tvbuff_t *tvb,proto_tree *tree,guint parameter_offset, guint parameter_len)
+{
+    proto_item *pi;
+
+    pi = proto_tree_add_item(tree, hf_sip_from_addr, tvb, parameter_offset, parameter_len, ENC_UTF_8|ENC_NA);
+    PROTO_ITEM_SET_GENERATED(pi);
+}
+
+static proto_item *
+sip_proto_tree_add_uint(proto_tree *tree, int hfindex, tvbuff_t *tvb, gint start, gint length, gint value_offset, gint value_len)
+{
+    const char *str;
+    unsigned long val;
+
+    /* don't fetch string when field is not referenced */
+    if (!proto_field_is_referenced(tree, hfindex))
+        return tree;
+
+    str = tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset, value_len, ENC_UTF_8|ENC_NA);
+    val = strtoul(str, NULL, 10);
+
+    return proto_tree_add_uint(tree, hfindex, tvb, start, length, (guint32) val);
+}
+
+static proto_item *
+sip_proto_tree_add_string(proto_tree *tree, int hfindex, tvbuff_t *tvb, gint start, gint length, gint value_offset, gint value_len)
+{
+    const char *str;
+
+    /* don't fetch string when field is not referenced */
+    if (!proto_field_is_referenced(tree, hfindex))
+        return tree;
+
+    str = tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset, value_len, ENC_UTF_8|ENC_NA);
+
+    return proto_tree_add_string(tree, hfindex, tvb, start, length, str);
+}
+
+static void
+sip_proto_set_format_text(const proto_tree *tree, proto_item *item, tvbuff_t *tvb, int offset, int length)
+{
+    if (tree != item && item && PTREE_DATA(item)->visible)
+        proto_item_set_text(item, "%s", tvb_format_text(tvb, offset, length));
 }
 
 /*
@@ -1268,24 +1360,29 @@ static gint
 dissect_sip_p_charging_func_addresses(tvbuff_t *tvb, proto_tree* tree, packet_info *pinfo _U_, gint current_offset,
                 gint line_end_offset)
 {
-    int semi_offset, quote_offset;
+    gint semi_offset, start_quote_offset, end_quote_offset;
     gboolean first_time = TRUE;
 
     while (line_end_offset > current_offset){
         /* Do we have a quoted string ? */
-        quote_offset = tvb_find_guint8(tvb, current_offset, line_end_offset - current_offset, '"');
-        if(quote_offset>0){
+        start_quote_offset = tvb_find_guint8(tvb, current_offset, line_end_offset - current_offset, '"');
+        if(start_quote_offset>0){
             /* Find end of quoted string */
-            quote_offset = tvb_find_guint8(tvb, quote_offset+1, line_end_offset - current_offset, '"');
+            end_quote_offset = tvb_find_guint8(tvb, start_quote_offset+1, line_end_offset - (start_quote_offset+1), '"');
             /* Find parameter end */
-            semi_offset = tvb_find_guint8(tvb, quote_offset+1, line_end_offset - quote_offset, ';');
+            if (end_quote_offset>0)
+                semi_offset = tvb_find_guint8(tvb, end_quote_offset+1, line_end_offset - (end_quote_offset+1), ';');
+            else {
+                /* XXX expert info about unterminated string */
+                semi_offset = tvb_find_guint8(tvb, start_quote_offset+1, line_end_offset - (start_quote_offset+1), ';');
+            }
         }else{
             /* Find parameter end */
             semi_offset = tvb_find_guint8(tvb, current_offset, line_end_offset - current_offset, ';');
         }
         if(semi_offset == -1){
             if(first_time == TRUE){
-            /* It was only on parameter no need to split it up */
+            /* It was only one parameter no need to split it up */
             return line_end_offset;
             }
             /* Last parameter */
@@ -1446,10 +1543,11 @@ dissect_sip_name_addr_or_addr_spec(tvbuff_t *tvb, packet_info *pinfo _U_, gint s
 */
 
 static proto_tree *
-display_sip_uri (tvbuff_t *tvb, proto_tree *sip_element_tree, uri_offset_info* uri_offsets, hf_sip_uri_t* uri)
+display_sip_uri (tvbuff_t *tvb, proto_tree *sip_element_tree, packet_info *pinfo, uri_offset_info* uri_offsets, hf_sip_uri_t* uri)
 {
     proto_item *ti;
     proto_tree *uri_item_tree = NULL;
+    tvbuff_t *next_tvb;
 
     if(uri_offsets->display_name_end != uri_offsets->display_name_start) {
         proto_tree_add_item(sip_element_tree, hf_sip_display, tvb, uri_offsets->display_name_start,
@@ -1463,6 +1561,14 @@ display_sip_uri (tvbuff_t *tvb, proto_tree *sip_element_tree, uri_offset_info* u
     if(uri_offsets->uri_user_end > uri_offsets->uri_user_start) {
         proto_tree_add_item(uri_item_tree, *(uri->hf_sip_user), tvb, uri_offsets->uri_user_start,
                             uri_offsets->uri_user_end - uri_offsets->uri_user_start + 1, ENC_UTF_8|ENC_NA);
+
+        /* If we have a SIP diagnostics sub dissector call it */
+        if (sip_uri_userinfo_handle) {
+            next_tvb = tvb_new_subset(tvb, uri_offsets->uri_user_start, uri_offsets->uri_user_end - uri_offsets->uri_user_start + 1,
+                                      uri_offsets->uri_user_end - uri_offsets->uri_user_start + 1);
+            call_dissector(sip_uri_userinfo_handle, next_tvb, pinfo, uri_item_tree);
+        }
+
     }
 
     proto_tree_add_item(uri_item_tree, *(uri->hf_sip_host), tvb, uri_offsets->uri_host_start,
@@ -1484,7 +1590,7 @@ display_sip_uri (tvbuff_t *tvb, proto_tree *sip_element_tree, uri_offset_info* u
         /* Put the contact parameters in the tree */
 
         while (current_offset < uri_offsets->name_addr_end) {
-            queried_offset = tvb_pbrk_guint8(tvb, current_offset, uri_offsets->name_addr_end - current_offset, ",;", &c);
+            queried_offset = tvb_ws_mempbrk_pattern_guint8(tvb, current_offset, uri_offsets->name_addr_end - current_offset, &pbrk_comma_semi, &c);
 
             if (queried_offset == -1) {
                 /* Reached line end */
@@ -1554,7 +1660,7 @@ dissect_sip_contact_item(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
         /* Parsing failed */
         return -1;
     }
-    display_sip_uri(tvb, tree, &uri_offsets, &sip_contact_uri);
+    display_sip_uri(tvb, tree, pinfo, &uri_offsets, &sip_contact_uri);
 
     /* check if there's a comma before a ';', in which case we stop parsing this item at the comma */
     queried_offset = tvb_find_guint8(tvb, uri_offsets.uri_end, line_end_offset - uri_offsets.uri_end, ',');
@@ -1584,10 +1690,10 @@ dissect_sip_contact_item(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
 
     while(current_offset< line_end_offset){
         c = '\0';
-        while (queried_offset < line_end_offset)
+        queried_offset++;
+        queried_offset = (queried_offset < line_end_offset) ? tvb_ws_mempbrk_pattern_guint8(tvb, queried_offset, line_end_offset - queried_offset, &pbrk_header_end_dquote, &c) : -1;
+        if (queried_offset != -1)
         {
-            queried_offset++;
-            c = tvb_get_guint8(tvb, queried_offset);
             switch (c) {
                 /* prevent tree from displaying the '\r\n' as part of the param */
                 case '\r':
@@ -1597,14 +1703,14 @@ dissect_sip_contact_item(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
                 case ',':
                 case ';':
                 case '"':
-                    goto found;
                     break;
                 default :
+                    DISSECTOR_ASSERT_NOT_REACHED();
                     break;
             }
         }
-    found:
-        if(queried_offset==line_end_offset){
+
+        if (queried_offset == -1) {
             /* Last parameter, line end */
             current_offset = line_end_offset;
         }else if(c=='"'){
@@ -1614,7 +1720,7 @@ dissect_sip_contact_item(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gi
                 /* We have an opening quote but no closing quote. */
                 current_offset = line_end_offset;
             } else {
-                current_offset = tvb_pbrk_guint8(tvb, queried_offset+1, line_end_offset - queried_offset, ",;", &c);
+                current_offset = tvb_ws_mempbrk_pattern_guint8(tvb, queried_offset+1, line_end_offset - queried_offset, &pbrk_comma_semi, &c);
                 if(current_offset==-1){
                     /* Last parameter, line end */
                     current_offset = line_end_offset;
@@ -1713,22 +1819,8 @@ dissect_sip_authorization_item(tvbuff_t *tvb, proto_tree *tree, gint start_offse
     name = tvb_get_string_enc(wmem_packet_scope(), tvb, start_offset, par_name_end_offset-start_offset, ENC_UTF_8|ENC_NA);
 
     /* Find end of parameter, it can be a quoted string so check for quoutes too */
-    queried_offset = par_name_end_offset;
-    while (queried_offset < line_end_offset)
-    {
-            queried_offset++;
-            c = tvb_get_guint8(tvb, queried_offset);
-            switch (c) {
-                case ',':
-                case '"':
-                    goto found;
-                    break;
-                default :
-                    break;
-            }
-    }
-found:
-    if(queried_offset==line_end_offset){
+    queried_offset = tvb_ws_mempbrk_pattern_guint8(tvb, par_name_end_offset, line_end_offset - par_name_end_offset, &pbrk_quotes, &c);
+    if (queried_offset == -1) {
         /* Last parameter, line end */
         current_offset = line_end_offset;
     }else if(c=='"'){
@@ -1777,6 +1869,7 @@ dissect_sip_reason_header(tvbuff_t *tvb, proto_tree *tree, gint start_offset, gi
     gint  current_offset, semi_colon_offset, length;
     gchar *param_name = NULL;
     guint cause_value;
+    proto_item* ti;
 
         /* skip Spaces and Tabs */
     start_offset = tvb_skip_wsp(tvb, start_offset, line_end_offset - start_offset);
@@ -1794,8 +1887,7 @@ dissect_sip_reason_header(tvbuff_t *tvb, proto_tree *tree, gint start_offset, gi
         return;
 
     length = semi_colon_offset - current_offset;
-    proto_tree_add_text(tree, tvb, start_offset, length,
-        "Reason Protocols: %s", tvb_format_text(tvb, start_offset, length));
+    proto_tree_add_item(tree, hf_sip_reason_protocols, tvb, start_offset, length, ENC_UTF_8|ENC_NA);
 
     param_name = tvb_get_string_enc(wmem_packet_scope(), tvb, start_offset, length, ENC_UTF_8|ENC_NA);
     if (g_ascii_strcasecmp(param_name, "Q.850") == 0){
@@ -1804,9 +1896,10 @@ dissect_sip_reason_header(tvbuff_t *tvb, proto_tree *tree, gint start_offset, gi
 
         /* q850_cause_code_vals */
         cause_value = (guint)strtoul(tvb_get_string_enc(wmem_packet_scope(), tvb, current_offset, length, ENC_UTF_8|ENC_NA), NULL, 10);
-        proto_tree_add_text(tree, tvb, current_offset, length,
-            "Cause: %u(0x%x)[%s]", cause_value,cause_value,
-            val_to_str_ext(cause_value, &q850_cause_code_vals_ext, "Unknown (%d)" ));
+        ti = proto_tree_add_uint(tree, hf_sip_reason_cause, tvb, current_offset, 1, cause_value);
+        /*, "Cause: %u(0x%x)[%s]", cause_value, cause_value,
+            val_to_str_ext(cause_value, &q850_cause_code_vals_ext, "Unknown (%d)" )); */
+        proto_item_set_len(ti, length);
 
     }
 
@@ -1968,7 +2061,6 @@ dissect_sip_sec_mechanism(tvbuff_t *tvb, packet_info* pinfo, proto_tree *tree, g
 static void dissect_sip_route_header(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, hf_sip_uri_t *sip_route_uri_p, gint start_offset, gint line_end_offset)
 {
     gint current_offset;
-    guchar c;
     uri_offset_info uri_offsets;
 
     current_offset = start_offset;
@@ -1981,24 +2073,26 @@ static void dissect_sip_route_header(tvbuff_t *tvb, proto_tree *tree, packet_inf
     }
 
     while (current_offset < line_end_offset) {
-        c = tvb_get_guint8(tvb, current_offset);
+        current_offset = tvb_find_guint8(tvb, current_offset, (line_end_offset - 1) - current_offset, ',');
 
-        if (c == ',') {
+        if (current_offset != -1) { /* found any ',' ? */
             sip_uri_offset_init(&uri_offsets);
             current_offset = dissect_sip_name_addr_or_addr_spec(tvb, pinfo, start_offset, current_offset, &uri_offsets);
             if(current_offset == -1)
                 return;
-            display_sip_uri(tvb, tree, &uri_offsets, sip_route_uri_p);
+            display_sip_uri(tvb, tree, pinfo, &uri_offsets, sip_route_uri_p);
 
             current_offset++;
             start_offset = current_offset + 1;
 
-        } else if (current_offset == line_end_offset - 1) {
+        } else {
+            /* current_offset = (line_end_offset - 1); */
+
             sip_uri_offset_init(&uri_offsets);
             current_offset = dissect_sip_name_addr_or_addr_spec(tvb, pinfo, start_offset, line_end_offset, &uri_offsets);
             if(current_offset == -1)
                 return;
-            display_sip_uri(tvb, tree, &uri_offsets, sip_route_uri_p);
+            display_sip_uri(tvb, tree, pinfo, &uri_offsets, sip_route_uri_p);
 
             return;
         }
@@ -2009,15 +2103,33 @@ static void dissect_sip_route_header(tvbuff_t *tvb, proto_tree *tree, packet_inf
     return;
 }
 
-/* Dissect the details of a Via header */
+/* Dissect the details of a Via header
+ *
+ * Via               =  ( "Via" / "v" ) HCOLON via-parm *(COMMA via-parm)
+ * via-parm          =  sent-protocol LWS sent-by *( SEMI via-params )
+ * via-params        =  via-ttl / via-maddr
+ *                      / via-received / via-branch
+ *                      / via-extension
+ * via-ttl           =  "ttl" EQUAL ttl
+ * via-maddr         =  "maddr" EQUAL host
+ * via-received      =  "received" EQUAL (IPv4address / IPv6address)
+ * via-branch        =  "branch" EQUAL token
+ * via-extension     =  generic-param
+ * sent-protocol     =  protocol-name SLASH protocol-version
+ *                      SLASH transport
+ * protocol-name     =  "SIP" / token
+ * protocol-version  =  token
+ * transport         =  "UDP" / "TCP" / "TLS" / "SCTP"
+ *                      / other-transport
+ * sent-by           =  host [ COLON port ]
+ * ttl               =  1*3DIGIT ; 0 to 255
+ *
+ */
 static void dissect_sip_via_header(tvbuff_t *tvb, proto_tree *tree, gint start_offset, gint line_end_offset)
 {
     gint  current_offset;
-    gint  transport_start_offset;
     gint  address_start_offset;
     gint  semicolon_offset;
-    guint transport_slash_count;
-    gboolean transport_name_started;
     gboolean colon_seen;
     gboolean ipv6_reference;
     gboolean ipv6_address;
@@ -2029,10 +2141,7 @@ static void dissect_sip_via_header(tvbuff_t *tvb, proto_tree *tree, gint start_o
     while (1)
     {
         /* Reset flags and counters */
-        transport_start_offset = 0;
         semicolon_offset = 0;
-        transport_name_started = FALSE;
-        transport_slash_count = 0;
         ipv6_reference = FALSE;
         ipv6_address = FALSE;
         colon_seen = FALSE;
@@ -2047,30 +2156,57 @@ static void dissect_sip_via_header(tvbuff_t *tvb, proto_tree *tree, gint start_o
         }
 
         /* Now look for the end of the SIP/2.0/transport parameter.
-           There may be spaces between the slashes */
+         *  There may be spaces between the slashes
+         *  sent-protocol     =  protocol-name SLASH protocol-version
+         *                       SLASH transport
+         */
+
+        current_offset = tvb_find_guint8(tvb, current_offset, line_end_offset - current_offset, '/');
+        if (current_offset != -1)
+        {
+            current_offset++;
+            current_offset = tvb_find_guint8(tvb, current_offset, line_end_offset - current_offset, '/');
+        }
+
+        if (current_offset != -1)
+        {
+            current_offset++;
+            /* skip Spaces and Tabs */
+            current_offset = tvb_skip_wsp(tvb, current_offset, line_end_offset - current_offset);
+        } else
+            current_offset = line_end_offset;
+
+
+        /* We should now be at the start of the first transport name (or at the end of the line) */
+
+        /*
+         * transport         =  "UDP" / "TCP" / "TLS" / "SCTP"
+         *                      / other-transport
+         */
         while (current_offset < line_end_offset)
         {
-            c = tvb_get_guint8(tvb, current_offset);
-            if (c == '/')
-            {
-                transport_slash_count++;
-            }
-            else
-            if (!transport_name_started && (transport_slash_count == 2) && g_ascii_isalpha(c))
-            {
-                transport_name_started = TRUE;
-                transport_start_offset = current_offset;
-            }
-            else
-            if (transport_name_started && ((c == ' ') || (c == '\t')))
-            {
+            int transport_start_offset = current_offset;
+
+            current_offset = tvb_ws_mempbrk_pattern_guint8(tvb, current_offset, line_end_offset - current_offset, &pbrk_tab_sp_fslash, &c);
+            if (current_offset != -1){
                 proto_tree_add_item(tree, hf_sip_via_transport, tvb, transport_start_offset,
                                     current_offset - transport_start_offset, ENC_UTF_8|ENC_NA);
-
+                /* Check if we have more transport parameters */
+                if(c=='/'){
+                    current_offset++;
+                    continue;
+                }
+                current_offset = tvb_skip_wsp(tvb, current_offset, line_end_offset - current_offset);
+                c = tvb_get_guint8(tvb, current_offset);
+                if(c=='/'){
+                    current_offset++;
+                    continue;
+                }
                 break;
+            }else{
+                current_offset = line_end_offset;
             }
 
-            current_offset++;
         }
 
         /* skip Spaces and Tabs */
@@ -2080,7 +2216,12 @@ static void dissect_sip_via_header(tvbuff_t *tvb, proto_tree *tree, gint start_o
         address_start_offset = current_offset;
         while (current_offset < line_end_offset)
         {
-            c = tvb_get_guint8(tvb, current_offset);
+            current_offset = tvb_ws_mempbrk_pattern_guint8(tvb, current_offset, line_end_offset - current_offset, &pbrk_addr_end, &c);
+            if (current_offset == -1)
+            {
+                current_offset = line_end_offset;
+                break;
+            }
 
             if (c == '[') {
                 ipv6_reference = TRUE;
@@ -2210,15 +2351,9 @@ static void dissect_sip_via_header(tvbuff_t *tvb, proto_tree *tree, gint start_o
             parameter_name_end = current_offset;
 
             /* Read until end of parameter value */
-            while (current_offset < line_end_offset)
-            {
-                c = tvb_get_guint8(tvb, current_offset);
-                if ((c == ' ') || (c == '\t') || (c == ';') || (c == ','))
-                {
-                    break;
-                }
-                current_offset++;
-            }
+            current_offset = tvb_ws_mempbrk_pattern_guint8(tvb, current_offset, line_end_offset - current_offset, &pbrk_via_param_end, NULL);
+            if (current_offset == -1)
+                current_offset = line_end_offset;
 
             /* Note parameter name */
             param_name = tvb_get_string_enc(wmem_packet_scope(), tvb, semicolon_offset+1,
@@ -2271,6 +2406,93 @@ static void dissect_sip_via_header(tvbuff_t *tvb, proto_tree *tree, gint start_o
     }
 }
 
+/* Dissect the details of a Session-ID header
+ *
+ * Session-ID           =  "Session-ID" HCOLON sess-id
+ *                         *( SEMI generic-param )
+ * sess-id              =  32(DIGIT / %x61-66)  ; 32 chars of [0-9a-f]
+ */
+static void dissect_sip_session_id_header(tvbuff_t *tvb, proto_tree *tree, gint start_offset, gint line_end_offset)
+{
+    gint current_offset, semi_colon_offset, equals_offset, length;
+    GByteArray *bytes;
+    proto_item *pi;
+
+    current_offset = start_offset;
+    semi_colon_offset = tvb_find_guint8(tvb, current_offset, line_end_offset-current_offset, ';');
+    if(semi_colon_offset == -1){
+        semi_colon_offset = line_end_offset;
+    }
+
+    length = semi_colon_offset-current_offset;
+    bytes = g_byte_array_sized_new(16);
+    pi = proto_tree_add_bytes_item(tree, hf_sip_session_id_sess_id, tvb,
+                              start_offset, length, ENC_UTF_8|ENC_STR_HEX|ENC_SEP_NONE,
+                              bytes, NULL, NULL);
+
+    current_offset = current_offset + length + 1;
+
+    /* skip Spaces and Tabs */
+    current_offset = tvb_skip_wsp(tvb, current_offset, line_end_offset - current_offset);
+
+    if (current_offset < line_end_offset) {
+        /* Parse parameter and value */
+        equals_offset = tvb_find_guint8(tvb, current_offset + 1, length, '=');
+        if (equals_offset != -1) {
+            /* Extract the parameter name */
+            GByteArray *uuid = g_byte_array_sized_new(16);
+            guint8 *param_name = tvb_get_string_enc(wmem_packet_scope(), tvb, current_offset,
+                                                    tvb_skip_wsp_return(tvb, equals_offset - 1) - current_offset,
+                                                    ENC_UTF_8|ENC_NA);
+
+            if ((bytes->len == 16) && (g_ascii_strcasecmp(param_name, "remote") == 0) &&
+                tvb_get_string_bytes(tvb, equals_offset + 1, line_end_offset - equals_offset - 1,
+                                     ENC_UTF_8|ENC_STR_HEX|ENC_SEP_NONE, uuid, NULL) &&
+                (uuid->len == 16)) {
+                /* Decode header as draft-ietf-insipid-session-id
+                 *
+                 * session-id          = "Session-ID" HCOLON session-id-value
+                 * session-id-value    = local-uuid *(SEMI sess-id-param)
+                 * local-uuid          = sess-uuid / null
+                 * remote-uuid         = sess-uuid / null
+                 * sess-uuid           = 32(DIGIT / %x61-66)  ;32 chars of [0-9a-f]
+                 * sess-id-param       = remote-param / generic-param
+                 * remote-param        = "remote" EQUAL remote-uuid
+                 * null                = 32("0")
+                 */
+                e_guid_t guid;
+
+                PROTO_ITEM_SET_HIDDEN(pi);
+                guid.data1 = (bytes->data[0] << 24) | (bytes->data[1] << 16) |
+                             (bytes->data[2] <<  8) |  bytes->data[3];
+                guid.data2 = (bytes->data[4] <<  8) |  bytes->data[5];
+                guid.data3 = (bytes->data[6] <<  8) |  bytes->data[7];
+                memcpy(guid.data4, &bytes->data[8], 8);
+                proto_tree_add_guid(tree, hf_sip_session_id_local_uuid, tvb,
+                                    start_offset, semi_colon_offset - start_offset, &guid);
+                guid.data1 = (uuid->data[0] << 24) | (uuid->data[1] << 16) |
+                             (uuid->data[2] <<  8) |  uuid->data[3];
+                guid.data2 = (uuid->data[4] <<  8) |  uuid->data[5];
+                guid.data3 = (uuid->data[6] <<  8) |  uuid->data[7];
+                memcpy(guid.data4, &uuid->data[8], 8);
+                proto_tree_add_guid(tree, hf_sip_session_id_remote_uuid, tvb,
+                                    equals_offset + 1, line_end_offset - equals_offset - 1, &guid);
+            } else {
+                /* Display generic parameter */
+                proto_tree_add_item(tree, hf_sip_session_id_param, tvb, current_offset,
+                                    line_end_offset - current_offset, ENC_UTF_8|ENC_NA);
+            }
+            g_byte_array_free(uuid, TRUE);
+        } else {
+            /* Display generic parameter */
+            proto_tree_add_item(tree, hf_sip_session_id_param, tvb, current_offset,
+                                line_end_offset - current_offset, ENC_UTF_8|ENC_NA);
+        }
+    }
+
+    g_byte_array_free(bytes, TRUE);
+}
+
 /* Code to actually dissect the packets */
 static int
 dissect_sip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
@@ -2293,28 +2515,59 @@ dissect_sip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
         return len;
 }
 
-static void
-dissect_sip_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_sip_tcp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
     guint8 octet;
-    int offset = 0;
+    int offset = 0, linelen;
     int len;
     int remaining_length;
 
     octet = tvb_get_guint8(tvb,0);
     if ((octet  & 0xf8) == 0xf8){
         call_dissector(sigcomp_handle, tvb, pinfo, tree);
-        return;
+        return tvb_reported_length(tvb);
     }
 
     remaining_length = tvb_reported_length(tvb);
+    /* Check if we have enough data or if we need another segment, as a safty measure set a length limit*/
+    if (remaining_length < 1500){
+        linelen = tvb_find_line_end(tvb, offset, remaining_length, NULL, TRUE);
+        if (linelen == -1){
+            pinfo->desegment_offset = offset;
+            pinfo->desegment_len = DESEGMENT_ONE_MORE_SEGMENT;
+            return -1;
+        }
+    }
+    len = dissect_sip_common(tvb, offset, remaining_length, pinfo, tree, TRUE, TRUE);
+    if (len <= 0)
+        return len;
+    offset += len;
+    remaining_length = remaining_length - len;
+
+    /*
+     * This is a bit of a cludge as the TCP dissector does not call the dissectors again if not all
+     * the data in the segment was dissected and we do not know if we need another segment or not.
+     * so DESEGMENT_ONE_MORE_SEGMENT can't be used in all cases.
+     *
+     */
     while (remaining_length > 0) {
+        /* Check if we have enough data or if we need another segment, as a safty measure set a length limit*/
+        if (remaining_length < 1500){
+            linelen = tvb_find_line_end(tvb, offset, remaining_length, NULL, TRUE);
+            if (linelen == -1){
+                pinfo->desegment_offset = offset;
+                pinfo->desegment_len = DESEGMENT_ONE_MORE_SEGMENT;
+                return -1;
+            }
+        }
         len = dissect_sip_common(tvb, offset, remaining_length, pinfo, tree, TRUE, TRUE);
         if (len <= 0)
-            break;
+            return len;
         offset += len;
         remaining_length = remaining_length - len;
     }
+    return offset;
 }
 
 static gboolean
@@ -2325,7 +2578,7 @@ dissect_sip_tcp_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
     gboolean first = TRUE;
     int remaining_length;
 
-    remaining_length = tvb_reported_length(tvb);
+    remaining_length = tvb_captured_length(tvb);
     while (remaining_length > 0) {
         len = dissect_sip_common(tvb, offset, remaining_length, pinfo, tree, !first, TRUE);
         if (len == -2) {
@@ -2351,7 +2604,7 @@ dissect_sip_tcp_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *
 static gboolean
 dissect_sip_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-    int remaining_length = tvb_reported_length(tvb);
+    int remaining_length = tvb_captured_length(tvb);
 
     return dissect_sip_common(tvb, 0, remaining_length, pinfo, tree, FALSE, FALSE) > 0;
 }
@@ -2366,15 +2619,15 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
     line_type_t line_type;
     tvbuff_t *next_tvb;
     gboolean is_known_request;
-    gboolean found_match = FALSE;
+    int found_match = 0;
     const char *descr;
     guint token_1_len = 0;
     guint current_method_idx = SIP_METHOD_INVALID;
-    proto_item *ts = NULL, *ti_a = NULL, *th = NULL, *sip_element_item = NULL;
+    proto_item *ts = NULL, *ti_a = NULL, *th = NULL;
     proto_tree *sip_tree  = NULL, *reqresp_tree      = NULL, *hdr_tree  = NULL,
-        *sip_element_tree = NULL, *message_body_tree = NULL, *cseq_tree = NULL,
+        *message_body_tree = NULL, *cseq_tree = NULL,
         *via_tree         = NULL, *reason_tree       = NULL, *rack_tree = NULL,
-        *route_tree       = NULL, *security_client_tree = NULL;
+        *route_tree       = NULL, *security_client_tree = NULL, *session_id_tree = NULL;
     guchar contacts = 0, contact_is_star = 0, expires_is_0 = 0, contacts_expires_0 = 0, contacts_expires_unknown = 0;
     guint32 cseq_number = 0;
     guchar  cseq_number_set = 0;
@@ -2527,24 +2780,22 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
 
     case OTHER_LINE:
         if (sip_tree) {
-            ti_a = proto_tree_add_text(sip_tree, tvb, offset, next_offset,
-                                     "%s line: %s", descr,
+            reqresp_tree = proto_tree_add_subtree_format(sip_tree, tvb, offset, next_offset,
+                                     ett_sip_reqresp, NULL, "%s line: %s", descr,
                                      tvb_format_text(tvb, offset, linelen));
-            reqresp_tree = proto_item_add_subtree(ti_a, ett_sip_reqresp);
             /* XXX: Is adding to 'reqresp_tree as intended ? Changed from original 'sip_tree' */
-            proto_tree_add_text(reqresp_tree, tvb, offset, -1, "Continuation data");
+            proto_tree_add_item(reqresp_tree, hf_sip_continuation, tvb, offset, -1, ENC_NA);
         }
         return remaining_length;
     }
 
     remaining_length = remaining_length - (next_offset - offset);
     offset = next_offset;
-    if (sip_tree) {
-        th = proto_tree_add_item(sip_tree, hf_sip_msg_hdr, tvb, offset,
+
+    th = proto_tree_add_item(sip_tree, hf_sip_msg_hdr, tvb, offset,
                                  remaining_length, ENC_UTF_8|ENC_NA);
-        proto_item_set_text(th, "Message Header");
-        hdr_tree = proto_item_add_subtree(th, ett_sip_hdr);
-    }
+    proto_item_set_text(th, "Message Header");
+    hdr_tree = proto_item_add_subtree(th, ett_sip_hdr);
 
     /*
      * Process the headers - if we're not building a protocol tree,
@@ -2570,7 +2821,6 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
         gint comma_offset;
         guchar c;
         gint value_len;
-        char *value;
         gboolean is_no_header_termination = FALSE;
         proto_tree *tc_uri_item_tree = NULL;
         uri_offset_info uri_offsets;
@@ -2589,7 +2839,7 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
         if(tvb_reported_length_remaining(tvb, next_offset) <= 0){
             is_no_header_termination = TRUE;
         }else{
-            while ((c = tvb_get_guint8(tvb, next_offset)) == ' ' || c == '\t')
+            while (tvb_offset_exists(tvb, next_offset) && ((c = tvb_get_guint8(tvb, next_offset)) == ' ' || c == '\t'))
             {
                 /*
                  * This line end is not a header seperator.
@@ -2606,11 +2856,7 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
             /*
              * Malformed header - no colon after the name.
              */
-            if(hdr_tree) {
-                proto_tree_add_text(hdr_tree, tvb, offset,
-                                    next_offset - offset, "%s",
-                                    tvb_format_text(tvb, offset, linelen));
-            }
+            expert_add_info(pinfo, th, &ei_sip_header_no_colon);
         } else {
             header_len = colon_offset - offset;
             header_name = (gchar*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, header_len, ENC_UTF_8|ENC_NA);
@@ -2622,27 +2868,28 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
              */
             value_offset = tvb_skip_wsp(tvb, colon_offset + 1, line_end_offset - (colon_offset + 1));
 
-            /*
-             * Fetch the value.
-             */
             value_len = (gint) (line_end_offset - value_offset);
-            value = tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset, value_len, ENC_UTF_8|ENC_NA);
 
             if (hf_index == -1) {
-                proto_item *ti_c = proto_tree_add_text(hdr_tree, tvb,
-                                                     offset, next_offset - offset, "%s",
+                proto_item *ti_c;
+                proto_tree *ti_tree = proto_tree_add_subtree(hdr_tree, tvb,
+                                                     offset, next_offset - offset, ett_sip_ext_hdr, &ti_c,
                                                      tvb_format_text(tvb, offset, linelen));
+
                 ext_hdr_handle = dissector_get_string_handle(ext_hdr_subdissector_table, header_name);
                 if (ext_hdr_handle != NULL) {
                     tvbuff_t *next_tvb2;
-                    next_tvb2 = tvb_new_subset(tvb, value_offset, value_len, value_len);
-                    dissector_try_string(ext_hdr_subdissector_table, header_name, next_tvb2, pinfo, proto_item_add_subtree(ti_c, ett_sip_ext_hdr), NULL);
+                    next_tvb2 = tvb_new_subset_length(tvb, value_offset, value_len);
+                    dissector_try_string(ext_hdr_subdissector_table, header_name, next_tvb2, pinfo, ti_tree, NULL);
                 } else {
                     expert_add_info_format(pinfo, ti_c, &ei_sip_unrecognized_header,
                                            "Unrecognised SIP header (%s)",
-                                           tvb_format_text(tvb, offset, header_len));
+                                           header_name);
                 }
             } else {
+                proto_item *sip_element_item;
+                proto_tree *sip_element_tree;
+
                 /*
                  * Add it to the protocol tree,
                  * but display the line as is.
@@ -2654,11 +2901,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         /*if(hdr_tree)*/ {
                             proto_item *item;
 
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                ett_sip_element);
                             /* To        =  ( "To" / "t" ) HCOLON ( name-addr
@@ -2666,7 +2914,7 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                              */
                             sip_uri_offset_init(&uri_offsets);
                             if((dissect_sip_name_addr_or_addr_spec(tvb, pinfo, value_offset, line_end_offset+2, &uri_offsets)) != -1){
-                                display_sip_uri(tvb, sip_element_tree, &uri_offsets, &sip_to_uri);
+                                display_sip_uri(tvb, sip_element_tree, pinfo, &uri_offsets, &sip_to_uri);
                                 if((uri_offsets.name_addr_start != -1) && (uri_offsets.name_addr_end != -1)){
                                     stat_info->tap_to_addr=tvb_get_string_enc(wmem_packet_scope(), tvb, uri_offsets.name_addr_start,
                                         uri_offsets.name_addr_end - uri_offsets.name_addr_start, ENC_UTF_8|ENC_NA);
@@ -2714,11 +2962,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         if(hdr_tree) {
                             proto_item *item;
 
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             sip_element_tree = proto_item_add_subtree( sip_element_item, ett_sip_element);
                             /*
                              * From        =  ( "From" / "f" ) HCOLON from-spec
@@ -2728,7 +2977,7 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
 
                             sip_uri_offset_init(&uri_offsets);
                             if((dissect_sip_name_addr_or_addr_spec(tvb, pinfo, value_offset, line_end_offset+2, &uri_offsets)) != -1){
-                                display_sip_uri(tvb, sip_element_tree, &uri_offsets, &sip_from_uri);
+                                display_sip_uri(tvb, sip_element_tree, pinfo, &uri_offsets, &sip_from_uri);
                                 if((uri_offsets.name_addr_start != -1) && (uri_offsets.name_addr_end != -1)){
                                     stat_info->tap_from_addr=tvb_get_string_enc(wmem_packet_scope(), tvb, uri_offsets.name_addr_start,
                                         uri_offsets.name_addr_end - uri_offsets.name_addr_start, ENC_UTF_8|ENC_NA);
@@ -2764,11 +3013,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                     case POS_P_ASSERTED_IDENTITY :
                         if(hdr_tree)
                         {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                ett_sip_element);
 
@@ -2781,17 +3031,18 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                              */
                             sip_uri_offset_init(&uri_offsets);
                             if((dissect_sip_name_addr_or_addr_spec(tvb, pinfo, value_offset, line_end_offset+2, &uri_offsets)) != -1)
-                                 display_sip_uri(tvb, sip_element_tree, &uri_offsets, &sip_pai_uri);
+                                 display_sip_uri(tvb, sip_element_tree, pinfo, &uri_offsets, &sip_pai_uri);
                         }
                         break;
                     case POS_HISTORY_INFO:
                         if(hdr_tree)
                         {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                ett_sip_hist);
                             dissect_sip_history_info(tvb, sip_element_tree, pinfo, value_offset, line_end_offset);
@@ -2801,11 +3052,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                     case POS_P_CHARGING_FUNC_ADDRESSES:
                         if(hdr_tree)
                         {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                ett_sip_element);
                             dissect_sip_p_charging_func_addresses(tvb, sip_element_tree, pinfo, value_offset, line_end_offset);
@@ -2815,11 +3067,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                     case POS_P_PREFERRED_IDENTITY :
                         if(hdr_tree)
                         {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                ett_sip_element);
                             /*
@@ -2831,18 +3084,18 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                              */
                             sip_uri_offset_init(&uri_offsets);
                             if((dissect_sip_name_addr_or_addr_spec(tvb, pinfo, value_offset, line_end_offset+2, &uri_offsets)) != -1)
-                                 display_sip_uri(tvb, sip_element_tree, &uri_offsets, &sip_ppi_uri);
+                                 display_sip_uri(tvb, sip_element_tree, pinfo, &uri_offsets, &sip_ppi_uri);
                         }
                         break;
 
                     case POS_PERMISSION_MISSING :
                         if(hdr_tree)
                         {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
 
                             sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                                    ett_sip_element);
@@ -2855,7 +3108,7 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                              */
                             sip_uri_offset_init(&uri_offsets);
                             if((dissect_sip_name_addr_or_addr_spec(tvb, pinfo, value_offset, line_end_offset+2, &uri_offsets)) != -1)
-                                 display_sip_uri(tvb, sip_element_tree, &uri_offsets, &sip_pmiss_uri);
+                                 display_sip_uri(tvb, sip_element_tree, pinfo, &uri_offsets, &sip_pmiss_uri);
                         }
                         break;
 
@@ -2863,11 +3116,11 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                     case POS_TRIGGER_CONSENT :
                         if(hdr_tree)
                         {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
 
                             sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                                         ett_sip_element);
@@ -2884,7 +3137,7 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                             sip_uri_offset_init(&uri_offsets);
                             if((dissect_sip_uri(tvb, pinfo, value_offset, line_end_offset+2, &uri_offsets)) != -1) {
 
-                                tc_uri_item_tree = display_sip_uri(tvb, sip_element_tree, &uri_offsets, &sip_tc_uri);
+                                tc_uri_item_tree = display_sip_uri(tvb, sip_element_tree, pinfo, &uri_offsets, &sip_tc_uri);
                                 if (line_end_offset > uri_offsets.uri_end) {
                                     gint hparam_offset = uri_offsets.uri_end + 1;
                                     /* Is there a header parameter */
@@ -2909,18 +3162,22 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         break;
 
                     case POS_CSEQ :
+                    {
                         /* Store the sequence number */
+                        char *value = tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset, value_len, ENC_UTF_8|ENC_NA);
+
                         cseq_number = (guint32)strtoul(value, NULL, 10);
                         cseq_number_set = 1;
                         stat_info->tap_cseq_number=cseq_number;
 
                         /* Add CSeq  tree */
                         if (hdr_tree) {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             cseq_tree = proto_item_add_subtree(sip_element_item, ett_sip_cseq);
                         }
 
@@ -2978,20 +3235,23 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                                                     value_offset + sub_value_offset, strlen_to_copy, ENC_UTF_8|ENC_NA);
                             }
                         }
+                    }
                     break;
 
                     case POS_RACK :
                     {
+                        char *value = tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset, value_len, ENC_UTF_8|ENC_NA);
                         int cseq_no_offset;
                         /*int cseq_method_offset;*/
 
                         /* Add RAck  tree */
                         if (hdr_tree) {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             rack_tree = proto_item_add_subtree(sip_element_item, ett_sip_rack);
                         }
 
@@ -3061,32 +3321,33 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                     }
 
                     case POS_CALL_ID :
+                    {
+                        char *value = tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset, value_len, ENC_UTF_8|ENC_NA);
+
                         /* Store the Call-id */
                         g_strlcpy(call_id, value, MAX_CALL_ID_SIZE);
                         stat_info->tap_call_id = wmem_strdup(wmem_packet_scope(), call_id);
 
                         /* Add 'Call-id' string item to tree */
-                        if(hdr_tree) {
-                            proto_tree_add_string_format(hdr_tree,
-                                                         hf_header_array[hf_index], tvb,
-                                                         offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
-                        }
+                        sip_element_item = proto_tree_add_string(hdr_tree,
+                                                    hf_header_array[hf_index], tvb,
+                                                    offset, next_offset - offset,
+                                                    value);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+                    }
                     break;
 
                     case POS_EXPIRES :
-                        if (strcmp(value, "0") == 0)
+                        if (tvb_strneql(tvb, value_offset, "0", value_len) == 0)
                         {
                             expires_is_0 = 1;
                         }
+
                         /* Add 'Expires' string item to tree */
-                        if(hdr_tree) {
-                            proto_tree_add_uint(hdr_tree,
+                        sip_proto_tree_add_uint(hdr_tree,
                                                 hf_header_array[hf_index], tvb,
                                                 offset, next_offset - offset,
-                                                atoi(value));
-                        }
+                                                value_offset, value_len);
                     break;
 
                     /*
@@ -3096,11 +3357,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                      * lookup in "media_type" dissector table.
                      */
                     case POS_CONTENT_TYPE :
-                        proto_tree_add_string_format(hdr_tree,
+                        sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                         content_type_len = value_len;
                         semi_colon_offset = tvb_find_guint8(tvb, value_offset, value_len, ';');
                         /* Content-Type     =  ( "Content-Type" / "c" ) HCOLON media-type
@@ -3125,31 +3387,32 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                             (gchar *)tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset, content_type_len, ENC_UTF_8|ENC_NA));
 
                         /* Debug code
-                        proto_tree_add_text(hdr_tree, tvb, value_offset,content_type_len,
+                        proto_tree_add_debug_text(hdr_tree, tvb, value_offset,content_type_len,
                                             "media_type_str(lower cased)=%s",media_type_str_lower_case);
                         */
                     break;
 
                     case POS_CONTENT_LENGTH :
+                    {
+                        char *value = tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset, value_len, ENC_UTF_8|ENC_NA);
                         content_length = atoi(value);
-                        if(hdr_tree) {
-                            proto_tree_add_uint_format(hdr_tree,
+
+                        sip_element_item = proto_tree_add_uint(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               content_length, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
-                        }
+                                               content_length);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                         break;
+                    }
 
                     case POS_MAX_BREADTH :
                     case POS_MAX_FORWARDS :
                     case POS_RSEQ :
-                        if(hdr_tree) {
-                            proto_tree_add_uint(hdr_tree,
+                        sip_proto_tree_add_uint(hdr_tree,
                                                 hf_header_array[hf_index], tvb,
                                                 offset, next_offset - offset,
-                                                (guint32)strtoul(value, NULL, 10));
-                        }
+                                                value_offset, value_len);
                         break;
 
                     case POS_CONTACT :
@@ -3158,11 +3421,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                          *                   ( STAR / (contact-param *(COMMA contact-param)))
                          * contact-param  =  (name-addr / addr-spec) *(SEMI contact-params)
                          */
-                        sip_element_item = proto_tree_add_string_format(hdr_tree,
+                        sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                         sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                ett_sip_element);
 
@@ -3228,11 +3492,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         if (hdr_tree) {
                             proto_item *ti_c;
                             /* Add whole line as header tree */
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                hf_header_array[hf_index], tvb,
                                                offset, next_offset - offset,
-                                               value, "%s",
-                                               tvb_format_text(tvb, offset, linelen));
+                                               value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             sip_element_tree = proto_item_add_subtree( sip_element_item,
                                                ett_sip_element);
 
@@ -3246,7 +3511,7 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                             if (hf_index != POS_AUTHENTICATION_INFO)
                             {
                                 /* The first time comma_offset is "start of parameters" */
-                                comma_offset = tvb_pbrk_guint8(tvb, value_offset, line_end_offset - value_offset, " \t\r\n", NULL);
+                                comma_offset = tvb_ws_mempbrk_pattern_guint8(tvb, value_offset, line_end_offset - value_offset, &pbrk_whitespace, NULL);
                                 proto_tree_add_item(sip_element_tree, hf_sip_auth_scheme,
                                                     tvb, value_offset, comma_offset - value_offset,
                                                     ENC_UTF_8|ENC_NA);
@@ -3277,11 +3542,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                     case POS_ROUTE:
                         /* Add Route subtree */
                         if (hdr_tree) {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             route_tree = proto_item_add_subtree(sip_element_item, ett_sip_route);
                             dissect_sip_route_header(tvb, route_tree, pinfo, &sip_route_uri, value_offset, line_end_offset);
                         }
@@ -3289,34 +3555,63 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                     case POS_RECORD_ROUTE:
                         /* Add Record-Route subtree */
                         if (hdr_tree) {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             route_tree = proto_item_add_subtree(sip_element_item, ett_sip_route);
                             dissect_sip_route_header(tvb, route_tree, pinfo, &sip_record_route_uri, value_offset, line_end_offset);
+                        }
+                        break;
+                    case POS_SERVICE_ROUTE:
+                        /* Add Service-Route subtree */
+                        if (hdr_tree) {
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
+                                                         hf_header_array[hf_index], tvb,
+                                                         offset, next_offset - offset,
+                                                         value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
+                            route_tree = proto_item_add_subtree(sip_element_item, ett_sip_route);
+                            dissect_sip_route_header(tvb, route_tree, pinfo, &sip_service_route_uri, value_offset, line_end_offset);
+                        }
+                        break;
+                    case POS_PATH:
+                        /* Add Path subtree */
+                        if (hdr_tree) {
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
+                                                         hf_header_array[hf_index], tvb,
+                                                         offset, next_offset - offset,
+                                                         value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
+                            route_tree = proto_item_add_subtree(sip_element_item, ett_sip_route);
+                            dissect_sip_route_header(tvb, route_tree, pinfo, &sip_path_uri, value_offset, line_end_offset);
                         }
                         break;
                     case POS_VIA:
                         /* Add Via subtree */
                         if (hdr_tree) {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             via_tree = proto_item_add_subtree(sip_element_item, ett_sip_via);
                             dissect_sip_via_header(tvb, via_tree, value_offset, line_end_offset);
                         }
                         break;
                     case POS_REASON:
                         if(hdr_tree) {
-                            sip_element_item = proto_tree_add_string_format(hdr_tree,
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                             reason_tree = proto_item_add_subtree(sip_element_item, ett_sip_reason);
                             dissect_sip_reason_header(tvb, reason_tree, value_offset, line_end_offset);
                         }
@@ -3325,11 +3620,11 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         /* Content-Encoding  =  ( "Content-Encoding" / "e" ) HCOLON
                          * content-coding *(COMMA content-coding)
                          */
-                        proto_tree_add_string_format(hdr_tree,
+                        sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
 
                         content_encoding_parameter_str = ascii_strdown_inplace(tvb_get_string_enc(wmem_packet_scope(), tvb, value_offset,
                                                          (line_end_offset-value_offset), ENC_UTF_8|ENC_NA));
@@ -3338,11 +3633,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         /* security-client  = "Security-Client" HCOLON
                          *                     sec-mechanism *(COMMA sec-mechanism)
                          */
-                        sip_element_item = proto_tree_add_string_format(hdr_tree,
+                        sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                         comma_offset = tvb_find_guint8(tvb, value_offset, line_end_offset - value_offset, ',');
                         while(comma_offset<line_end_offset){
                             comma_offset = tvb_find_guint8(tvb, value_offset, line_end_offset - value_offset, ',');
@@ -3359,11 +3655,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         /* security-server  = "Security-Server" HCOLON
                          *                     sec-mechanism *(COMMA sec-mechanism)
                          */
-                        sip_element_item = proto_tree_add_string_format(hdr_tree,
+                        sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                         comma_offset = tvb_find_guint8(tvb, value_offset, line_end_offset - value_offset, ',');
                         while(comma_offset<line_end_offset){
                             comma_offset = tvb_find_guint8(tvb, value_offset, line_end_offset - value_offset, ',');
@@ -3380,11 +3677,12 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         /* security-verify  = "Security-Verify" HCOLON
                          *                     sec-mechanism *(COMMA sec-mechanism)
                          */
-                        sip_element_item = proto_tree_add_string_format(hdr_tree,
+                        sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+
                         comma_offset = tvb_find_guint8(tvb, value_offset, line_end_offset - value_offset, ',');
                         while(comma_offset<line_end_offset){
                             comma_offset = tvb_find_guint8(tvb, value_offset, line_end_offset - value_offset, ',');
@@ -3397,13 +3695,24 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                         }
 
                         break;
+                    case POS_SESSION_ID:
+                        if(hdr_tree) {
+                            sip_element_item = sip_proto_tree_add_string(hdr_tree,
+                                                            hf_header_array[hf_index], tvb,
+                                                            offset, next_offset - offset,
+                                                            value_offset, value_len);
+                            sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
+                            session_id_tree = proto_item_add_subtree(sip_element_item, ett_sip_session_id);
+                            dissect_sip_session_id_header(tvb, session_id_tree, value_offset, line_end_offset);
+                        }
+                        break;
                     default :
                         /* Default case is to assume it's an FT_STRING field */
-                        proto_tree_add_string_format(hdr_tree,
+                        sip_element_item = sip_proto_tree_add_string(hdr_tree,
                                                          hf_header_array[hf_index], tvb,
                                                          offset, next_offset - offset,
-                                                         value, "%s",
-                                                         tvb_format_text(tvb, offset, linelen));
+                                                         value_offset, value_len);
+                        sip_proto_set_format_text(hdr_tree, sip_element_item, tvb, offset, linelen);
                         break;
                 }/* end switch */
             }/*if HF_index */
@@ -3523,6 +3832,15 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                                                 &response_time);
     }
 
+    /* Report this packet to the tap */
+    if (!pinfo->flags.in_error_pkt)
+    {
+        tap_queue_packet(sip_tap, pinfo, stat_info);
+        if(have_tap_listener(exported_pdu_tap)){
+            export_sip_pdu(pinfo,tvb);
+        }
+    }
+
     if (datalen > 0) {
         /*
          * There's a message body starting at "offset".
@@ -3560,9 +3878,6 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
 
         /* give the content type parameters to sub dissectors */
         if ( media_type_str_lower_case != NULL ) {
-            void *save_private_data = pinfo->private_data;
-            pinfo->private_data = content_type_parameter_str;
-
             /* SDP needs a transport layer to determine request/response */
             if (!strcmp(media_type_str_lower_case, "application/sdp")) {
                 /* Resends don't count */
@@ -3610,10 +3925,9 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
             found_match = dissector_try_string(media_type_dissector_table,
                                                media_type_str_lower_case,
                                                next_tvb, pinfo,
-                                               message_body_tree, NULL);
+                                               message_body_tree, content_type_parameter_str);
             DENDENT();
-            DPRINT(("done calling dissector_try_string() with found_match=%s",
-                    found_match?"TRUE":"FALSE"));
+            DPRINT(("done calling dissector_try_string() with found_match=%u", found_match));
 
             if (!found_match &&
                 !strncmp(media_type_str_lower_case, "multipart/", sizeof("multipart/")-1)) {
@@ -3623,18 +3937,15 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
                 found_match = dissector_try_string(media_type_dissector_table,
                                                    "multipart/",
                                                    next_tvb, pinfo,
-                                                   message_body_tree, NULL);
+                                                   message_body_tree, content_type_parameter_str);
                 DENDENT();
-                DPRINT(("done calling dissector_try_string() with found_match=%s",
-                        found_match?"TRUE":"FALSE"));
+                DPRINT(("done calling dissector_try_string() with found_match=%u", found_match));
             }
-            pinfo->private_data = save_private_data;
             /* If no match dump as text */
         }
-        if ( found_match != TRUE )
+        if ( found_match == 0 )
         {
-            DPRINT(("calling dissector_try_heuristic() with found_match=%s",
-                    found_match?"TRUE":"FALSE"));
+            DPRINT(("calling dissector_try_heuristic() with found_match=0"));
             DINDENT();
             if (!(dissector_try_heuristic(heur_subdissector_list,
                               next_tvb, pinfo, message_body_tree, &hdtbl_entry, NULL))) {
@@ -3688,15 +3999,6 @@ dissect_sip_common(tvbuff_t *tvb, int offset, int remaining_length, packet_info 
     if (global_sip_raw_text)
         tvb_raw_text_add(tvb, orig_offset, offset - orig_offset, tree);
 
-    /* Report this packet to the tap */
-    if (!pinfo->flags.in_error_pkt)
-    {
-        tap_queue_packet(sip_tap, pinfo, stat_info);
-        if(have_tap_listener(exported_pdu_tap)){
-            export_sip_pdu(pinfo,tvb);
-        }
-    }
-
     /* Append a brief summary to the SIP root item */
     if (stat_info->request_method) {
         proto_item_append_text(ts, " (%s)", stat_info->request_method);
@@ -3738,7 +4040,7 @@ dfilter_sip_request_line(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gi
         /* calc R-URI len*/
         uri_offsets.uri_end = tvb_find_guint8(tvb, offset, linelen, ' ')-1;
         dissect_sip_uri(tvb, pinfo, offset, offset + linelen, &uri_offsets);
-        display_sip_uri(tvb, tree, &uri_offsets, &sip_req_uri);
+        display_sip_uri(tvb, tree, pinfo, &uri_offsets, &sip_req_uri);
     }
 }
 
@@ -3756,28 +4058,28 @@ dfilter_sip_status_line(tvbuff_t *tvb, proto_tree *tree, packet_info *pinfo, gin
      * We also know that we have a version string followed by a
      * space at the beginning of the line, for the same reason.
      */
-    response_code = atoi((char*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset + SIP2_HDR_LEN + 1, 3, ENC_UTF_8|ENC_NA));
+    offset = offset + SIP2_HDR_LEN + 1;
+    response_code = atoi((char*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 3, ENC_UTF_8|ENC_NA));
 
     /* Add numerical response code to tree */
     if (tree) {
-        proto_tree_add_uint(tree, hf_sip_Status_Code, tvb, offset + SIP2_HDR_LEN + 1,
-                            3, response_code);
+        proto_tree_add_uint(tree, hf_sip_Status_Code, tvb, offset, 3, response_code);
     }
 
     /* Add response code for sending to tap */
     stat_info->response_code = response_code;
 
     /* Skip past the responce code and possible trailing space */
-    offset =  SIP2_HDR_LEN + 1 + 3 + 1;
+    offset = offset + 3 + 1;
 
     /* Check for diagnostics */
-    diag_len = line_end - offset;
+    diag_len = line_end - (SIP2_HDR_LEN + 1 + 3 + 1);
     if((diag_len) <= 0)
         return;
 
     /* If we have a SIP diagnostics sub dissector call it */
     if(sip_diag_handle){
-        next_tvb = tvb_new_subset(tvb, offset, diag_len, diag_len);
+        next_tvb = tvb_new_subset_length(tvb, offset, diag_len);
         call_dissector(sip_diag_handle, next_tvb, pinfo, tree);
     }
 }
@@ -4092,8 +4394,8 @@ guint sip_is_packet_resend(packet_info *pinfo,
 
         /* Fill in key and value details */
         g_snprintf(p_key->call_id, MAX_CALL_ID_SIZE, "%s", call_id);
-        SE_COPY_ADDRESS(&(p_key->dest_address), &pinfo->net_dst);
-        SE_COPY_ADDRESS(&(p_key->source_address), &pinfo->net_src);
+        WMEM_COPY_ADDRESS(wmem_file_scope(), &(p_key->dest_address), &pinfo->net_dst);
+        WMEM_COPY_ADDRESS(wmem_file_scope(), &(p_key->source_address), &pinfo->net_src);
         p_key->dest_port = pinfo->destport;
         if (sip_retrans_the_same_sport) {
             p_key->source_port = pinfo->srcport;
@@ -4420,6 +4722,297 @@ guint sip_find_invite(packet_info *pinfo,
     return result;
 }
 
+/* TAP STAT INFO */
+
+/*
+ * Much of this is from ui/gtk/sip_stat.c:
+ * sip_stat   2004 Martin Mathieson
+ */
+
+/* TODO: extra codes to be added from SIP extensions? */
+static const value_string response_code_vals[] = {
+    { 999, "Unknown response"}, /* Must be first */
+
+    { 100, "Trying"},
+    { 180, "Ringing"},
+    { 181, "Call Is Being Forwarded"},
+    { 182, "Queued"},
+    { 183, "Session Progress"},
+    { 199, "Informational - Others" },
+
+    { 200, "OK"},
+    { 202, "Accepted"},
+    { 204, "No Notification"},
+    { 299, "Success - Others"}, /* used to keep track of other Success packets */
+
+    { 300, "Multiple Choices"},
+    { 301, "Moved Permanently"},
+    { 302, "Moved Temporarily"},
+    { 305, "Use Proxy"},
+    { 380, "Alternative Service"},
+    { 399, "Redirection - Others"},
+
+    { 400, "Bad Request"},
+    { 401, "Unauthorized"},
+    { 402, "Payment Required"},
+    { 403, "Forbidden"},
+    { 404, "Not Found"},
+    { 405, "Method Not Allowed"},
+    { 406, "Not Acceptable"},
+    { 407, "Proxy Authentication Required"},
+    { 408, "Request Timeout"},
+    { 410, "Gone"},
+    { 412, "Conditional Request Failed"},
+    { 413, "Request Entity Too Large"},
+    { 414, "Request-URI Too Long"},
+    { 415, "Unsupported Media Type"},
+    { 416, "Unsupported URI Scheme"},
+    { 420, "Bad Extension"},
+    { 421, "Extension Required"},
+    { 422, "Session Timer Too Small"},
+    { 423, "Interval Too Brief"},
+    { 428, "Use Identity Header"},
+    { 429, "Provide Referrer Identity"},
+    { 430, "Flow Failed"},
+    { 433, "Anonymity Disallowed"},
+    { 436, "Bad Identity-Info"},
+    { 437, "Unsupported Certificate"},
+    { 438, "Invalid Identity Header"},
+    { 439, "First Hop Lacks Outbound Support"},
+    { 440, "Max-Breadth Exceeded"},
+    { 470, "Consent Needed"},
+    { 480, "Temporarily Unavailable"},
+    { 481, "Call/Transaction Does Not Exist"},
+    { 482, "Loop Detected"},
+    { 483, "Too Many Hops"},
+    { 484, "Address Incomplete"},
+    { 485, "Ambiguous"},
+    { 486, "Busy Here"},
+    { 487, "Request Terminated"},
+    { 488, "Not Acceptable Here"},
+    { 489, "Bad Event"},
+    { 491, "Request Pending"},
+    { 493, "Undecipherable"},
+    { 494, "Security Agreement Required"},
+    { 499, "Client Error - Others"},
+
+    { 500, "Server Internal Error"},
+    { 501, "Not Implemented"},
+    { 502, "Bad Gateway"},
+    { 503, "Service Unavailable"},
+    { 504, "Server Time-out"},
+    { 505, "Version Not Supported"},
+    { 513, "Message Too Large"},
+    { 599, "Server Error - Others"},
+
+    { 600, "Busy Everywhere"},
+    { 603, "Decline"},
+    { 604, "Does Not Exist Anywhere"},
+    { 606, "Not Acceptable"},
+    { 699, "Global Failure - Others"},
+
+    { 0, NULL}
+};
+#define RESPONSE_CODE_MIN 100
+#define RESPONSE_CODE_MAX 699
+
+typedef enum
+{
+    REQ_RESP_METHOD_COLUMN,
+    COUNT_COLUMN,
+    RESENT_COLUMN,
+    MIN_SETUP_COLUMN,
+    AVG_SETUP_COLUMN,
+    MAX_SETUP_COLUMN
+} sip_stat_columns;
+
+static stat_tap_table_item sip_stat_fields[] = {
+    {TABLE_ITEM_STRING, TAP_ALIGN_LEFT, "Request Method / Response Code", "%-25s"},
+    {TABLE_ITEM_UINT, TAP_ALIGN_RIGHT, "Count", "%d"},
+    {TABLE_ITEM_UINT, TAP_ALIGN_RIGHT, "Resent", "%d"},
+    {TABLE_ITEM_FLOAT, TAP_ALIGN_RIGHT, "Min Setup (s)", "%8.2f"},
+    {TABLE_ITEM_FLOAT, TAP_ALIGN_RIGHT, "Avg Setup (s)", "%8.2f"},
+    {TABLE_ITEM_FLOAT, TAP_ALIGN_RIGHT, "Max Setup (s)", "%8.2f"},
+};
+
+static void sip_stat_init(new_stat_tap_ui* new_stat, new_stat_tap_gui_init_cb gui_callback, void* gui_data)
+{
+    /* XXX Should we have a single request + response table instead? */
+    int num_fields = sizeof(sip_stat_fields)/sizeof(stat_tap_table_item);
+    new_stat_tap_table *req_table = new_stat_tap_init_table("SIP Requests", num_fields, 0, NULL, gui_callback, gui_data);
+    new_stat_tap_table *resp_table = new_stat_tap_init_table("SIP Responses", num_fields, 0, NULL, gui_callback, gui_data);
+    stat_tap_table_item_type items[sizeof(sip_stat_fields)/sizeof(stat_tap_table_item)];
+    guint i;
+
+    new_stat_tap_add_table(new_stat, req_table);
+    new_stat_tap_add_table(new_stat, resp_table);
+
+    items[REQ_RESP_METHOD_COLUMN].type = TABLE_ITEM_STRING;
+    items[COUNT_COLUMN].type = TABLE_ITEM_UINT;
+    items[COUNT_COLUMN].value.uint_value = 0;
+    items[RESENT_COLUMN].type = TABLE_ITEM_UINT;
+    items[RESENT_COLUMN].value.uint_value = 0;
+    items[MIN_SETUP_COLUMN].type = TABLE_ITEM_FLOAT;
+    items[MIN_SETUP_COLUMN].value.float_value = 0.0f;
+    items[AVG_SETUP_COLUMN].type = TABLE_ITEM_FLOAT;
+    items[AVG_SETUP_COLUMN].value.float_value = 0.0f;
+    items[MAX_SETUP_COLUMN].type = TABLE_ITEM_FLOAT;
+    items[MAX_SETUP_COLUMN].value.float_value = 0.0f;
+
+    for (i = 0; i < array_length(sip_methods); i++) {
+        items[REQ_RESP_METHOD_COLUMN].value.string_value = g_strdup(sip_methods[i]);
+        new_stat_tap_init_table_row(req_table, i, num_fields, items);
+    }
+
+    for (i = 0; response_code_vals[i].strptr; i++) {
+        unsigned response_code = response_code_vals[i].value;
+        items[REQ_RESP_METHOD_COLUMN].value.string_value =
+                g_strdup_printf("%u %s", response_code, response_code_vals[i].strptr);
+        items[REQ_RESP_METHOD_COLUMN].user_data.uint_value = response_code;
+        new_stat_tap_init_table_row(resp_table, i, num_fields, items);
+    }
+}
+
+static gboolean
+sip_stat_packet(void *tapdata, packet_info *pinfo _U_, epan_dissect_t *edt _U_, const void *siv_ptr)
+{
+    new_stat_data_t* stat_data = (new_stat_data_t*) tapdata;
+    const sip_info_value_t *info_value = (const sip_info_value_t *) siv_ptr;
+    new_stat_tap_table *cur_table = NULL;
+    guint cur_row = 0;  /* 0 = Unknown for both tables */
+
+    if (info_value->request_method && info_value->response_code < 1) {
+        /* Request table */
+        new_stat_tap_table *req_table = g_array_index(stat_data->new_stat_tap_data->tables, new_stat_tap_table*, 0);
+        stat_tap_table_item_type *item_data;
+        guint element;
+
+        cur_table = req_table;
+        for (element = 0; element < req_table->num_elements; element++) {
+            item_data = new_stat_tap_get_field_data(req_table, element, REQ_RESP_METHOD_COLUMN);
+            if (g_ascii_strcasecmp(info_value->request_method, item_data->value.string_value) == 0) {
+                cur_row = element;
+                break;
+            }
+        }
+
+    } else if (info_value->response_code > 0) {
+        /* Response table */
+        new_stat_tap_table *resp_table = g_array_index(stat_data->new_stat_tap_data->tables, new_stat_tap_table*, 1);
+        guint response_code = info_value->response_code;
+        stat_tap_table_item_type *item_data;
+        guint element;
+
+        cur_table = resp_table;
+        if (response_code < RESPONSE_CODE_MIN || response_code > RESPONSE_CODE_MAX) {
+            response_code = 999;
+        } else if (!try_val_to_str(response_code, response_code_vals)) {
+            response_code = ((response_code / 100) * 100) + 99;
+        }
+
+        for (element = 0; element < resp_table->num_elements; element++) {
+            item_data = new_stat_tap_get_field_data(resp_table, element, REQ_RESP_METHOD_COLUMN);
+            if (item_data->user_data.uint_value == response_code) {
+                cur_row = element;
+                break;
+            }
+        }
+
+    } else {
+        return FALSE;
+    }
+
+    if (cur_table) {
+        stat_tap_table_item_type *item_data;
+
+        item_data = new_stat_tap_get_field_data(cur_table, cur_row, COUNT_COLUMN);
+        item_data->value.uint_value++;
+        new_stat_tap_set_field_data(cur_table, cur_row, COUNT_COLUMN, item_data);
+
+        if (info_value->resend) {
+            item_data = new_stat_tap_get_field_data(cur_table, cur_row, RESENT_COLUMN);
+            item_data->value.uint_value++;
+            new_stat_tap_set_field_data(cur_table, cur_row, RESENT_COLUMN, item_data);
+        }
+
+        if (info_value->setup_time > 0) {
+            stat_tap_table_item_type *min_item_data = new_stat_tap_get_field_data(cur_table, cur_row, MIN_SETUP_COLUMN);
+            stat_tap_table_item_type *avg_item_data = new_stat_tap_get_field_data(cur_table, cur_row, AVG_SETUP_COLUMN);
+            stat_tap_table_item_type *max_item_data = new_stat_tap_get_field_data(cur_table, cur_row, MAX_SETUP_COLUMN);
+            double setup_time = (double) info_value->setup_time / 1000;
+            unsigned count;
+
+            min_item_data->user_data.uint_value++; /* We store the setup count in MIN_SETUP_COLUMN */
+            count = min_item_data->user_data.uint_value;
+            avg_item_data->user_data.float_value += setup_time; /* We store the total setup time in AVG_SETUP_COLUMN */
+
+            if (count <= 1) {
+                min_item_data->value.float_value = setup_time;
+                avg_item_data->value.float_value = setup_time;
+                max_item_data->value.float_value = setup_time;
+            } else {
+                if (setup_time < min_item_data->value.float_value) {
+                    min_item_data->value.float_value = setup_time;
+                }
+                avg_item_data->value.float_value = avg_item_data->user_data.float_value / count;
+                if (setup_time > max_item_data->value.float_value) {
+                    max_item_data->value.float_value = setup_time;
+                }
+            }
+
+            new_stat_tap_set_field_data(cur_table, cur_row, MIN_SETUP_COLUMN, min_item_data);
+            new_stat_tap_set_field_data(cur_table, cur_row, AVG_SETUP_COLUMN, avg_item_data);
+            new_stat_tap_set_field_data(cur_table, cur_row, MAX_SETUP_COLUMN, max_item_data);
+        }
+    }
+
+    return TRUE;
+}
+
+static void
+sip_stat_reset(new_stat_tap_table* table)
+{
+    guint element;
+    stat_tap_table_item_type* item_data;
+
+    for (element = 0; element < table->num_elements; element++)
+    {
+        item_data = new_stat_tap_get_field_data(table, element, COUNT_COLUMN);
+        item_data->value.uint_value = 0;
+        new_stat_tap_set_field_data(table, element, COUNT_COLUMN, item_data);
+
+        item_data = new_stat_tap_get_field_data(table, element, RESENT_COLUMN);
+        item_data->value.uint_value = 0;
+        new_stat_tap_set_field_data(table, element, RESENT_COLUMN, item_data);
+
+        item_data = new_stat_tap_get_field_data(table, element, RESENT_COLUMN);
+        item_data->value.uint_value = 0;
+        new_stat_tap_set_field_data(table, element, RESENT_COLUMN, item_data);
+
+        item_data = new_stat_tap_get_field_data(table, element, MIN_SETUP_COLUMN);
+        item_data->user_data.uint_value = 0;
+        item_data->value.float_value = 0.0f;
+        new_stat_tap_set_field_data(table, element, MIN_SETUP_COLUMN, item_data);
+
+        item_data = new_stat_tap_get_field_data(table, element, AVG_SETUP_COLUMN);
+        item_data->user_data.float_value = 0;
+        item_data->value.float_value = 0.0f;
+        new_stat_tap_set_field_data(table, element, AVG_SETUP_COLUMN, item_data);
+
+        item_data = new_stat_tap_get_field_data(table, element, MAX_SETUP_COLUMN);
+        item_data->value.float_value = 0.0f;
+        new_stat_tap_set_field_data(table, element, MAX_SETUP_COLUMN, item_data);
+    }
+}
+
+static void
+sip_stat_free_table_item(new_stat_tap_table* table _U_, guint row _U_, guint column, stat_tap_table_item_type* field_data)
+{
+    if (column != REQ_RESP_METHOD_COLUMN) return;
+    g_free((char*)field_data->value.string_value);
+    field_data->value.string_value = NULL;
+}
+
 /* Register the protocol with Wireshark */
 void proto_register_sip(void)
 {
@@ -4607,6 +5200,46 @@ void proto_register_sip(void)
         },
         { &hf_sip_record_route_param,
           { "Record-Route URI parameter",   "sip.Record-Route.param",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_service_route,
+          { "Service-Route URI",         "sip.Service-Route.uri",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_service_route_user,
+          { "Service-Route Userinfo",    "sip.Service-Route.user",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_service_route_host,
+          { "Service-Route Host Part",   "sip.Service-Route.host",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_service_route_port,
+          { "Service-Route Host Port",   "sip.Service-Route.port",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_service_route_param,
+          { "Service-Route URI parameter",   "sip.Service-Route.param",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_path,
+          { "Path URI",         "sip.Path.uri",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_path_user,
+          { "Path Userinfo",    "sip.Path.user",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_path_host,
+          { "Path Host Part",   "sip.Path.host",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_path_port,
+          { "Path Host Port",   "sip.Path.port",
+            FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
+        },
+        { &hf_sip_path_param,
+          { "Path URI parameter",   "sip.Path.param",
             FT_STRING, BASE_NONE,NULL,0x0,NULL,HFILL }
         },
 /* etxjowa end */
@@ -5227,6 +5860,11 @@ void proto_register_sip(void)
             FT_STRING, BASE_NONE,NULL,0x0,
             "RFC 4028: Session-Expires Header", HFILL }
         },
+        { &hf_header_array[POS_SESSION_ID],
+          { "Session-ID", "sip.Session-ID",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL }
+        },
         { &hf_header_array[POS_SIP_ETAG],
           { "ETag",        "sip.ETag",
             FT_STRING, BASE_NONE,NULL,0x0,
@@ -5510,6 +6148,16 @@ void proto_register_sip(void)
             FT_STRING, BASE_NONE, NULL, 0x0,
             "RAck CSeq header method (from prov response)", HFILL}
         },
+        { &hf_sip_reason_protocols,
+          { "Reason protocols",  "sip.reason_protocols",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        { &hf_sip_reason_cause,
+          { "Cause",  "sip.reason_cause",
+            FT_UINT32, BASE_DEC_HEX|BASE_EXT_STRING, &q850_cause_code_vals_ext, 0x0,
+            NULL, HFILL}
+        },
         { &hf_sip_msg_body,
           { "Message Body",           "sip.msg_body",
             FT_NONE, BASE_NONE, NULL, 0x0,
@@ -5564,6 +6212,31 @@ void proto_register_sip(void)
           { "port-s",  "sip.sec_mechanism.port_s",
             FT_UINT16, BASE_DEC, NULL, 0x0,
             NULL, HFILL}
+        },
+        { &hf_sip_session_id_sess_id,
+            { "sess-id", "sip.Session-ID.sess_id",
+            FT_BYTES, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        { &hf_sip_session_id_param,
+            { "param", "sip.Session-ID.param",
+            FT_STRING, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        { &hf_sip_session_id_local_uuid,
+            { "local-uuid", "sip.Session-ID.local_uuid",
+            FT_GUID, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        { &hf_sip_session_id_remote_uuid,
+            { "remote-uuid", "sip.Session-ID.remote_uuid",
+            FT_GUID, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
+        },
+        { &hf_sip_continuation,
+          { "Continuation data",  "sip.continuation",
+            FT_BYTES, BASE_NONE, NULL, 0x0,
+            NULL, HFILL}
         }
     };
 
@@ -5595,7 +6268,9 @@ void proto_register_sip(void)
         &ett_sip_security_verify,
         &ett_sip_rack,
         &ett_sip_record_route,
+        &ett_sip_service_route,
         &ett_sip_route,
+        &ett_sip_path,
         &ett_sip_ruri,
         &ett_sip_pai_uri,
         &ett_sip_pmiss_uri,
@@ -5603,7 +6278,8 @@ void proto_register_sip(void)
         &ett_sip_tc_uri,
         &ett_sip_to_uri,
         &ett_sip_from_uri,
-        &ett_sip_curi
+        &ett_sip_curi,
+        &ett_sip_session_id
     };
     static gint *ett_raw[] = {
         &ett_raw_text,
@@ -5611,6 +6287,7 @@ void proto_register_sip(void)
 
     static ei_register_info ei[] = {
         { &ei_sip_unrecognized_header, { "sip.unrecognized_header", PI_UNDECODED, PI_NOTE, "Unrecognised SIP header", EXPFILL }},
+        { &ei_sip_header_no_colon, { "sip.header_no_colon", PI_MALFORMED, PI_WARN, "Header has no colon after the name", EXPFILL }},
         { &ei_sip_header_not_terminated, { "sip.header_not_terminated", PI_MALFORMED, PI_WARN, "Header not terminated by empty line (CRLF)", EXPFILL }},
         { &ei_sip_odd_register_response, { "sip.response.unusual", PI_RESPONSE_CODE, PI_WARN, "SIP Response is unusual", EXPFILL }},
         { &ei_sip_sipsec_malformed, { "sip.sec_mechanism.malformed", PI_MALFORMED, PI_WARN, "SIP Security-mechanism header malformed", EXPFILL }},
@@ -5619,13 +6296,32 @@ void proto_register_sip(void)
     module_t *sip_module;
     expert_module_t* expert_sip;
 
+    static tap_param sip_stat_params[] = {
+      { PARAM_FILTER, "filter", "Filter", NULL, TRUE }
+    };
+
+    static new_stat_tap_ui sip_stat_table = {
+      REGISTER_STAT_GROUP_TELEPHONY,
+      "SIP Statistics",
+      "sip",
+      "sip,stat",
+      sip_stat_init,
+      sip_stat_packet,
+      sip_stat_reset,
+      sip_stat_free_table_item,
+      NULL,
+      sizeof(sip_stat_fields)/sizeof(stat_tap_table_item), sip_stat_fields,
+      sizeof(sip_stat_params)/sizeof(tap_param), sip_stat_params,
+      NULL
+    };
+
     /* Register the protocol name and description */
     proto_sip = proto_register_protocol("Session Initiation Protocol",
                                         "SIP", "sip");
     proto_raw_sip = proto_register_protocol("Session Initiation Protocol (SIP as raw text)",
                                             "Raw_SIP", "raw_sip");
     new_register_dissector("sip", dissect_sip, proto_sip);
-    register_dissector("sip.tcp", dissect_sip_tcp, proto_sip);
+    new_register_dissector("sip.tcp", dissect_sip_tcp, proto_sip);
 
     /* Required function calls to register the header fields and subtrees used */
     proto_register_field_array(proto_sip, hf, array_length(hf));
@@ -5706,11 +6402,25 @@ void proto_register_sip(void)
     prefs_register_obsolete_preference(sip_module, "tcp.port");
 
     register_init_routine(&sip_init_protocol);
-    register_heur_dissector_list("sip", &heur_subdissector_list);
+    register_cleanup_routine(&sip_cleanup_protocol);
+    heur_subdissector_list = register_heur_dissector_list("sip");
     /* Register for tapping */
     sip_tap = register_tap("sip");
 
     ext_hdr_subdissector_table = register_dissector_table("sip.hdr", "SIP Extension header", FT_STRING, BASE_NONE);
+
+    register_new_stat_tap_ui(&sip_stat_table);
+
+    /* compile patterns */
+    ws_mempbrk_compile(&pbrk_comma_semi, ",;");
+    ws_mempbrk_compile(&pbrk_whitespace, " \t\r\n");
+    ws_mempbrk_compile(&pbrk_param_end, ">,;? \r");
+    ws_mempbrk_compile(&pbrk_param_end_colon_brackets, ">,;? \r:[]");
+    ws_mempbrk_compile(&pbrk_header_end_dquote, "\r\n,;\"");
+    ws_mempbrk_compile(&pbrk_quotes, "'\"");
+    ws_mempbrk_compile(&pbrk_tab_sp_fslash, "\t /");
+    ws_mempbrk_compile(&pbrk_addr_end, "[] \t:;");
+    ws_mempbrk_compile(&pbrk_via_param_end, "\t;, ");
 
 }
 
@@ -5728,16 +6438,17 @@ proto_reg_handoff_sip(void)
         sip_tcp_handle = find_dissector("sip.tcp");
         sigcomp_handle = find_dissector("sigcomp");
         sip_diag_handle = find_dissector("sip.diagnostic");
+        sip_uri_userinfo_handle = find_dissector("sip.uri_userinfo");
         /* SIP content type and internet media type used by other dissectors are the same */
         media_type_dissector_table = find_dissector_table("media_type");
 
         dissector_add_uint("udp.port", UDP_PORT_SIP, sip_handle);
         dissector_add_string("media_type", "message/sip", sip_handle);
 
-        heur_dissector_add("udp", dissect_sip_heur, proto_sip);
-        heur_dissector_add("tcp", dissect_sip_tcp_heur, proto_sip);
-        heur_dissector_add("sctp", dissect_sip_heur, proto_sip);
-        heur_dissector_add("stun", dissect_sip_heur, proto_sip);
+        heur_dissector_add("udp", dissect_sip_heur, "SIP over UDP", "sip_udp", proto_sip, HEURISTIC_ENABLE);
+        heur_dissector_add("tcp", dissect_sip_tcp_heur, "SIP over TCP", "sip_tcp", proto_sip, HEURISTIC_ENABLE);
+        heur_dissector_add("sctp", dissect_sip_heur, "SIP over SCTP", "sip_sctp", proto_sip, HEURISTIC_ENABLE);
+        heur_dissector_add("stun", dissect_sip_heur, "SIP over TURN", "sip_stun", proto_sip, HEURISTIC_ENABLE);
         sip_prefs_initialized = TRUE;
     } else {
         dissector_delete_uint_range("tcp.port", sip_tcp_port_range, sip_tcp_handle);

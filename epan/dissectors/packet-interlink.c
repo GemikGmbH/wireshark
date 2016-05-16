@@ -69,7 +69,8 @@ static void
 dissect_interlink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
 	int		offset = 0;
-	proto_tree	*il_tree = NULL;
+	proto_tree	*il_tree;
+	proto_item	*il_item;
 	proto_tree	*ilh_tree = NULL;
 	proto_tree	*ilb_tree = NULL;
 	guint8		ilb_type;
@@ -81,20 +82,11 @@ dissect_interlink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "INTERLINK");
 	col_clear(pinfo->cinfo, COL_INFO);
 
-	if (tree) {
-		proto_item	*il_item;
-		il_item = proto_tree_add_item(tree, proto_interlink,
-								tvb, 0, 16, ENC_NA);
-		if (il_item)
-			il_tree = proto_item_add_subtree(il_item, ett_interlink);
-	}
+	il_item = proto_tree_add_item(tree, proto_interlink,
+							tvb, 0, 16, ENC_NA);
+	il_tree = proto_item_add_subtree(il_item, ett_interlink);
 
-	if (il_tree) {
-		proto_item	*ilh_item = NULL;
-		ilh_item = proto_tree_add_text(il_tree, tvb, 0, 12, "Interlink Header");
-		if (ilh_item)
-			ilh_tree = proto_item_add_subtree(ilh_item, ett_interlink_header);
-	}
+	ilh_tree = proto_tree_add_subtree(il_tree, tvb, 0, 12, ett_interlink_header, NULL, "Interlink Header");
 
 	if (ilh_tree) {
 		proto_tree_add_item(ilh_tree, hf_interlink_id, tvb, offset, 4, ENC_ASCII|ENC_NA);
@@ -110,29 +102,18 @@ dissect_interlink(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	}
 
 	if (ilh_tree) {
-		proto_item	*flags_item;
-		proto_tree	*flags_tree = NULL;
+		static const int * flags[] = {
+			&hf_interlink_flags_req_ack,
+			&hf_interlink_flags_inc_ack_port,
+			NULL
+		};
 
-		flags_item = proto_tree_add_item(ilh_tree, hf_interlink_flags,
-			tvb, offset, 2, ENC_LITTLE_ENDIAN);
-		if (flags_item) {
-			flags_tree = proto_item_add_subtree(flags_item, ett_interlink_flags);
-		}
-		if (flags_tree) {
-			guint16		il_flags;
-			il_flags = tvb_get_letohs(tvb, offset);
-			proto_tree_add_boolean(flags_tree, hf_interlink_flags_req_ack, tvb, offset, 2, il_flags);
-			proto_tree_add_boolean(flags_tree, hf_interlink_flags_inc_ack_port, tvb, offset, 2, il_flags);
-		}
+		proto_tree_add_bitmask(ilh_tree, tvb, offset, hf_interlink_flags, ett_interlink_flags, flags, ENC_LITTLE_ENDIAN);
+
 	}
 	offset += 2;
 
-	if (tree) {
-		proto_item	*ilb_item;
-		ilb_item = proto_tree_add_text(il_tree, tvb, offset, 4, "Block Header");
-		if (ilb_item)
-			ilb_tree = proto_item_add_subtree(ilb_item, ett_interlink_block);
-	}
+	ilb_tree = proto_tree_add_subtree(il_tree, tvb, offset, 4, ett_interlink_block, NULL, "Block Header");
 
 	ilb_type = tvb_get_guint8(tvb, offset);
 	ilb_version = tvb_get_guint8(tvb, offset + 1);
@@ -247,11 +228,23 @@ proto_reg_handoff_interlink(void)
 	interlink_handle = find_dissector("interlink");
 
 	/* Allow "Decode As" with any UDP packet. */
-	dissector_add_handle("udp.port", interlink_handle);
+	dissector_add_for_decode_as("udp.port", interlink_handle);
 
 	/* Add our heuristic packet finder. */
-	heur_dissector_add("udp", dissect_interlink_heur, proto_interlink);
+	heur_dissector_add("udp", dissect_interlink_heur, "Interlink over UDP", "interlink_udp", proto_interlink, HEURISTIC_ENABLE);
 
 	data_handle = find_dissector("data");
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -281,8 +281,8 @@ dissect_npmp_add_flow_message(tvbuff_t *message_tvb, proto_tree *message_tree)
 
   retranstrials = tvb_get_ntohl(message_tvb, offset_addflow_retranstrials);
   proto_tree_add_uint_format_value(message_tree, hf_addflow_retranstrials, message_tvb, offset_addflow_retranstrials, length_addflow_retranstrials,
-                                   retranstrials, (retranstrials & (1 << 31)) ? "%u ms" : "%u trials",
-                                   retranstrials &~ (1 << 31));
+                                   retranstrials, (retranstrials & (1U << 31)) ? "%u ms" : "%u trials",
+                                   retranstrials &~ (1U << 31));
 
   ADD_FIELD_UINT(message_tree, addflow_frameraterng);
   ADD_FIELD_UINT(message_tree, addflow_framerate1);
@@ -471,3 +471,16 @@ proto_reg_handoff_npmp(void)
   dissector_add_uint("sctp.ppi", NPMP_CTRL_PAYLOAD_PROTOCOL_ID,    npmp_handle);
   dissector_add_uint("sctp.ppi", NPMP_DATA_PAYLOAD_PROTOCOL_ID,    npmp_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

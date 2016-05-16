@@ -150,11 +150,9 @@ Number  S/R  Length    Timer                        MAC Address   MAC Address   
 
 #include "config.h"
 #include "wtap-int.h"
-#include <wsutil/buffer.h>
 #include "iseries.h"
 #include "file_wrappers.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <errno.h>
@@ -193,10 +191,9 @@ static int iseries_UNICODE_to_ASCII (guint8 * buf, guint bytes);
 static gboolean iseries_parse_hex_string (const char * ascii, guint8 * buf,
                                           size_t len);
 
-int
+wtap_open_return_val
 iseries_open (wtap * wth, int *err, gchar ** err_info)
 {
-  int  bytes_read;
   gint offset;
   char magic[ISERIES_LINE_LENGTH];
   char unicodemagic[] =
@@ -209,26 +206,23 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
    * Check that file starts with a valid iSeries COMMS TRACE header
    * by scanning for it in the first line
    */
-  errno = WTAP_ERR_CANT_READ;
-  bytes_read = file_read (&magic, sizeof magic, wth->fh);
-  if (bytes_read != sizeof magic)
+  if (!wtap_read_bytes (wth->fh, &magic, sizeof magic, err, err_info))
     {
-      *err = file_error (wth->fh, err_info);
-      if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-        return -1;
-      return 0;
+      if (*err != WTAP_ERR_SHORT_READ)
+        return WTAP_OPEN_ERROR;
+      return WTAP_OPEN_NOT_MINE;
     }
 
   /*
    * Check if this is a UNICODE formatted file by scanning for the magic string
    */
   offset=0;
-  while ((unsigned)offset < (ISERIES_LINE_LENGTH - (sizeof unicodemagic)))
+  while ((unsigned int)offset < (ISERIES_LINE_LENGTH - (sizeof unicodemagic)))
     {
       if (memcmp (magic + offset, unicodemagic, sizeof unicodemagic) == 0) {
         if (file_seek (wth->fh, 0, SEEK_SET, err) == -1)
           {
-            return 0;
+            return WTAP_OPEN_NOT_MINE;
           }
         /*
          * Do some basic sanity checking to ensure we can handle the
@@ -237,9 +231,9 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
         if (!iseries_check_file_type (wth, err, err_info, ISERIES_FORMAT_UNICODE))
           {
             if (*err == 0)
-              return 0;
+              return WTAP_OPEN_NOT_MINE;
             else
-              return -1;
+              return WTAP_OPEN_ERROR;
           }
 
         wth->file_encap        = WTAP_ENCAP_ETHERNET;
@@ -247,13 +241,13 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
         wth->snapshot_length   = 0;
         wth->subtype_read      = iseries_read;
         wth->subtype_seek_read = iseries_seek_read;
-        wth->tsprecision       = WTAP_FILE_TSPREC_USEC;
+        wth->file_tsprec       = WTAP_TSPREC_USEC;
 
         if (file_seek (wth->fh, 0, SEEK_SET, err) == -1)
           {
-            return 0;
+            return WTAP_OPEN_ERROR;
           }
-        return 1;
+        return WTAP_OPEN_MINE;
       }
       offset += 1;
     }
@@ -268,7 +262,7 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
           {
             if (file_seek (wth->fh, 0, SEEK_SET, err) == -1)
               {
-                return 0;
+                return WTAP_OPEN_NOT_MINE;
               }
             /*
              * Do some basic sanity checking to ensure we can handle the
@@ -277,9 +271,9 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
             if (!iseries_check_file_type (wth, err, err_info, ISERIES_FORMAT_ASCII))
               {
                 if (*err == 0)
-                  return 0;
+                  return WTAP_OPEN_NOT_MINE;
                 else
-                  return -1;
+                  return WTAP_OPEN_ERROR;
               }
 
             wth->file_encap        = WTAP_ENCAP_ETHERNET;
@@ -287,19 +281,19 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
             wth->snapshot_length   = 0;
             wth->subtype_read      = iseries_read;
             wth->subtype_seek_read = iseries_seek_read;
-            wth->tsprecision       = WTAP_FILE_TSPREC_USEC;
+            wth->file_tsprec       = WTAP_TSPREC_USEC;
 
             if (file_seek (wth->fh, 0, SEEK_SET, err) == -1)
               {
-                return 0;
+                return WTAP_OPEN_NOT_MINE;
               }
-            return 1;
+            return WTAP_OPEN_MINE;
           }
         offset += 1;
       }
 
     /* Neither ASCII or UNICODE so not supported */
-    return 0;
+    return WTAP_OPEN_NOT_MINE;
     }
 
 /*
@@ -310,6 +304,7 @@ iseries_open (wtap * wth, int *err, gchar ** err_info)
 static gboolean
 iseries_check_file_type (wtap * wth, int *err, gchar **err_info, int format)
 {
+  gboolean   is_iseries = FALSE;
   guint      line;
   int        num_items_scanned;
   char       buf[ISERIES_LINE_LENGTH], protocol[9];
@@ -317,53 +312,61 @@ iseries_check_file_type (wtap * wth, int *err, gchar **err_info, int format)
 
   /* Save trace format for passing between packets */
   iseries                = (iseries_t *) g_malloc (sizeof (iseries_t));
-  wth->priv              = (void *) iseries;
   iseries->have_date     = FALSE;
   iseries->format        = format;
 
   for (line = 0; line < ISERIES_HDR_LINES_TO_CHECK; line++)
     {
+      memset(buf, 0x0, sizeof(buf));
       if (file_gets (buf, ISERIES_LINE_LENGTH, wth->fh) == NULL)
         {
           /* EOF or error. */
           *err = file_error (wth->fh, err_info);
           if (*err == WTAP_ERR_SHORT_READ)
             *err = 0;
-          return FALSE;
+          break;
         }
 
-        /*
-         * Check that we are dealing with an ETHERNET trace
-         */
-        if (iseries->format == ISERIES_FORMAT_UNICODE)
-          {
-            iseries_UNICODE_to_ASCII ((guint8 *)buf, ISERIES_LINE_LENGTH);
-          }
-        ascii_strup_inplace (buf);
-        num_items_scanned = sscanf (buf,
-                                   "%*[ \n\t]OBJECT PROTOCOL%*[ .:\n\t]%8s",
-                                   protocol);
-        if (num_items_scanned == 1)
-          {
-            if (memcmp (protocol, "ETHERNET", 8) != 0)
-              return FALSE;
-          }
+      /*
+       * Check that we are dealing with an ETHERNET trace
+       */
+      if (iseries->format == ISERIES_FORMAT_UNICODE)
+        {
+          iseries_UNICODE_to_ASCII ((guint8 *)buf, ISERIES_LINE_LENGTH);
+        }
+      ascii_strup_inplace (buf);
+      num_items_scanned = sscanf (buf,
+                                 "%*[ \n\t]OBJECT PROTOCOL%*[ .:\n\t]%8s",
+                                 protocol);
+      if (num_items_scanned == 1)
+        {
+          if (memcmp (protocol, "ETHERNET", 8) == 0)
+            {
+              *err = 0;
+              is_iseries = TRUE;
+            }
+        }
 
-        /*
-         * The header is the only place where the date part of the timestamp is held, so
-         * extract it here and store for all packets to access
-         */
-        num_items_scanned = sscanf (buf,
-                                    "%*[ \n\t]START DATE/TIME%*[ .:\n\t]%2d/%2d/%2d",
-                                    &iseries->month, &iseries->day,
-                                    &iseries->year);
-        if (num_items_scanned == 3)
-          {
-            iseries->have_date = TRUE;
-          }
+      /*
+       * The header is the only place where the date part of the timestamp is held, so
+       * extract it here and store for all packets to access
+       */
+      num_items_scanned = sscanf (buf,
+                                  "%*[ \n\t]START DATE/TIME%*[ .:\n\t]%2d/%2d/%2d",
+                                  &iseries->month, &iseries->day,
+                                  &iseries->year);
+      if (num_items_scanned == 3)
+        {
+          iseries->have_date = TRUE;
+        }
     }
-  *err = 0;
-  return TRUE;
+
+  if (is_iseries)
+    wth->priv = (void *) iseries;
+  else
+    g_free(iseries);
+
+  return is_iseries;
 }
 
 /*
@@ -596,6 +599,66 @@ iseries_parse_packet (wtap * wth, FILE_T fh, struct wtap_pkthdr *phdr,
                 srcmac, type);
       if (num_items_scanned == 10)
         {
+          if (pktnum < 0)
+            {
+              *err = WTAP_ERR_BAD_FILE;
+              *err_info = g_strdup ("iseries: packet header has a negative packet number");
+              return FALSE;
+            }
+
+          if (pkt_len < 0)
+            {
+              *err = WTAP_ERR_BAD_FILE;
+              *err_info = g_strdup ("iseries: packet header has a negative packet length");
+              return FALSE;
+            }
+
+          if (hr < 0)
+            {
+              *err = WTAP_ERR_BAD_FILE;
+              *err_info = g_strdup ("iseries: packet header has a negative hour in the time stamp");
+              return FALSE;
+            }
+
+          if (hr > 23)
+            {
+              *err = WTAP_ERR_BAD_FILE;
+              *err_info = g_strdup ("iseries: packet header has a hour in the time stamp greater than 23");
+              return FALSE;
+            }
+
+          if (min < 0)
+            {
+              *err = WTAP_ERR_BAD_FILE;
+              *err_info = g_strdup ("iseries: packet header has a negative minute in the time stamp");
+              return FALSE;
+            }
+
+          if (min > 59)
+            {
+              *err = WTAP_ERR_BAD_FILE;
+              *err_info = g_strdup ("iseries: packet header has a minute in the time stamp greater than 59");
+              return FALSE;
+            }
+
+          if (sec < 0)
+            {
+              *err = WTAP_ERR_BAD_FILE;
+              *err_info = g_strdup ("iseries: packet header has a negative second in the time stamp");
+              return FALSE;
+            }
+
+          /*
+           * Yes, 60, even though the time-conversion routines on most OSes
+           * might not handle leap seconds.
+           */
+          if (sec > 60)
+            {
+              *err = WTAP_ERR_BAD_FILE;
+              *err_info = g_strdup ("iseries: packet header has a second in the time stamp greater than 60");
+              return FALSE;
+            }
+
           /* OK! We found the packet header line */
           isValid = TRUE;
           /*
@@ -835,9 +898,9 @@ iseries_parse_packet (wtap * wth, FILE_T fh, struct wtap_pkthdr *phdr,
   phdr->caplen = ((guint32) strlen (ascii_buf))/2;
 
   /* Make sure we have enough room for the packet. */
-  buffer_assure_space (buf, ISERIES_MAX_PACKET_LEN);
+  ws_buffer_assure_space (buf, ISERIES_MAX_PACKET_LEN);
   /* Convert ascii data to binary and return in the frame buffer */
-  iseries_parse_hex_string (ascii_buf, buffer_start_ptr (buf), strlen (ascii_buf));
+  iseries_parse_hex_string (ascii_buf, ws_buffer_start_ptr (buf), strlen (ascii_buf));
 
   /* free buffer allocs and return */
   *err = 0;

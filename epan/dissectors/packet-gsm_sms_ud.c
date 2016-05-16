@@ -56,8 +56,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 
 #include <epan/prefs.h>
@@ -83,6 +81,7 @@ static int hf_gsm_sms_ud_fragment_error = -1;
 static int hf_gsm_sms_ud_fragment_count = -1;
 static int hf_gsm_sms_ud_reassembled_in = -1;
 static int hf_gsm_sms_ud_reassembled_length = -1;
+static int hf_gsm_sms_ud_short_msg = -1;
 /*
  * User Data Header section
  */
@@ -148,6 +147,12 @@ gsm_sms_ud_defragment_init(void)
 {
     reassembly_table_init(&sm_reassembly_table,
                           &addresses_reassembly_table_functions);
+}
+
+static void
+gsm_sms_ud_defragment_cleanup(void)
+{
+    reassembly_table_destroy(&sm_reassembly_table);
 }
 
 /*
@@ -406,8 +411,7 @@ parse_gsm_sms_ud_message(proto_tree *sm_tree, tvbuff_t *tvb, packet_info *pinfo,
                         if (! dissector_try_uint(gsm_sms_dissector_table, p_dst,
                                     sm_tvb, pinfo, top_tree)) {
                             if (sm_tree) { /* Only display if needed */
-                                proto_tree_add_text(sm_tree, sm_tvb, 0, -1,
-                                        "Short Message body");
+                                proto_tree_add_item(sm_tree, hf_gsm_sms_ud_short_msg, sm_tvb, 0, -1, ENC_NA);
                             }
                         }
                     }
@@ -416,14 +420,13 @@ parse_gsm_sms_ud_message(proto_tree *sm_tree, tvbuff_t *tvb, packet_info *pinfo,
                 if (disallow_write)
                     col_set_writable(pinfo->cinfo, TRUE);
             } else { /* No ports IE */
-                proto_tree_add_text(sm_tree, sm_tvb, 0, -1,
-                        "Short Message body");
+                proto_tree_add_item(sm_tree, hf_gsm_sms_ud_short_msg, sm_tvb, 0, -1, ENC_NA);
             }
         } else {
             /* The packet is not reassembled,
              * or it is reassembled in another packet */
-            proto_tree_add_text(sm_tree, sm_tvb, 0, -1,
-                    "Unreassembled Short Message fragment %u of %u",
+            proto_tree_add_bytes_format(sm_tree, hf_gsm_sms_ud_short_msg, sm_tvb, 0, -1,
+                    NULL, "Unreassembled Short Message fragment %u of %u",
                     frag, frags);
         }
     }
@@ -600,6 +603,12 @@ proto_register_gsm_sms_ud(void)
                 HFILL
             }
         },
+        {   &hf_gsm_sms_ud_short_msg,
+            {   "Short Message body",
+                "gsm_sms_ud.short_msg",
+                FT_BYTES, BASE_NONE, NULL, 0x00, NULL, HFILL
+            }
+        },
     };
 
     static gint *ett[] = {
@@ -649,6 +658,7 @@ proto_register_gsm_sms_ud(void)
 
     /* GSM SMS UD dissector initialization routines */
     register_init_routine(gsm_sms_ud_defragment_init);
+    register_cleanup_routine(gsm_sms_ud_defragment_cleanup);
 }
 
 void
@@ -657,3 +667,16 @@ proto_reg_handoff_gsm_sms_ud(void)
     wsp_handle = find_dissector("wsp-cl");
     DISSECTOR_ASSERT(wsp_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

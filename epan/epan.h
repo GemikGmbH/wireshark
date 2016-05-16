@@ -132,9 +132,9 @@ typedef struct epan_session epan_t;
 
 WS_DLL_PUBLIC epan_t *epan_new(void);
 
-const char *epan_get_user_comment(const epan_t *session, const frame_data *fd);
+WS_DLL_PUBLIC const char *epan_get_user_comment(const epan_t *session, const frame_data *fd);
 
-const char *epan_get_interface_name(const epan_t *session, guint32 interface_id);
+WS_DLL_PUBLIC const char *epan_get_interface_name(const epan_t *session, guint32 interface_id);
 
 const nstime_t *epan_get_frame_ts(const epan_t *session, guint32 frame_num);
 
@@ -228,7 +228,7 @@ epan_dissect_free(epan_dissect_t* edt);
 
 /** Sets custom column */
 const gchar *
-epan_custom_set(epan_dissect_t *edt, int id, gint occurrence,
+epan_custom_set(epan_dissect_t *edt, GSList *ids, gint occurrence,
 				gchar *result, gchar *expr, const int size);
 
 /**

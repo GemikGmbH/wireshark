@@ -26,7 +26,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
+#include <config.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -50,8 +50,12 @@
 #include <unistd.h>
 #endif
 
-#ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
+#ifdef HAVE_GETOPT_H
+#include <getopt.h>
+#endif
+
+#ifdef HAVE_LIBZ
+#include <zlib.h>     /* to get the libz version number */
 #endif
 
 #include "wtap.h"
@@ -69,18 +73,19 @@
 #endif
 #endif
 
-#ifdef NEED_STRPTIME_H
+#ifndef HAVE_STRPTIME
 # include "wsutil/strptime.h"
 #endif
 
-#include <wsutil/privileges.h>
+#include <wsutil/crash_info.h>
 #include <wsutil/filesystem.h>
-#include <wsutil/report_err.h>
-#include <wsutil/strnatcmp.h>
 #include <wsutil/md5.h>
 #include <wsutil/plugins.h>
-
-#include "version.h"
+#include <wsutil/privileges.h>
+#include <wsutil/report_err.h>
+#include <wsutil/strnatcmp.h>
+#include <wsutil/ws_diag_control.h>
+#include <wsutil/ws_version_info.h>
 
 #include "ringbuffer.h" /* For RINGBUFFER_MAX_NUM_FILES */
 
@@ -99,7 +104,7 @@ struct select_item {
 typedef struct _fd_hash_t {
     md5_byte_t digest[16];
     guint32    len;
-    nstime_t   time;
+    nstime_t   frame_time;
 } fd_hash_t;
 
 #define DEFAULT_DUP_DEPTH       5   /* Used with -d */
@@ -109,7 +114,8 @@ static fd_hash_t fd_hash[MAX_DUP_DEPTH];
 static int       dup_window    = DEFAULT_DUP_DEPTH;
 static int       cur_dup_entry = 0;
 
-#define ONE_MILLION    1000000
+static int       ignored_bytes  = 0;  /* Used with -I */
+
 #define ONE_BILLION 1000000000
 
 /* Weights of different errors we can introduce */
@@ -126,7 +132,7 @@ static int       cur_dup_entry = 0;
 #define ALNUM_LEN       (sizeof(ALNUM_CHARS) - 1)
 
 struct time_adjustment {
-    struct timeval tv;
+    nstime_t tv;
     int is_negative;
 };
 
@@ -138,6 +144,10 @@ typedef struct _chop_t {
     int off_end_pos;
     int off_end_neg;
 } chop_t;
+
+
+/* Table of user comments */
+GTree *frames_user_comments = NULL;
 
 #define MAX_SELECTIONS 512
 static struct select_item     selectfrm[MAX_SELECTIONS];
@@ -349,18 +359,18 @@ set_time_adjustment(char *optarg_str_p)
             exit(1);
         }
     }
-    time_adj.tv.tv_sec = val;
+    time_adj.tv.secs = val;
 
     /* now collect the partial seconds, if any */
     if (*frac != '\0') {             /* chars left, so get fractional part */
         val = strtol(&(frac[1]), &end, 10);
-        /* if more than 6 fractional digits truncate to 6 */
-        if ((end - &(frac[1])) > 6) {
-            frac[7] = 't'; /* 't' for truncate */
+        /* if more than 9 fractional digits truncate to 9 */
+        if ((end - &(frac[1])) > 9) {
+            frac[10] = 't'; /* 't' for truncate */
             val = strtol(&(frac[1]), &end, 10);
         }
         if (*frac != '.' || end == NULL || end == frac || val < 0
-            || val > ONE_MILLION || val == LONG_MIN || val == LONG_MAX) {
+            || val > ONE_BILLION || val == LONG_MIN || val == LONG_MAX) {
             fprintf(stderr, "editcap: \"%s\" isn't a valid time adjustment\n",
                     optarg_str_p);
             exit(1);
@@ -370,15 +380,15 @@ set_time_adjustment(char *optarg_str_p)
     }
 
     /* adjust fractional portion from fractional to numerator
-     * e.g., in "1.5" from 5 to 500000 since .5*10^6 = 500000 */
+     * e.g., in "1.5" from 5 to 500000000 since .5*10^9 = 500000000 */
     if (frac && end) {            /* both are valid */
         frac_digits = end - frac - 1;   /* fractional digit count (remember '.') */
-        while(frac_digits < 6) {    /* this is frac of 10^6 */
+        while(frac_digits < 9) {    /* this is frac of 10^9 */
             val *= 10;
             frac_digits++;
         }
     }
-    time_adj.tv.tv_usec = (int)val;
+    time_adj.tv.nsecs = (int)val;
 }
 
 static void
@@ -423,18 +433,18 @@ set_strict_time_adj(char *optarg_str_p)
             exit(1);
         }
     }
-    strict_time_adj.tv.tv_sec = val;
+    strict_time_adj.tv.secs = val;
 
     /* now collect the partial seconds, if any */
     if (*frac != '\0') {             /* chars left, so get fractional part */
         val = strtol(&(frac[1]), &end, 10);
-        /* if more than 6 fractional digits truncate to 6 */
-        if ((end - &(frac[1])) > 6) {
-            frac[7] = 't'; /* 't' for truncate */
+        /* if more than 9 fractional digits truncate to 9 */
+        if ((end - &(frac[1])) > 9) {
+            frac[10] = 't'; /* 't' for truncate */
             val = strtol(&(frac[1]), &end, 10);
         }
         if (*frac != '.' || end == NULL || end == frac || val < 0
-            || val > ONE_MILLION || val == LONG_MIN || val == LONG_MAX) {
+            || val > ONE_BILLION || val == LONG_MIN || val == LONG_MAX) {
             fprintf(stderr, "editcap: \"%s\" isn't a valid time adjustment\n",
                     optarg_str_p);
             exit(1);
@@ -444,15 +454,15 @@ set_strict_time_adj(char *optarg_str_p)
     }
 
     /* adjust fractional portion from fractional to numerator
-     * e.g., in "1.5" from 5 to 500000 since .5*10^6 = 500000 */
+     * e.g., in "1.5" from 5 to 500000000 since .5*10^9 = 500000000 */
     if (frac && end) {            /* both are valid */
         frac_digits = end - frac - 1;   /* fractional digit count (remember '.') */
-        while(frac_digits < 6) {    /* this is frac of 10^6 */
+        while(frac_digits < 9) {    /* this is frac of 10^9 */
             val *= 10;
             frac_digits++;
         }
     }
-    strict_time_adj.tv.tv_usec = (int)val;
+    strict_time_adj.tv.nsecs = (int)val;
 }
 
 static void
@@ -528,13 +538,20 @@ is_duplicate(guint8* fd, guint32 len) {
     int i;
     md5_state_t ms;
 
+    /*Hint to ignore some bytes at the start of the frame for the digest calculation(-I option) */
+    guint32 new_len;
+    guint8 *new_fd;
+
+    new_fd  = &fd[ignored_bytes];
+    new_len = len - (ignored_bytes);
+
     cur_dup_entry++;
     if (cur_dup_entry >= dup_window)
         cur_dup_entry = 0;
 
     /* Calculate our digest */
     md5_init(&ms);
-    md5_append(&ms, fd, len);
+    md5_append(&ms, new_fd, new_len);
     md5_finish(&ms, fd_hash[cur_dup_entry].digest);
 
     fd_hash[cur_dup_entry].len = len;
@@ -558,18 +575,25 @@ is_duplicate_rel_time(guint8* fd, guint32 len, const nstime_t *current) {
     int i;
     md5_state_t ms;
 
+    /*Hint to ignore some bytes at the start of the frame for the digest calculation(-I option) */
+    guint32 new_len;
+    guint8 *new_fd;
+
+    new_fd  = &fd[ignored_bytes];
+    new_len = len - (ignored_bytes);
+
     cur_dup_entry++;
     if (cur_dup_entry >= dup_window)
         cur_dup_entry = 0;
 
     /* Calculate our digest */
     md5_init(&ms);
-    md5_append(&ms, fd, len);
+    md5_append(&ms, new_fd, new_len);
     md5_finish(&ms, fd_hash[cur_dup_entry].digest);
 
     fd_hash[cur_dup_entry].len = len;
-    fd_hash[cur_dup_entry].time.secs = current->secs;
-    fd_hash[cur_dup_entry].time.nsecs = current->nsecs;
+    fd_hash[cur_dup_entry].frame_time.secs = current->secs;
+    fd_hash[cur_dup_entry].frame_time.nsecs = current->nsecs;
 
     /*
      * Look for relative time related duplicates.
@@ -607,7 +631,7 @@ is_duplicate_rel_time(guint8* fd, guint32 len, const nstime_t *current) {
             break;
         }
 
-        if (nstime_is_unset(&(fd_hash[i].time))) {
+        if (nstime_is_unset(&(fd_hash[i].frame_time))) {
             /*
              * We've decremented to an unused fd_hash[] entry.
              * Check no more!
@@ -615,7 +639,7 @@ is_duplicate_rel_time(guint8* fd, guint32 len, const nstime_t *current) {
             break;
         }
 
-        nstime_delta(&delta, current, &fd_hash[i].time);
+        nstime_delta(&delta, current, &fd_hash[i].frame_time);
 
         if (delta.secs < 0 || delta.nsecs < 0) {
             /*
@@ -658,22 +682,8 @@ is_duplicate_rel_time(guint8* fd, guint32 len, const nstime_t *current) {
 }
 
 static void
-usage(gboolean is_error)
+print_usage(FILE *output)
 {
-    FILE *output;
-
-    if (!is_error)
-        output = stdout;
-    else
-        output = stderr;
-
-    fprintf(output, "Editcap %s"
-#ifdef GITVERSION
-        " (" GITVERSION " from " GITBRANCH ")"
-#endif
-        "\n", VERSION);
-    fprintf(output, "Edit and/or translate the format of capture files.\n");
-    fprintf(output, "See http://www.wireshark.org for more information.\n");
     fprintf(output, "\n");
     fprintf(output, "Usage: editcap [options] ... <infile> <outfile> [ <packet#>[-<packet#>] ... ]\n");
     fprintf(output, "\n");
@@ -697,6 +707,15 @@ usage(gboolean is_error)
     fprintf(output, "                         LESS THAN <dup time window> prior to current packet.\n");
     fprintf(output, "                         A <dup time window> is specified in relative seconds\n");
     fprintf(output, "                         (e.g. 0.000001).\n");
+    fprintf(output, "  -a <framenum>:<comment>  Add or replace comment for given frame number\n");
+    fprintf(output, "\n");
+    fprintf(output, "  -I <bytes to ignore>   ignore the specified bytes at the beginning of\n");
+    fprintf(output, "                         the frame during MD5 hash calculation\n");
+    fprintf(output, "                         Useful to remove duplicated packets taken on\n");
+    fprintf(output, "                         several routers(differents mac addresses for \n");
+    fprintf(output, "                         example)\n");
+    fprintf(output, "                         e.g. -I 26 in case of Ether/IP/ will ignore \n");
+    fprintf(output, "                         ether(14) and IP header(20 - 4(src ip) - 4(dst ip)).\n");
     fprintf(output, "\n");
     fprintf(output, "           NOTE: The use of the 'Duplicate packet removal' options with\n");
     fprintf(output, "           other editcap options except -v may not always work as expected.\n");
@@ -714,7 +733,8 @@ usage(gboolean is_error)
     fprintf(output, "                         this option more than once, allowing up to 2 chopping\n");
     fprintf(output, "                         regions within a packet provided that at least 1\n");
     fprintf(output, "                         choplen is positive and at least 1 is negative.\n");
-    fprintf(output, "  -L                     adjust the frame length when chopping and/or snapping\n");
+    fprintf(output, "  -L                     adjust the frame (i.e. reported) length when chopping\n");
+    fprintf(output, "                         and/or snapping\n");
     fprintf(output, "  -t <time adjustment>   adjust the timestamp of each packet;\n");
     fprintf(output, "                         <time adjustment> is in relative seconds (e.g. -0.5).\n");
     fprintf(output, "  -S <strict adjustment> adjust timestamp of packets if necessary to insure\n");
@@ -727,6 +747,9 @@ usage(gboolean is_error)
     fprintf(output, "                         all packets to the timestamp of the first packet.\n");
     fprintf(output, "  -E <error probability> set the probability (between 0.0 and 1.0 incl.) that\n");
     fprintf(output, "                         a particular packet byte will be randomly changed.\n");
+    fprintf(output, "  -o <change offset>     When used in conjuction with -E, skip some bytes from the\n");
+    fprintf(output, "                         beginning of the packet. This allows to preserve some\n");
+    fprintf(output, "                         bytes, in order to have some headers untouched.\n");
     fprintf(output, "\n");
     fprintf(output, "Output File(s):\n");
     fprintf(output, "  -c <packets per file>  split the packet output to different files based on\n");
@@ -765,7 +788,7 @@ string_compare(gconstpointer a, gconstpointer b)
 static gint
 string_nat_compare(gconstpointer a, gconstpointer b)
 {
-    return strnatcmp(((const struct string_elem *)a)->sstr,
+    return ws_ascii_strnatcmp(((const struct string_elem *)a)->sstr,
         ((const struct string_elem *)b)->sstr);
 }
 
@@ -817,6 +840,18 @@ list_encap_types(void) {
     g_free(encaps);
 }
 
+static int
+framenum_compare(gconstpointer a, gconstpointer b, gpointer user_data _U_)
+{
+    if (GPOINTER_TO_UINT(a) < GPOINTER_TO_UINT(b))
+        return -1;
+
+    if (GPOINTER_TO_UINT(a) > GPOINTER_TO_UINT(b))
+        return 1;
+
+    return 0;
+}
+
 #ifdef HAVE_PLUGINS
 /*
  *  Don't report failures to load plugins because most (non-wiretap) plugins
@@ -829,13 +864,71 @@ failure_message(const char *msg_format _U_, va_list ap _U_)
 }
 #endif
 
+static void
+get_editcap_compiled_info(GString *str)
+{
+  /* LIBZ */
+  g_string_append(str, ", ");
+#ifdef HAVE_LIBZ
+  g_string_append(str, "with libz ");
+#ifdef ZLIB_VERSION
+  g_string_append(str, ZLIB_VERSION);
+#else /* ZLIB_VERSION */
+  g_string_append(str, "(version unknown)");
+#endif /* ZLIB_VERSION */
+#else /* HAVE_LIBZ */
+  g_string_append(str, "without libz");
+#endif /* HAVE_LIBZ */
+}
+
+static void
+get_editcap_runtime_info(GString *str)
+{
+  /* zlib */
+#if defined(HAVE_LIBZ) && !defined(_WIN32)
+  g_string_append_printf(str, ", with libz %s", zlibVersion());
+#endif
+}
+
+static wtap_dumper *
+editcap_dump_open(const char *filename, guint32 snaplen,
+                  wtapng_section_t *shb_hdr,
+                  wtapng_iface_descriptions_t *idb_inf,
+                  wtapng_name_res_t *nrb_hdr, int *write_err)
+{
+  wtap_dumper *pdh;
+
+  if (strcmp(filename, "-") == 0) {
+    /* Write to the standard output. */
+    pdh = wtap_dump_open_stdout_ng(out_file_type_subtype, out_frame_type,
+                                   snaplen, FALSE /* compressed */,
+                                   shb_hdr, idb_inf, nrb_hdr,
+                                   write_err);
+  } else {
+    pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+                            snaplen, FALSE /* compressed */,
+                            shb_hdr, idb_inf, nrb_hdr,
+			    write_err);
+  }
+  return pdh;
+}
+
 int
 main(int argc, char *argv[])
 {
+    GString      *comp_info_str;
+    GString      *runtime_info_str;
     wtap         *wth;
-    int           i, j, err;
-    gchar        *err_info;
+    int           i, j, read_err, write_err;
+    gchar        *read_err_info, *write_err_info;
     int           opt;
+DIAG_OFF(cast-qual)
+    static const struct option long_options[] = {
+        {(char *)"help", no_argument, NULL, 'h'},
+        {(char *)"version", no_argument, NULL, 'V'},
+        {0, 0, 0, 0 }
+    };
+DIAG_ON(cast-qual)
 
     char         *p;
     guint32       snaplen            = 0; /* No limit               */
@@ -857,11 +950,13 @@ main(int argc, char *argv[])
     nstime_t      block_start;
     gchar        *fprefix            = NULL;
     gchar        *fsuffix            = NULL;
+    guint32       change_offset      = 0;
 
     const struct wtap_pkthdr    *phdr;
-    struct wtap_pkthdr           snap_phdr;
-    wtapng_iface_descriptions_t *idb_inf;
-    wtapng_section_t            *shb_hdr;
+    struct wtap_pkthdr           temp_phdr;
+    wtapng_iface_descriptions_t *idb_inf = NULL;
+    wtapng_section_t            *shb_hdr = NULL;
+    wtapng_name_res_t           *nrb_hdr = NULL;
 
 #ifdef HAVE_PLUGINS
     char* init_progfile_dir_error;
@@ -872,15 +967,29 @@ main(int argc, char *argv[])
     create_app_running_mutex();
 #endif /* _WIN32 */
 
-  /*
-   * Get credential information for later use.
-   */
+    /* Get the compile-time version information string */
+    comp_info_str = get_compiled_version_info(NULL, get_editcap_compiled_info);
+
+    /* Get the run-time version information string */
+    runtime_info_str = get_runtime_version_info(get_editcap_runtime_info);
+
+    /* Add it to the information to be reported on a crash. */
+    ws_add_crash_info("Editcap (Wireshark) %s\n"
+         "\n"
+         "%s"
+         "\n"
+         "%s",
+      get_ws_vcs_version_info(), comp_info_str->str, runtime_info_str->str);
+
+    /*
+     * Get credential information for later use.
+     */
     init_process_policies();
     init_open_routines();
 
 #ifdef HAVE_PLUGINS
     /* Register wiretap plugins */
-    if ((init_progfile_dir_error = init_progfile_dir(argv[0], main))) {
+    if ((init_progfile_dir_error = init_progfile_dir(argv[0], (void *)main))) {
         g_warning("editcap: init_progfile_dir(): %s", init_progfile_dir_error);
         g_free(init_progfile_dir_error);
     } else {
@@ -899,8 +1008,29 @@ main(int argc, char *argv[])
 #endif
 
     /* Process the options */
-    while ((opt = getopt(argc, argv, "A:B:c:C:dD:E:F:hi:Lrs:S:t:T:vw:")) != -1) {
+    while ((opt = getopt_long(argc, argv, "a:A:B:c:C:dD:E:F:hi:I:Lo:rs:S:t:T:vVw:", long_options, NULL)) != -1) {
         switch (opt) {
+        case 'a':
+        {
+            guint frame_number;
+            gint string_start_index = 0;
+
+            if ((sscanf(optarg, "%u:%n", &frame_number, &string_start_index) < 1) || (string_start_index == 0)) {
+                fprintf(stderr, "editcap: \"%s\" isn't a valid <frame>:<comment>\n\n",
+                        optarg);
+                exit(1);
+            }
+
+            /* Lazily create the table */
+            if (!frames_user_comments) {
+                frames_user_comments = g_tree_new_full(framenum_compare, NULL, NULL, g_free);
+            }
+
+            /* Insert this entry (framenum -> comment) */
+            g_tree_replace(frames_user_comments, GUINT_TO_POINTER(frame_number), g_strdup(optarg+string_start_index));
+            break;
+        }
+
         case 'A':
         {
             struct tm starttm;
@@ -1010,7 +1140,7 @@ main(int argc, char *argv[])
             break;
 
         case 'E':
-            err_prob = strtod(optarg, &p);
+            err_prob = g_ascii_strtod(optarg, &p);
             if (p == optarg || err_prob < 0.0 || err_prob > 1.0) {
                 fprintf(stderr, "editcap: probability \"%s\" must be between 0.0 and 1.0\n",
                         optarg);
@@ -1030,7 +1160,11 @@ main(int argc, char *argv[])
             break;
 
         case 'h':
-            usage(FALSE);
+            printf("Editcap (Wireshark) %s\n"
+                   "Edit and/or translate the format of capture files.\n"
+                   "See https://www.wireshark.org for more information.\n",
+               get_ws_vcs_version_info());
+            print_usage(stdout);
             exit(0);
             break;
 
@@ -1043,8 +1177,20 @@ main(int argc, char *argv[])
             }
             break;
 
+        case 'I': /* ignored_bytes at the beginning of the frame for duplications removal */
+            ignored_bytes = atoi(optarg);
+            if(ignored_bytes <= 0) {
+                fprintf(stderr, "editcap: \"%s\" isn't a valid number of bytes to ignore\n", optarg);
+                exit(1);
+            }
+            break;
+
         case 'L':
             adjlen = TRUE;
+            break;
+
+        case 'o':
+            change_offset = (guint32)strtol(optarg, &p, 10);
             break;
 
         case 'r':
@@ -1083,6 +1229,13 @@ main(int argc, char *argv[])
             verbose = !verbose;  /* Just invert */
             break;
 
+        case 'V':
+            show_version("Editcap (Wireshark)", comp_info_str, runtime_info_str);
+            g_string_free(comp_info_str, TRUE);
+            g_string_free(runtime_info_str, TRUE);
+            exit(0);
+            break;
+
         case 'w':
             dup_detect = FALSE;
             dup_detect_by_time = TRUE;
@@ -1099,20 +1252,20 @@ main(int argc, char *argv[])
                 list_encap_types();
                 break;
             default:
-                usage(TRUE);
+                print_usage(stderr);
                 break;
             }
             exit(1);
             break;
         }
-    }
+    } /* processing commmand-line options */
 
 #ifdef DEBUG
     fprintf(stderr, "Optind = %i, argc = %i\n", optind, argc);
 #endif
 
     if ((argc - optind) < 1) {
-        usage(TRUE);
+        print_usage(stderr);
         exit(1);
     }
 
@@ -1141,18 +1294,14 @@ main(int argc, char *argv[])
         exit(1);
     }
 
-    wth = wtap_open_offline(argv[optind], WTAP_TYPE_AUTO, &err, &err_info, FALSE);
+    wth = wtap_open_offline(argv[optind], WTAP_TYPE_AUTO, &read_err, &read_err_info, FALSE);
 
     if (!wth) {
         fprintf(stderr, "editcap: Can't open %s: %s\n", argv[optind],
-                wtap_strerror(err));
-        switch (err) {
-        case WTAP_ERR_UNSUPPORTED:
-        case WTAP_ERR_UNSUPPORTED_ENCAP:
-        case WTAP_ERR_BAD_FILE:
-            fprintf(stderr, "(%s)\n", err_info);
-            g_free(err_info);
-            break;
+                wtap_strerror(read_err));
+        if (read_err_info != NULL) {
+            fprintf(stderr, "(%s)\n", read_err_info);
+            g_free(read_err_info);
         }
         exit(2);
     }
@@ -1162,8 +1311,9 @@ main(int argc, char *argv[])
                 wtap_file_type_subtype_string(wtap_file_type_subtype(wth)));
     }
 
-    shb_hdr = wtap_file_get_shb_info(wth);
+    shb_hdr = wtap_file_get_shb_for_new_file(wth);
     idb_inf = wtap_file_get_idb_info(wth);
+    nrb_hdr = wtap_file_get_nrb_for_new_file(wth);
 
     /*
      * Now, process the rest, if any ... we only write if there is an extra
@@ -1182,19 +1332,21 @@ main(int argc, char *argv[])
             for (i = 0; i < dup_window; i++) {
                 memset(&fd_hash[i].digest, 0, 16);
                 fd_hash[i].len = 0;
-                nstime_set_unset(&fd_hash[i].time);
+                nstime_set_unset(&fd_hash[i].frame_time);
             }
         }
 
-        while (wtap_read(wth, &err, &err_info, &data_offset)) {
+        /* Read all of the packets in turn */
+        while (wtap_read(wth, &read_err, &read_err_info, &data_offset)) {
             read_count++;
 
             phdr = wtap_phdr(wth);
 
-            if (read_count == 1) {  /* the first packet */
+            /* Extra actions for the first packet */
+            if (read_count == 1) {
                 if (split_packet_count > 0 || secs_per_block > 0) {
                     if (!fileset_extract_prefix_suffix(argv[optind+1], &fprefix, &fsuffix))
-                        exit(2);
+                        goto error_on_exit;
 
                     filename = fileset_get_filename_by_pattern(block_cnt++, phdr, fprefix, fsuffix);
                 } else {
@@ -1204,19 +1356,20 @@ main(int argc, char *argv[])
 
                 /* If we don't have an application name add Editcap */
                 if (shb_hdr->shb_user_appl == NULL) {
-                    shb_hdr->shb_user_appl = "Editcap " VERSION;
+                    shb_hdr->shb_user_appl = g_strdup("Editcap " VERSION);
                 }
 
-                pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+                pdh = editcap_dump_open(filename,
                                         snaplen ? MIN(snaplen, wtap_snapshot_length(wth)) : wtap_snapshot_length(wth),
-                                        FALSE /* compressed */, shb_hdr, idb_inf, &err);
+                                        shb_hdr, idb_inf, nrb_hdr, &write_err);
 
                 if (pdh == NULL) {
                     fprintf(stderr, "editcap: Can't open or create %s: %s\n",
-                            filename, wtap_strerror(err));
-                    exit(2);
+                            filename, wtap_strerror(write_err));
+                    goto error_on_exit;
                 }
-            }
+            } /* first packet only handling */
+
 
             buf = wtap_buf_ptr(wth);
 
@@ -1235,10 +1388,10 @@ main(int argc, char *argv[])
                            || (phdr->ts.secs - block_start.secs == secs_per_block
                                && phdr->ts.nsecs >= block_start.nsecs )) { /* time for the next file */
 
-                        if (!wtap_dump_close(pdh, &err)) {
+                        if (!wtap_dump_close(pdh, &write_err)) {
                             fprintf(stderr, "editcap: Error writing to %s: %s\n",
-                                    filename, wtap_strerror(err));
-                            exit(2);
+                                    filename, wtap_strerror(write_err));
+                            goto error_on_exit;
                         }
                         block_start.secs = block_start.secs +  secs_per_block; /* reset for next interval */
                         g_free(filename);
@@ -1248,26 +1401,26 @@ main(int argc, char *argv[])
                         if (verbose)
                             fprintf(stderr, "Continuing writing in file %s\n", filename);
 
-                        pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+                        pdh = editcap_dump_open(filename,
                                                 snaplen ? MIN(snaplen, wtap_snapshot_length(wth)) : wtap_snapshot_length(wth),
-                                                FALSE /* compressed */, shb_hdr, idb_inf, &err);
+                                                shb_hdr, idb_inf, nrb_hdr, &write_err);
 
                         if (pdh == NULL) {
                             fprintf(stderr, "editcap: Can't open or create %s: %s\n",
-                                    filename, wtap_strerror(err));
-                            exit(2);
+                                    filename, wtap_strerror(write_err));
+                            goto error_on_exit;
                         }
                     }
                 }
-            }
+            }  /* time stamp handling */
 
             if (split_packet_count > 0) {
                 /* time for the next file? */
                 if (written_count > 0 && written_count % split_packet_count == 0) {
-                    if (!wtap_dump_close(pdh, &err)) {
+                    if (!wtap_dump_close(pdh, &write_err)) {
                         fprintf(stderr, "editcap: Error writing to %s: %s\n",
-                                filename, wtap_strerror(err));
-                        exit(2);
+                                filename, wtap_strerror(write_err));
+                        goto error_on_exit;
                     }
 
                     g_free(filename);
@@ -1277,16 +1430,16 @@ main(int argc, char *argv[])
                     if (verbose)
                         fprintf(stderr, "Continuing writing in file %s\n", filename);
 
-                    pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+                    pdh = editcap_dump_open(filename,
                                             snaplen ? MIN(snaplen, wtap_snapshot_length(wth)) : wtap_snapshot_length(wth),
-                                            FALSE /* compressed */, shb_hdr, idb_inf, &err);
+                                            shb_hdr, idb_inf, nrb_hdr, &write_err);
                     if (pdh == NULL) {
                         fprintf(stderr, "editcap: Can't open or create %s: %s\n",
-                                filename, wtap_strerror(err));
-                        exit(2);
+                                filename, wtap_strerror(write_err));
+                        goto error_on_exit;
                     }
                 }
-            }
+            } /* split packet handling */
 
             if (check_startstop) {
                 /*
@@ -1297,13 +1450,13 @@ main(int argc, char *argv[])
                     ts_okay = (phdr->ts.secs >= starttime) && (phdr->ts.secs < stoptime);
                 else
                     ts_okay = FALSE;
-	    } else {
-	        /*
-	         * No selected timeframe, so all packets are "in the
-	         * selected timeframe".
-	         */
-	        ts_okay = TRUE;
-	    }
+            } else {
+                /*
+                 * No selected timeframe, so all packets are "in the
+                 * selected timeframe".
+                 */
+                ts_okay = TRUE;
+            }
 
             if (ts_okay && ((!selected(count) && !keep_em)
                             || (selected(count) && keep_em))) {
@@ -1317,22 +1470,26 @@ main(int argc, char *argv[])
                 phdr = wtap_phdr(wth);
 
                 if (snaplen != 0) {
+                    /* Limit capture length to snaplen */
                     if (phdr->caplen > snaplen) {
-                        snap_phdr = *phdr;
-                        snap_phdr.caplen = snaplen;
-                        phdr = &snap_phdr;
+                        /* Copy and change rather than modify returned phdr */
+                        temp_phdr = *phdr;
+                        temp_phdr.caplen = snaplen;
+                        phdr = &temp_phdr;
                     }
+                    /* If -L, also set reported length to snaplen */
                     if (adjlen && phdr->len > snaplen) {
-                        snap_phdr = *phdr;
-                        snap_phdr.len = snaplen;
-                        phdr = &snap_phdr;
+                        /* Copy and change rather than modify returned phdr */
+                        temp_phdr = *phdr;
+                        temp_phdr.len = snaplen;
+                        phdr = &temp_phdr;
                     }
                 }
 
                 /* CHOP */
-                snap_phdr = *phdr;
-                handle_chopping(chop, &snap_phdr, phdr, &buf, adjlen);
-                phdr = &snap_phdr;
+                temp_phdr = *phdr;
+                handle_chopping(chop, &temp_phdr, phdr, &buf, adjlen);
+                phdr = &temp_phdr;
 
                 if (phdr->presence_flags & WTAP_HAS_TS) {
                     /* Do we adjust timestamps to ensure strict chronological
@@ -1357,17 +1514,17 @@ main(int argc, char *argv[])
                                      * chronological order (oldest to newest).
                                      */
                                     /* fprintf(stderr, "++out of order, need to adjust this packet!\n"); */
-                                    snap_phdr = *phdr;
-                                    snap_phdr.ts.secs = previous_time.secs + strict_time_adj.tv.tv_sec;
-                                    snap_phdr.ts.nsecs = previous_time.nsecs;
-                                    if (snap_phdr.ts.nsecs + strict_time_adj.tv.tv_usec * 1000 > ONE_MILLION * 1000) {
+                                    temp_phdr = *phdr;
+                                    temp_phdr.ts.secs = previous_time.secs + strict_time_adj.tv.secs;
+                                    temp_phdr.ts.nsecs = previous_time.nsecs;
+                                    if (temp_phdr.ts.nsecs + strict_time_adj.tv.nsecs > ONE_BILLION) {
                                         /* carry */
-                                        snap_phdr.ts.secs++;
-                                        snap_phdr.ts.nsecs += (strict_time_adj.tv.tv_usec - ONE_MILLION) * 1000;
+                                        temp_phdr.ts.secs++;
+                                        temp_phdr.ts.nsecs += strict_time_adj.tv.nsecs - ONE_BILLION;
                                     } else {
-                                        snap_phdr.ts.nsecs += strict_time_adj.tv.tv_usec * 1000;
+                                        temp_phdr.ts.nsecs += strict_time_adj.tv.nsecs;
                                     }
-                                    phdr = &snap_phdr;
+                                    phdr = &temp_phdr;
                                 }
                             } else {
                                 /*
@@ -1375,56 +1532,52 @@ main(int argc, char *argv[])
                                  * Unconditionally set each timestamp to previous
                                  * packet's timestamp plus delta.
                                  */
-                                snap_phdr = *phdr;
-                                snap_phdr.ts.secs = previous_time.secs + strict_time_adj.tv.tv_sec;
-                                snap_phdr.ts.nsecs = previous_time.nsecs;
-                                if (snap_phdr.ts.nsecs + strict_time_adj.tv.tv_usec * 1000 > ONE_MILLION * 1000) {
+                                temp_phdr = *phdr;
+                                temp_phdr.ts.secs = previous_time.secs + strict_time_adj.tv.secs;
+                                temp_phdr.ts.nsecs = previous_time.nsecs;
+                                if (temp_phdr.ts.nsecs + strict_time_adj.tv.nsecs > ONE_BILLION) {
                                     /* carry */
-                                    snap_phdr.ts.secs++;
-                                    snap_phdr.ts.nsecs += (strict_time_adj.tv.tv_usec - ONE_MILLION) * 1000;
+                                    temp_phdr.ts.secs++;
+                                    temp_phdr.ts.nsecs += strict_time_adj.tv.nsecs - ONE_BILLION;
                                 } else {
-                                    snap_phdr.ts.nsecs += strict_time_adj.tv.tv_usec * 1000;
+                                    temp_phdr.ts.nsecs += strict_time_adj.tv.nsecs;
                                 }
-                                phdr = &snap_phdr;
+                                phdr = &temp_phdr;
                             }
                         }
                         previous_time.secs = phdr->ts.secs;
                         previous_time.nsecs = phdr->ts.nsecs;
                     }
 
-                    /* assume that if the frame's tv_sec is 0, then
-                     * the timestamp isn't supported */
-                    if (phdr->ts.secs > 0 && time_adj.tv.tv_sec != 0) {
-                        snap_phdr = *phdr;
+                    if (time_adj.tv.secs != 0) {
+                        temp_phdr = *phdr;
                         if (time_adj.is_negative)
-                            snap_phdr.ts.secs -= time_adj.tv.tv_sec;
+                            temp_phdr.ts.secs -= time_adj.tv.secs;
                         else
-                            snap_phdr.ts.secs += time_adj.tv.tv_sec;
-                        phdr = &snap_phdr;
+                            temp_phdr.ts.secs += time_adj.tv.secs;
+                        phdr = &temp_phdr;
                     }
 
-                    /* assume that if the frame's tv_sec is 0, then
-                     * the timestamp isn't supported */
-                    if (phdr->ts.secs > 0 && time_adj.tv.tv_usec != 0) {
-                        snap_phdr = *phdr;
+                    if (time_adj.tv.nsecs != 0) {
+                        temp_phdr = *phdr;
                         if (time_adj.is_negative) { /* subtract */
-                            if (snap_phdr.ts.nsecs/1000 < time_adj.tv.tv_usec) { /* borrow */
-                                snap_phdr.ts.secs--;
-                                snap_phdr.ts.nsecs += ONE_MILLION * 1000;
+                            if (temp_phdr.ts.nsecs < time_adj.tv.nsecs) { /* borrow */
+                                temp_phdr.ts.secs--;
+                                temp_phdr.ts.nsecs += ONE_BILLION;
                             }
-                            snap_phdr.ts.nsecs -= time_adj.tv.tv_usec * 1000;
+                            temp_phdr.ts.nsecs -= time_adj.tv.nsecs;
                         } else {                  /* add */
-                            if (snap_phdr.ts.nsecs + time_adj.tv.tv_usec * 1000 > ONE_MILLION * 1000) {
+                            if (temp_phdr.ts.nsecs + time_adj.tv.nsecs > ONE_BILLION) {
                                 /* carry */
-                                snap_phdr.ts.secs++;
-                                snap_phdr.ts.nsecs += (time_adj.tv.tv_usec - ONE_MILLION) * 1000;
+                                temp_phdr.ts.secs++;
+                                temp_phdr.ts.nsecs += time_adj.tv.nsecs - ONE_BILLION;
                             } else {
-                                snap_phdr.ts.nsecs += time_adj.tv.tv_usec * 1000;
+                                temp_phdr.ts.nsecs += time_adj.tv.nsecs;
                             }
                         }
-                        phdr = &snap_phdr;
+                        phdr = &temp_phdr;
                     }
-                }
+                } /* time stamp adjustment */
 
                 /* suppress duplicates by packet window */
                 if (dup_detect) {
@@ -1450,7 +1603,7 @@ main(int argc, char *argv[])
                             fprintf(stderr, "\n");
                         }
                     }
-                }
+                } /* suppression of duplicates */
 
                 if (phdr->presence_flags & WTAP_HAS_TS) {
                     /* suppress duplicates by time window */
@@ -1483,15 +1636,22 @@ main(int argc, char *argv[])
                             }
                         }
                     }
+                } /* suppress duplicates by time window */
+
+                if (change_offset > phdr->caplen) {
+                    fprintf(stderr, "change offset %u is longer than caplen %u in packet %u\n",
+                        change_offset, phdr->caplen, count);
                 }
 
                 /* Random error mutation */
-                if (err_prob > 0.0) {
+                if (err_prob > 0.0 && change_offset <= phdr->caplen) {
                     int real_data_start = 0;
 
                     /* Protect non-protocol data */
                     if (wtap_file_type_subtype(wth) == WTAP_FILE_TYPE_SUBTYPE_CATAPULT_DCT2000)
                         real_data_start = find_dct2000_real_data(buf);
+
+                    real_data_start += change_offset;
 
                     for (i = real_data_start; i < (int) phdr->caplen; i++) {
                         if (rand() <= err_prob * RAND_MAX) {
@@ -1533,11 +1693,24 @@ main(int argc, char *argv[])
                             }
                         }
                     }
+                } /* random error mutation */
+
+                /* Find a packet comment we may need to write */
+                if (frames_user_comments) {
+                    const char *comment =
+                        (const char*)g_tree_lookup(frames_user_comments, GUINT_TO_POINTER(read_count));
+                    if (comment != NULL) {
+                        /* Copy and change rather than modify returned phdr */
+                        temp_phdr = *phdr;
+                        temp_phdr.opt_comment = g_strdup(comment);
+                        phdr = &temp_phdr;
+                    }
                 }
 
-                if (!wtap_dump(pdh, phdr, buf, &err)) {
-                    switch (err) {
-                    case WTAP_ERR_UNSUPPORTED_ENCAP:
+                /* Attempt to dump out current frame to the output file */
+                if (!wtap_dump(pdh, phdr, buf, &write_err, &write_err_info)) {
+                    switch (write_err) {
+                    case WTAP_ERR_UNWRITABLE_ENCAP:
                         /*
                          * This is a problem with the particular frame we're
                          * writing and the file type and subtype we're
@@ -1545,7 +1718,7 @@ main(int argc, char *argv[])
                          * and file type/subtype.
                          */
                         fprintf(stderr,
-                                "editcap: Frame %u of \"%s\" has a network type that can't be saved in a \"%s\" file\n.",
+                                "editcap: Frame %u of \"%s\" has a network type that can't be saved in a \"%s\" file.\n",
                                 read_count, argv[optind],
                                 wtap_file_type_subtype_string(out_file_type_subtype));
                         break;
@@ -1558,17 +1731,45 @@ main(int argc, char *argv[])
                          * and file type/subtype.
                          */
                         fprintf(stderr,
-                                "editcap: Frame %u of \"%s\" is too large for a \"%s\" file\n.",
+                                "editcap: Frame %u of \"%s\" is too large for a \"%s\" file.\n",
                                 read_count, argv[optind],
                                 wtap_file_type_subtype_string(out_file_type_subtype));
                         break;
 
+                    case WTAP_ERR_UNWRITABLE_REC_TYPE:
+                        /*
+                         * This is a problem with the particular record we're
+                         * writing and the file type and subtype we're
+                         * writing; note that, and report the record number
+                         * and file type/subtype.
+                         */
+                        fprintf(stderr,
+                                "editcap: Record %u of \"%s\" has a record type that can't be saved in a \"%s\" file.\n",
+                                read_count, argv[optind],
+                                wtap_file_type_subtype_string(out_file_type_subtype));
+                        break;
+
+                    case WTAP_ERR_UNWRITABLE_REC_DATA:
+                        /*
+                         * This is a problem with the particular record we're
+                         * writing and the file type and subtype we're
+                         * writing; note that, and report the record number
+                         * and file type/subtype.
+                         */
+                        fprintf(stderr,
+                                "editcap: Record %u of \"%s\" has data that can't be saved in a \"%s\" file.\n(%s)\n",
+                                read_count, argv[optind],
+                                wtap_file_type_subtype_string(out_file_type_subtype),
+                                write_err_info != NULL ? write_err_info : "no information supplied");
+                        g_free(write_err_info);
+                        break;
+
                     default:
                         fprintf(stderr, "editcap: Error writing to %s: %s\n",
-                                filename, wtap_strerror(err));
+                                filename, wtap_strerror(write_err));
                         break;
                     }
-                    exit(2);
+                    goto error_on_exit;
                 }
                 written_count++;
             }
@@ -1578,19 +1779,15 @@ main(int argc, char *argv[])
         g_free(fprefix);
         g_free(fsuffix);
 
-        if (err != 0) {
+        if (read_err != 0) {
             /* Print a message noting that the read failed somewhere along the
              * line. */
             fprintf(stderr,
                     "editcap: An error occurred while reading \"%s\": %s.\n",
-                    argv[optind], wtap_strerror(err));
-            switch (err) {
-            case WTAP_ERR_UNSUPPORTED:
-            case WTAP_ERR_UNSUPPORTED_ENCAP:
-            case WTAP_ERR_BAD_FILE:
-                fprintf(stderr, "(%s)\n", err_info);
-                g_free(err_info);
-                break;
+                    argv[optind], wtap_strerror(read_err));
+            if (read_err_info != NULL) {
+                fprintf(stderr, "(%s)\n", read_err_info);
+                g_free(read_err_info);
             }
         }
 
@@ -1600,26 +1797,33 @@ main(int argc, char *argv[])
             g_free (filename);
             filename = g_strdup(argv[optind+1]);
 
-            pdh = wtap_dump_open_ng(filename, out_file_type_subtype, out_frame_type,
+            pdh = editcap_dump_open(filename,
                                     snaplen ? MIN(snaplen, wtap_snapshot_length(wth)): wtap_snapshot_length(wth),
-                                    FALSE /* compressed */, shb_hdr, idb_inf, &err);
+                                    shb_hdr, idb_inf, nrb_hdr, &write_err);
             if (pdh == NULL) {
                 fprintf(stderr, "editcap: Can't open or create %s: %s\n",
-                        filename, wtap_strerror(err));
-                exit(2);
+                        filename, wtap_strerror(write_err));
+                goto error_on_exit;
             }
         }
 
         g_free(idb_inf);
         idb_inf = NULL;
 
-        if (!wtap_dump_close(pdh, &err)) {
+        if (!wtap_dump_close(pdh, &write_err)) {
             fprintf(stderr, "editcap: Error writing to %s: %s\n", filename,
-                    wtap_strerror(err));
-            exit(2);
+                    wtap_strerror(write_err));
+            goto error_on_exit;
         }
-        g_free(shb_hdr);
+        wtap_free_shb(shb_hdr);
+        shb_hdr = NULL;
+        wtap_free_nrb(nrb_hdr);
+        nrb_hdr = NULL;
         g_free(filename);
+
+        if (frames_user_comments) {
+            g_tree_destroy(frames_user_comments);
+        }
     }
 
     if (dup_detect) {
@@ -1635,6 +1839,12 @@ main(int argc, char *argv[])
     }
 
     return 0;
+
+error_on_exit:
+    wtap_free_shb(shb_hdr);
+    wtap_free_nrb(nrb_hdr);
+    g_free(idb_inf);
+    exit(2);
 }
 
 /* Skip meta-information read from file to return offset of real

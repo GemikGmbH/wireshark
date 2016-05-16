@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <epan/emem.h>
-
 #include "tvbuff.h"
 #include "tvbuff-int.h"
 #include "proto.h"	/* XXX - only used for DISSECTOR_ASSERT, probably a new header file? */
@@ -81,11 +79,11 @@ subset_find_guint8(tvbuff_t *tvb, guint abs_offset, guint limit, guint8 needle)
 }
 
 static gint
-subset_pbrk_guint8(tvbuff_t *tvb, guint abs_offset, guint limit, const guint8 *needles, guchar *found_needle)
+subset_pbrk_guint8(tvbuff_t *tvb, guint abs_offset, guint limit, const ws_mempbrk_pattern* pattern, guchar *found_needle)
 {
 	struct tvb_subset *subset_tvb = (struct tvb_subset *) tvb;
 
-	return tvb_pbrk_guint8(subset_tvb->subset.tvb, subset_tvb->subset.offset + abs_offset, limit, needles, found_needle);
+	return tvb_ws_mempbrk_pattern_guint8(subset_tvb->subset.tvb, subset_tvb->subset.offset + abs_offset, limit, pattern, found_needle);
 }
 
 static tvbuff_t *
@@ -183,7 +181,7 @@ tvb_new_subset_length(tvbuff_t *backing, const gint backing_offset, const gint b
 	/*
 	 * Give the next dissector only captured_length bytes.
 	 */
-	captured_length = tvb_length_remaining(backing, backing_offset);
+	captured_length = tvb_captured_length_remaining(backing, backing_offset);
 	THROW_ON(captured_length < 0, BoundsError);
 	if (captured_length > backing_length)
 		captured_length = backing_length;

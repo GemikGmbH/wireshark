@@ -45,8 +45,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 
@@ -760,7 +758,7 @@ dissect_dlm3(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *d
 
 
   /* Check that there's enough data */
-  length = tvb_length(tvb);
+  length = tvb_captured_length(tvb);
   if (length < 4 + 4 + 4 + 2 + 1 + 1)
     return 0;
 
@@ -791,7 +789,7 @@ dissect_dlm3(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *d
                            dlm3_cmd,
                            "packet-dlm3.c internal bug"));
 
-  if (parent_tree) {
+  /* if (parent_tree) */ {
     offset = 0;
 
     item = proto_tree_add_item(parent_tree, proto_dlm3, tvb, offset,
@@ -839,7 +837,7 @@ dissect_dlm3(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *d
       dissect_dlm3_rcom(tvb, pinfo, sub_tree, length, offset);
     }
   }
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 
@@ -1262,3 +1260,16 @@ proto_reg_handoff_dlm3(void)
 }
 
 /* packet-dlm3.c ends here. */
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

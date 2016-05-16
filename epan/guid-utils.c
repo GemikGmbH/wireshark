@@ -28,7 +28,6 @@
 #include <glib.h>
 #include <epan/epan.h>
 #include <wsutil/unicode-utils.h>
-#include <epan/emem.h>
 #include <epan/wmem/wmem.h>
 #include "guid-utils.h"
 
@@ -51,8 +50,8 @@ ResolveWin32UUID(e_guid_t if_id, char *uuid_name, int uuid_name_max_len)
 	DWORD uuid_max_size = MAX_PATH;
 	TCHAR *reg_uuid_str;
 
-	reg_uuid_name=ep_alloc(MAX_PATH*sizeof(TCHAR));
-	reg_uuid_str=ep_alloc(MAX_PATH*sizeof(TCHAR));
+	reg_uuid_name=wmem_alloc(wmem_packet_scope(), (MAX_PATH*sizeof(TCHAR))+1);
+	reg_uuid_str=wmem_alloc(wmem_packet_scope(), (MAX_PATH*sizeof(TCHAR))+1);
 
 	if(uuid_name_max_len < 2){
 		return 0;
@@ -159,7 +158,7 @@ guids_get_guid_name(const e_guid_t *guid)
 #ifdef _WIN32
 	/* try to resolve the mapping from the Windows registry */
 	/* XXX - prefill the resolving database with all the Windows registry entries once at init only (instead of searching each time)? */
-	uuid_name=ep_alloc(128);
+	uuid_name=wmem_alloc(wmem_packet_scope(), 128);
 	if(ResolveWin32UUID(*guid, uuid_name, 128)) {
 		return uuid_name;
 	}
@@ -191,11 +190,40 @@ guids_resolve_guid_to_str(const e_guid_t *guid)
 		return name;
 	}
 
-	return ep_strdup_printf("%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                      guid->data1, guid->data2, guid->data3,
-                      guid->data4[0], guid->data4[1],
-                      guid->data4[2], guid->data4[3],
-                      guid->data4[4], guid->data4[5],
-                      guid->data4[6], guid->data4[7]);
+	return wmem_strdup_printf(wmem_packet_scope(), "%08x-%04x-%04x-%02x%02x-%02x%02x%02x%02x%02x%02x",
+				guid->data1, guid->data2, guid->data3,
+				guid->data4[0], guid->data4[1],
+				guid->data4[2], guid->data4[3],
+				guid->data4[4], guid->data4[5],
+				guid->data4[6], guid->data4[7]);
 }
 
+int guid_cmp(const e_guid_t *g1, const e_guid_t *g2)
+{
+	if (g1->data1 != g2->data1) {
+		return (g1->data1 < g2->data1) ? -1 : 1;
+	}
+
+	if (g1->data2 != g2->data2) {
+		return (g1->data2 < g2->data2) ? -1 : 1;
+	}
+
+	if (g1->data3 != g2->data3) {
+		return (g1->data3 < g2->data3) ? -1 : 1;
+	}
+
+	return memcmp(&g1->data4[0], &g2->data4[0], 8);
+}
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

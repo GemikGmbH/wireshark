@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/etypes.h>
 #include "packet-fc.h"
@@ -142,65 +140,19 @@ static const true_false_string tfs_error_ctrl = {
 static void
 dissect_brdwlk_err(proto_tree *parent_tree, tvbuff_t *tvb, int offset)
 {
-    proto_item *item = NULL;
-    proto_tree *tree = NULL;
-    guint8 flags;
+    static const int * flags[] = {
+        &hf_brdwlk_error_plp,
+        &hf_brdwlk_error_ef,
+        &hf_brdwlk_error_nd,
+        &hf_brdwlk_error_tr,
+        &hf_brdwlk_error_badcrc,
+        &hf_brdwlk_error_ff,
+        &hf_brdwlk_error_jumbo,
+        &hf_brdwlk_error_ctrl,
+        NULL
+    };
 
-    flags = tvb_get_guint8(tvb, offset);
-    if (parent_tree) {
-        item=proto_tree_add_uint(parent_tree, hf_brdwlk_error,
-                                 tvb, offset, 1, flags);
-        tree=proto_item_add_subtree(item, ett_brdwlk_error);
-    }
-
-
-    proto_tree_add_boolean(tree, hf_brdwlk_error_plp, tvb, offset, 1, flags);
-    if (flags & 0x01) {
-        proto_item_append_text(item, "  Packet Length Present");
-    }
-    flags &= (~( 0x01 ));
-
-    proto_tree_add_boolean(tree, hf_brdwlk_error_ef, tvb, offset, 1, flags);
-    if (flags & 0x02) {
-        proto_item_append_text(item, "  Empty Frame");
-    }
-    flags &= (~( 0x02 ));
-
-    proto_tree_add_boolean(tree, hf_brdwlk_error_nd, tvb, offset, 1, flags);
-    if (flags & 0x04) {
-        proto_item_append_text(item, "  No Data");
-    }
-    flags &= (~( 0x04 ));
-
-    proto_tree_add_boolean(tree, hf_brdwlk_error_tr, tvb, offset, 1, flags);
-    if (flags & 0x08) {
-        proto_item_append_text(item, "  Truncated");
-    }
-    flags &= (~( 0x08 ));
-
-    proto_tree_add_boolean(tree, hf_brdwlk_error_badcrc, tvb, offset, 1, flags);
-    if (flags & 0x10) {
-        proto_item_append_text(item, "  Bad FC CRC");
-    }
-    flags &= (~( 0x10 ));
-
-    proto_tree_add_boolean(tree, hf_brdwlk_error_ff, tvb, offset, 1, flags);
-    if (flags & 0x20) {
-        proto_item_append_text(item, "  Fifo Full");
-    }
-    flags &= (~( 0x20 ));
-
-    proto_tree_add_boolean(tree, hf_brdwlk_error_jumbo, tvb, offset, 1, flags);
-    if (flags & 0x40) {
-        proto_item_append_text(item, "  Jumbo FC Frame");
-    }
-    flags &= (~( 0x40 ));
-
-    proto_tree_add_boolean(tree, hf_brdwlk_error_ctrl, tvb, offset, 1, flags);
-    if (flags & 0x80) {
-        proto_item_append_text(item, "  Ctrl Char Inside Frame");
-    }
-    /*flags &= (~( 0x80 ));*/
+    proto_tree_add_bitmask_with_flags(parent_tree, tvb, offset, hf_brdwlk_error, ett_brdwlk_error, flags, ENC_NA, BMT_NO_FALSE|BMT_NO_TFS);
 }
 
 /* Code to actually dissect the packets */
@@ -210,7 +162,7 @@ dissect_brdwlk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 /* Set up structures needed to add the protocol subtree and manage it */
     proto_item *ti, *hidden_item;
-    proto_tree *brdwlk_tree = NULL;
+    proto_tree *brdwlk_tree;
     tvbuff_t *next_tvb;
     guint8 error, eof, sof;
     int hdrlen = 2,
@@ -236,19 +188,16 @@ dissect_brdwlk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         fc_data.sof_eof = FC_DATA_SOF_SOFF;
     }
 
-    if (tree) {
-        ti = proto_tree_add_protocol_format(tree, proto_brdwlk, tvb, 0,
-                                            hdrlen, "Boardwalk");
+    ti = proto_tree_add_protocol_format(tree, proto_brdwlk, tvb, 0,
+            hdrlen, "Boardwalk");
 
-        brdwlk_tree = proto_item_add_subtree(ti, ett_brdwlk);
+    brdwlk_tree = proto_item_add_subtree(ti, ett_brdwlk);
 
-        proto_tree_add_item(brdwlk_tree, hf_brdwlk_sof, tvb, offset, 1, ENC_BIG_ENDIAN);
-        proto_tree_add_item(brdwlk_tree, hf_brdwlk_vsan, tvb, offset, 2, ENC_BIG_ENDIAN);
-
-    }
+    proto_tree_add_item(brdwlk_tree, hf_brdwlk_sof, tvb, offset, 1, ENC_BIG_ENDIAN);
+    proto_tree_add_item(brdwlk_tree, hf_brdwlk_vsan, tvb, offset, 2, ENC_BIG_ENDIAN);
 
     /* Locate EOF which is the last 4 bytes of the frame */
-    len = tvb_length_remaining(tvb, hdrlen);
+    len = tvb_captured_length_remaining(tvb, hdrlen);
     reported_len = tvb_reported_length_remaining(tvb, hdrlen);
     if (reported_len < 4) {
         /*
@@ -319,11 +268,10 @@ dissect_brdwlk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                 }
             }
         }
-        if (tree) {
-            hidden_item = proto_tree_add_boolean(brdwlk_tree, hf_brdwlk_drop,
-                                                     tvb, offset, 0, dropped_packets);
-            PROTO_ITEM_SET_HIDDEN(hidden_item);
-        }
+
+        hidden_item = proto_tree_add_boolean(brdwlk_tree, hf_brdwlk_drop,
+                tvb, offset, 0, dropped_packets);
+        PROTO_ITEM_SET_HIDDEN(hidden_item);
 
         packet_count = pkt_cnt;
 
@@ -338,10 +286,8 @@ dissect_brdwlk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             fc_data.sof_eof |= FC_DATA_EOF_INVALID;
         }
 
-        if (tree) {
-            proto_tree_add_item(brdwlk_tree, hf_brdwlk_eof, tvb, offset+3,
-                                1, ENC_BIG_ENDIAN);
-        }
+        proto_tree_add_item(brdwlk_tree, hf_brdwlk_eof, tvb, offset+3,
+                1, ENC_BIG_ENDIAN);
 
         if ((error & BRDWLK_HAS_PLEN) && tree) {
             /* In newer Boardwalks, if this bit is set, the actual frame length
@@ -463,3 +409,16 @@ proto_reg_handoff_brdwlk(void)
     dissector_add_uint("ethertype", 0xABCD, brdwlk_handle);
     fc_dissector_handle = find_dissector("fc");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

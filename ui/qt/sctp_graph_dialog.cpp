@@ -19,10 +19,23 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
+#include <wsutil/utf8_entities.h>
+
 #include "sctp_graph_dialog.h"
-#include "ui_sctp_graph_dialog.h"
+#include <ui_sctp_graph_dialog.h>
 #include "sctp_assoc_analyse_dialog.h"
 
+#include <file.h>
+#include <math.h>
+#include <epan/dissectors/packet-sctp.h>
+#include "epan/packet.h"
+
+#include "ui/tap-sctp-analysis.h"
+
+#include <QFileDialog>
+#include <QMessageBox>
+
+#include "qcustomplot.h"
 #include "wireshark_application.h"
 
 SCTPGraphDialog::SCTPGraphDialog(QWidget *parent, sctp_assoc_info_t *assoc, capture_file *cf, int dir) :
@@ -36,6 +49,11 @@ SCTPGraphDialog::SCTPGraphDialog(QWidget *parent, sctp_assoc_info_t *assoc, capt
     if (!selected_assoc) {
         selected_assoc = SCTPAssocAnalyseDialog::findAssocForPacket(cap_file_);
     }
+    Qt::WindowFlags flags = Qt::Window | Qt::WindowSystemMenuHint
+            | Qt::WindowMinimizeButtonHint
+            | Qt::WindowMaximizeButtonHint
+            | Qt::WindowCloseButtonHint;
+    this->setWindowFlags(flags);
     this->setWindowTitle(QString(tr("SCTP TSNs and SACKs over Time: %1 Port1 %2 Port2 %3")).arg(cf_get_display_name(cap_file_)).arg(selected_assoc->port1).arg(selected_assoc->port2));
     if ((direction == 1 && selected_assoc->n_array_tsn1 == 0) || (direction == 2 && selected_assoc->n_array_tsn2 == 0)) {
         QMessageBox msgBox;
@@ -68,8 +86,8 @@ void SCTPGraphDialog::drawNRSACKGraph()
         list = g_list_last(selected_assoc->sack1);
         min_tsn = selected_assoc->min_tsn1;
     } else {
-        list = g_list_last(selected_assoc->sack1);
-        min_tsn = selected_assoc->min_tsn1;
+        list = g_list_last(selected_assoc->sack2);
+        min_tsn = selected_assoc->min_tsn2;
     }
     while (list) {
         sack = (tsn_t*) (list->data);
@@ -225,7 +243,7 @@ void SCTPGraphDialog::drawSACKGraph()
         myScatter.setBrush(Qt::blue);
         ui->sctpPlot->graph(graphcount)->setScatterStyle(myScatter);
         ui->sctpPlot->graph(graphcount)->setLineStyle(QCPGraph::lsNone);
-        ui->sctpPlot->graph(graphcount)->setData(xg, yg);
+        ui->sctpPlot->graph(graphcount)->setData(xn, yn);
         typeStrings.insert(graphcount, QString(tr("NR Gap Ack")));
         graphcount++;
     }
@@ -262,7 +280,7 @@ void SCTPGraphDialog::drawTSNGraph()
         while (tlist)
         {
             type = ((struct chunk_header *)tlist->data)->type;
-            if (type == SCTP_DATA_CHUNK_ID || type == SCTP_FORWARD_TSN_CHUNK_ID) {
+            if (type == SCTP_DATA_CHUNK_ID || type == SCTP_I_DATA_CHUNK_ID || type == SCTP_FORWARD_TSN_CHUNK_ID) {
                 tsnumber = g_ntohl(((struct data_chunk_header *)tlist->data)->tsn);
                 yt.append(tsnumber);
                 xt.append(tsn->secs + tsn->usecs/1000000.0);
@@ -296,6 +314,7 @@ void SCTPGraphDialog::drawTSNGraph()
 void SCTPGraphDialog::drawGraph(int which)
 {
     guint32 maxTSN, minTSN;
+    gint64 minBound;
 
     gIsSackChunkPresent = false;
     gIsNRSackChunkPresent = false;
@@ -330,7 +349,12 @@ void SCTPGraphDialog::drawGraph(int which)
     connect(ui->sctpPlot, SIGNAL(plottableClick(QCPAbstractPlottable*,QMouseEvent*)), this, SLOT(graphClicked(QCPAbstractPlottable*, QMouseEvent*)));
     // set axes ranges, so we see all data:
     QCPRange myXRange(selected_assoc->min_secs, (selected_assoc->max_secs+1));
-    QCPRange myYRange(minTSN, maxTSN);
+    if (maxTSN - minTSN < 5) {
+        minBound = 0;
+    } else {
+        minBound = minTSN;
+    }
+    QCPRange myYRange(minBound, maxTSN);
     ui->sctpPlot->xAxis->setRange(myXRange);
     ui->sctpPlot->yAxis->setRange(myYRange);
     ui->sctpPlot->replot();
@@ -427,7 +451,7 @@ void SCTPGraphDialog::save_graph(QDialog *dlg, QCustomPlot *plot)
             .arg(bmp_filter)
             .arg(jpeg_filter);
 
-    file_name = QFileDialog::getSaveFileName(dlg, tr("Wireshark: Save Graph As..."),
+    file_name = QFileDialog::getSaveFileName(dlg, wsApp->windowTitleString(tr("Save Graph As" UTF8_HORIZONTAL_ELLIPSIS)),
                                              path.canonicalPath(), filter, &extension);
 
     if (file_name.length() > 0) {

@@ -27,7 +27,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-usb.h"
 
@@ -81,40 +80,40 @@ static gint ett_usb_hub_port_status = -1;
 static gint ett_usb_hub_port_change = -1;
 
 /* Table 11-16. Hub Class Request Codes */
-#define USB_HUB_REQUEST_GET_STATUS           0
-#define USB_HUB_REQUEST_CLEAR_FEATURE        1
-#define USB_HUB_REQUEST_SET_FEATURE          3
-#define USB_HUB_REQUEST_GET_DESCRIPTOR       6
-#define USB_HUB_REQUEST_SET_DESCRIPTOR       7
-#define USB_HUB_REQUEST_CLEAR_TT_BUFFER      8
-#define USB_HUB_REQUEST_RESET_TT             9
+#define USB_HUB_REQUEST_GET_STATUS            0
+#define USB_HUB_REQUEST_CLEAR_FEATURE         1
+#define USB_HUB_REQUEST_SET_FEATURE           3
+#define USB_HUB_REQUEST_GET_DESCRIPTOR        6
+#define USB_HUB_REQUEST_SET_DESCRIPTOR        7
+#define USB_HUB_REQUEST_CLEAR_TT_BUFFER       8
+#define USB_HUB_REQUEST_RESET_TT              9
 #define USB_HUB_REQUEST_GET_TT_STATE         10
 #define USB_HUB_REQUEST_STOP_TT              11
 
 static const value_string setup_request_names_vals[] = {
-	{ USB_HUB_REQUEST_GET_STATUS, "GET_STATUS" },
-	{ USB_HUB_REQUEST_CLEAR_FEATURE, "CLEAR_FEATURE" },
-	{ USB_HUB_REQUEST_SET_FEATURE, "SET_FEATURE" },
-	{ USB_HUB_REQUEST_GET_DESCRIPTOR, "GET_DESCRIPTOR" },
-	{ USB_HUB_REQUEST_SET_DESCRIPTOR, "SET_DESCRIPTOR" },
+	{ USB_HUB_REQUEST_GET_STATUS,	   "GET_STATUS" },
+	{ USB_HUB_REQUEST_CLEAR_FEATURE,   "CLEAR_FEATURE" },
+	{ USB_HUB_REQUEST_SET_FEATURE,	   "SET_FEATURE" },
+	{ USB_HUB_REQUEST_GET_DESCRIPTOR,  "GET_DESCRIPTOR" },
+	{ USB_HUB_REQUEST_SET_DESCRIPTOR,  "SET_DESCRIPTOR" },
 	{ USB_HUB_REQUEST_CLEAR_TT_BUFFER, "CLEAR_TT_BUFFER" },
-	{ USB_HUB_REQUEST_GET_TT_STATE, "GET_TT_STATE" },
-	{ USB_HUB_REQUEST_STOP_TT, "STOP_TT" },
+	{ USB_HUB_REQUEST_GET_TT_STATE,	   "GET_TT_STATE" },
+	{ USB_HUB_REQUEST_STOP_TT,	   "STOP_TT" },
 	{ 0, NULL }
 };
 
 
 /* Table 11-17 Hub Class Feature Selectors */
-#define USB_HUB_FEATURE_C_HUB_LOCAL_POWER     0
-#define USB_HUB_FEATURE_C_HUB_OVER_CURRENT    1
+#define USB_HUB_FEATURE_C_HUB_LOCAL_POWER      0
+#define USB_HUB_FEATURE_C_HUB_OVER_CURRENT     1
 
-#define USB_HUB_FEATURE_PORT_CONNECTION       0
-#define USB_HUB_FEATURE_PORT_ENABLE           1
-#define USB_HUB_FEATURE_PORT_SUSPEND          2
-#define USB_HUB_FEATURE_PORT_OVER_CURRENT     3
-#define USB_HUB_FEATURE_PORT_RESET            4
-#define USB_HUB_FEATURE_PORT_POWER            8
-#define USB_HUB_FEATURE_PORT_LOW_SPEED        9
+#define USB_HUB_FEATURE_PORT_CONNECTION        0
+#define USB_HUB_FEATURE_PORT_ENABLE            1
+#define USB_HUB_FEATURE_PORT_SUSPEND           2
+#define USB_HUB_FEATURE_PORT_OVER_CURRENT      3
+#define USB_HUB_FEATURE_PORT_RESET             4
+#define USB_HUB_FEATURE_PORT_POWER             8
+#define USB_HUB_FEATURE_PORT_LOW_SPEED         9
 #define USB_HUB_FEATURE_C_PORT_CONNECTION     16
 #define USB_HUB_FEATURE_C_PORT_ENABLE         17
 #define USB_HUB_FEATURE_C_PORT_SUSPEND        18
@@ -124,26 +123,26 @@ static const value_string setup_request_names_vals[] = {
 #define USB_HUB_FEATURE_PORT_INDICATOR        22
 
 static const value_string hub_class_feature_selectors_recipient_hub_vals[] = {
-	{ USB_HUB_FEATURE_C_HUB_LOCAL_POWER, "C_HUB_LOCAL_POWER" },
+	{ USB_HUB_FEATURE_C_HUB_LOCAL_POWER,  "C_HUB_LOCAL_POWER" },
 	{ USB_HUB_FEATURE_C_HUB_OVER_CURRENT, "C_HUB_OVER_CURRENT" },
 	{ 0, NULL }
 };
 
 static const value_string hub_class_feature_selectors_recipient_port_vals[] = {
-	{ USB_HUB_FEATURE_PORT_CONNECTION, "PORT_CONNECTION" },
-	{ USB_HUB_FEATURE_PORT_ENABLE, "PORT_ENABLE" },
-	{ USB_HUB_FEATURE_PORT_SUSPEND, "PORT_SUSPEND" },
-	{ USB_HUB_FEATURE_PORT_OVER_CURRENT, "PORT_OVER_CURRENT" },
-	{ USB_HUB_FEATURE_PORT_RESET, "PORT_RESET" },
-	{ USB_HUB_FEATURE_PORT_POWER, "PORT_POWER" },
-	{ USB_HUB_FEATURE_PORT_LOW_SPEED, "PORT_LOW_SPEED" },
-	{ USB_HUB_FEATURE_C_PORT_CONNECTION, "C_PORT_CONNECTION" },
-	{ USB_HUB_FEATURE_C_PORT_ENABLE, "C_PORT_ENABLE" },
-	{ USB_HUB_FEATURE_C_PORT_SUSPEND, "C_PORT_SUSPEND" },
+	{ USB_HUB_FEATURE_PORT_CONNECTION,     "PORT_CONNECTION" },
+	{ USB_HUB_FEATURE_PORT_ENABLE,	       "PORT_ENABLE" },
+	{ USB_HUB_FEATURE_PORT_SUSPEND,	       "PORT_SUSPEND" },
+	{ USB_HUB_FEATURE_PORT_OVER_CURRENT,   "PORT_OVER_CURRENT" },
+	{ USB_HUB_FEATURE_PORT_RESET,	       "PORT_RESET" },
+	{ USB_HUB_FEATURE_PORT_POWER,	       "PORT_POWER" },
+	{ USB_HUB_FEATURE_PORT_LOW_SPEED,      "PORT_LOW_SPEED" },
+	{ USB_HUB_FEATURE_C_PORT_CONNECTION,   "C_PORT_CONNECTION" },
+	{ USB_HUB_FEATURE_C_PORT_ENABLE,       "C_PORT_ENABLE" },
+	{ USB_HUB_FEATURE_C_PORT_SUSPEND,      "C_PORT_SUSPEND" },
 	{ USB_HUB_FEATURE_C_PORT_OVER_CURRENT, "C_PORT_OVER_CURRENT" },
-	{ USB_HUB_FEATURE_C_PORT_RESET, "C_PORT_RESET" },
-	{ USB_HUB_FEATURE_PORT_TEST, "PORT_TEST" },
-	{ USB_HUB_FEATURE_PORT_INDICATOR, "PORT_INDICATOR" },
+	{ USB_HUB_FEATURE_C_PORT_RESET,	       "C_PORT_RESET" },
+	{ USB_HUB_FEATURE_PORT_TEST,	       "PORT_TEST" },
+	{ USB_HUB_FEATURE_PORT_INDICATOR,      "PORT_INDICATOR" },
 	{ 0, NULL }
 };
 
@@ -606,7 +605,7 @@ static const usb_setup_dissector_table_t setup_dissectors[] = {
 
 /* Dissector for USB HUB class-specific control request as defined in
  * USB 2.0, Chapter 11.24.2 Class-specific Requests
- * Returns tvb_length(tvb) if a class specific dissector was found
+ * Returns tvb_captured_length(tvb) if a class specific dissector was found
  * and 0 otherwise.
  */
 static gint
@@ -657,7 +656,7 @@ dissect_usb_hub_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, voi
 	}
 
 	dissector(pinfo, tree, tvb, offset, is_request, usb_trans_info, usb_conv_info);
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 void
@@ -827,3 +826,16 @@ proto_reg_handoff_usb_hub(void)
 	dissector_add_uint("usb.control", IF_CLASS_HUB, usb_hub_control_handle);
 	dissector_add_uint("usb.control", IF_CLASS_UNKNOWN, usb_hub_control_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

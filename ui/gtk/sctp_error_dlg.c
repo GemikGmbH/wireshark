@@ -24,17 +24,12 @@
 
 #include <gtk/gtk.h>
 
-#include "wsutil/filesystem.h"
 
-#include "../globals.h"
 #include "ui/simple_dialog.h"
 
-#include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/main.h"
-#include "ui/tap-sctp-analysis.h"
 #include "ui/gtk/sctp_stat_gtk.h"
-#include "ui/gtk/gui_utils.h"
 #include "ui/gtk/stock_icons.h"
 
 static GtkWidget *sctp_error_dlg=NULL;
@@ -154,16 +149,16 @@ GtkWidget *create_list(void)
 
 static void add_to_clist(sctp_error_info_t* errinfo)
 {
-    GtkListStore *list_store = NULL;
-    GtkTreeIter  iter;
+	GtkListStore *list_store = NULL;
+	GtkTreeIter  iter;
 
-    list_store = GTK_LIST_STORE(gtk_tree_view_get_model(GTK_TREE_VIEW (clist))); /* Get store */
+	list_store = GTK_LIST_STORE(gtk_tree_view_get_model(GTK_TREE_VIEW (clist))); /* Get store */
 
-    gtk_list_store_insert_with_values( list_store , &iter, G_MAXINT,
-		FRAME_COLUMN,			errinfo->frame_number,
-		TEXT_COLUMN,			errinfo->chunk_info,
-		INFO_COLUMN,			errinfo->info_text,
-         -1);
+	gtk_list_store_insert_with_values( list_store , &iter, G_MAXINT,
+					   FRAME_COLUMN, errinfo->frame_number,
+					   TEXT_COLUMN,  errinfo->chunk_info,
+					   INFO_COLUMN,	 errinfo->info_text,
+					   -1);
 }
 
 static void
@@ -300,3 +295,16 @@ void sctp_error_dlg_show(sctp_assoc_info_t* assoc)
 		simple_dialog(ESD_TYPE_ERROR, ESD_BTN_OK,
 		    "No errors found.");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

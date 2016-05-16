@@ -36,6 +36,7 @@
 #include "packet-gsm_a_common.h"
 #include "lapd_sapi.h"
 #include <epan/prefs.h>
+#include <epan/expert.h>
 
 #include "packet-rtp.h"
 #include "packet-rtcp.h"
@@ -133,7 +134,20 @@ static int hf_rsl_cstat_rx_octs        = -1;
 static int hf_rsl_cstat_lost_pkts      = -1;
 static int hf_rsl_cstat_ia_jitter      = -1;
 static int hf_rsl_cstat_avg_tx_dly     = -1;
-
+/* Generated from convert_proto_tree_add_text.pl */
+static int hf_rsl_channel_description_tag = -1;
+static int hf_rsl_mobile_allocation_tag = -1;
+static int hf_rsl_no_resources_required = -1;
+static int hf_rsl_llsdu_ccch = -1;
+static int hf_rsl_llsdu_sacch = -1;
+static int hf_rsl_llsdu = -1;
+static int hf_rsl_rach_supplementary_information = -1;
+static int hf_rsl_full_immediate_assign_info_field = -1;
+static int hf_rsl_layer_3_message = -1;
+static int hf_rsl_descriptive_group_or_broadcast_call_reference = -1;
+static int hf_rsl_group_channel_description = -1;
+static int hf_rsl_uic = -1;
+static int hf_rsl_codec_list = -1;
 
 /* Initialize the subtree pointers */
 static int ett_rsl = -1;
@@ -199,6 +213,10 @@ static int ett_ie_local_port = -1;
 static int ett_ie_local_ip = -1;
 static int ett_ie_rtp_payload = -1;
 
+/* Generated from convert_proto_tree_add_text.pl */
+static expert_field ei_rsl_speech_or_data_indicator = EI_INIT;
+static expert_field ei_rsl_facility_information_element_3gpp_ts_44071 = EI_INIT;
+static expert_field ei_rsl_embedded_message_tfo_configuration = EI_INIT;
 
 static proto_tree *top_tree;
 static dissector_handle_t gsm_cbch_handle;
@@ -660,7 +678,7 @@ struct tlv_def {
 };
 
 struct tlv_definition {
-    struct tlv_def def[0xff];
+    struct tlv_def def[0x100];
 };
 
 /* This structure is initialized in proto_register_rsl() */
@@ -670,19 +688,16 @@ static struct tlv_definition rsl_att_tlvdef;
 static int
 dissect_rsl_ie_ch_no(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CH_NO)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"Channel number IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ch_no);
-
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_ch_no, NULL, "Channel number IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -716,25 +731,23 @@ static const value_string rsl_prio_vals[] = {
 static int
 dissect_rsl_ie_link_id(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      octet;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_LINK_ID)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2, "Link Identifier IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_link_id);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_link_id, NULL, "Link Identifier IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
 
-    octet = tvb_get_guint8(tvb,offset);
+    octet = tvb_get_guint8(tvb, offset);
 
     if ((octet & 0x20) == 0x20) {
         /* Not applicable */
@@ -790,20 +803,17 @@ static const true_false_string rsl_a1_2_vals = {
 static int
 dissect_rsl_ie_act_type(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
     guint       octet;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_ACT_TYPE)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"Activation Type IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_act_type);
-
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_act_type, NULL, "Activation Type IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -815,7 +825,7 @@ dissect_rsl_ie_act_type(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
     /* The A-bits indicate the type of activation, which defines the access procedure
      * and the operation of the data link layer
      */
-    octet = (tvb_get_guint8(tvb,offset) & 0x06) >> 1;
+    octet = (tvb_get_guint8(tvb, offset) & 0x06) >> 1;
     proto_tree_add_item(ie_tree, hf_rsl_a3a2, tvb, offset, 1, ENC_BIG_ENDIAN);
     switch (octet) {
     case 0:
@@ -875,18 +885,16 @@ static value_string_ext rsl_rlm_bs_power_vals_ext = VALUE_STRING_EXT_INIT(rsl_rl
 static int
 dissect_rsl_ie_bs_power(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_BS_POW)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"BS Power IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_bs_power);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_bs_power, NULL, "BS Power IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -920,13 +928,12 @@ dissect_rsl_ie_ch_id(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, in
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CH_ID)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Channel Identification IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ch_id);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_ch_id, &ti, "Channel Identification IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -944,14 +951,14 @@ dissect_rsl_ie_ch_id(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, in
      * length should be included.
      * XXX Hmm a type 3 IE (TV).
      */
-    proto_tree_add_text(ie_tree, tvb,offset, 1, "Channel Description Tag");
+    proto_tree_add_item(ie_tree, hf_rsl_channel_description_tag, tvb, offset, 1, ENC_NA);
     de_rr_ch_dsc(tvb, ie_tree, pinfo, offset+1, length, NULL, 0);
     offset += 4;
     /*
      * The 3GPP TS 24.008 "Mobile Allocation" shall for compatibility reasons be
      * included but empty, i.e. the length shall be zero.
      */
-    proto_tree_add_text(ie_tree, tvb,offset,2,"Mobile Allocation Tag+Length(0)");
+    proto_tree_add_item(ie_tree, hf_rsl_mobile_allocation_tag, tvb, offset, 2, ENC_NA);
     return ie_offset + length;
 }
 /*
@@ -1038,13 +1045,12 @@ dissect_rsl_ie_ch_mode(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
     guint8      octet;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CH_MODE)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Channel Mode IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ch_mode);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_ch_mode, &ti, "Channel Mode IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1065,7 +1071,7 @@ dissect_rsl_ie_ch_mode(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
     offset++;
     /* The "Speech or data indicator" field (octet 4) */
     proto_tree_add_item(ie_tree, hf_rsl_speech_or_data, tvb, offset, 1, ENC_BIG_ENDIAN);
-    octet = tvb_get_guint8(tvb,offset);
+    octet = tvb_get_guint8(tvb, offset);
     offset++;
     /* Channel rate and type */
     proto_tree_add_item(ie_tree, hf_rsl_ch_rate_and_type, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1080,7 +1086,7 @@ dissect_rsl_ie_ch_mode(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
         /* Data */
         proto_tree_add_item(ie_tree, hf_rsl_extension_bit, tvb, offset, 1, ENC_BIG_ENDIAN);
         proto_tree_add_item(ie_tree, hf_rsl_t_nt_bit, tvb, offset, 1, ENC_BIG_ENDIAN);
-        octet = tvb_get_guint8(tvb,offset);
+        octet = tvb_get_guint8(tvb, offset);
         if ((octet & 0x40) == 0x40) {
             /* Non-transparent service */
             /* For the non-transparent service, bits 6 to 1 indicate the radio interface data rate:*/
@@ -1095,11 +1101,11 @@ dissect_rsl_ie_ch_mode(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
          * If octet 4 indicates signalling then octet 6 is coded as follows:
          * 0000 0000 No resources required
          */
-        proto_tree_add_text(ie_tree, tvb,offset,1,"0 No resources required(All other values are reserved)");
+        proto_tree_add_item(ie_tree, hf_rsl_no_resources_required, tvb, offset, 1, ENC_NA);
         break;
     default:
         /* Should not happen */
-        proto_tree_add_text(ie_tree, tvb,offset,1,"Speech or data indicator != 1,2 or 3");
+        proto_tree_add_expert(ie_tree, pinfo, &ei_rsl_speech_or_data_indicator, tvb, offset, 1);
         break;
     }
 
@@ -1135,13 +1141,12 @@ dissect_rsl_ie_enc_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_ENC_INF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Encryption information IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_enc_inf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_enc_inf, &ti, "Encryption information IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1167,18 +1172,16 @@ dissect_rsl_ie_enc_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
 static int
 dissect_rsl_ie_frame_no(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_FRAME_NO)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,3,"Frame Number IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_frame_no);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 3, ett_ie_frame_no, NULL, "Frame Number IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1199,18 +1202,16 @@ dissect_rsl_ie_frame_no(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
 static int
 dissect_rsl_ie_ho_ref(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_HO_REF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"Handover reference IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ho_ref);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_ho_ref, NULL, "Handover reference IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1230,18 +1231,16 @@ dissect_rsl_ie_ho_ref(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, i
 static int
 dissect_rsl_ie_l1_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_L1_INF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset, 3,"L1 Information IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_l1_inf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 3, ett_ie_l1_inf, NULL, "L1 Information IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1285,13 +1284,12 @@ dissect_rsl_ie_L3_inf(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int o
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_L3_INF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"L3 Information IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_L3_inf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_L3_inf, &ti, "L3 Information IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1305,15 +1303,15 @@ dissect_rsl_ie_L3_inf(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int o
     if (type == L3_INF_CCCH)
     {
        /* L3 PDUs carried on CCCH have L2 PSEUDO LENGTH octet or are RR Short PD format */
-       proto_tree_add_text(ie_tree, tvb,offset,length,"Link Layer Service Data Unit (L3 Message)(CCCH)");
-       next_tvb = tvb_new_subset(tvb, offset, length, length);
+       proto_tree_add_item(ie_tree, hf_rsl_llsdu_ccch, tvb, offset, length, ENC_NA);
+       next_tvb = tvb_new_subset_length(tvb, offset, length);
        call_dissector(gsm_a_ccch_handle, next_tvb, pinfo, top_tree);
     }
     else if (type == L3_INF_SACCH)
     {
        /* L3 PDUs carried on SACCH are normal format or are RR Short PD format */
-       proto_tree_add_text(ie_tree, tvb,offset,length,"Link Layer Service Data Unit (L3 Message)(SACCH)");
-       next_tvb = tvb_new_subset(tvb, offset, length, length);
+       proto_tree_add_item(ie_tree, hf_rsl_llsdu_sacch, tvb, offset, length, ENC_NA);
+       next_tvb = tvb_new_subset_length(tvb, offset, length);
        call_dissector(gsm_a_sacch_handle, next_tvb, pinfo, top_tree);
     }
     else
@@ -1321,8 +1319,8 @@ dissect_rsl_ie_L3_inf(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int o
        /* Link Layer Service Data Unit (i.e. a layer 3 message
         * as defined in 3GPP TS 24.008 or 3GPP TS 44.018)
         */
-       proto_tree_add_text(ie_tree, tvb,offset,length,"Link Layer Service Data Unit (L3 Message)");
-       next_tvb = tvb_new_subset(tvb, offset, length, length);
+       proto_tree_add_item(ie_tree, hf_rsl_llsdu, tvb, offset, length, ENC_NA);
+       next_tvb = tvb_new_subset_length(tvb, offset, length);
        call_dissector(gsm_a_dtap_handle, next_tvb, pinfo, top_tree);
     }
 
@@ -1343,18 +1341,17 @@ dissect_rsl_ie_ms_id(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int of
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_MS_ID)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,0,"MS Identity IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ms_id);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_ms_id, &ti, "MS Identity IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -1376,18 +1373,16 @@ static const true_false_string rsl_ms_fpc_epc_mode_vals = {
 static int
 dissect_rsl_ie_ms_pow(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_MS_POW)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset, 2,"MS Power IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ms_pow);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_ms_pow, NULL, "MS Power IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1409,17 +1404,15 @@ dissect_rsl_ie_ms_pow(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, i
 static int
 dissect_rsl_ie_paging_grp(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_PAGING_GRP)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,2,"Paging Group IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_paging_grp);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_paging_grp, NULL, "Paging Group IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1441,17 +1434,15 @@ dissect_rsl_ie_paging_grp(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
 static int
 dissect_rsl_ie_paging_load(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_PAGING_LOAD)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,3,"Paging Load IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_paging_load);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 3, ett_ie_paging_load, NULL, "Paging Load IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1478,19 +1469,18 @@ dissect_rsl_ie_phy_ctx(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_PHY_CTX)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Physical Context IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_phy_ctx);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_phy_ctx, &ti, "Physical Context IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -1512,18 +1502,16 @@ dissect_rsl_ie_phy_ctx(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
 static int
 dissect_rsl_ie_access_delay(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_ACCESS_DELAY)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"Access Delay IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_access_delay);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_access_delay, NULL, "Access Delay IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1547,19 +1535,18 @@ dissect_rsl_ie_rach_load(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
     int         ie_offset;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_RACH_LOAD)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"RACH Load IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_rach_load);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_rach_load, &ti, "RACH Load IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -1585,7 +1572,7 @@ dissect_rsl_ie_rach_load(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
 
     /* Supplementary Information */
     if ( length > 0) {
-        proto_tree_add_text(ie_tree, tvb, offset,length ,"Supplementary Information");
+        proto_tree_add_item(ie_tree, hf_rsl_rach_supplementary_information, tvb, offset, length, ENC_NA);
     }
     offset = ie_offset + length;
 
@@ -1598,18 +1585,16 @@ dissect_rsl_ie_rach_load(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
 static int
 dissect_rsl_ie_req_ref(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_REQ_REF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,4,"Request Reference IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_req_ref);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 4, ett_ie_req_ref, NULL, "Request Reference IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1636,18 +1621,16 @@ static const value_string rel_mode_vals[] = {
 static int
 dissect_rsl_ie_rel_mode(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_REL_MODE)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,4,"Release Mode IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_rel_mode);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 4, ett_ie_rel_mode, NULL, "Release Mode IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1696,20 +1679,19 @@ dissect_rsl_ie_resource_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *t
     int         ie_offset;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_RESOURCE_INF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Resource Information IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_resource_inf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_resource_inf, &ti, "Resource Information IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
 
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
 
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1750,19 +1732,18 @@ dissect_rsl_ie_rlm_cause(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_RLM_CAUSE)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"RLM Cause IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_rlm_cause);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_rlm_cause, &ti, "RLM Cause IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
 
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1772,7 +1753,7 @@ dissect_rsl_ie_rlm_cause(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
      * If the extension bit is set to 1, the Cause Value is a two octet field.
      */
         /* XXX: Code doesn't reflect the comment above ?? */
-    /* octet = tvb_get_guint8(tvb,offset); */
+    /* octet = tvb_get_guint8(tvb, offset); */
     proto_tree_add_item(tree, hf_rsl_extension_bit, tvb, offset, 1, ENC_BIG_ENDIAN);
     proto_tree_add_item(ie_tree, hf_rsl_cause, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -1786,18 +1767,16 @@ dissect_rsl_ie_rlm_cause(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
 static int
 dissect_rsl_ie_starting_time(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_STARTING_TIME)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,3,"Starting Time IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_staring_time);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 3, ett_ie_staring_time, NULL, "Starting Time IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1818,18 +1797,16 @@ dissect_rsl_ie_starting_time(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *
 static int
 dissect_rsl_ie_timing_adv(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_TIMING_ADV)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"Timing Advance IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_timing_adv);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_timing_adv, NULL, "Timing Advance IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1859,20 +1836,19 @@ dissect_rsl_ie_uplik_meas(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_UPLINK_MEAS)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Uplink Measurements IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_uplink_meas);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_uplink_meas, &ti, "Uplink Measurements IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
 
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
 
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1933,26 +1909,25 @@ dissect_rsl_ie_cause(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, in
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CAUSE)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Cause IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_cause);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_cause, &ti, "Cause IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     ie_offset = offset;
 
     /* Cause Value */
-    octet = tvb_get_guint8(tvb,offset);
+    octet = tvb_get_guint8(tvb, offset);
     proto_tree_add_item(tree, hf_rsl_extension_bit, tvb, offset, 1, ENC_BIG_ENDIAN);
     proto_tree_add_item(tree, hf_rsl_class, tvb, offset, 1, ENC_BIG_ENDIAN);
     if ((octet & 0x80) == 0x80)
@@ -1969,18 +1944,16 @@ dissect_rsl_ie_cause(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, in
 static int
 dissect_rsl_ie_meas_res_no(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_MEAS_RES_NO)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"Measurement result number IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_meas_res_no);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_meas_res_no, NULL, "Measurement result number IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -1998,18 +1971,16 @@ dissect_rsl_ie_meas_res_no(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tr
 static int
 dissect_rsl_ie_message_id(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_MESSAGE_ID)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Message Identifier IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_message_id);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_message_id, NULL, "Message Identifier IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2055,20 +2026,18 @@ static int
 dissect_rsl_ie_sys_info_type(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset,
                              gboolean is_mandatory, guint8 *sys_info_type)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_SYS_INFO_TYPE) {
             *sys_info_type = 0xff;
             return offset;
         }
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"System Info Type IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_sys_info_type);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_sys_info_type, NULL, "System Info Type IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2095,19 +2064,18 @@ dissect_rsl_ie_full_imm_ass_inf(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_FULL_IMM_ASS_INF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Full Immediate Assign Info IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_full_imm_ass_inf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_full_imm_ass_inf, &ti, "Full Immediate Assign Info IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
 
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2117,8 +2085,8 @@ dissect_rsl_ie_full_imm_ass_inf(tvbuff_t *tvb, packet_info *pinfo, proto_tree *t
      * IMMEDIATE ASSIGNMENT EXTENDED or IMMEDIATE ASSIGNMENT REJECT)
      * as defined in 3GPP TS 44.018.
      */
-    proto_tree_add_text(ie_tree, tvb,offset,length,"Full Immediate Assign Info field");
-    next_tvb = tvb_new_subset(tvb, offset, length, length);
+    proto_tree_add_item(ie_tree, hf_rsl_full_immediate_assign_info_field, tvb, offset, length, ENC_NA);
+    next_tvb = tvb_new_subset_length(tvb, offset, length);
     call_dissector(gsm_a_ccch_handle, next_tvb, pinfo, top_tree);
 
     offset = offset + length;
@@ -2143,19 +2111,18 @@ dissect_rsl_ie_smscb_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_SMSCB_INF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"SMSCB Information IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_smscb_inf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_smscb_inf, &ti, "SMSCB Information IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
 
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2163,7 +2130,7 @@ dissect_rsl_ie_smscb_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
     /*
      * SMSCB frame
      */
-    next_tvb = tvb_new_subset(tvb, offset, length, length);
+    next_tvb = tvb_new_subset_length(tvb, offset, length);
     call_dissector(gsm_cbch_handle, next_tvb, pinfo, top_tree);
 
     offset = offset + length;
@@ -2178,18 +2145,16 @@ dissect_rsl_ie_smscb_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
 static int
 dissect_rsl_ie_ms_timing_offset(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_FULL_MS_TIMING_OFFSET)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"MS Timing Offset IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ms_timing_offset);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_ms_timing_offset, NULL, "MS Timing Offset IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2220,19 +2185,18 @@ dissect_rsl_ie_err_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int 
     guint       length;
     guint8      ie_id;
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_ERR_MSG)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Erroneous Message IE ");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_err_msg);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_err_msg, &ti, "Erroneous Message IE ");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
 
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2257,13 +2221,12 @@ dissect_rsl_ie_full_bcch_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_FULL_BCCH_INF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Full BCCH Information IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_full_bcch_inf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_full_bcch_inf, &ti, "Full BCCH Information IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2278,8 +2241,8 @@ dissect_rsl_ie_full_bcch_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *
      * Octets 3-25 contain the complete L3 message as defined in 3GPP TS 44.018.
      */
 
-    proto_tree_add_text(ie_tree, tvb,offset,length,"Layer 3 message");
-    next_tvb = tvb_new_subset(tvb, offset, length, length);
+    proto_tree_add_item(ie_tree, hf_rsl_layer_3_message, tvb, offset, length, ENC_NA);
+    next_tvb = tvb_new_subset_length(tvb, offset, length);
     call_dissector(gsm_a_ccch_handle, next_tvb, pinfo, top_tree);
 
     offset = offset + length;
@@ -2301,19 +2264,17 @@ static const value_string rsl_ch_needed_vals[] = {
 static int
 dissect_rsl_ie_ch_needed(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CH_NEEDED)
             return offset;
     }
 
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Channel Needed IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ch_needed);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_ch_needed, NULL, "Channel Needed IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2331,19 +2292,16 @@ dissect_rsl_ie_ch_needed(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree
 static int
 dissect_rsl_ie_cb_cmd_type(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CB_CMD_TYPE)
             return offset;
     }
 
-
-    ti = proto_tree_add_text(tree, tvb,offset,0,"CB Command type IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_cb_cmd_type);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_cb_cmd_type, NULL, "CB Command type IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2370,18 +2328,17 @@ dissect_rsl_ie_smscb_mess(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
     int         ie_offset;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_SMSCB_MESS)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,0,"SMSCB Message IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_smscb_mess);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_smscb_mess, &ti, "SMSCB Message IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -2391,7 +2348,7 @@ dissect_rsl_ie_smscb_mess(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
      * SMSCB Message
      */
 
-    next_tvb = tvb_new_subset(tvb, offset, length, length);
+    next_tvb = tvb_new_subset_length(tvb, offset, length);
     call_dissector(gsm_cbs_handle, next_tvb, pinfo, top_tree);
 
     offset = ie_offset + length;
@@ -2411,35 +2368,33 @@ static const true_false_string rsl_cbch_load_type_vals = {
 static int
 dissect_rsl_ie_cbch_load_inf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti, *item;
+    proto_item *item;
     proto_tree *ie_tree;
     guint8      ie_id;
     guint8      octet;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CBCH_LOAD_INF)
             return offset;
     }
 
-
-    ti = proto_tree_add_text(tree, tvb,offset,0,"CBCH Load Information IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_cbch_load_inf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_cbch_load_inf, NULL, "CBCH Load Information IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
 
-    octet = tvb_get_guint8(tvb,offset);
+    octet = tvb_get_guint8(tvb, offset);
     /* CBCH Load Type */
     proto_tree_add_item(ie_tree, hf_rsl_cbch_load_type, tvb, offset, 1, ENC_BIG_ENDIAN);
 
     /* Message Slot Count */
     item = proto_tree_add_item(ie_tree, hf_rsl_msg_slt_cnt, tvb, offset, 1, ENC_BIG_ENDIAN);
     if ((octet & 0x80) == 0x80) {
-        proto_item_append_text(item,"The amount of SMSCB messages (1 to 15) that are needed immediately by BTS");
+        proto_item_append_text(item, "The amount of SMSCB messages (1 to 15) that are needed immediately by BTS");
     }else{
-        proto_item_append_text(item,"The amount of delay in message slots (1 to 15) that is needed immediately by BTS");
+        proto_item_append_text(item, "The amount of delay in message slots (1 to 15) that is needed immediately by BTS");
     }
     offset++;
 
@@ -2459,19 +2414,16 @@ static const value_string rsl_ch_ind_vals[] = {
 static int
 dissect_rsl_ie_smscb_ch_ind(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_SMSCB_CH_IND)
             return offset;
     }
 
-
-    ti = proto_tree_add_text(tree, tvb,offset,0,"SMSCB Channel Indicator IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_smscb_ch_ind);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_smscb_ch_ind, NULL, "SMSCB Channel Indicator IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2496,23 +2448,22 @@ dissect_rsl_ie_grp_call_ref(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_GRP_CALL_REF)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Group call reference IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_grp_call_ref);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_grp_call_ref, &ti, "Group call reference IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
 
-    proto_tree_add_text(ie_tree, tvb,offset,length,"Descriptive group or broadcast call reference");
+    proto_tree_add_item(ie_tree, hf_rsl_descriptive_group_or_broadcast_call_reference, tvb, offset, length, ENC_NA);
 
     /* The octets 3 to 7 are coded in the same way as the octets 2 to 6
      * in the Descriptive group or broadcast call reference
@@ -2536,23 +2487,22 @@ dissect_rsl_ie_ch_desc(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CH_DESC)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Channel description IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_ch_desc);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_ch_desc, &ti, "Channel description IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
 
-    proto_tree_add_text(ie_tree, tvb,offset,length,"Group Channel Description");
+    proto_tree_add_item(ie_tree, hf_rsl_group_channel_description, tvb, offset, length, ENC_NA);
 
     /* Octet j (j = 3, 4, ..., n) is the unchanged octet j-2 of a radio interface Group Channel description
      * information element as defined in 3GPP TS 44.018, n-2 is equal to the length of the radio interface
@@ -2571,18 +2521,16 @@ dissect_rsl_ie_ch_desc(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
 static int
 dissect_rsl_ie_nch_drx(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_NCH_DRX_INF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"NCH DRX information IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_nch_drx);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_nch_drx, NULL, "NCH DRX information IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2608,21 +2556,19 @@ dissect_rsl_ie_nch_drx(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
 static int
 dissect_rsl_ie_cmd_ind(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
     guint8      octet;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CMD_IND)
             return offset;
     }
 
 
     /* TODO Length wrong if extended */
-    ti = proto_tree_add_text(tree, tvb,offset,2,"Command indicator IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_cmd_ind);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_cmd_ind, NULL, "Command indicator IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2633,7 +2579,7 @@ dissect_rsl_ie_cmd_ind(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, 
 
 
     /* TODO this should probably be add_uint instead!!! */
-    octet = tvb_get_guint8(tvb,offset);
+    octet = tvb_get_guint8(tvb, offset);
     if ((octet & 0x80) == 0x80) {
         /* extended */
         /* Command Extension */
@@ -2665,18 +2611,16 @@ static const value_string rsl_emlpp_prio_vals[] = {
 static int
 dissect_rsl_ie_emlpp_prio(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_EMLPP_PRIO)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,2,"eMLPP Priority IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_emlpp_prio);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_emlpp_prio, NULL, "eMLPP Priority IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2699,18 +2643,16 @@ dissect_rsl_ie_emlpp_prio(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
 static int
 dissect_rsl_ie_uic(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_UIC)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"UIC IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_uic);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_uic, NULL, "UIC IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2719,7 +2661,7 @@ dissect_rsl_ie_uic(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int 
     /* Octet 3 bits 1 to 6 contain the radio interface octet 2 bits 3 to 8 of the
      * UIC information element as defined in 3GPP TS 44.018.
      */
-    proto_tree_add_text(ie_tree, tvb,offset,1,"UIC");
+    proto_tree_add_item(ie_tree, hf_rsl_uic, tvb, offset, 1, ENC_NA);
     offset++;
 
     return offset;
@@ -2732,18 +2674,16 @@ dissect_rsl_ie_uic(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int 
 static int
 dissect_rsl_ie_main_ch_ref(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_MAIN_CH_REF)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Main channel reference IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_main_ch_ref);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_main_ch_ref, NULL, "Main channel reference IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2770,18 +2710,17 @@ dissect_rsl_ie_multirate_conf(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_MULTIRATE_CONF)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,0,"MultiRate configuration IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_multirate_conf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_multirate_conf, &ti, "MultiRate configuration IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -2803,17 +2742,15 @@ dissect_rsl_ie_multirate_conf(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
 static int
 dissect_rsl_ie_multirate_cntrl(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_MULTIRATE_CNTRL)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,2,"MultiRate Control IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_multirate_cntrl);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 2, ett_ie_multirate_cntrl, NULL, "MultiRate Control IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2843,23 +2780,22 @@ dissect_rsl_ie_sup_codec_types(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_SUP_CODEC_TYPES)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Supported Codec Types IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_sup_codec_types);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_sup_codec_types, &ti, "Supported Codec Types IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
 
-    proto_tree_add_text(tree, tvb,offset,length,"Codec List");
+    proto_tree_add_item(tree, hf_rsl_codec_list, tvb, offset, length, ENC_NA);
 
     /* The Codec List field (octet 4) lists the codec types that are supported
      * by the BSS and Transcoder, and are therefore potential candidates for TFO
@@ -2911,18 +2847,17 @@ dissect_rsl_ie_codec_conf(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_CODEC_CONF)
             return offset;
     }
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Codec Configuration IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_codec_conf);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_codec_conf, &ti, "Codec Configuration IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
     /* Length */
-    length = tvb_get_guint8(tvb,offset);
+    length = tvb_get_guint8(tvb, offset);
     proto_item_set_len(ti, length+2);
     proto_tree_add_item(ie_tree, hf_rsl_ie_length, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset++;
@@ -2946,19 +2881,18 @@ static const value_string rsl_delay_ind_vals[] = {
 static int
 dissect_rsl_ie_rtd(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti, *rtd_item;
+    proto_item *rtd_item;
     proto_tree *ie_tree;
     guint8      ie_id;
     guint8      rtd;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_RTD)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"Round Trip Delay IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_rtd);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_rtd, NULL, "Round Trip Delay IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -2967,9 +2901,9 @@ dissect_rsl_ie_rtd(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int 
     /* The RTD field is the binary representation of the value of the
      * round trip delay in 20 ms increments.
      */
-    rtd = (tvb_get_guint8(tvb,offset)>>1)*20;
-    rtd_item = proto_tree_add_uint(tree, hf_rsl_rtd, tvb,offset,1,rtd);
-    proto_item_append_text(rtd_item," ms");
+    rtd = (tvb_get_guint8(tvb, offset)>>1)*20;
+    rtd_item = proto_tree_add_uint(tree, hf_rsl_rtd, tvb, offset, 1, rtd);
+    proto_item_append_text(rtd_item, " ms");
 
     /* The Delay IND field indicates if the delay corresponds to a BTS
      * to transcoder delay or to a BTS to remote BTS delay.
@@ -2992,18 +2926,16 @@ static const true_false_string rsl_tfo_vals = {
 static int
 dissect_rsl_ie_tfo_status(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, int offset, gboolean is_mandatory)
 {
-    proto_item *ti;
     proto_tree *ie_tree;
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_TFO_STATUS)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"TFO Status IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_tfo_status);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_tfo_status, NULL, "TFO Status IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -3027,13 +2959,12 @@ dissect_rsl_ie_llp_apdu(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_LLP_APDU)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"LLP APDU IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_llp_apdu);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_llp_apdu, &ti, "LLP APDU IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -3052,8 +2983,7 @@ dissect_rsl_ie_llp_apdu(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree,
      * octets defined in 3GPP TS 44.071.
      */
     /* TODO: Given traces with LLP data this IE could be further dissected */
-    proto_tree_add_text(tree, tvb,offset,length,
-        "Facility Information Element as defined in 3GPP TS 44.071");
+    proto_tree_add_expert(tree, pinfo, &ei_rsl_facility_information_element_3gpp_ts_44071, tvb, offset, length);
     return ie_offset + length;
 }
 /*
@@ -3073,13 +3003,12 @@ dissect_rsl_ie_tfo_transp_cont(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
     guint8      ie_id;
 
     if (is_mandatory == FALSE) {
-        ie_id = tvb_get_guint8(tvb,offset);
+        ie_id = tvb_get_guint8(tvb, offset);
         if (ie_id != RSL_IE_TFO_TRANSP_CONT)
             return offset;
     }
 
-    ti = proto_tree_add_text(tree, tvb,offset,0,"TFO transparent container IE");
-    ie_tree = proto_item_add_subtree(ti, ett_ie_tfo_transp_cont);
+    ie_tree = proto_tree_add_subtree(tree, tvb, offset, 0, ett_ie_tfo_transp_cont, &ti, "TFO transparent container IE");
 
     /* Element identifier */
     proto_tree_add_item(ie_tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -3097,8 +3026,7 @@ dissect_rsl_ie_tfo_transp_cont(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree
      * 3GPP TS 44.071 excluding the Facility IEI and length of Facility IEI
      * octets defined in 3GPP TS 44.071.
      */
-    proto_tree_add_text(tree, tvb,offset,length,
-        "Embedded message that contains the TFO configuration");
+    proto_tree_add_expert(tree, pinfo, &ei_rsl_embedded_message_tfo_configuration, tvb, offset, length);
     return ie_offset + length;
 }
 
@@ -3148,8 +3076,7 @@ dissct_rsl_ipaccess_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int
             break;
         case TLV_TYPE_UNKNOWN:
         default:
-            DISSECTOR_ASSERT_NOT_REACHED();
-            break;
+            return tvb_reported_length(tvb);
         }
 
         ti = proto_tree_add_item(tree, hf_rsl_ie_id, tvb, offset, 1, ENC_BIG_ENDIAN);
@@ -3246,7 +3173,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
     guint8 msg_disc, msg_type, sys_info_type;
 
     msg_disc = tvb_get_guint8(tvb, offset++) >> 1;
-    msg_type = tvb_get_guint8(tvb,offset) & 0x7f;
+    msg_type = tvb_get_guint8(tvb, offset) & 0x7f;
     proto_tree_add_item(tree, hf_rsl_msg_type, tvb, offset, 1, ENC_BIG_ENDIAN);
 
     if (msg_disc == RSL_MSGDISC_IPACCESS) {
@@ -3305,7 +3232,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /*  Link Identifier         9.3.2   M TV 2               */
         offset = dissect_rsl_ie_link_id(tvb, pinfo, tree, offset, TRUE);
         /*  L3 Information          9.3.11  O (note 1) TLV 3-23  */
-        if (tvb_length_remaining(tvb,offset) >1)
+        if (tvb_reported_length_remaining(tvb, offset) >1)
             offset = dissect_rsl_ie_L3_inf(tvb, pinfo, tree, offset, FALSE, L3_INF_OTHER);
         break;
     /* 8.3.7 RELEASE REQUEST */
@@ -3338,7 +3265,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /*  Link Identifier         9.3.2   M TV 2               */
         offset = dissect_rsl_ie_link_id(tvb, pinfo, tree, offset, TRUE);
         /*  L3 Information          9.3.11  O (note 1) TLV 3-23  */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_L3_inf(tvb, pinfo, tree, offset, FALSE, L3_INF_OTHER);
         break;
 /* Common Channel Management/TRX Management messages */
@@ -3349,10 +3276,10 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /*  System Info Type        9.3.30  M TV 2 */
         offset = dissect_rsl_ie_sys_info_type(tvb, pinfo, tree, offset, TRUE, &sys_info_type);
         /*  Full BCCH Info (SYS INFO) 9.3.39 O 1) TLV 25 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_full_bcch_inf(tvb, pinfo, tree, offset, TRUE);
         /*  Starting Time           9.3.23  O 2) TV 3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_starting_time(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.5.2 CCCH LOAD INDICATION 18*/
@@ -3363,7 +3290,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /*  RACH Load               9.3.18  C 1) TLV >=8 */
         offset = dissect_rsl_ie_rach_load(tvb, pinfo, tree, offset, FALSE);
         /*  Paging Load             9.3.15  C 2) TV 3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_paging_load(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.5.3 */
@@ -3375,7 +3302,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Access Delay             9.3.17  M TV 2 */
         offset = dissect_rsl_ie_access_delay(tvb, pinfo, tree, offset, TRUE);
         /* Physical Context         9.3.16  O 1) TLV >=2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_phy_ctx(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.5.4 DELETE INDICATION */
@@ -3393,10 +3320,10 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* MS Identity              9.3.12  M TLV 2-10 2 */
         offset = dissect_rsl_ie_ms_id(tvb, pinfo, tree, offset, TRUE);
         /* Channel Needed           9.3.40  O 1) TV 2 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_ch_needed(tvb, pinfo, tree, offset, FALSE);
         /* eMLPP Priority           9.3.49  O 2) TV 2 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_emlpp_prio(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.5.6 IMMEDIATE ASSIGN COMMAND */
@@ -3413,7 +3340,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* SMSCB Information        9.3.36  M TV 24 */
         offset = dissect_rsl_ie_smscb_inf(tvb, pinfo, tree, offset, TRUE);
         /* SMSCB Channel Indicator  9.3.44  O 1) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_smscb_ch_ind(tvb, pinfo, tree, offset, FALSE);
         break;
 /* 8.6 TRX MANAGEMENT MESSAGES */
@@ -3427,11 +3354,11 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* System Info Type         9.3.30  M TV 2 */
         offset = dissect_rsl_ie_sys_info_type(tvb, pinfo, tree, offset, TRUE, &sys_info_type);
         /* L3 Info (SYS INFO)       9.3.11 O 1) TLV 22 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
            offset = dissect_rsl_ie_L3_inf(tvb, pinfo, tree, offset, FALSE,
                                           (sys_info_type == 0x48) ? L3_INF_SACCH : L3_INF_OTHER);
         /* Starting Time            9.3.23 O 2) TV 3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_starting_time(tvb, pinfo, tree, offset, FALSE);
         break;
     case RSL_MSG_OVERLOAD:      /*  27   8.6.3 */
@@ -3442,16 +3369,16 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Cause                    9.3.26  M TLV >=3 */
         offset = dissect_rsl_ie_cause(tvb, pinfo, tree, offset, TRUE);
         /* Message Identifier       9.3.28  O 1) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_message_id(tvb, pinfo, tree, offset, FALSE);
         /* Channel Number           9.3.1   O 2) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         /* Link identifier          9.3.2   O 3) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_link_id(tvb, pinfo, tree, offset, TRUE);
         /* Erroneous Message        9.3.38  O 4) TLV >=3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_err_msg(tvb, pinfo, tree, offset, TRUE);
         break;
     /* 8.5.8 SMS BROADCAST COMMAND */
@@ -3463,7 +3390,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* SMSCB message            9.3.42  M TLV 2-90 */
         offset = dissect_rsl_ie_smscb_mess(tvb, pinfo, tree, offset, TRUE);
         /* SMSCB Channel Indicator  9.3.44  O 1) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_smscb_ch_ind(tvb, pinfo, tree, offset, FALSE);
         break;
     case RSL_MSG_CBCH_LOAD_IND: /*  30   8.5.9 */
@@ -3472,7 +3399,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* CBCH Load Information    9.3.43  M TV 2 */
         offset = dissect_rsl_ie_cbch_load_inf(tvb, pinfo, tree, offset, TRUE);
         /* SMSCB Channel Indicator  9.3.44 O 1) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_smscb_ch_ind(tvb, pinfo, tree, offset, FALSE);
         break;
     case RSL_MSG_NOT_CMD:       /*  31   8.5.10 */
@@ -3481,13 +3408,13 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Command indicator        9.3.48 M 1) TLV 3-4 */
         offset = dissect_rsl_ie_cmd_ind(tvb, pinfo, tree, offset, TRUE);
         /* Group call reference     9.3.45 O TLV 7 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_grp_call_ref(tvb, pinfo, tree, offset, FALSE);
         /* Channel Description      9.3.46 O TLV 3-n */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_ch_desc(tvb, pinfo, tree, offset, FALSE);
         /* NCH DRX information      9.3.47 O TLV 3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_nch_drx(tvb, pinfo, tree, offset, FALSE);
         break;
 
@@ -3501,46 +3428,46 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Channel Mode             9.3.6   M TLV 8-9       */
         offset = dissect_rsl_ie_ch_mode(tvb, pinfo, tree, offset, TRUE);
         /* Channel Identification   9.3.5   O 7) TLV 8      */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_ch_id(tvb, pinfo, tree, offset, FALSE);
         /* Encryption information   9.3.7   O 1) TLV >=3    */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_enc_inf(tvb, pinfo, tree, offset, FALSE);
         /* Handover Reference       9.3.9   C 2) TV 2       */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_ho_ref(tvb, pinfo, tree, offset, FALSE);
         /* BS Power                 9.3.4   O 3) TV 2       */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_bs_power(tvb, pinfo, tree, offset, FALSE);
         /* MS Power                 9.3.13  O 3) TV 2       */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_ms_pow(tvb, pinfo, tree, offset, FALSE);
         /* Timing Advance           9.3.24  C 3) 4) TV 2    */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_timing_adv(tvb, pinfo, tree, offset, FALSE);
         /* BS Power Parameters      9.3.32  O 5) TLV >=2    */
         /* MS Power Parameters      9.3.31  O 5) TLV >=2    */
         /* Physical Context         9.3.16  O 6) TLV >=2    */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_phy_ctx(tvb, pinfo, tree, offset, FALSE);
         /* SACCH Information        9.3.29  O 8) TLV >=3    */
         /* UIC                      9.3.50  O 9) TLV 3      */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_uic(tvb, pinfo, tree, offset, FALSE);
         /* Main channel reference   9.3.51  O 10) TV 2      */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_main_ch_ref(tvb, pinfo, tree, offset, FALSE);
         /* MultiRate configuration  9.3.52  O 11) TLV >=4   */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_multirate_conf(tvb, pinfo, tree, offset, FALSE);
         /* MultiRate Control        9.3.53  O 12) TV 2      */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_multirate_cntrl(tvb, pinfo, tree, offset, FALSE);
             /* Supported Codec Types    9.3.54  O 12) TLV >=5   */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_sup_codec_types(tvb, pinfo, tree, offset, FALSE);
         /* TFO transparent container 9.3.59 O 12) TLV >=3   */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_tfo_transp_cont(tvb, pinfo, tree, offset, FALSE);
         break;
 
@@ -3586,7 +3513,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Channel number           9.3.1   M TV 2          */
         offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         /* Access Delay             9.3.17 O 1) TV 2        */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_access_delay(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.4.8 MEASUREMENT RESULT 40 */
@@ -3600,10 +3527,10 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* BS Power                 9.3.4   M TV 2          */
         offset = dissect_rsl_ie_bs_power(tvb, pinfo, tree, offset, TRUE);
         /* L1 Information           9.3.10 O 1) TV 3        */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_l1_inf(tvb, pinfo, tree, offset, FALSE);
         /* L3 Info (MEAS REP, EXT MEAS REP or ENH MEAS REP) 9.3.11 O 1) TLV 21 */
-        if (tvb_length_remaining(tvb,offset) > 0){
+        if (tvb_reported_length_remaining(tvb, offset) > 0){
             /* Try to figure out of we have (MEAS REP, EXT MEAS REP or ENH MEAS REP) */
             if ( ( tvb_get_guint8(tvb, offset+3) & 0xFE ) == 0x10 ) {
                 /* ENH MEAS REP */
@@ -3613,7 +3540,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
             }
         }
         /* MS Timing Offset         9.3.37 O 2) TV 2        */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_ms_timing_offset(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.4.9 MODE MODIFY */
@@ -3623,22 +3550,22 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Channel Mode             9.3.6 M TLV 8-9 */
         offset = dissect_rsl_ie_ch_mode(tvb, pinfo, tree, offset, TRUE);
         /* Encryption information   9.3.7 O 1) TLV >=3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_enc_inf(tvb, pinfo, tree, offset, FALSE);
         /* Main channel reference   9.3.45 O 2) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_main_ch_ref(tvb, pinfo, tree, offset, FALSE);
         /* MultiRate configuration  9.3.52 O 3) TLV >=3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_multirate_conf(tvb, pinfo, tree, offset, FALSE);
         /* Multirate Control        9.3.53 O 4) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_multirate_cntrl(tvb, pinfo, tree, offset, FALSE);
         /* Supported Codec Types    9.3.54 O 4) TLV >=5 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_sup_codec_types(tvb, pinfo, tree, offset, FALSE);
         /* TFO transparent container 9.3.59 O 4) TLV */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_tfo_transp_cont(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.4.10 MODE MODIFY ACKNOWLEDGE */
@@ -3669,7 +3596,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Timing Advance           9.3.24  M TV 2 */
         offset = dissect_rsl_ie_timing_adv(tvb, pinfo, tree, offset, TRUE);
         /* Physical Context         9.3.16  O 1) TLV */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_phy_ctx(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.4.14 RF CHANNEL RELEASE */
@@ -3682,7 +3609,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Channel number           9.3.1   M TV 2 */
         offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         /* MS Power                 9.3.13  M TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_ms_pow(tvb, pinfo, tree, offset, FALSE);
         /* MS Power Parameters      9.3.31  O 1) TLV >=2 */
         break;
@@ -3718,11 +3645,11 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* System Info Type         9.3.30  M TV 2 */
         offset = dissect_rsl_ie_sys_info_type(tvb, pinfo, tree, offset, TRUE, &sys_info_type);
         /* L3 Info                  9.3.11  O 1) TLV 22 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_L3_inf(tvb, pinfo, tree, offset, FALSE,
                                            (sys_info_type == 0x48) ? L3_INF_SACCH : L3_INF_OTHER);
         /* Starting Time            9.3.23  O 2) TV 3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_starting_time(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.4.21 TALKER DETECTION */
@@ -3730,7 +3657,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Channel number           9.3.1   M TV 2 */
         offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         /* Access Delay             9.3.17  O 1) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
                 offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         break;
     /* 8.4.22 LISTENER DETECTION */
@@ -3738,7 +3665,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Channel number           9.3.1   M TV 2 */
         offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         /* Access Delay             9.3.17  O 1) TV 2 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
                 offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         break;
     /* 8.4.23 REMOTE CODEC CONFIGURATION REPORT */
@@ -3748,10 +3675,10 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Codec Configuration      9.3.55  M TLV >=3 */
         offset = dissect_rsl_ie_codec_conf(tvb, pinfo, tree, offset, TRUE);
         /* Supported Codec Types    9.3.54  M TLV >=5 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_sup_codec_types(tvb, pinfo, tree, offset, FALSE);
         /* TFO transparent container 9.3.59 O 4) TLV >=3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_tfo_transp_cont(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.4.24 ROUND TRIP DELAY REPORT */
@@ -3770,7 +3697,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Codec Configuration      9.3.55  M TLV >=3 */
         offset = dissect_rsl_ie_codec_conf(tvb, pinfo, tree, offset, TRUE);
         /* TFO transparent container 9.3.59 O 4) TLV >=3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_tfo_transp_cont(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.4.26 MULTIRATE CODEC MODIFICATION REQUEST */
@@ -3778,7 +3705,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Channel number           9.3.1   M TV 2 */
         offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         /* MultiRate Configuration  9.3.52  O 1) TLV >=4 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_multirate_conf(tvb, pinfo, tree, offset, FALSE);
         break;
     /*  8.4.27 MULTIRATE CODEC MODIFICATION ACKNOWLEDGE */
@@ -3786,7 +3713,7 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* Channel number           9.3.1   M TV 2 */
         offset = dissect_rsl_ie_ch_no(tvb, pinfo, tree, offset, TRUE);
         /* MultiRate Configuration  9.3.52  O 1) TLV >=4 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_multirate_conf(tvb, pinfo, tree, offset, FALSE);
         break;
     /* 8.4.28 MULTIRATE CODEC MODIFICATION NEGATIVE ACKNOWLEDGE */
@@ -3817,10 +3744,10 @@ dissct_rsl_msg(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, int offset)
         /* MultiRateControl         9.3.53 M TV 2 */
         offset = dissect_rsl_ie_multirate_cntrl(tvb, pinfo, tree, offset, TRUE);
         /* Supported Codec Type     9.3.54 O 1) TLV >=5 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_sup_codec_types(tvb, pinfo, tree, offset, FALSE);
         /* TFO transparent container 9.3.59 O 4) TLV >=3 */
-        if (tvb_length_remaining(tvb,offset) > 0)
+        if (tvb_reported_length_remaining(tvb, offset) > 0)
             offset = dissect_rsl_ie_tfo_transp_cont(tvb, pinfo, tree, offset, FALSE);
         break;
     /*  0 1 - - - - - - Location Services messages: */
@@ -3896,30 +3823,28 @@ dissect_rsl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "RSL");
     col_clear(pinfo->cinfo, COL_INFO);
 
-    msg_type = tvb_get_guint8(tvb,offset+1) & 0x7f;
+    msg_type = tvb_get_guint8(tvb, offset+1) & 0x7f;
 
-    col_append_fstr(pinfo->cinfo, COL_INFO, "%s ",val_to_str_ext(msg_type, &rsl_msg_type_vals_ext,"unknown %u"));
+    col_append_fstr(pinfo->cinfo, COL_INFO, "%s ", val_to_str_ext(msg_type, &rsl_msg_type_vals_ext, "unknown %u"));
 
     top_tree = tree;
-    if (tree) {
-        ti = proto_tree_add_item(tree, proto_rsl, tvb, 0, -1, ENC_NA);
+    ti = proto_tree_add_item(tree, proto_rsl, tvb, 0, -1, ENC_NA);
 
-        /* if nanoBTS specific vendor messages are not enabled, skip */
-	if (!global_rsl_use_nano_bts) {
-            guint8 msg_disc = tvb_get_guint8(tvb, offset) >> 1;
+    /* if nanoBTS specific vendor messages are not enabled, skip */
+    if (!global_rsl_use_nano_bts) {
+        guint8 msg_disc = tvb_get_guint8(tvb, offset) >> 1;
 
-            if (msg_disc == RSL_MSGDISC_IPACCESS)
-                return 0;
-	}
-        rsl_tree = proto_item_add_subtree(ti, ett_rsl);
-
-        /* 9.1 Message discriminator */
-        proto_tree_add_item(rsl_tree, hf_rsl_msg_dsc, tvb, offset, 1, ENC_BIG_ENDIAN);
-        proto_tree_add_item(rsl_tree, hf_rsl_T_bit, tvb, offset, 1, ENC_BIG_ENDIAN);
-
-        offset = dissct_rsl_msg(tvb, pinfo, rsl_tree, offset);
-
+        if (msg_disc == RSL_MSGDISC_IPACCESS)
+            return 0;
     }
+    rsl_tree = proto_item_add_subtree(ti, ett_rsl);
+
+    /* 9.1 Message discriminator */
+    proto_tree_add_item(rsl_tree, hf_rsl_msg_dsc, tvb, offset, 1, ENC_BIG_ENDIAN);
+    proto_tree_add_item(rsl_tree, hf_rsl_T_bit, tvb, offset, 1, ENC_BIG_ENDIAN);
+
+    offset = dissct_rsl_msg(tvb, pinfo, rsl_tree, offset);
+
     return offset;
 }
 
@@ -3970,7 +3895,7 @@ void proto_register_rsl(void)
         },
         { &hf_rsl_delay_ind,
           { "Delay IND",  "gsm_abis_rsl.delay_ind",
-            FT_UINT8, BASE_DEC, rsl_delay_ind_vals, 0x01,
+            FT_UINT8, BASE_DEC, VALS(rsl_delay_ind_vals), 0x01,
             NULL, HFILL }
         },
         { &hf_rsl_tfo,
@@ -4288,11 +4213,11 @@ void proto_register_rsl(void)
             0xf0, NULL, HFILL }
         },
         { &hf_rsl_conn_id,
-          { "ip.access Connection ID",	"gsm_abis_rsl.ipacc.conn_id",
+          { "ip.access Connection ID", "gsm_abis_rsl.ipacc.conn_id",
             FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL }
         },
         { &hf_rsl_rtp_payload,
-          { "ip.access RTP Payload Type",	"gsm_abis_rsl.ipacc.rtp_payload",
+          { "ip.access RTP Payload Type", "gsm_abis_rsl.ipacc.rtp_payload",
             FT_UINT8, BASE_DEC, NULL, 0x0, NULL, HFILL }
         },
         { &hf_rsl_rtp_csd_fmt_d,
@@ -4306,7 +4231,7 @@ void proto_register_rsl(void)
             0xf0, NULL, HFILL },
         },
         { &hf_rsl_local_port,
-          { "ip.access Local RTP Port",	"gsm_abis_rsl.ipacc.local_port",
+          { "ip.access Local RTP Port", "gsm_abis_rsl.ipacc.local_port",
             FT_UINT16, BASE_DEC, NULL, 0x0, NULL, HFILL },
         },
         { &hf_rsl_remote_port,
@@ -4349,6 +4274,20 @@ void proto_register_rsl(void)
           { "Average Tx Delay", "gsm_abis_rsl.ipacc.cstat.avg_tx_delay",
             FT_UINT32, BASE_DEC, NULL, 0, NULL, HFILL }
         },
+      /* Generated from convert_proto_tree_add_text.pl */
+      { &hf_rsl_channel_description_tag, { "Channel Description Tag", "gsm_abis_rsl.channel_description_tag", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_mobile_allocation_tag, { "Mobile Allocation Tag+Length(0)", "gsm_abis_rsl.mobile_allocation_tag", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_no_resources_required, { "0 No resources required(All other values are reserved)", "gsm_abis_rsl.no_resources_required", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_llsdu_ccch, { "Link Layer Service Data Unit (L3 Message)(CCCH)", "gsm_abis_rsl.llsdu.ccch", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_llsdu_sacch, { "Link Layer Service Data Unit (L3 Message)(SACCH)", "gsm_abis_rsl.llsdu.sacch", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_llsdu, { "Link Layer Service Data Unit (L3 Message)", "gsm_abis_rsl.llsdu", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_rach_supplementary_information, { "Supplementary Information", "gsm_abis_rsl.supplementary_information", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_full_immediate_assign_info_field, { "Full Immediate Assign Info field", "gsm_abis_rsl.full_immediate_assign_info_field", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_layer_3_message, { "Layer 3 message", "gsm_abis_rsl.layer_3_message", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_descriptive_group_or_broadcast_call_reference, { "Descriptive group or broadcast call reference", "gsm_abis_rsl.descriptive_group_or_broadcast_call_reference", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_group_channel_description, { "Group Channel Description", "gsm_abis_rsl.group_channel_description", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_uic, { "UIC", "gsm_abis_rsl.uic", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
+      { &hf_rsl_codec_list, { "Codec List", "gsm_abis_rsl.codec_list", FT_NONE, BASE_NONE, NULL, 0x0, NULL, HFILL }},
     };
     static gint *ett[] = {
         &ett_rsl,
@@ -4414,7 +4353,15 @@ void proto_register_rsl(void)
         &ett_ie_local_ip,
         &ett_ie_rtp_payload,
     };
+    static ei_register_info ei[] = {
+      /* Generated from convert_proto_tree_add_text.pl */
+      { &ei_rsl_speech_or_data_indicator, { "gsm_abis_rsl.speech_or_data_indicator.bad", PI_PROTOCOL, PI_WARN, "Speech or data indicator != 1,2 or 3", EXPFILL }},
+      { &ei_rsl_facility_information_element_3gpp_ts_44071, { "gsm_abis_rsl.facility_information_element_3gpp_ts_44071", PI_PROTOCOL, PI_NOTE, "Facility Information Element as defined in 3GPP TS 44.071", EXPFILL }},
+      { &ei_rsl_embedded_message_tfo_configuration, { "gsm_abis_rsl.embedded_message_tfo_configuration", PI_PROTOCOL, PI_NOTE, "Embedded message that contains the TFO configuration", EXPFILL }},
+    };
+
     module_t *rsl_module;
+    expert_module_t *expert_rsl;
 
 #define RSL_ATT_TLVDEF(_attr, _type, _fixed_len)                \
         rsl_att_tlvdef.def[_attr].type = _type;                 \
@@ -4429,77 +4376,79 @@ void proto_register_rsl(void)
      * statement in dissct_rsl_ipaccess_msg() doesn't contain explicit code
      * to decode them (yet?).
      */
-    RSL_ATT_TLVDEF(RSL_IE_CH_NO,            TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_LINK_ID,          TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_ACT_TYPE,         TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_BS_POW,           TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_CH_ID,            TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_CH_MODE,          TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_ENC_INF,          TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_FRAME_NO,         TLV_TYPE_FIXED,         2);
-    RSL_ATT_TLVDEF(RSL_IE_HO_REF,           TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_L1_INF,           TLV_TYPE_FIXED,         2);
-    RSL_ATT_TLVDEF(RSL_IE_L3_INF,           TLV_TYPE_TL16V,         0);
-    RSL_ATT_TLVDEF(RSL_IE_MS_ID,            TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_MS_POW,           TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_PAGING_GRP,       TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_PAGING_LOAD,      TLV_TYPE_FIXED,         2);
-    RSL_ATT_TLVDEF(RSL_IE_PHY_CTX,          TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_ACCESS_DELAY,     TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_RACH_LOAD,        TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_REQ_REF,          TLV_TYPE_FIXED,         3);
-    RSL_ATT_TLVDEF(RSL_IE_REL_MODE,         TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_RESOURCE_INF,     TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_RLM_CAUSE,        TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_STARTING_TIME,    TLV_TYPE_FIXED,         2);
-    RSL_ATT_TLVDEF(RSL_IE_TIMING_ADV,       TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_UPLINK_MEAS,      TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_CAUSE,            TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_MEAS_RES_NO,      TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_MESSAGE_ID,       TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_SYS_INFO_TYPE,    TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_MS_POWER_PARAM,   TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_BS_POWER_PARAM,   TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_PREPROC_PARAM,    TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_PREPROC_MEAS,     TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_ERR_MSG,          TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_FULL_BCCH_INF,    TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_CH_NEEDED,        TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_CB_CMD_TYPE,      TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_SMSCB_MESS,       TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_FULL_IMM_ASS_INF, TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_CBCH_LOAD_INF,    TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_SMSCB_CH_IND,     TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_GRP_CALL_REF,     TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_CH_DESC,          TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_NCH_DRX_INF,      TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_CMD_IND,          TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_EMLPP_PRIO,       TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_UIC,              TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_MAIN_CH_REF,      TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_MULTIRATE_CONF,   TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_MULTIRATE_CNTRL,  TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_SUP_CODEC_TYPES,  TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_CODEC_CONF,       TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_RTD,              TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_TFO_STATUS,       TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_LLP_APDU,         TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_REMOTE_IP,   TLV_TYPE_FIXED,         4);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_REMOTE_PORT, TLV_TYPE_FIXED,         2);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_LOCAL_IP,    TLV_TYPE_FIXED,         4);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_CONN_STAT,   TLV_TYPE_TLV,           0);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_LOCAL_PORT,  TLV_TYPE_FIXED,         2);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_SPEECH_MODE, TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_CONN_ID,     TLV_TYPE_FIXED,         2);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_RTP_PAYLOAD2,TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_RTP_PAYLOAD, TLV_TYPE_TV,            0);
-    RSL_ATT_TLVDEF(RSL_IE_IPAC_RTP_CSD_FMT, TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_CH_NO,             TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_LINK_ID,           TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_ACT_TYPE,          TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_BS_POW,            TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_CH_ID,             TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_CH_MODE,           TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_ENC_INF,           TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_FRAME_NO,          TLV_TYPE_FIXED,         2);
+    RSL_ATT_TLVDEF(RSL_IE_HO_REF,            TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_L1_INF,            TLV_TYPE_FIXED,         2);
+    RSL_ATT_TLVDEF(RSL_IE_L3_INF,            TLV_TYPE_TL16V,         0);
+    RSL_ATT_TLVDEF(RSL_IE_MS_ID,             TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_MS_POW,            TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_PAGING_GRP,        TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_PAGING_LOAD,       TLV_TYPE_FIXED,         2);
+    RSL_ATT_TLVDEF(RSL_IE_PHY_CTX,           TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_ACCESS_DELAY,      TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_RACH_LOAD,         TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_REQ_REF,           TLV_TYPE_FIXED,         3);
+    RSL_ATT_TLVDEF(RSL_IE_REL_MODE,          TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_RESOURCE_INF,      TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_RLM_CAUSE,         TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_STARTING_TIME,     TLV_TYPE_FIXED,         2);
+    RSL_ATT_TLVDEF(RSL_IE_TIMING_ADV,        TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_UPLINK_MEAS,       TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_CAUSE,             TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_MEAS_RES_NO,       TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_MESSAGE_ID,        TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_SYS_INFO_TYPE,     TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_MS_POWER_PARAM,    TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_BS_POWER_PARAM,    TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_PREPROC_PARAM,     TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_PREPROC_MEAS,      TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_ERR_MSG,           TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_FULL_BCCH_INF,     TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_CH_NEEDED,         TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_CB_CMD_TYPE,       TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_SMSCB_MESS,        TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_FULL_IMM_ASS_INF,  TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_CBCH_LOAD_INF,     TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_SMSCB_CH_IND,      TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_GRP_CALL_REF,      TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_CH_DESC,           TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_NCH_DRX_INF,       TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_CMD_IND,           TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_EMLPP_PRIO,        TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_UIC,               TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_MAIN_CH_REF,       TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_MULTIRATE_CONF,    TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_MULTIRATE_CNTRL,   TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_SUP_CODEC_TYPES,   TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_CODEC_CONF,        TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_RTD,               TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_TFO_STATUS,        TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_LLP_APDU,          TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_REMOTE_IP,    TLV_TYPE_FIXED,         4);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_REMOTE_PORT,  TLV_TYPE_FIXED,         2);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_LOCAL_IP,     TLV_TYPE_FIXED,         4);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_CONN_STAT,    TLV_TYPE_TLV,           0);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_LOCAL_PORT,   TLV_TYPE_FIXED,         2);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_SPEECH_MODE,  TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_CONN_ID,      TLV_TYPE_FIXED,         2);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_RTP_PAYLOAD2, TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_RTP_PAYLOAD,  TLV_TYPE_TV,            0);
+    RSL_ATT_TLVDEF(RSL_IE_IPAC_RTP_CSD_FMT,  TLV_TYPE_TV,            0);
 
     /* Register the protocol name and description */
     proto_rsl = proto_register_protocol("Radio Signalling Link (RSL)", "RSL", "gsm_abis_rsl");
 
     proto_register_field_array(proto_rsl, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
+    expert_rsl = expert_register_protocol(proto_rsl);
+    expert_register_field_array(expert_rsl, ei, array_length(ei));
 
     new_register_dissector("gsm_abis_rsl", dissect_rsl, proto_rsl);
 
@@ -4524,3 +4473,16 @@ proto_reg_handoff_rsl(void)
     gsm_a_dtap_handle = find_dissector("gsm_a_dtap");
     gsm_a_sacch_handle = find_dissector("gsm_a_sacch");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

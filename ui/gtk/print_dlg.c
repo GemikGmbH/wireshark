@@ -27,9 +27,7 @@
 #include <gtk/gtk.h>
 
 #include <epan/prefs.h>
-#include <epan/epan_dissect.h>
 #include <wsutil/filesystem.h>
-#include <epan/print.h>
 
 #include "ui/alert_box.h"
 #include "ui/simple_dialog.h"
@@ -1111,7 +1109,7 @@ print_ok_cb(GtkWidget *ok_bt, gpointer parent_w)
       g_assert_not_reached();
       return;
     }
-    status = cf_print_packets(&cfile, args);
+    status = cf_print_packets(&cfile, args, TRUE);
   }
   switch (status) {
 
@@ -1167,3 +1165,16 @@ print_destroy_cb(GtkWidget *win, gpointer user_data)
   /* Note that we no longer have a "Print" dialog box. */
   *((gpointer *) user_data) = NULL;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

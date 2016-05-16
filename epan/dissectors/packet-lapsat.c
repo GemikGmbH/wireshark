@@ -33,11 +33,8 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/reassemble.h>
-#include <epan/wmem/wmem.h>
-
 void proto_register_lapsat(void);
 void proto_reg_handoff_lapsat(void);
 
@@ -79,6 +76,7 @@ static int hf_lapsat_payload_last_nibble = -1;
 
 static int hf_lapsat_len = -1;
 
+static int hf_lapsat_fragment_data = -1;
 static int hf_lapsat_fragments = -1;
 static int hf_lapsat_fragment = -1;
 static int hf_lapsat_fragment_overlap = -1;
@@ -253,6 +251,12 @@ lapsat_defragment_init(void)
 {
 	reassembly_table_init(&lapsat_reassembly_table,
 	    &addresses_reassembly_table_functions);
+}
+
+static void
+lapsat_defragment_cleanup(void)
+{
+	reassembly_table_destroy(&lapsat_reassembly_table);
 }
 
 
@@ -440,7 +444,7 @@ dissect_lapsat(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	unsigned int hlen, is_response = 0, plen;
 
 	/* Check that there's enough data */
-	if (tvb_length(tvb) < LAPSAT_HEADER_LEN)
+	if (tvb_captured_length(tvb) < LAPSAT_HEADER_LEN)
 		return;
 
 	/* Set protocol column */
@@ -496,14 +500,14 @@ dissect_lapsat(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	/* Get the payload */
 	plen = (addr & LAPSAT_LFI) ?
-		tvb_get_guint8(tvb, 3) : tvb_length(tvb) - hlen;
+		tvb_get_guint8(tvb, 3) : tvb_captured_length(tvb) - hlen;
 
 	if (!plen)
 		return;	/* No point in doing more if there is no payload */
 
-	DISSECTOR_ASSERT((plen + hlen) <= tvb_length(tvb));
+	DISSECTOR_ASSERT((plen + hlen) <= tvb_captured_length(tvb));
 
-	if ((plen + hlen) == tvb_length(tvb)) {
+	if ((plen + hlen) == tvb_captured_length(tvb)) {
 		/* Need to integrate the last nibble */
 		guint8 *data = (guint8 *)tvb_memdup(NULL, tvb, hlen, plen);
 		data[plen-1] |= tvb_get_guint8(tvb, 2) << 4;
@@ -558,7 +562,7 @@ dissect_lapsat(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		} else {
 			/* No, just add infos */
 			col_append_str(pinfo->cinfo, COL_INFO, " (Fragment)");
-			proto_tree_add_text(lapsat_tree, payload, 0, -1, "Fragment Data");
+			proto_tree_add_item(lapsat_tree, hf_lapsat_fragment_data, payload, 0, -1, ENC_NA);
 		}
 
 		/* Now reset fragmentation information in pinfo */
@@ -687,6 +691,11 @@ proto_register_lapsat(void)
 		},
 
 		/* Fragment reassembly */
+		{ &hf_lapsat_fragment_data,
+		  { "Fragment Data", "lapsat.fragment_data",
+		    FT_BYTES, BASE_NONE, NULL, 0x00,
+		    NULL, HFILL }
+		},
 		{ &hf_lapsat_fragments,
 		  { "Message fragments", "lapsat.fragments",
 		    FT_NONE, BASE_NONE, NULL, 0x00,
@@ -758,6 +767,7 @@ proto_register_lapsat(void)
 	lapsat_sapi_dissector_table = register_dissector_table("lapsat.sapi", "LAPSat SAPI", FT_UINT8, BASE_DEC);
 
 	register_init_routine (lapsat_defragment_init);
+	register_cleanup_routine (lapsat_defragment_cleanup);
 }
 
 void
@@ -765,3 +775,16 @@ proto_reg_handoff_lapsat(void)
 {
 	data_handle = find_dissector("data");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

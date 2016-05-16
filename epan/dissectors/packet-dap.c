@@ -31,9 +31,9 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
+#include <epan/expert.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
 
@@ -661,6 +661,8 @@ static gint ett_dap_T_signedUpdateError = -1;
 /*--- End of included file: packet-dap-ett.c ---*/
 #line 70 "../../asn1/dap/packet-dap-template.c"
 
+static expert_field ei_dap_anonymous = EI_INIT;
+
 
 /*--- Included file: packet-dap-val.h ---*/
 #line 1 "../../asn1/dap/packet-dap-val.h"
@@ -684,7 +686,7 @@ static gint ett_dap_T_signedUpdateError = -1;
 #define id_errcode_dsaReferral         9
 
 /*--- End of included file: packet-dap-val.h ---*/
-#line 72 "../../asn1/dap/packet-dap-template.c"
+#line 74 "../../asn1/dap/packet-dap-template.c"
 
 
 /*--- Included file: packet-dap-table.c ---*/
@@ -722,7 +724,7 @@ static const value_string dap_err_code_string_vals[] = {
 
 
 /*--- End of included file: packet-dap-table.c ---*/
-#line 74 "../../asn1/dap/packet-dap-template.c"
+#line 76 "../../asn1/dap/packet-dap-template.c"
 
 
 /*--- Included file: packet-dap-fn.c ---*/
@@ -1571,7 +1573,7 @@ dissect_dap_T_pagedResultsQueryReference(gboolean implicit_tag _U_, tvbuff_t *tv
 
 
 	if(out_tvb) {
-		len = tvb_length(out_tvb);
+		len = tvb_reported_length(out_tvb);
 		/* now see if we can add a string representation */
 		for(i=0; i<len; i++)
 			if(!g_ascii_isprint(tvb_get_guint8(out_tvb, i)))
@@ -2063,8 +2065,8 @@ dissect_dap_DirectoryBindArgument(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 	dissect_ber_length(actx->pinfo, tree, tvb, offset+1, &len, NULL);
 
 	if(len == 0) {
-		/* its an empty set - i.e anonymous  (assuming version is DEFAULTed) */
-		proto_tree_add_text(tree, tvb, offset, -1,"Anonymous");
+		/* it's an empty set - i.e anonymous  (assuming version is DEFAULTed) */
+		proto_tree_add_expert(tree, actx->pinfo, &ei_dap_anonymous, tvb, offset, -1);
 
 		col_append_str(actx->pinfo->cinfo, COL_INFO, " anonymous");
 
@@ -4772,7 +4774,7 @@ static int dissect_UpdateError_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, pr
 
 
 /*--- End of included file: packet-dap-fn.c ---*/
-#line 76 "../../asn1/dap/packet-dap-template.c"
+#line 78 "../../asn1/dap/packet-dap-template.c"
 
 
 /*--- Included file: packet-dap-table11.c ---*/
@@ -4804,7 +4806,7 @@ static const ros_opr_t dap_opr_tab[] = {
 
 
 /*--- End of included file: packet-dap-table11.c ---*/
-#line 78 "../../asn1/dap/packet-dap-template.c"
+#line 80 "../../asn1/dap/packet-dap-template.c"
 
 /*--- Included file: packet-dap-table21.c ---*/
 #line 1 "../../asn1/dap/packet-dap-table21.c"
@@ -4833,7 +4835,7 @@ static const ros_err_t dap_err_tab[] = {
 
 
 /*--- End of included file: packet-dap-table21.c ---*/
-#line 79 "../../asn1/dap/packet-dap-template.c"
+#line 81 "../../asn1/dap/packet-dap-template.c"
 
 static const ros_info_t dap_ros_info = {
   "DAP",
@@ -6473,7 +6475,7 @@ void proto_register_dap(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-dap-hfarr.c ---*/
-#line 98 "../../asn1/dap/packet-dap-template.c"
+#line 100 "../../asn1/dap/packet-dap-template.c"
   };
 
   /* List of subtrees */
@@ -6654,9 +6656,15 @@ void proto_register_dap(void) {
     &ett_dap_T_signedUpdateError,
 
 /*--- End of included file: packet-dap-ettarr.c ---*/
-#line 104 "../../asn1/dap/packet-dap-template.c"
+#line 106 "../../asn1/dap/packet-dap-template.c"
   };
+
+  static ei_register_info ei[] = {
+    { &ei_dap_anonymous, { "dap.anonymous", PI_PROTOCOL, PI_NOTE, "Anonymous", EXPFILL }},
+  };
+
   module_t *dap_module;
+  expert_module_t* expert_dap;
 
   /* Register protocol */
   proto_dap = proto_register_protocol(PNAME, PSNAME, PFNAME);
@@ -6664,6 +6672,8 @@ void proto_register_dap(void) {
   /* Register fields and subtrees */
   proto_register_field_array(proto_dap, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+  expert_dap = expert_register_protocol(proto_dap);
+  expert_register_field_array(expert_dap, ei, array_length(ei));
 
   /* Register our configuration options for DAP, particularly our port */
 

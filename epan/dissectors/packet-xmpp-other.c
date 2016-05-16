@@ -24,18 +24,10 @@
 
 #include "config.h"
 
-#include <string.h>
-
-#include <glib.h>
 
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
-
-#include <epan/dissectors/packet-xml.h>
-
-#include <packet-xmpp-utils.h>
-#include <packet-xmpp.h>
-#include <packet-xmpp-other.h>
+#include "packet-xmpp.h"
+#include "packet-xmpp-other.h"
 
 static void xmpp_disco_items_item(proto_tree *tree, tvbuff_t *tvb, packet_info* pinfo, xmpp_element_t *element);
 
@@ -539,7 +531,6 @@ xmpp_si_file(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo, xmpp_element_t
 static void
 xmpp_si_file_range(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo, xmpp_element_t* element)
 {
-    proto_item *range_item;
     proto_tree *range_tree;
 
     xmpp_attr_info attrs_info[] = {
@@ -547,8 +538,7 @@ xmpp_si_file_range(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo, xmpp_ele
         {"length", NULL, FALSE, TRUE, NULL, NULL}
     };
 
-    range_item = proto_tree_add_text(tree, tvb, element->offset, element->length, "RANGE: ");
-    range_tree = proto_item_add_subtree(range_item, ett_xmpp_si_file_range);
+    range_tree = proto_tree_add_subtree(tree, tvb, element->offset, element->length, ett_xmpp_si_file_range, NULL, "RANGE: ");
 
     xmpp_display_attrs(range_tree, element, pinfo, tvb, attrs_info, array_length(attrs_info));
 
@@ -709,7 +699,7 @@ xmpp_x_data_field_value(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo, xmp
 static void
 xmpp_x_data_instr(proto_tree* tree, tvbuff_t* tvb, packet_info* pinfo _U_, xmpp_element_t* element)
 {
-    proto_tree_add_text(tree, tvb, element->offset, element->length, "INSTRUCTIONS: %s",xmpp_elem_cdata(element));
+    proto_tree_add_string(tree, hf_xmpp_x_data_instructions, tvb, element->offset, element->length, xmpp_elem_cdata(element));
 }
 
 /*In-Band Bytestreams*/
@@ -921,7 +911,6 @@ xmpp_muc_x(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_element_t *
 static void
 xmpp_muc_history(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_element_t *element)
 {
-    proto_item *hist_item;
     proto_tree *hist_tree;
 
     xmpp_attr_info attrs_info[] = {
@@ -931,8 +920,7 @@ xmpp_muc_history(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_eleme
         {"since", NULL, FALSE, TRUE, NULL, NULL}
     };
 
-    hist_item = proto_tree_add_text(tree, tvb, element->offset, element->length, "HISTORY: ");
-    hist_tree = proto_item_add_subtree(hist_item, ett_xmpp_muc_hist);
+    hist_tree = proto_tree_add_subtree(tree, tvb, element->offset, element->length, ett_xmpp_muc_hist, NULL, "HISTORY: ");
 
     xmpp_display_attrs(hist_tree, element, pinfo, tvb, attrs_info, array_length(attrs_info));
 
@@ -1032,7 +1020,8 @@ static void
 xmpp_muc_user_status(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_element_t *element)
 {
     xmpp_attr_t *code = xmpp_get_attr(element, "code");
-    proto_tree_add_text(tree, tvb, element->offset, element->length, "STATUS [code=\"%s\"]",code?code->value:"");
+    proto_tree_add_string_format(tree, hf_xmpp_muc_user_status, tvb, element->offset, element->length,
+                                  code?code->value:"", "STATUS [code=\"%s\"]", code?code->value:"");
 
     xmpp_unknown(tree, tvb, pinfo, element);
 }
@@ -1237,7 +1226,6 @@ xmpp_hashes(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_element_t 
 static void
 xmpp_hashes_hash(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_element_t *element)
 {
-    proto_item *hash_item;
     proto_tree *hash_tree;
 
     xmpp_attr_info attrs_info[] = {
@@ -1248,8 +1236,7 @@ xmpp_hashes_hash(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_eleme
     xmpp_attr_t *fake_cdata = xmpp_ep_init_attr_t(xmpp_elem_cdata(element), element->offset, element->length);
     g_hash_table_insert(element->attrs, (gpointer)"value", fake_cdata);
 
-    hash_item = proto_tree_add_text(tree, tvb, element->offset, element->length, "HASH");
-    hash_tree = proto_item_add_subtree(hash_item, ett_xmpp_hashes_hash);
+    hash_tree = proto_tree_add_subtree(tree, tvb, element->offset, element->length, ett_xmpp_hashes_hash, NULL, "HASH");
 
     xmpp_display_attrs(hash_tree, element, pinfo, tvb, attrs_info, array_length(attrs_info));
     xmpp_display_elems(hash_tree, element, pinfo, tvb, NULL, 0);

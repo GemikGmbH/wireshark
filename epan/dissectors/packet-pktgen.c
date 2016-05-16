@@ -29,8 +29,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 
 void proto_register_pktgen(void);
@@ -66,8 +64,8 @@ static gboolean dissect_pktgen(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
     guint32     magic;
 
     /* check for min size */
-    if (tvb_length(tvb) < 16) {  /* Not a PKTGEN packet. */
-    return FALSE;
+    if (tvb_reported_length(tvb) < 16) {  /* Not a PKTGEN packet. */
+        return FALSE;
     }
 
     /* check for magic number */
@@ -112,15 +110,9 @@ static gboolean dissect_pktgen(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tr
 
         proto_tree_add_time(pktgen_tree, hf_pktgen_timestamp, tvb, offset - 8, 8, &tstamp);
 
-#if 0
-        if (tvb_length_remaining(tvb, offset)) /* random data */
-            proto_tree_add_text(pktgen_tree, tvb, offset, -1, "Data (%u bytes)",
-            tvb_length_remaining(tvb, offset));
-#else
-        if (tvb_length_remaining(tvb, offset)) /* random data */
+        if (tvb_reported_length_remaining(tvb, offset)) /* random data */
             call_dissector(data_handle, tvb_new_subset_remaining(tvb, offset), pinfo,
             pktgen_tree);
-#endif
     }
 
     return TRUE;
@@ -195,7 +187,7 @@ void proto_register_pktgen(void)
 void proto_reg_handoff_pktgen(void)
 {
     /* Register as a heuristic UDP dissector */
-    heur_dissector_add("udp", dissect_pktgen, proto_pktgen);
+    heur_dissector_add("udp", dissect_pktgen, "Linux Kernel Packet Generator over UDP", "pktgen_udp", proto_pktgen, HEURISTIC_ENABLE);
 
     /* Find data dissector handle */
     data_handle = find_dissector("data");

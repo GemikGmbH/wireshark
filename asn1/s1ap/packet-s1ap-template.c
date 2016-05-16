@@ -27,7 +27,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 
 #include <epan/strutil.h>
@@ -43,6 +42,7 @@
 #include "packet-ranap.h"
 #include "packet-bssgp.h"
 #include "packet-s1ap.h"
+#include "packet-a21.h"
 
 #ifdef _MSC_VER
 /* disable: "warning C4146: unary minus operator applied to unsigned type, result still unsigned" */
@@ -80,6 +80,8 @@ static int ett_s1ap_ToSourceTransparentContainer = -1;
 static int ett_s1ap_RRCContainer = -1;
 static int ett_s1ap_UERadioCapability = -1;
 static int ett_s1ap_RIMInformation = -1;
+static int ett_s1ap_Cdma2000PDU = -1;
+static int ett_s1ap_Cdma2000SectorID = -1;
 
 #include "packet-s1ap-ett.c"
 
@@ -89,6 +91,7 @@ enum{
 	UNSUCCESSFUL_OUTCOME
 };
 
+
 /* Global variables */
 static guint32 ProcedureCode;
 static guint32 ProtocolIE_ID;
@@ -97,6 +100,9 @@ static guint gbl_s1apSctpPort=SCTP_PORT_S1AP;
 static guint32 handover_type_value;
 static guint32 message_type;
 static gboolean g_s1ap_dissect_container = TRUE;
+static const char *obj_id = NULL;
+
+static dissector_handle_t gcsna_handle = NULL;
 
 /* Dissector tables */
 static dissector_table_t s1ap_ies_dissector_table;
@@ -130,38 +136,52 @@ static int dissect_TargetBSS_ToSourceBSS_TransparentContainer_PDU(tvbuff_t *tvb,
 
 static int dissect_ProtocolIEFieldValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-  return (dissector_try_uint(s1ap_ies_dissector_table, ProtocolIE_ID, tvb, pinfo, tree)) ? tvb_length(tvb) : 0;
+  s1ap_ctx_t s1ap_ctx;
+
+  s1ap_ctx.message_type        = message_type;
+  s1ap_ctx.ProcedureCode       = ProcedureCode;
+  s1ap_ctx.ProtocolIE_ID       = ProtocolIE_ID;
+  s1ap_ctx.ProtocolExtensionID = ProtocolExtensionID;
+
+  return (dissector_try_uint_new(s1ap_ies_dissector_table, ProtocolIE_ID, tvb, pinfo, tree, TRUE, &s1ap_ctx)) ? tvb_captured_length(tvb) : 0;
 }
 /* Currently not used
 static int dissect_ProtocolIEFieldPairFirstValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-  return (dissector_try_uint(s1ap_ies_p1_dissector_table, ProtocolIE_ID, tvb, pinfo, tree)) ? tvb_length(tvb) : 0;
+  return (dissector_try_uint(s1ap_ies_p1_dissector_table, ProtocolIE_ID, tvb, pinfo, tree)) ? tvb_captured_length(tvb) : 0;
 }
 
 static int dissect_ProtocolIEFieldPairSecondValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-  return (dissector_try_uint(s1ap_ies_p2_dissector_table, ProtocolIE_ID, tvb, pinfo, tree)) ? tvb_length(tvb) : 0;
+  return (dissector_try_uint(s1ap_ies_p2_dissector_table, ProtocolIE_ID, tvb, pinfo, tree)) ? tvb_captured_length(tvb) : 0;
 }
 */
 
 static int dissect_ProtocolExtensionFieldExtensionValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
 {
-  return (dissector_try_uint(s1ap_extension_dissector_table, ProtocolExtensionID, tvb, pinfo, tree)) ? tvb_length(tvb) : 0;
+  s1ap_ctx_t s1ap_ctx;
+
+  s1ap_ctx.message_type        = message_type;
+  s1ap_ctx.ProcedureCode       = ProcedureCode;
+  s1ap_ctx.ProtocolIE_ID       = ProtocolIE_ID;
+  s1ap_ctx.ProtocolExtensionID = ProtocolExtensionID;
+
+  return (dissector_try_uint_new(s1ap_extension_dissector_table, ProtocolExtensionID, tvb, pinfo, tree, TRUE, &s1ap_ctx)) ? tvb_captured_length(tvb) : 0;
 }
 
-static int dissect_InitiatingMessageValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+static int dissect_InitiatingMessageValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-  return (dissector_try_uint(s1ap_proc_imsg_dissector_table, ProcedureCode, tvb, pinfo, tree)) ? tvb_length(tvb) : 0;
+  return (dissector_try_uint_new(s1ap_proc_imsg_dissector_table, ProcedureCode, tvb, pinfo, tree, TRUE, data)) ? tvb_captured_length(tvb) : 0;
 }
 
-static int dissect_SuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+static int dissect_SuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-  return (dissector_try_uint(s1ap_proc_sout_dissector_table, ProcedureCode, tvb, pinfo, tree)) ? tvb_length(tvb) : 0;
+  return (dissector_try_uint_new(s1ap_proc_sout_dissector_table, ProcedureCode, tvb, pinfo, tree, TRUE, data)) ? tvb_captured_length(tvb) : 0;
 }
 
-static int dissect_UnsuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+static int dissect_UnsuccessfulOutcomeValue(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
-  return (dissector_try_uint(s1ap_proc_uout_dissector_table, ProcedureCode, tvb, pinfo, tree)) ? tvb_length(tvb) : 0;
+  return (dissector_try_uint_new(s1ap_proc_uout_dissector_table, ProcedureCode, tvb, pinfo, tree, TRUE, data)) ? tvb_captured_length(tvb) : 0;
 }
 
 
@@ -190,12 +210,13 @@ proto_reg_handoff_s1ap(void)
 	static guint SctpPort;
 
 	s1ap_handle = find_dissector("s1ap");
+    gcsna_handle = find_dissector("gcsna");
 
 	if (!Initialized) {
 		nas_eps_handle = find_dissector("nas-eps");
 		lppa_handle = find_dissector("lppa");
 		bssgp_handle = find_dissector("bssgp");
-		dissector_add_handle("sctp.port", s1ap_handle);   /* for "decode-as"  */
+		dissector_add_for_decode_as("sctp.port", s1ap_handle);
 		dissector_add_uint("sctp.ppi", S1AP_PAYLOAD_PROTOCOL_ID,   s1ap_handle);
 		Initialized=TRUE;
 #include "packet-s1ap-dis-tab.c"
@@ -238,6 +259,8 @@ void proto_register_s1ap(void) {
 		  &ett_s1ap_RRCContainer,
 		  &ett_s1ap_UERadioCapability,
 		  &ett_s1ap_RIMInformation,
+          &ett_s1ap_Cdma2000PDU,
+          &ett_s1ap_Cdma2000SectorID,
 #include "packet-s1ap-ettarr.c"
   };
 

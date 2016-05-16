@@ -93,6 +93,18 @@ same_ftype(const enum ftenum ftype)
 		case FT_UINT32:
 			return FT_UINT32;
 
+    case FT_INT40:
+    case FT_INT48:
+    case FT_INT56:
+		case FT_INT64:
+      return FT_INT64;
+
+		case FT_UINT40:
+		case FT_UINT48:
+		case FT_UINT56:
+		case FT_UINT64:
+      return FT_UINT64;
+
 		case FT_STRING:
 		case FT_STRINGZ:
 		case FT_UINT_STRING:
@@ -111,8 +123,6 @@ same_ftype(const enum ftenum ftype)
 			return FT_OID;
 
 		/* XXX: the folowing are unqiue for now */
-		case FT_INT64:
-		case FT_UINT64:
 		case FT_IPv4:
 		case FT_IPv6:
 
@@ -288,38 +298,48 @@ fvalue_init(fvalue_t *fv, ftenum_t ftype)
 }
 
 fvalue_t*
-fvalue_from_unparsed(ftenum_t ftype, const char *s, gboolean allow_partial_value, LogFunc logfunc)
+fvalue_from_unparsed(ftenum_t ftype, const char *s, gboolean allow_partial_value, gchar **err_msg)
 {
 	fvalue_t	*fv;
 
 	fv = fvalue_new(ftype);
 	if (fv->ftype->val_from_unparsed) {
-		if (fv->ftype->val_from_unparsed(fv, s, allow_partial_value, logfunc)) {
+		if (fv->ftype->val_from_unparsed(fv, s, allow_partial_value, err_msg)) {
+			/* Success */
+			if (err_msg != NULL)
+				*err_msg = NULL;
 			return fv;
 		}
 	}
 	else {
-		logfunc("\"%s\" cannot be converted to %s.",
-				s, ftype_pretty_name(ftype));
+		if (err_msg != NULL) {
+			*err_msg = g_strdup_printf("\"%s\" cannot be converted to %s.",
+					s, ftype_pretty_name(ftype));
+		}
 	}
 	FVALUE_FREE(fv);
 	return NULL;
 }
 
 fvalue_t*
-fvalue_from_string(ftenum_t ftype, const char *s, LogFunc logfunc)
+fvalue_from_string(ftenum_t ftype, const char *s, gchar **err_msg)
 {
 	fvalue_t	*fv;
 
 	fv = fvalue_new(ftype);
 	if (fv->ftype->val_from_string) {
-		if (fv->ftype->val_from_string(fv, s, logfunc)) {
+		if (fv->ftype->val_from_string(fv, s, err_msg)) {
+			/* Success */
+			if (err_msg != NULL)
+				*err_msg = NULL;
 			return fv;
 		}
 	}
 	else {
-		logfunc("\"%s\" cannot be converted to %s.",
-				s, ftype_pretty_name(ftype));
+		if (err_msg != NULL) {
+			*err_msg = g_strdup_printf("\"%s\" cannot be converted to %s.",
+					s, ftype_pretty_name(ftype));
+		}
 	}
 	FVALUE_FREE(fv);
 	return NULL;
@@ -348,14 +368,14 @@ fvalue_length(fvalue_t *fv)
 }
 
 int
-fvalue_string_repr_len(fvalue_t *fv, ftrepr_t rtype)
+fvalue_string_repr_len(fvalue_t *fv, ftrepr_t rtype, int field_display)
 {
 	g_assert(fv->ftype->len_string_repr);
-	return fv->ftype->len_string_repr(fv, rtype);
+	return fv->ftype->len_string_repr(fv, rtype, field_display);
 }
 
 char *
-fvalue_to_string_repr(fvalue_t *fv, ftrepr_t rtype, char *buf)
+fvalue_to_string_repr(fvalue_t *fv, ftrepr_t rtype, int field_display, char *buf)
 {
 	if (fv->ftype->val_to_string_repr == NULL) {
 		/* no value-to-string-representation function, so the value cannot be represented */
@@ -363,14 +383,14 @@ fvalue_to_string_repr(fvalue_t *fv, ftrepr_t rtype, char *buf)
 	}
 	if (!buf) {
 		int len;
-		if ((len = fvalue_string_repr_len(fv, rtype)) >= 0) {
+		if ((len = fvalue_string_repr_len(fv, rtype, field_display)) >= 0) {
 			buf = (char *)g_malloc0(len + 1);
 		} else {
 			/* the value cannot be represented in the given representation type (rtype) */
 			return NULL;
 		}
 	}
-	fv->ftype->val_to_string_repr(fv, rtype, buf);
+	fv->ftype->val_to_string_repr(fv, rtype, field_display, buf);
 	return buf;
 }
 
@@ -530,12 +550,18 @@ fvalue_set_sinteger(fvalue_t *fv, gint32 value)
 	fv->ftype->set_value_sinteger(fv, value);
 }
 
+void
+fvalue_set_uinteger64(fvalue_t *fv, guint64 value)
+{
+	g_assert(fv->ftype->set_value_uinteger64);
+	fv->ftype->set_value_uinteger64(fv, value);
+}
 
 void
-fvalue_set_integer64(fvalue_t *fv, guint64 value)
+fvalue_set_sinteger64(fvalue_t *fv, gint64 value)
 {
-	g_assert(fv->ftype->set_value_integer64);
-	fv->ftype->set_value_integer64(fv, value);
+	g_assert(fv->ftype->set_value_sinteger64);
+	fv->ftype->set_value_sinteger64(fv, value);
 }
 
 void
@@ -567,12 +593,18 @@ fvalue_get_sinteger(fvalue_t *fv)
 	return fv->ftype->get_value_sinteger(fv);
 }
 
-
 guint64
-fvalue_get_integer64(fvalue_t *fv)
+fvalue_get_uinteger64(fvalue_t *fv)
 {
-	g_assert(fv->ftype->get_value_integer64);
-	return fv->ftype->get_value_integer64(fv);
+	g_assert(fv->ftype->get_value_uinteger64);
+	return fv->ftype->get_value_uinteger64(fv);
+}
+
+gint64
+fvalue_get_sinteger64(fvalue_t *fv)
+{
+	g_assert(fv->ftype->get_value_sinteger64);
+	return fv->ftype->get_value_sinteger64(fv);
 }
 
 double
@@ -653,3 +685,16 @@ fvalue_matches(const fvalue_t *a, const fvalue_t *b)
 	g_assert(a->ftype->cmp_matches);
 	return a->ftype->cmp_matches(a, b);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

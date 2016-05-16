@@ -31,7 +31,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/asn1.h>
 
@@ -76,7 +75,7 @@ static int hf_pkixqualified_nameRegistrationAuthorities = -1;  /* NameRegistrati
 static int hf_pkixqualified_NameRegistrationAuthorities_item = -1;  /* GeneralName */
 
 /*--- End of included file: packet-pkixqualified-hf.c ---*/
-#line 47 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
+#line 46 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
 
 /* Initialize the subtree pointers */
 
@@ -91,7 +90,7 @@ static gint ett_pkixqualified_SemanticsInformation = -1;
 static gint ett_pkixqualified_NameRegistrationAuthorities = -1;
 
 /*--- End of included file: packet-pkixqualified-ett.c ---*/
-#line 50 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
+#line 49 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
 
 static const char *object_identifier_id;
 
@@ -315,45 +314,59 @@ dissect_pkixqualified_XmppAddr(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 /*--- PDUs ---*/
 
-static void dissect_Generalizedtime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_Generalizedtime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkixqualified_Generalizedtime(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkixqualified_Generalizedtime_PDU);
+  offset = dissect_pkixqualified_Generalizedtime(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkixqualified_Generalizedtime_PDU);
+  return offset;
 }
-static void dissect_Directorystring_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_Directorystring_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkixqualified_Directorystring(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkixqualified_Directorystring_PDU);
+  offset = dissect_pkixqualified_Directorystring(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkixqualified_Directorystring_PDU);
+  return offset;
 }
-static void dissect_Printablestring_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_Printablestring_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkixqualified_Printablestring(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkixqualified_Printablestring_PDU);
+  offset = dissect_pkixqualified_Printablestring(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkixqualified_Printablestring_PDU);
+  return offset;
 }
-static void dissect_BiometricSyntax_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_BiometricSyntax_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkixqualified_BiometricSyntax(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkixqualified_BiometricSyntax_PDU);
+  offset = dissect_pkixqualified_BiometricSyntax(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkixqualified_BiometricSyntax_PDU);
+  return offset;
 }
-static void dissect_QCStatements_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_QCStatements_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkixqualified_QCStatements(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkixqualified_QCStatements_PDU);
+  offset = dissect_pkixqualified_QCStatements(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkixqualified_QCStatements_PDU);
+  return offset;
 }
-static void dissect_SemanticsInformation_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_SemanticsInformation_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkixqualified_SemanticsInformation(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkixqualified_SemanticsInformation_PDU);
+  offset = dissect_pkixqualified_SemanticsInformation(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkixqualified_SemanticsInformation_PDU);
+  return offset;
 }
-static void dissect_XmppAddr_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_XmppAddr_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_pkixqualified_XmppAddr(FALSE, tvb, 0, &asn1_ctx, tree, hf_pkixqualified_XmppAddr_PDU);
+  offset = dissect_pkixqualified_XmppAddr(FALSE, tvb, offset, &asn1_ctx, tree, hf_pkixqualified_XmppAddr_PDU);
+  return offset;
 }
 
 
 /*--- End of included file: packet-pkixqualified-fn.c ---*/
-#line 54 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
+#line 53 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
 
 
 /*--- proto_register_pkixqualified ----------------------------------------------*/
@@ -446,7 +459,7 @@ void proto_register_pkixqualified(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-pkixqualified-hfarr.c ---*/
-#line 62 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
+#line 61 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
   };
 
   /* List of subtrees */
@@ -463,7 +476,7 @@ void proto_register_pkixqualified(void) {
     &ett_pkixqualified_NameRegistrationAuthorities,
 
 /*--- End of included file: packet-pkixqualified-ettarr.c ---*/
-#line 67 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
+#line 66 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
   };
 
   /* Register protocol */
@@ -481,19 +494,19 @@ void proto_reg_handoff_pkixqualified(void) {
 
 /*--- Included file: packet-pkixqualified-dis-tab.c ---*/
 #line 1 "../../asn1/pkixqualified/packet-pkixqualified-dis-tab.c"
-  register_ber_oid_dissector("1.3.6.1.5.5.7.1.2", dissect_BiometricSyntax_PDU, proto_pkixqualified, "id-pe-biometricInfo");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.1.3", dissect_QCStatements_PDU, proto_pkixqualified, "id-pe-qcStatements");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.11.1", dissect_SemanticsInformation_PDU, proto_pkixqualified, "id-qcs-pkixQCSyntax-v1");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.11.2", dissect_SemanticsInformation_PDU, proto_pkixqualified, "id-qcs-pkixQCSyntax-v2");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.8.5", dissect_XmppAddr_PDU, proto_pkixqualified, "id-on-xmppAddr");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.9.1", dissect_Generalizedtime_PDU, proto_pkixqualified, "id-pda-dateOfBirth");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.9.2", dissect_Directorystring_PDU, proto_pkixqualified, "id-pda-placeOfBirth");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.9.3", dissect_Printablestring_PDU, proto_pkixqualified, "id-pda-gender");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.9.4", dissect_Printablestring_PDU, proto_pkixqualified, "id-pda-countryOfCitizenship");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.9.5", dissect_Printablestring_PDU, proto_pkixqualified, "id-pda-countryOfResidence");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.1.2", dissect_BiometricSyntax_PDU, proto_pkixqualified, "id-pe-biometricInfo");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.1.3", dissect_QCStatements_PDU, proto_pkixqualified, "id-pe-qcStatements");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.11.1", dissect_SemanticsInformation_PDU, proto_pkixqualified, "id-qcs-pkixQCSyntax-v1");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.11.2", dissect_SemanticsInformation_PDU, proto_pkixqualified, "id-qcs-pkixQCSyntax-v2");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.8.5", dissect_XmppAddr_PDU, proto_pkixqualified, "id-on-xmppAddr");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.9.1", dissect_Generalizedtime_PDU, proto_pkixqualified, "id-pda-dateOfBirth");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.9.2", dissect_Directorystring_PDU, proto_pkixqualified, "id-pda-placeOfBirth");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.9.3", dissect_Printablestring_PDU, proto_pkixqualified, "id-pda-gender");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.9.4", dissect_Printablestring_PDU, proto_pkixqualified, "id-pda-countryOfCitizenship");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.9.5", dissect_Printablestring_PDU, proto_pkixqualified, "id-pda-countryOfResidence");
 
 
 /*--- End of included file: packet-pkixqualified-dis-tab.c ---*/
-#line 82 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
+#line 81 "../../asn1/pkixqualified/packet-pkixqualified-template.c"
 }
 

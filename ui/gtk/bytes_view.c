@@ -33,13 +33,17 @@
 #include "ui/gtk/old-gtk-compat.h"
 
 #include <string.h>
+#include <stddef.h>
 
 #include <epan/wmem/wmem.h>
 #include <epan/charsets.h>
 #include <epan/packet.h>
-#include <epan/prefs.h>
 
-#include "packet_panes.h"
+#include "ui/recent.h"
+
+#ifndef offsetof
+#define offsetof(type, member)  ((size_t)(&((type *)0)->member))
+#endif
 
 #define MARGIN 2
 #define REFRESH_TIMEOUT 10
@@ -924,12 +928,12 @@ bytes_view_expose(GtkWidget *widget, GdkEventExpose *event)
 #if !GTK_CHECK_VERSION(2, 14, 0)
 static void
 _gtk_adjustment_configure(GtkAdjustment *adj,
-                          gdouble        value,
-                          gdouble        lower,
-                          gdouble        upper,
-                          gdouble        step_increment,
-                          gdouble        page_increment,
-                          gdouble        page_size)
+			  gdouble	 value,
+			  gdouble	 lower,
+			  gdouble	 upper,
+			  gdouble	 step_increment,
+			  gdouble	 page_increment,
+			  gdouble	 page_size)
 {
 	adj->value = value;
 	adj->lower = lower;
@@ -1238,7 +1242,7 @@ bytes_view_class_init(BytesViewClass *klass)
 		g_signal_new(g_intern_static_string("set-scroll-adjustments"),
 			G_OBJECT_CLASS_TYPE(object_class),
 			(GSignalFlags)(G_SIGNAL_RUN_LAST | G_SIGNAL_ACTION),
-			G_STRUCT_OFFSET(BytesViewClass, set_scroll_adjustments),
+			offsetof(BytesViewClass, set_scroll_adjustments),
 			NULL, NULL,
 			bv_VOID__OBJECT_OBJECT,
 			G_TYPE_NONE, 2,
@@ -1426,11 +1430,9 @@ bytes_view_set_data(BytesView *bv, const guint8 *data, int len)
 }
 
 void
-bytes_view_set_encoding(BytesView *bv, int enc)
+bytes_view_set_encoding(BytesView *bv, packet_char_enc enc)
 {
-	g_assert(enc == PACKET_CHAR_ENC_CHAR_ASCII || enc == PACKET_CHAR_ENC_CHAR_EBCDIC);
-
-	bv->encoding = (packet_char_enc)enc;
+	bv->encoding = enc;
 }
 
 void
@@ -1458,7 +1460,7 @@ bytes_view_set_highlight_style(BytesView *bv, gboolean inverse)
 }
 
 void
-bytes_view_set_highlight(BytesView *bv, int start, int end, guint32 mask _U_, int maskle _U_)
+bytes_view_set_highlight(BytesView *bv, int start, int end, guint64 mask _U_, int maskle _U_)
 {
 	bv->start[0] = start;
 	bv->end[0] = end;
@@ -1489,3 +1491,16 @@ bytes_view_new(void)
 
 	return widget;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -1,4 +1,4 @@
--- 3GPP TS 36.331 V11.7.0 (2014-03)
+-- 3GPP TS 36.331 V12.7.0 (2015-09)
 --
 EUTRA-UE-Variables DEFINITIONS AUTOMATIC TAGS ::=
 
@@ -16,9 +16,14 @@ IMPORTS
 	LoggingDuration-r10,
 	LoggingInterval-r10,
 	LogMeasInfo-r10,
+	MeasCSI-RS-Id-r12,
 	MeasId,
+	MeasId-v1250,
 	MeasIdToAddModList,
+	MeasIdToAddModListExt-r12,
 	MeasObjectToAddModList,
+	MeasObjectToAddModList-v9e0,
+	MeasScaleFactor-r12,
 	MobilityStateParameters,
 	NeighCellConfig,
 	PhysCellId,
@@ -31,11 +36,13 @@ IMPORTS
 	QuantityConfig,
 	ReportConfigToAddModList,
 	RLF-Report-r9,
-	RSRP-Range,
---	TraceRecordingSessionRef-r10,
+	TargetMBSFN-AreaList-r12,
 	TraceReference-r10,
+	VisitedCellInfoList-r12,
 	maxCellMeas,
-	maxMeasId
+	maxCSI-RS-Meas-r12,
+	maxMeasId,
+	maxMeasId-r12
 FROM EUTRA-RRC-Definitions;
 
 
@@ -56,6 +63,14 @@ VarLogMeasConfig-r11 ::=		SEQUENCE {
 	areaConfiguration-v1130			AreaConfiguration-v1130		OPTIONAL,
 	loggingDuration-r10				LoggingDuration-r10,
 	loggingInterval-r10				LoggingInterval-r10
+}
+
+VarLogMeasConfig-r12 ::=		SEQUENCE {
+	areaConfiguration-r10			AreaConfiguration-r10		OPTIONAL,
+	areaConfiguration-v1130			AreaConfiguration-v1130		OPTIONAL,
+	loggingDuration-r10				LoggingDuration-r10,
+	loggingInterval-r10				LoggingInterval-r10,
+	targetMBSFN-AreaList-r12		TargetMBSFN-AreaList-r12	OPTIONAL
 }
 
 
@@ -83,12 +98,15 @@ LogMeasInfoList2-r10 ::=				SEQUENCE (SIZE (1..maxLogMeas-r10)) OF LogMeasInfo-r
 VarMeasConfig ::=					SEQUENCE {
 	-- Measurement identities
 	measIdList							MeasIdToAddModList					OPTIONAL,
+	measIdListExt-r12					MeasIdToAddModListExt-r12			OPTIONAL,
 	-- Measurement objects
 	measObjectList						MeasObjectToAddModList				OPTIONAL,
+	measObjectList-v9i0					MeasObjectToAddModList-v9e0			OPTIONAL,
 	-- Reporting configurations
 	reportConfigList					ReportConfigToAddModList			OPTIONAL,
 	-- Other parameters
 	quantityConfig						QuantityConfig						OPTIONAL,
+	measScaleFactor-r12					MeasScaleFactor-r12					OPTIONAL,
 	s-Measure							INTEGER (-140..-44)					OPTIONAL,
 	speedStatePars						CHOICE {
 		release								NULL,
@@ -96,16 +114,20 @@ VarMeasConfig ::=					SEQUENCE {
 			mobilityStateParameters				MobilityStateParameters,
 			timeToTrigger-SF					SpeedStateScaleFactors
 		}
-	}																		OPTIONAL
+	}																		OPTIONAL,
+	allowInterruptions-r11			BOOLEAN								OPTIONAL
 }
 
 
 VarMeasReportList ::=				SEQUENCE (SIZE (1..maxMeasId)) OF VarMeasReport
+VarMeasReportList-r12 ::=			SEQUENCE (SIZE (1..maxMeasId-r12)) OF VarMeasReport
 
 VarMeasReport ::=					SEQUENCE {
 	-- List of measurement that have been triggered
 	measId								MeasId,
+	measId-v1250						MeasId-v1250					OPTIONAL,
 	cellsTriggeredList					CellsTriggeredList				OPTIONAL,
+	csi-RS-TriggeredList-r12			CSI-RS-TriggeredList-r12		OPTIONAL,
 	numberOfReportsSent					INTEGER
 }
 
@@ -121,6 +143,11 @@ CellsTriggeredList ::=				SEQUENCE (SIZE (1..maxCellMeas)) OF CHOICE {
 	},
 	physCellIdCDMA2000						PhysCellIdCDMA2000
 }
+
+CSI-RS-TriggeredList-r12 ::=		SEQUENCE (SIZE (1..maxCSI-RS-Meas-r12)) OF MeasCSI-RS-Id-r12
+
+VarMobilityHistoryReport-r12 ::=	VisitedCellInfoList-r12
+
 
 VarRLF-Report-r10 ::=				SEQUENCE {
 	rlf-Report-r10							RLF-Report-r9,

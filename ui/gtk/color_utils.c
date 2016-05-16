@@ -28,11 +28,8 @@
 
 #include "../color.h"
 
-#include "ui/simple_dialog.h"
 
-#include "ui/gtk/gui_utils.h"
 #include "ui/gtk/color_utils.h"
-#include "ui/gtk/gtkglobals.h"
 #if 0
 static GdkColormap*	sys_cmap;
 static GdkColormap*	our_cmap = NULL;
@@ -167,3 +164,15 @@ gdkRGBAcolor_to_GdkColor(GdkColor *target, const GdkRGBA *source)
 	target->blue  = (guint16)(source->blue*65535);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

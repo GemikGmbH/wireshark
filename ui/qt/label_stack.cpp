@@ -20,8 +20,11 @@
  */
 
 #include "label_stack.h"
-#include <QMouseEvent>
+
 #include <QContextMenuEvent>
+#include <QPainter>
+#include <QMouseEvent>
+#include <QStyleOption>
 
 #include "tango_colors.h"
 
@@ -32,12 +35,13 @@ const int temporary_flash_timeout_ = temporary_interval_ / 5;
 const int num_flashes_ = 3;
 
 LabelStack::LabelStack(QWidget *parent) :
-    QLabel(parent)
+    QLabel(parent),
+    temporary_ctx_(-1),
+    shrinkable_(false)
 {
 #ifdef Q_OS_MAC
     setAttribute(Qt::WA_MacSmallSize, true);
 #endif
-    temporary_ctx_ = -1;
     fillLabel();
 
     connect(&temporary_timer_, SIGNAL(timeout()), this, SLOT(updateTemporaryStatus()));
@@ -48,7 +52,7 @@ void LabelStack::setTemporaryContext(const int ctx) {
 }
 
 void LabelStack::fillLabel() {
-    StackItem *si;
+    StackItem si;
     QString style_sheet;
 
     style_sheet =
@@ -62,7 +66,7 @@ void LabelStack::fillLabel() {
 
     si = labels_.first();
 
-    if (si->ctx == temporary_ctx_) {
+    if (si.ctx == temporary_ctx_) {
         style_sheet += QString(
                     "  border-radius: 0.25em;"
                     "  color: #%1;"
@@ -74,24 +78,36 @@ void LabelStack::fillLabel() {
 
     style_sheet += "}";
     setStyleSheet(style_sheet);
-    setText(si->text);
+    setText(si.text);
 }
 
-void LabelStack::pushText(QString &text, int ctx) {
-    StackItem *si = new StackItem;
+void LabelStack::pushText(const QString &text, int ctx) {
+    popText(ctx);
 
     if (ctx == temporary_ctx_) {
         temporary_timer_.stop();
-        popText(temporary_ctx_);
 
         temporary_epoch_.start();
         temporary_timer_.start(temporary_flash_timeout_);
         emit toggleTemporaryFlash(true);
     }
 
-    si->text = text;
-    si->ctx = ctx;
+    StackItem si;
+    si.text = text;
+    si.ctx = ctx;
     labels_.prepend(si);
+    fillLabel();
+}
+
+void LabelStack::setShrinkable(bool shrinkable)
+{
+    shrinkable_ = shrinkable;
+    int min_width = 0;
+
+    if (shrinkable) {
+        min_width = fontMetrics().height() * 5; // em-widths
+    }
+    setMinimumWidth(min_width);
     fillLabel();
 }
 
@@ -101,19 +117,16 @@ void LabelStack::mousePressEvent(QMouseEvent *event)
         emit mousePressedAt(QPoint(event->globalPos()), Qt::LeftButton);
 }
 
-void LabelStack::mouseReleaseEvent(QMouseEvent *event)
+void LabelStack::mouseReleaseEvent(QMouseEvent *)
 {
-    Q_UNUSED(event);
 }
 
-void LabelStack::mouseDoubleClickEvent(QMouseEvent *event)
+void LabelStack::mouseDoubleClickEvent(QMouseEvent *)
 {
-    Q_UNUSED(event);
 }
 
-void LabelStack::mouseMoveEvent(QMouseEvent *event)
+void LabelStack::mouseMoveEvent(QMouseEvent *)
 {
-    Q_UNUSED(event);
 }
 
 void LabelStack::contextMenuEvent(QContextMenuEvent *event)
@@ -121,11 +134,32 @@ void LabelStack::contextMenuEvent(QContextMenuEvent *event)
     emit mousePressedAt(QPoint(event->globalPos()), Qt::RightButton);
 }
 
+void LabelStack::paintEvent(QPaintEvent *event)
+{
+    if (!shrinkable_) {
+        QLabel::paintEvent(event);
+        return;
+    }
+
+    QFrame::paintEvent(event);
+
+    QString elided_text = fontMetrics().elidedText(text(), Qt::ElideMiddle, width());
+    QPainter painter(this);
+    QRect contents_rect = contentsRect();
+    QStyleOption opt;
+
+    contents_rect.adjust(margin(), margin(), -margin(), -margin());
+    opt.initFrom(this);
+
+    style()->drawItemText(&painter, contents_rect, alignment(), opt.palette,
+                          isEnabled(), elided_text, foregroundRole());
+}
+
 void LabelStack::popText(int ctx) {
-    QMutableListIterator<StackItem *> iter(labels_);
+    QMutableListIterator<StackItem> iter(labels_);
 
     while (iter.hasNext()) {
-        if (iter.next()->ctx == ctx) {
+        if (iter.next().ctx == ctx) {
             iter.remove();
             break;
         }

@@ -25,9 +25,7 @@
 
 #include "config.h"
 
-#include <epan/wmem/wmem.h>
 
-#include "packet-rpc.h"
 #include "packet-nfs.h"
 
 void proto_register_nfsacl(void);
@@ -105,23 +103,23 @@ dissect_nfsacl_mask(tvbuff_t *tvb, int offset, proto_tree *tree)
 
 static const value_string names_nfsacl_aclent_type[] = {
 #define NA_USER_OBJ 0x1
-	{ NA_USER_OBJ, "NA_USER_OBJ" },
+	{ NA_USER_OBJ,			 "NA_USER_OBJ" },
 #define NA_USER 0x2
-	{ NA_USER, "NA_USER" },
+	{ NA_USER,			 "NA_USER" },
 #define NA_GROUP_OBJ 0x4
-	{ NA_GROUP_OBJ, "NA_GROUP_OBJ" },
+	{ NA_GROUP_OBJ,			 "NA_GROUP_OBJ" },
 #define NA_GROUP 0x8
-	{ NA_GROUP, "NA_GROUP" },
+	{ NA_GROUP,			 "NA_GROUP" },
 #define NA_CLASS_OBJ 0x10
-	{ NA_CLASS_OBJ, "NA_CLASS_OBJ" },
+	{ NA_CLASS_OBJ,			 "NA_CLASS_OBJ" },
 #define NA_OTHER_OBJ 0x20
-	{ NA_OTHER_OBJ, "NA_OTHER_OBJ" },
+	{ NA_OTHER_OBJ,			 "NA_OTHER_OBJ" },
 #define NA_ACL_DEFAULT 0x1000
-	{ NA_ACL_DEFAULT, "NA_ACL_DEFAULT" },
-	{ NA_ACL_DEFAULT | NA_USER_OBJ, "Default NA_USER_OBJ" },
-	{ NA_ACL_DEFAULT | NA_USER, "Default NA_USER" },
+	{ NA_ACL_DEFAULT,		 "NA_ACL_DEFAULT" },
+	{ NA_ACL_DEFAULT | NA_USER_OBJ,	 "Default NA_USER_OBJ" },
+	{ NA_ACL_DEFAULT | NA_USER,	 "Default NA_USER" },
 	{ NA_ACL_DEFAULT | NA_GROUP_OBJ, "Default NA_GROUP_OBJ" },
-	{ NA_ACL_DEFAULT | NA_GROUP, "Default NA_GROUP" },
+	{ NA_ACL_DEFAULT | NA_GROUP,	 "Default NA_GROUP" },
 	{ NA_ACL_DEFAULT | NA_CLASS_OBJ, "Default NA_CLASS_OBJ" },
 	{ NA_ACL_DEFAULT | NA_OTHER_OBJ, "Default NA_OTHER_OBJ" },
 	{ 0, NULL },
@@ -164,20 +162,15 @@ dissect_nfsacl_secattr(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 {
 	guint32 aclcnt, dfaclcnt;
 	guint32 i;
-	proto_item *entry_item = NULL;
-	proto_tree *entry_tree = NULL;
+	proto_tree *entry_tree;
 
 	offset = dissect_nfsacl_mask(tvb, offset, tree);
 	offset = dissect_rpc_uint32(tvb, tree, hf_nfsacl_aclcnt, offset);
 
 	aclcnt = tvb_get_ntohl(tvb, offset);
 
-	entry_item = proto_tree_add_text(tree, tvb, offset, 4,
-			"Total ACL entries: %d", aclcnt);
-
-	if (entry_item)
-		entry_tree = proto_item_add_subtree(entry_item,
-				ett_nfsacl_aclent_entries);
+	entry_tree = proto_tree_add_subtree_format(tree, tvb, offset, 4,
+			ett_nfsacl_aclent_entries, NULL, "Total ACL entries: %d", aclcnt);
 
 	offset += 4;
 
@@ -193,12 +186,8 @@ dissect_nfsacl_secattr(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 
 	dfaclcnt = tvb_get_ntohl(tvb, offset);
 
-	entry_item = proto_tree_add_text(tree, tvb, offset, 4,
-			"Total default ACL entries: %d", dfaclcnt);
-
-	if (entry_item)
-		entry_tree = proto_item_add_subtree(entry_item,
-				ett_nfsacl_aclent_entries);
+	entry_tree = proto_tree_add_subtree_format(tree, tvb, offset, 4,
+			ett_nfsacl_aclent_entries, NULL, "Total default ACL entries: %d", dfaclcnt);
 
 	offset += 4;
 
@@ -212,10 +201,9 @@ dissect_nfsacl_secattr(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 /* proc number, "proc name", dissect_request, dissect_reply */
-/* NULL as function pointer means: type of arguments is "void". */
 static const vsff nfsacl1_proc[] = {
 	{ NFSACLPROC_NULL,	"NULL",
-		NULL,	NULL },
+	  dissect_rpc_void,	dissect_rpc_void },
 	{ 0,	NULL,	NULL,	NULL }
 };
 static const value_string nfsacl1_proc_vals[] = {
@@ -224,23 +212,23 @@ static const value_string nfsacl1_proc_vals[] = {
 };
 
 static int
-dissect_nfsacl2_getacl_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl2_getacl_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 			    proto_tree *tree, void* data)
 {
+	int offset = 0;
 	offset = dissect_fhandle(tvb, offset, pinfo, tree, "fhandle", NULL, (rpc_call_info_value*)data);
 	offset = dissect_nfsacl_mask(tvb, offset, tree);
 	return offset;
 }
 
 static int
-dissect_nfsacl2_getacl_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl2_getacl_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 			     proto_tree *tree, void* data _U_)
 {
 	guint32 status;
+	int offset = 0;
 
-	status = tvb_get_ntohl(tvb, offset + 0);
-
-	proto_tree_add_uint(tree, hf_nfs_status, tvb, offset + 0, 4, status);
+	proto_tree_add_item_ret_uint(tree, hf_nfs_status, tvb, offset, 4, ENC_BIG_ENDIAN, &status);
 
 	offset += 4;
 
@@ -254,9 +242,10 @@ dissect_nfsacl2_getacl_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_nfsacl2_setacl_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl2_setacl_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 			    proto_tree *tree, void* data)
 {
+	int offset = 0;
 	offset = dissect_fhandle(tvb, offset, pinfo, tree, "fhandle", NULL, (rpc_call_info_value*)data);
 	offset = dissect_nfsacl_secattr(tvb, offset, pinfo, tree);
 
@@ -264,14 +253,13 @@ dissect_nfsacl2_setacl_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_nfsacl2_setacl_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl2_setacl_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 			     proto_tree *tree, void* data _U_)
 {
 	guint32 status;
+	int offset = 0;
 
-	status = tvb_get_ntohl(tvb, offset + 0);
-
-	proto_tree_add_uint(tree, hf_nfs_status, tvb, offset + 0, 4, status);
+	proto_tree_add_item_ret_uint(tree, hf_nfs_status, tvb, offset + 0, 4, ENC_BIG_ENDIAN, &status);
 
 	offset += 4;
 
@@ -282,29 +270,26 @@ dissect_nfsacl2_setacl_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_nfsacl2_getattr_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl2_getattr_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 			     proto_tree *tree, void* data)
 {
-	offset = dissect_fhandle(tvb, offset, pinfo, tree, "fhandle", NULL, (rpc_call_info_value*)data);
-
-	return offset;
+	return dissect_fhandle(tvb, 0, pinfo, tree, "fhandle", NULL, (rpc_call_info_value*)data);
 }
 
 static int
-dissect_nfsacl2_getattr_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl2_getattr_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 			      proto_tree *tree, void* data _U_)
 {
-	offset = dissect_nfs2_fattr(tvb, offset, tree, "attr");
-
-	return offset;
+	return dissect_nfs2_fattr(tvb, 0, tree, "attr");
 }
 
 static int
-dissect_nfsacl2_access_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl2_access_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 			    proto_tree *tree, void* data)
 {
 	guint32 *acc_request, amask;
 	rpc_call_info_value *civ = (rpc_call_info_value*)data;
+	int offset = 0;
 
 	offset = dissect_fhandle(tvb, offset, pinfo, tree, "fhandle", NULL, civ);
 
@@ -320,10 +305,11 @@ dissect_nfsacl2_access_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_nfsacl2_access_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl2_access_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 			     proto_tree *tree, void* data)
 {
 	guint32 status;
+	int offset = 0;
 
 	status = tvb_get_ntohl(tvb, offset + 0);
 
@@ -341,9 +327,9 @@ dissect_nfsacl2_access_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_nfsacl2_getxattrdir_call(tvbuff_t *tvb, int offset,
-				 packet_info *pinfo _U_, proto_tree *tree, void* data)
+dissect_nfsacl2_getxattrdir_call(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data)
 {
+	int offset = 0;
 	offset = dissect_fhandle(tvb, offset, pinfo, tree, "fhandle", NULL, (rpc_call_info_value*)data);
 	offset = dissect_rpc_bool(tvb, tree, hf_nfsacl_create, offset);
 
@@ -351,10 +337,10 @@ dissect_nfsacl2_getxattrdir_call(tvbuff_t *tvb, int offset,
 }
 
 static int
-dissect_nfsacl2_getxattrdir_reply(tvbuff_t *tvb, int offset,
-				  packet_info *pinfo _U_, proto_tree *tree, void* data)
+dissect_nfsacl2_getxattrdir_reply(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data)
 {
 	guint32 status;
+	int offset = 0;
 
 	status = tvb_get_ntohl(tvb, offset + 0);
 
@@ -373,7 +359,7 @@ dissect_nfsacl2_getxattrdir_reply(tvbuff_t *tvb, int offset,
 
 static const vsff nfsacl2_proc[] = {
 	{ NFSACLPROC_NULL,	"NULL",
-		NULL,	NULL },
+		dissect_rpc_void,		dissect_rpc_void },
 	{ NFSACLPROC2_GETACL,	"GETACL",
 		dissect_nfsacl2_getacl_call,	dissect_nfsacl2_getacl_reply },
 	{ NFSACLPROC2_SETACL,	"SETACL",
@@ -397,9 +383,10 @@ static const value_string nfsacl2_proc_vals[] = {
 };
 
 static int
-dissect_nfsacl3_getacl_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl3_getacl_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 			    proto_tree *tree, void* data)
 {
+	int offset = 0;
 	offset = dissect_nfs3_fh(tvb, offset, pinfo, tree, "fhandle", NULL, (rpc_call_info_value*)data);
 	offset = dissect_nfsacl_mask(tvb, offset, tree);
 
@@ -407,76 +394,60 @@ dissect_nfsacl3_getacl_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_nfsacl3_getacl_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl3_getacl_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 			     proto_tree *tree, void* data _U_)
 {
 	guint32 status;
-	proto_item *entry_item = NULL;
-	proto_tree *entry_tree = NULL;
+	proto_item *entry_item;
+	proto_tree *entry_tree;
+	int offset = 0;
 
-	status = tvb_get_ntohl(tvb, offset + 0);
-
-	if (tree)
-		proto_tree_add_uint(tree, hf_nfs_status, tvb, offset + 0, 4,
-				status);
+	proto_tree_add_item_ret_uint(tree, hf_nfs_status, tvb, offset, 4, ENC_BIG_ENDIAN, &status);
 
 	offset += 4;
 
-	if (tree)
-	{
-		entry_item = proto_tree_add_item(tree, hf_nfsacl_entry, tvb,
+	entry_item = proto_tree_add_item(tree, hf_nfsacl_entry, tvb,
 				offset + 0, -1, ENC_NA);
-		if (entry_item)
-			entry_tree = proto_item_add_subtree(entry_item, ett_nfsacl_entry);
-	}
+	entry_tree = proto_item_add_subtree(entry_item, ett_nfsacl_entry);
 
-	if (entry_tree)
-		offset = dissect_nfs3_post_op_attr(tvb, offset, pinfo, entry_tree, "attr");
+	offset = dissect_nfs3_post_op_attr(tvb, offset, pinfo, entry_tree, "attr");
 
 	if (status != ACL3_OK)
 		return offset;
 
-	if (entry_tree)
-		offset = dissect_nfsacl_secattr(tvb, offset, pinfo, entry_tree);
+	offset = dissect_nfsacl_secattr(tvb, offset, pinfo, entry_tree);
 
 	return offset;
 }
 
 static int
-dissect_nfsacl3_setacl_call(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl3_setacl_call(tvbuff_t *tvb, packet_info *pinfo _U_,
 			    proto_tree *tree, void* data)
 
 {
-	proto_item *acl_item = NULL;
-	proto_tree *acl_tree = NULL;
+	proto_item *acl_item;
+	proto_tree *acl_tree;
+	int offset = 0;
 
 	offset = dissect_nfs3_fh(tvb, offset, pinfo, tree, "fhandle", NULL, (rpc_call_info_value*)data);
 
-	if (tree)
-	{
-		acl_item = proto_tree_add_item(tree, hf_nfsacl_entry, tvb, offset + 0,
+	acl_item = proto_tree_add_item(tree, hf_nfsacl_entry, tvb, offset + 0,
 				-1, ENC_NA);
+	acl_tree = proto_item_add_subtree(acl_item, ett_nfsacl_entry);
 
-		if (acl_item)
-			acl_tree = proto_item_add_subtree(acl_item, ett_nfsacl_entry);
-	}
-
-	if (acl_tree)
-		offset = dissect_nfsacl_secattr(tvb, offset, pinfo, acl_tree);
+	offset = dissect_nfsacl_secattr(tvb, offset, pinfo, acl_tree);
 
 	return offset;
 }
 
 static int
-dissect_nfsacl3_setacl_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
+dissect_nfsacl3_setacl_reply(tvbuff_t *tvb, packet_info *pinfo _U_,
 			     proto_tree *tree, void* data _U_)
 {
-	guint32 status = tvb_get_ntohl(tvb, offset + 0);
+	guint32 status;
+	int offset = 0;
 
-	if (tree)
-		proto_tree_add_uint(tree, hf_nfs_status, tvb, offset + 0, 4,
-				status);
-
+	proto_tree_add_item_ret_uint(tree, hf_nfs_status, tvb, offset, 4, ENC_BIG_ENDIAN, &status);
 	offset += 4;
 
 	offset = dissect_nfs3_post_op_attr(tvb, offset, pinfo, tree, "attr");
@@ -485,10 +456,11 @@ dissect_nfsacl3_setacl_reply(tvbuff_t *tvb, int offset, packet_info *pinfo _U_,
 }
 
 static int
-dissect_nfsacl3_getxattrdir_call(tvbuff_t *tvb, int offset,
-				 packet_info *pinfo _U_, proto_tree *tree, void* data)
+dissect_nfsacl3_getxattrdir_call(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data)
 
 {
+	int offset = 0;
+
 	offset = dissect_nfs3_fh(tvb, offset, pinfo, tree, "fhandle", NULL, (rpc_call_info_value*)data);
 	offset = dissect_rpc_bool(tvb, tree, hf_nfsacl_create, offset);
 
@@ -496,17 +468,12 @@ dissect_nfsacl3_getxattrdir_call(tvbuff_t *tvb, int offset,
 }
 
 static int
-dissect_nfsacl3_getxattrdir_reply(tvbuff_t *tvb, int offset,
-				  packet_info *pinfo _U_, proto_tree *tree, void* data)
+dissect_nfsacl3_getxattrdir_reply(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree, void* data)
 {
 	guint32 status;
+	int offset = 0;
 
-	status = tvb_get_ntohl(tvb, offset + 0);
-
-	if (tree)
-		proto_tree_add_uint(tree, hf_nfs_status, tvb, offset + 0, 4,
-				    status);
-
+	proto_tree_add_item_ret_uint(tree, hf_nfs_status, tvb, offset, 4, ENC_BIG_ENDIAN, &status);
 	offset += 4;
 
 	if (status == ACL3_OK)
@@ -520,7 +487,7 @@ dissect_nfsacl3_getxattrdir_reply(tvbuff_t *tvb, int offset,
 
 static const vsff nfsacl3_proc[] = {
 	{ NFSACLPROC_NULL,	"NULL",
-		NULL,	NULL },
+		dissect_rpc_void,		dissect_rpc_void },
 	{ NFSACLPROC3_GETACL,	"GETACL",
 		dissect_nfsacl3_getacl_call,	dissect_nfsacl3_getacl_reply },
 	{ NFSACLPROC3_SETACL,	"SETACL",
@@ -535,6 +502,12 @@ static const value_string nfsacl3_proc_vals[] = {
 	{ NFSACLPROC3_SETACL,		 "SETACL" },
 	{ NFSACLPROC3_GETXATTRDIR,	 "GETXATTRDIR" },
 	{ 0,	NULL }
+};
+
+static const rpc_prog_vers_info nfsacl_vers_info[] = {
+	{ 1, nfsacl1_proc, &hf_nfsacl_procedure_v1 },
+	{ 2, nfsacl2_proc, &hf_nfsacl_procedure_v2 },
+	{ 3, nfsacl3_proc, &hf_nfsacl_procedure_v3 },
 };
 
 void
@@ -620,9 +593,19 @@ void
 proto_reg_handoff_nfsacl(void)
 {
 	/* Register the protocol as RPC */
-	rpc_init_prog(proto_nfsacl, NFSACL_PROGRAM, ett_nfsacl);
-	/* Register the procedure tables */
-	rpc_init_proc_table(NFSACL_PROGRAM, 1, nfsacl1_proc, hf_nfsacl_procedure_v1);
-	rpc_init_proc_table(NFSACL_PROGRAM, 2, nfsacl2_proc, hf_nfsacl_procedure_v2);
-	rpc_init_proc_table(NFSACL_PROGRAM, 3, nfsacl3_proc, hf_nfsacl_procedure_v3);
+	rpc_init_prog(proto_nfsacl, NFSACL_PROGRAM, ett_nfsacl,
+	    G_N_ELEMENTS(nfsacl_vers_info), nfsacl_vers_info);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

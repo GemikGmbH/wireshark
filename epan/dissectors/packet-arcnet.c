@@ -23,12 +23,12 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <wiretap/wtap.h>
 #include "packet-arcnet.h"
+#include <epan/address_types.h>
 #include <epan/arcnet_pids.h>
+#include <epan/to_str-int.h>
 #include "packet-ip.h"
 
 void proto_register_arcnet(void);
@@ -43,12 +43,43 @@ static int hf_arcnet_protID = -1;
 static int hf_arcnet_exception_flag = -1;
 static int hf_arcnet_split_flag = -1;
 static int hf_arcnet_sequence = -1;
+static int hf_arcnet_padding = -1;
 
 /* Initialize the subtree pointers */
 static gint ett_arcnet = -1;
 
+static int arcnet_address_type = -1;
+
 static dissector_table_t arcnet_dissector_table;
 static dissector_handle_t data_handle;
+
+static int arcnet_str_len(const address* addr _U_)
+{
+  return 5;
+}
+
+static int arcnet_to_str(const address* addr, gchar *buf, int buf_len _U_)
+{
+  *buf++ = '0';
+  *buf++ = 'x';
+  buf = bytes_to_hexstr(buf, (const guint8 *)addr->data, 1);
+  *buf = '\0'; /* NULL terminate */
+
+  return arcnet_str_len(addr);
+}
+
+static const char* arcnet_col_filter_str(const address* addr _U_, gboolean is_src)
+{
+  if (is_src)
+    return "arcnet.src";
+
+  return "arcnet.dst";
+}
+
+static int arcnet_len(void)
+{
+  return 1;
+}
 
 void
 capture_arcnet (const guchar *pd, int len, packet_counts *ld,
@@ -135,8 +166,8 @@ dissect_arcnet_common (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree,
   int offset = 0;
   guint8 dst, src, protID, split_flag;
   tvbuff_t *next_tvb;
-  proto_item *ti = NULL;
-  proto_tree *arcnet_tree = NULL;
+  proto_item *ti;
+  proto_tree *arcnet_tree;
 
   col_set_str (pinfo->cinfo, COL_PROTOCOL, "ARCNET");
 
@@ -144,10 +175,10 @@ dissect_arcnet_common (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree,
 
   src = tvb_get_guint8 (tvb, 0);
   dst = tvb_get_guint8 (tvb, 1);
-  TVB_SET_ADDRESS(&pinfo->dl_src,   AT_ARCNET, tvb, 0, 1);
-  TVB_SET_ADDRESS(&pinfo->src,      AT_ARCNET, tvb, 0, 1);
-  TVB_SET_ADDRESS(&pinfo->dl_dst,   AT_ARCNET, tvb, 1, 1);
-  TVB_SET_ADDRESS(&pinfo->dst,      AT_ARCNET, tvb, 1, 1);
+  TVB_SET_ADDRESS(&pinfo->dl_src,   arcnet_address_type, tvb, 0, 1);
+  COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->dl_src);
+  TVB_SET_ADDRESS(&pinfo->dl_dst,   arcnet_address_type, tvb, 1, 1);
+  COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->dl_dst);
 
   ti = proto_tree_add_item (tree, proto_arcnet, tvb, 0, -1, ENC_NA);
 
@@ -213,7 +244,7 @@ dissect_arcnet_common (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree,
                            split_flag);
       offset++;
 
-      proto_tree_add_text (arcnet_tree, tvb, offset, 2, "Padding");
+      proto_tree_add_item(arcnet_tree, hf_arcnet_padding, tvb, offset, 2, ENC_BIG_ENDIAN);
       offset += 2;
 
       /* Another copy of the packet type appears after the padding. */
@@ -331,6 +362,11 @@ proto_register_arcnet (void)
       FT_UINT16, BASE_DEC, NULL, 0,
       "Sequence number", HFILL}
      },
+    {&hf_arcnet_padding,
+     {"Padding", "arcnet.padding",
+      FT_UINT16, BASE_HEX, NULL, 0,
+      NULL, HFILL}
+     },
   };
 
 /* Setup protocol subtree array */
@@ -348,6 +384,8 @@ proto_register_arcnet (void)
 /* Required function calls to register the header fields and subtrees used */
   proto_register_field_array (proto_arcnet, hf, array_length (hf));
   proto_register_subtree_array (ett, array_length (ett));
+
+  arcnet_address_type = address_type_dissector_register("AT_ARCNET", "ARCNET Address", arcnet_to_str, arcnet_str_len, arcnet_col_filter_str, arcnet_len, NULL, NULL);
 }
 
 
@@ -364,3 +402,16 @@ proto_reg_handoff_arcnet (void)
   dissector_add_uint ("wtap_encap", WTAP_ENCAP_ARCNET_LINUX, arcnet_linux_handle);
   data_handle = find_dissector ("data");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

@@ -24,21 +24,13 @@
 
 #include "config.h"
 
-#include <string.h>
-
-#include <glib.h>
 
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
 #include <epan/conversation.h>
 #include <epan/prefs.h>
 
-#include <epan/dissectors/packet-xml.h>
-
-#include <packet-xmpp-utils.h>
-#include <packet-xmpp.h>
-#include <packet-xmpp-core.h>
-#include <packet-xmpp-jingle.h>
+#include "packet-xmpp.h"
+#include "packet-xmpp-core.h"
 
 #define XMPP_PORT 5222
 
@@ -54,6 +46,8 @@ gint hf_xmpp_id = -1;
 gint hf_xmpp_from = -1;
 gint hf_xmpp_to = -1;
 gint hf_xmpp_type = -1;
+gint hf_xmpp_cdata = -1;
+gint hf_xmpp_attribute = -1;
 
 gint hf_xmpp_iq = -1;
 
@@ -168,6 +162,8 @@ gint hf_xmpp_iq_feature_neg = -1;
 gint hf_xmpp_x_data = -1;
 gint hf_xmpp_x_data_field = -1;
 gint hf_xmpp_x_data_field_value = -1;
+gint hf_xmpp_x_data_instructions = -1;
+gint hf_xmpp_muc_user_status = -1;
 
 gint hf_xmpp_message = -1;
 gint hf_xmpp_message_chatstate = -1;
@@ -194,8 +190,11 @@ gint hf_xmpp_presence_caps = -1;
 
 gint hf_xmpp_auth = -1;
 gint hf_xmpp_failure = -1;
+gint hf_xmpp_failure_text = -1;
 gint hf_xmpp_starttls = -1;
 gint hf_xmpp_proceed = -1;
+gint hf_xmpp_xml_header_version = -1;
+gint hf_xmpp_stream_end = -1;
 
 gint hf_xmpp_muc_x = -1;
 gint hf_xmpp_muc_user_x  = -1;
@@ -206,11 +205,13 @@ gint hf_xmpp_gtalk_session = -1;
 gint hf_xmpp_gtalk_session_type = -1;
 gint hf_xmpp_gtalk = -1;
 gint hf_xmpp_gtalk_setting = -1;
+gint hf_xmpp_gtalk_setting_element = -1;
 gint hf_xmpp_gtalk_nosave_x = -1;
 gint hf_xmpp_gtalk_mail_mailbox = -1;
 gint hf_xmpp_gtalk_mail_new_mail = -1;
 gint hf_xmpp_gtalk_transport_p2p = -1;
-
+gint hf_xmpp_gtalk_mail_snippet = -1;
+gint hf_xmpp_gtalk_status_status_list = -1;
 
 gint hf_xmpp_conf_info = -1;
 gint hf_xmpp_conf_info_sid = -1;
@@ -370,13 +371,13 @@ expert_field ei_xmpp_required_attribute = EI_INIT;
 
 static dissector_handle_t xmpp_handle;
 
-static dissector_handle_t ssl_handle;
 static dissector_handle_t xml_handle;
 
 static void
 dissect_xmpp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 
     xml_frame_t *xml_frame;
+    xml_frame_t *xml_dissector_frame;
     gboolean     out_packet;
 
     conversation_t   *conversation;
@@ -388,6 +389,8 @@ dissect_xmpp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 
     xmpp_element_t *packet = NULL;
 
+    int proto_xml = dissector_handle_get_protocol_index(xml_handle);
+
     /*check if desegment
      * now it checks that last char is '>',
      * TODO checks that first element in packet is closed*/
@@ -397,7 +400,7 @@ dissect_xmpp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
     conversation = find_or_create_conversation(pinfo);
     xmpp_info = (xmpp_conv_info_t *)conversation_get_proto_data(conversation, proto_xmpp);
 
-    if ((!xmpp_info || !xmpp_info->ssl_proceed) && xmpp_desegment)
+    if (!xmpp_info && xmpp_desegment)
     {
         indx = tvb_reported_length(tvb) - 1;
         if (indx >= 0)
@@ -422,35 +425,14 @@ dissect_xmpp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
 
     col_clear(pinfo->cinfo, COL_INFO);
 
-    if (xmpp_info && xmpp_info->ssl_proceed &&
-            xmpp_info->ssl_proceed < pinfo->fd->num)
-    {
-        guint16 save_can_desegment;
-        guint32 save_ssl_proceed;
-
-        /* Make sure SSL/TLS can desegment */
-        save_can_desegment = pinfo->can_desegment;
-        pinfo->can_desegment = pinfo->saved_can_desegment;
-
-        /* Make sure the SSL dissector will not be called again after decryption */
-        save_ssl_proceed = xmpp_info->ssl_proceed;
-        xmpp_info->ssl_proceed = 0;
-
-        call_dissector(ssl_handle, tvb, pinfo, tree);
-
-        pinfo->can_desegment = save_can_desegment;
-        xmpp_info->ssl_proceed = save_ssl_proceed;
-        return;
-    }
-
     /*if tree == NULL then xmpp_item and xmpp_tree will also NULL*/
     xmpp_item = proto_tree_add_item(tree, proto_xmpp, tvb, 0, -1, ENC_NA);
     xmpp_tree = proto_item_add_subtree(xmpp_item, ett_xmpp);
 
-    call_dissector(xml_handle, tvb, pinfo, xmpp_tree);
+    call_dissector_with_data(xml_handle, tvb, pinfo, xmpp_tree, NULL);
 
     /* If XML dissector is disabled, we can't do much */
-    if (!proto_is_protocol_enabled(find_protocol_by_id(dissector_handle_get_protocol_index(xml_handle))))
+    if (!proto_is_protocol_enabled(find_protocol_by_id(proto_xml)))
     {
         col_append_str(pinfo->cinfo, COL_INFO, "(XML dissector disabled, can't dissect XMPP)");
         expert_add_info(pinfo, xmpp_item, &ei_xmpp_xml_disabled);
@@ -465,11 +447,12 @@ dissect_xmpp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
         return;
     }
 
-    if(!pinfo->private_data)
+    xml_dissector_frame = (xml_frame_t *)p_get_proto_data(pinfo->pool, pinfo, proto_xml, 0);
+    if(xml_dissector_frame == NULL)
         return;
 
     /*data from XML dissector*/
-    xml_frame = ((xml_frame_t*)pinfo->private_data)->first_child;
+    xml_frame = xml_dissector_frame->first_child;
 
     if(!xml_frame)
         return;
@@ -481,7 +464,6 @@ dissect_xmpp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree) {
         xmpp_info->ibb_sessions    = wmem_tree_new(wmem_file_scope());
         xmpp_info->gtalk_sessions  = wmem_tree_new(wmem_file_scope());
         xmpp_info->ssl_start   = 0;
-        xmpp_info->ssl_proceed = 0;
         conversation_add_proto_data(conversation, proto_xmpp, (void *) xmpp_info);
     }
 
@@ -577,6 +559,16 @@ proto_register_xmpp(void) {
          {
              "xmlns", "xmpp.xmlns", FT_STRING, BASE_NONE, NULL, 0x0,
              "element namespace", HFILL
+         }},
+        {&hf_xmpp_cdata,
+         {
+             "CDATA", "xmpp.cdata", FT_STRING, BASE_NONE, NULL, 0x0,
+             NULL, HFILL
+         }},
+        {&hf_xmpp_attribute,
+         {
+             "Attribute", "xmpp.attribute", FT_STRING, BASE_NONE, NULL, 0x0,
+             NULL, HFILL
          }},
         { &hf_xmpp_id,
           {
@@ -1045,6 +1037,16 @@ proto_register_xmpp(void) {
               "VALUE", "xmpp.x-data.field.value", FT_NONE, BASE_NONE, NULL, 0x0,
               "jabber:x:data field value", HFILL
           }},
+        { &hf_xmpp_x_data_instructions,
+          {
+              "INSTRUCTIONS", "xmpp.x-data.instructions", FT_STRING, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
+          }},
+        { &hf_xmpp_muc_user_status,
+          {
+              "STATUS", "xmpp.muc_user_status", FT_STRING, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
+          }},
         { &hf_xmpp_delay,
           {
               "DELAY", "xmpp.delay", FT_NONE, BASE_NONE, NULL, 0x0,
@@ -1124,6 +1126,21 @@ proto_register_xmpp(void) {
           {
               "FAILURE", "xmpp.failure", FT_NONE, BASE_NONE, NULL, 0x0,
               "failure packet", HFILL
+          }},
+        { &hf_xmpp_failure_text,
+          {
+              "FAILURE TEXT", "xmpp.failure_text", FT_STRING, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
+          }},
+        { &hf_xmpp_xml_header_version,
+          {
+              "XML HEADER VER", "xmpp.xml_header_version", FT_STRING, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
+          }},
+        { &hf_xmpp_stream_end,
+          {
+              "STREAM END", "xmpp.stream_end", FT_NONE, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
           }},
         { &hf_xmpp_features,
           {
@@ -1205,6 +1222,11 @@ proto_register_xmpp(void) {
               "USERSETTING", "xmpp.gtalk.setting", FT_NONE, BASE_NONE, NULL, 0x0,
               "google:setting usersetting", HFILL
           }},
+        { &hf_xmpp_gtalk_setting_element,
+          {
+              "USERSETTING ELEMENT", "xmpp.gtalk.setting_element", FT_STRING, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
+          }},
         { &hf_xmpp_gtalk_nosave_x,
           {
               "X-NOSAVE", "xmpp.gtalk.nosave.x", FT_NONE, BASE_NONE, NULL, 0x0,
@@ -1224,6 +1246,16 @@ proto_register_xmpp(void) {
           {
               "TRANSPORT", "xmpp.gtalk.transport-p2p", FT_NONE, BASE_NONE, NULL, 0x0,
               "google/transport/p2p", HFILL
+          }},
+        { &hf_xmpp_gtalk_mail_snippet,
+          {
+              "SNIPPET", "xmpp.gtalk.mail_snippet", FT_STRING, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
+          }},
+        { &hf_xmpp_gtalk_status_status_list,
+          {
+              "STATUS", "xmpp.gtalk.status_status_list", FT_STRING, BASE_NONE, NULL, 0x0,
+              NULL, HFILL
           }},
         { &hf_xmpp_conf_info,
           {
@@ -1447,7 +1479,6 @@ proto_register_xmpp(void) {
 
 void
 proto_reg_handoff_xmpp(void) {
-    ssl_handle = find_dissector("ssl");
     xml_handle  = find_dissector("xml");
 
     dissector_add_uint("tcp.port", XMPP_PORT, xmpp_handle);

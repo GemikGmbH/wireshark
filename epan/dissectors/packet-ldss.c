@@ -37,19 +37,13 @@
 #include "config.h"
 
 #include <stdlib.h>
-#include <string.h>
 #include <math.h>
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/conversation.h>
-#include <epan/addr_resolv.h>
-#include <epan/ipproto.h>
 #include <epan/prefs.h>
+#include <epan/expert.h>
 #include <epan/strutil.h>
-#include <epan/wmem/wmem.h>
-#include <epan/dissectors/packet-tcp.h>
+#include "packet-tcp.h"
 
 /* The digest is up to 32 bytes long */
 #define DIGEST_LEN 32
@@ -204,6 +198,9 @@ static int ett_ldss_broadcast	 = -1;
 static int ett_ldss_transfer     = -1;
 static int ett_ldss_transfer_req = -1;
 
+static expert_field ei_ldss_unrecognized_line = EI_INIT;
+
+
 static dissector_handle_t	ldss_udp_handle;
 static dissector_handle_t	ldss_tcp_handle;
 
@@ -332,7 +329,7 @@ dissect_ldss_broadcast(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	 * instead of just filling out the columns), then give more detail. */
 	if (tree) {
 		ti = proto_tree_add_item(tree, proto_ldss,
-					 tvb, 0, (tvb_length(tvb) > 72) ? tvb_length(tvb) : 72, ENC_NA);
+					 tvb, 0, (tvb_captured_length(tvb) > 72) ? tvb_captured_length(tvb) : 72, ENC_NA);
 		ldss_tree = proto_item_add_subtree(ti, ett_ldss_broadcast);
 
 		proto_tree_add_item(ldss_tree, hf_ldss_message_id,
@@ -386,9 +383,9 @@ dissect_ldss_broadcast(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				    tvb, 68, 2, ENC_BIG_ENDIAN);
 		proto_tree_add_item(ldss_tree, hf_ldss_property_count,
 				    tvb, 70, 2, ENC_BIG_ENDIAN);
-		if (tvb_length(tvb) > 72) {
+		if (tvb_reported_length(tvb) > 72) {
 			proto_tree_add_item(ldss_tree, hf_ldss_properties,
-					    tvb, 72, tvb_length(tvb) - 72, ENC_NA);
+					    tvb, 72, tvb_captured_length(tvb) - 72, ENC_NA);
 		}
 	}
 
@@ -437,7 +434,7 @@ dissect_ldss_broadcast(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		highest_num_seen = pinfo->fd->num;
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 /* Transfers happen in response to broadcasts, they are always TCP and are
@@ -458,7 +455,7 @@ dissect_ldss_transfer (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 	conversation_t *transfer_conv;
 	ldss_transfer_info_t *transfer_info;
 	struct tcpinfo *transfer_tcpinfo;
-	proto_tree	*ti, *line_tree = NULL, *ldss_tree = NULL;
+	proto_tree *ti, *line_tree = NULL, *ldss_tree = NULL;
 	nstime_t broadcast_response_time;
 
 	/* Reject the packet if data is NULL */
@@ -513,26 +510,21 @@ dissect_ldss_transfer (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 
 		/* Grab each line from the packet, there should be 4 but lets
 		 * not walk off the end looking for more. */
-		while (offset < tvb_reported_length(tvb)) {
+		while (tvb_offset_exists(tvb, offset)) {
 			gint next_offset;
 			const guint8 *line;
 			int linelen;
 			gboolean is_digest_line;
 			guint digest_type_len;
 
-			linelen = tvb_find_line_end(tvb, offset,
-						    tvb_ensure_length_remaining(tvb, offset), &next_offset,
-						    FALSE);
+			linelen = tvb_find_line_end(tvb, offset, -1, &next_offset, FALSE);
 
 			/* Include new-line in line */
 			line = (guint8 *)tvb_memdup(NULL, tvb, offset, linelen+1); /* XXX - memory leak? */
 
-			if (tree) {
-				ti = proto_tree_add_text(ldss_tree, tvb, offset, linelen,
-							 "%s",
+			line_tree = proto_tree_add_subtree(ldss_tree, tvb, offset, linelen,
+							 ett_ldss_transfer_req, NULL,
 							 tvb_format_text(tvb, offset, next_offset-offset));
-				line_tree = proto_item_add_subtree(ti, ett_ldss_transfer_req);
-			}
 
 			/* Reduce code duplication processing digest lines.
 			 * There are too many locals to pass to a function - the signature
@@ -590,11 +582,7 @@ dissect_ldss_transfer (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 				}
 			}
 			else {
-				if (tree) {
-					ti = proto_tree_add_text(line_tree, tvb, offset, linelen,
-								 "Unrecognized line ignored");
-					PROTO_ITEM_SET_GENERATED(ti);
-				}
+				proto_tree_add_expert(line_tree, pinfo, &ei_ldss_unrecognized_line, tvb, offset, linelen);
 			}
 
 			if (is_digest_line) {
@@ -671,7 +659,7 @@ dissect_ldss_transfer (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 		 * Always desegment if the size is 0 (ie. unknown)
 		 */
 		if (pinfo->can_desegment) {
-			if (size == 0 || tvb_length(tvb) < size) {
+			if (size == 0 || tvb_captured_length(tvb) < size) {
 				pinfo->desegment_offset = 0;
 				pinfo->desegment_len = DESEGMENT_UNTIL_FIN;
 				return 0;
@@ -692,16 +680,16 @@ dissect_ldss_transfer (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 						 tvb, 0, tvb_reported_length(tvb), ENC_NA);
 			ldss_tree = proto_item_add_subtree(ti, ett_ldss_transfer);
 			proto_tree_add_bytes_format(ldss_tree, hf_ldss_file_data,
-						    tvb, 0, tvb_length(tvb), NULL,
+						    tvb, 0, tvb_captured_length(tvb), NULL,
 						    compression == COMPRESSION_GZIP
 						    ? "Gzip compressed data: %d bytes"
 						    : "File data: %d bytes",
-						    tvb_length(tvb));
+						    tvb_captured_length(tvb));
 #ifdef HAVE_LIBZ
 			/* Be nice and uncompress the file data. */
 			if (compression == COMPRESSION_GZIP) {
 				tvbuff_t *uncomp_tvb;
-				uncomp_tvb = tvb_child_uncompress(tvb, tvb, 0, tvb_length(tvb));
+				uncomp_tvb = tvb_child_uncompress(tvb, tvb, 0, tvb_captured_length(tvb));
 				if (uncomp_tvb != NULL) {
 					/* XXX: Maybe not a good idea to add a data_source for
 					        what may very well be a large buffer since then
@@ -712,9 +700,9 @@ dissect_ldss_transfer (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 					*/
 					add_new_data_source(pinfo, uncomp_tvb, "Uncompressed Data");
 					proto_tree_add_bytes_format_value(ldss_tree, hf_ldss_file_data,
-									  uncomp_tvb, 0, tvb_length(uncomp_tvb),
+									  uncomp_tvb, 0, tvb_captured_length(uncomp_tvb),
 									  NULL, "Uncompressed data: %d bytes",
-									  tvb_length(uncomp_tvb));
+									  tvb_captured_length(uncomp_tvb));
 				}
 			}
 #endif
@@ -787,7 +775,7 @@ dissect_ldss_transfer (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void
 		prepare_ldss_transfer_conv(transfer_info->broadcast);
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
 }
 
 static gboolean
@@ -830,28 +818,28 @@ proto_register_ldss (void) {
 		{   &hf_ldss_message_id,
 		    {	"LDSS Message ID",
 			"ldss.message_id",
-			FT_UINT16, BASE_DEC, ldss_message_id_value, 0x0,
+			FT_UINT16, BASE_DEC, VALS(ldss_message_id_value), 0x0,
 			NULL, HFILL
 		    }
 		},
 		{   &hf_ldss_message_detail,
 		    {	"Inferred meaning",
 			"ldss.inferred_meaning",
-			FT_UINT16, BASE_DEC, ldss_inferred_value, 0x0,
+			FT_UINT16, BASE_DEC, VALS(ldss_inferred_value), 0x0,
 			"Inferred meaning of the packet", HFILL
 		    }
 		},
 		{   &hf_ldss_digest_type,
 		    {	"Digest Type",
 			"ldss.digest_type",
-			FT_UINT8, BASE_DEC, ldss_digest_type_value, 0x0,
+			FT_UINT8, BASE_DEC, VALS(ldss_digest_type_value), 0x0,
 			NULL, HFILL
 		    }
 		},
 		{   &hf_ldss_compression,
 		    {	"Compressed Format",
 			"ldss.compression",
-			FT_UINT8, BASE_DEC, ldss_compression_value, 0x0,
+			FT_UINT8, BASE_DEC, VALS(ldss_compression_value), 0x0,
 			NULL, HFILL
 		    }
 		},
@@ -973,11 +961,18 @@ proto_register_ldss (void) {
 
 	static gint  *ett[] = { &ett_ldss_broadcast, &ett_ldss_transfer, &ett_ldss_transfer_req };
 
+	static ei_register_info ei[] = {
+		{ &ei_ldss_unrecognized_line, { "ldss.unrecognized_line", PI_PROTOCOL, PI_WARN, "Unrecognized line ignored", EXPFILL }},
+	};
+
 	module_t     *ldss_module;
+	expert_module_t* expert_ldss;
 
 	proto_ldss = proto_register_protocol("Local Download Sharing Service", "LDSS", "ldss");
 	proto_register_field_array(proto_ldss, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
+	expert_ldss = expert_register_protocol(proto_ldss);
+	expert_register_field_array(expert_ldss, ei, array_length(ei));
 
 	ldss_module = prefs_register_protocol(	proto_ldss, proto_reg_handoff_ldss);
 	prefs_register_uint_preference(		ldss_module, "udp_port",
@@ -1009,3 +1004,16 @@ proto_reg_handoff_ldss (void)
 	dissector_add_uint("udp.port", global_udp_port_ldss, ldss_udp_handle);
 	saved_udp_port_ldss = global_udp_port_ldss;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

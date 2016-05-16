@@ -31,13 +31,12 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
 #include <epan/expert.h>
-#include <epan/wmem/wmem.h>
+#include <epan/strutil.h>
 
 #include "packet-ber.h"
 #include "packet-acse.h"
@@ -50,7 +49,6 @@
 #include "packet-x509sat.h"
 
 #include "packet-p1.h"
-#include <epan/strutil.h>
 
 #define PNAME  "X.411 Message Transfer Service"
 #define PSNAME "P1"
@@ -424,9 +422,6 @@ static int hf_p1_dl_expansion_time = -1;          /* Time */
 static int hf_p1_OriginatorAndDLExpansionHistory_item = -1;  /* OriginatorAndDLExpansion */
 static int hf_p1_originator_or_dl_name = -1;      /* ORAddressAndOptionalDirectoryName */
 static int hf_p1_origination_or_expansion_time = -1;  /* Time */
-static int hf_p1_report_type = -1;                /* T_report_type */
-static int hf_p1_report_type_delivery = -1;       /* PerRecipientDeliveryReportFields */
-static int hf_p1_non_delivery_report = -1;        /* PerRecipientNonDeliveryReportFields */
 static int hf_p1_domain = -1;                     /* GlobalDomainIdentifier */
 static int hf_p1_mta_directory_name = -1;         /* Name */
 static int hf_p1_ExtendedCertificates_item = -1;  /* ExtendedCertificate */
@@ -639,7 +634,7 @@ static int hf_p1_G3FacsimileNonBasicParameters_jpeg = -1;
 static int hf_p1_G3FacsimileNonBasicParameters_processable_mode_26 = -1;
 
 /*--- End of included file: packet-p1-hf.c ---*/
-#line 65 "../../asn1/p1/packet-p1-template.c"
+#line 63 "../../asn1/p1/packet-p1-template.c"
 
 /* Initialize the subtree pointers */
 static gint ett_p1 = -1;
@@ -769,8 +764,6 @@ static gint ett_p1_DLExpansionHistory = -1;
 static gint ett_p1_DLExpansion = -1;
 static gint ett_p1_OriginatorAndDLExpansionHistory = -1;
 static gint ett_p1_OriginatorAndDLExpansion = -1;
-static gint ett_p1_PerRecipientReportFields = -1;
-static gint ett_p1_T_report_type = -1;
 static gint ett_p1_PerRecipientDeliveryReportFields = -1;
 static gint ett_p1_PerRecipientNonDeliveryReportFields = -1;
 static gint ett_p1_ReportingMTAName = -1;
@@ -836,12 +829,14 @@ static gint ett_p1_SEQUENCE_SIZE_1_ub_recipients_OF_PerRecipientMessageSubmissio
 static gint ett_p1_SEQUENCE_SIZE_1_ub_recipients_OF_PerRecipientProbeSubmissionFields = -1;
 
 /*--- End of included file: packet-p1-ett.c ---*/
-#line 76 "../../asn1/p1/packet-p1-template.c"
+#line 74 "../../asn1/p1/packet-p1-template.c"
 
 static expert_field ei_p1_unknown_extension_attribute_type = EI_INIT;
 static expert_field ei_p1_unknown_standard_extension = EI_INIT;
 static expert_field ei_p1_unknown_built_in_content_type = EI_INIT;
 static expert_field ei_p1_unknown_tokendata_type = EI_INIT;
+static expert_field ei_p1_unsupported_pdu = EI_INIT;
+static expert_field ei_p1_zero_pdu = EI_INIT;
 
 /* Dissector tables */
 static dissector_table_t p1_extension_dissector_table;
@@ -894,63 +889,79 @@ static const value_string p3_err_code_string_vals[] = {
 /*--- End of included file: packet-p1-table.c ---*/
 #line 88 "../../asn1/p1/packet-p1-template.c"
 
+#define P1_ADDRESS_CTX "p1-address-ctx"
 typedef struct p1_address_ctx {
-	gboolean do_address;
-	const char *content_type_id;
-	gboolean report_unknown_content_type;
-	wmem_strbuf_t* oraddress;
+    gboolean do_address;
+    const char *content_type_id;
+    gboolean report_unknown_content_type;
+    wmem_strbuf_t* oraddress;
 } p1_address_ctx_t;
 
 static void set_do_address(asn1_ctx_t* actx, gboolean do_address)
 {
-	p1_address_ctx_t* ctx;
+    p1_address_ctx_t* ctx;
 
-	if (actx->subtree.tree_ctx == NULL) {
-		actx->subtree.tree_ctx = wmem_new0(wmem_packet_scope(), p1_address_ctx_t);
-	}
+    if (actx->subtree.tree_ctx == NULL) {
+        actx->subtree.tree_ctx = wmem_new0(wmem_packet_scope(), p1_address_ctx_t);
+    }
 
-	ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
-	ctx->do_address = do_address;
+    ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
+    ctx->do_address = do_address;
+}
+
+static p1_address_ctx_t *get_do_address_ctx(asn1_ctx_t* actx)
+{
+    p1_address_ctx_t* ctx = NULL;
+
+    if (actx->pinfo->private_table) {
+        /* First check if called from an extension attribute */
+        ctx = (p1_address_ctx_t *)g_hash_table_lookup(actx->pinfo->private_table, (gpointer)P1_ADDRESS_CTX);
+    }
+
+    if (!ctx) {
+        ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
+    }
+
+    return ctx;
 }
 
 static void do_address(const char* addr, tvbuff_t* tvb_string, asn1_ctx_t* actx)
 {
-	p1_address_ctx_t* ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
+    p1_address_ctx_t* ctx = get_do_address_ctx(actx);
 
-	if (ctx && ctx->do_address) {
-		if (addr) {
-			wmem_strbuf_append(ctx->oraddress, addr);
-		}
-		if (tvb_string) {
-			wmem_strbuf_append(ctx->oraddress, tvb_format_text(tvb_string, 0, tvb_length(tvb_string)));
-		}
-	}
-
+    if (ctx && ctx->do_address) {
+        if (addr) {
+            wmem_strbuf_append(ctx->oraddress, addr);
+        }
+        if (tvb_string) {
+            wmem_strbuf_append(ctx->oraddress, tvb_format_text(tvb_string, 0, tvb_captured_length(tvb_string)));
+        }
+    }
 }
 
 static void do_address_str(const char* addr, tvbuff_t* tvb_string, asn1_ctx_t* actx)
 {
-	wmem_strbuf_t *ddatype = (wmem_strbuf_t *)actx->value_ptr;
-	p1_address_ctx_t* ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
+    wmem_strbuf_t *ddatype = (wmem_strbuf_t *)actx->value_ptr;
+    p1_address_ctx_t* ctx = get_do_address_ctx(actx);
 
-	do_address(addr, tvb_string, actx);
+    do_address(addr, tvb_string, actx);
 
-	if (ctx && ctx->do_address && ddatype && tvb_string)
-		wmem_strbuf_append(ddatype, tvb_format_text(tvb_string, 0, tvb_length(tvb_string)));
+    if (ctx && ctx->do_address && ddatype && tvb_string)
+        wmem_strbuf_append(ddatype, tvb_format_text(tvb_string, 0, tvb_captured_length(tvb_string)));
 }
 
 static void do_address_str_tree(const char* addr, tvbuff_t* tvb_string, asn1_ctx_t* actx, proto_tree* tree)
 {
-	wmem_strbuf_t *ddatype = (wmem_strbuf_t *)actx->value_ptr;
-	p1_address_ctx_t* ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
+    wmem_strbuf_t *ddatype = (wmem_strbuf_t *)actx->value_ptr;
+    p1_address_ctx_t* ctx = get_do_address_ctx(actx);
 
-	do_address(addr, tvb_string, actx);
+    do_address(addr, tvb_string, actx);
 
-	if (ctx && ctx->do_address && tvb_string && ddatype) {
-		if (wmem_strbuf_get_len(ddatype) > 0) {
-			proto_item_append_text (tree, " (%s=%s)", wmem_strbuf_get_str(ddatype), tvb_format_text(tvb_string, 0, tvb_length(tvb_string)));
-		}
-	}
+    if (ctx && ctx->do_address && tvb_string && ddatype) {
+        if (wmem_strbuf_get_len(ddatype) > 0) {
+            proto_item_append_text (tree, " (%s=%s)", wmem_strbuf_get_str(ddatype), tvb_format_text(tvb_string, 0, tvb_captured_length(tvb_string)));
+        }
+    }
 }
 
 
@@ -969,7 +980,7 @@ dissect_p1_NULL(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, as
 
 static int
 dissect_p1_MTAName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 696 "../../asn1/p1/p1.cnf"
+#line 705 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*mtaname = NULL;
 	p1_address_ctx_t* ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
 
@@ -979,10 +990,10 @@ dissect_p1_MTAName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_,
 
 
 	if (ctx && ctx->do_address) {
-		proto_item_append_text(actx->subtree.tree, " %s", tvb_format_text(mtaname, 0, tvb_length(mtaname)));
+		proto_item_append_text(actx->subtree.tree, " %s", tvb_format_text(mtaname, 0, tvb_reported_length(mtaname)));
 	} else {
 		if (mtaname) {
-			col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s", tvb_format_text(mtaname, 0, tvb_length(mtaname)));
+			col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %s", tvb_format_text(mtaname, 0, tvb_reported_length(mtaname)));
 		}
 	}
 
@@ -1047,7 +1058,7 @@ dissect_p1_TokenTypeIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 static int
 dissect_p1_TokenTypeData(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1154 "../../asn1/p1/p1.cnf"
+#line 1165 "../../asn1/p1/p1.cnf"
 
 	if(actx->external.direct_reference)
 		call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, actx->private_data);
@@ -1158,7 +1169,7 @@ static const ber_choice_t Credentials_choice[] = {
 
 int
 dissect_p1_Credentials(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1162 "../../asn1/p1/p1.cnf"
+#line 1173 "../../asn1/p1/p1.cnf"
   gint credentials = -1;
 
     offset = dissect_ber_choice(actx, tree, tvb, offset,
@@ -1237,12 +1248,12 @@ dissect_p1_SecurityCategoryIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _
 
 static int
 dissect_p1_SecurityCategoryValue(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 562 "../../asn1/p1/p1.cnf"
+#line 568 "../../asn1/p1/p1.cnf"
 	const char *name;
 
 	if (actx->external.direct_reference) {
 		offset = call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, actx->private_data);
-		name = oid_resolved_from_string(actx->external.direct_reference);
+		name = oid_resolved_from_string(wmem_packet_scope(), actx->external.direct_reference);
 		proto_item_append_text(tree, " (%s)", name ? name : actx->external.direct_reference);
 	} else {
 		offset = dissect_unknown_ber(actx->pinfo, tvb, offset, tree);
@@ -1417,7 +1428,7 @@ static const value_string p1_MTABindError_vals[] = {
 
 static int
 dissect_p1_MTABindError(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1145 "../../asn1/p1/p1.cnf"
+#line 1156 "../../asn1/p1/p1.cnf"
   int error = -1;
     offset = dissect_ber_constrained_integer(implicit_tag, actx, tree, tvb, offset,
                                                             0U, ub_integer_options, hf_index, &error);
@@ -1434,7 +1445,7 @@ dissect_p1_MTABindError(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 static int
 dissect_p1_T_x121_dcc_code(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 842 "../../asn1/p1/p1.cnf"
+#line 853 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_NumericString,
@@ -1453,7 +1464,7 @@ dissect_p1_T_x121_dcc_code(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 
 static int
 dissect_p1_T_iso_3166_alpha2_code(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 800 "../../asn1/p1/p1.cnf"
+#line 811 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1494,7 +1505,7 @@ dissect_p1_CountryName_U(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offse
 
 static int
 dissect_p1_CountryName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 596 "../../asn1/p1/p1.cnf"
+#line 606 "../../asn1/p1/p1.cnf"
 	do_address("/C=", NULL, actx);
 
 	  offset = dissect_ber_tagged_type(implicit_tag, actx, tree, tvb, offset,
@@ -1510,7 +1521,7 @@ dissect_p1_CountryName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
 static int
 dissect_p1_T_numeric(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 849 "../../asn1/p1/p1.cnf"
+#line 860 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_NumericString,
@@ -1529,7 +1540,7 @@ dissect_p1_T_numeric(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U
 
 static int
 dissect_p1_T_printable(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 807 "../../asn1/p1/p1.cnf"
+#line 818 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1570,7 +1581,7 @@ dissect_p1_AdministrationDomainName_U(gboolean implicit_tag _U_, tvbuff_t *tvb _
 
 static int
 dissect_p1_AdministrationDomainName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 601 "../../asn1/p1/p1.cnf"
+#line 611 "../../asn1/p1/p1.cnf"
 	do_address("/A=", NULL, actx);
 
 	  offset = dissect_ber_tagged_type(implicit_tag, actx, tree, tvb, offset,
@@ -1586,7 +1597,7 @@ dissect_p1_AdministrationDomainName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_
 
 static int
 dissect_p1_T_numeric_private_domain_identifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 863 "../../asn1/p1/p1.cnf"
+#line 874 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_NumericString,
@@ -1605,7 +1616,7 @@ dissect_p1_T_numeric_private_domain_identifier(gboolean implicit_tag _U_, tvbuff
 
 static int
 dissect_p1_T_printable_private_domain_identifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 821 "../../asn1/p1/p1.cnf"
+#line 832 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1635,7 +1646,7 @@ static const ber_choice_t PrivateDomainIdentifier_choice[] = {
 
 static int
 dissect_p1_PrivateDomainIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 736 "../../asn1/p1/p1.cnf"
+#line 745 "../../asn1/p1/p1.cnf"
 
 	do_address("/P=", NULL, actx);
 
@@ -1669,7 +1680,7 @@ dissect_p1_GlobalDomainIdentifier_U(gboolean implicit_tag _U_, tvbuff_t *tvb _U_
 
 static int
 dissect_p1_GlobalDomainIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1024 "../../asn1/p1/p1.cnf"
+#line 1035 "../../asn1/p1/p1.cnf"
 	p1_address_ctx_t* ctx;
 
 	if (actx->subtree.tree_ctx == NULL) {
@@ -1703,7 +1714,7 @@ dissect_p1_GlobalDomainIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 
 static int
 dissect_p1_LocalIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1050 "../../asn1/p1/p1.cnf"
+#line 1061 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*id = NULL;
 	p1_address_ctx_t* ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
 
@@ -1714,10 +1725,10 @@ dissect_p1_LocalIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 
 	if(id) {
 		if (ctx && ctx->do_address)
-			proto_item_append_text(actx->subtree.tree, " $ %s)", tvb_format_text(id, 0, tvb_length(id)));
+			proto_item_append_text(actx->subtree.tree, " $ %s)", tvb_format_text(id, 0, tvb_reported_length(id)));
 
 		if (hf_index == hf_p1_subject_identifier)
-			col_append_fstr(actx->pinfo->cinfo, COL_INFO, " $ %s)", tvb_format_text(id, 0, tvb_length(id)));
+			col_append_fstr(actx->pinfo->cinfo, COL_INFO, " $ %s)", tvb_format_text(id, 0, tvb_reported_length(id)));
 	}
 
 
@@ -1744,7 +1755,7 @@ dissect_p1_MTSIdentifier_U(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 
 static int
 dissect_p1_MTSIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1064 "../../asn1/p1/p1.cnf"
+#line 1075 "../../asn1/p1/p1.cnf"
 
 	set_do_address(actx, TRUE);
 
@@ -1763,7 +1774,7 @@ dissect_p1_MTSIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offse
 
 static int
 dissect_p1_MessageIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1019 "../../asn1/p1/p1.cnf"
+#line 1030 "../../asn1/p1/p1.cnf"
 	actx->subtree.tree = NULL;
 
 	  offset = dissect_p1_MTSIdentifier(implicit_tag, tvb, offset, actx, tree, hf_index);
@@ -1778,7 +1789,7 @@ dissect_p1_MessageIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int o
 
 static int
 dissect_p1_X121Address(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 713 "../../asn1/p1/p1.cnf"
+#line 722 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*string = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_NumericString,
@@ -1806,7 +1817,7 @@ dissect_p1_NetworkAddress(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offs
 
 static int
 dissect_p1_TerminalIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 723 "../../asn1/p1/p1.cnf"
+#line 732 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*string = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1825,7 +1836,7 @@ dissect_p1_TerminalIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 
 static int
 dissect_p1_T_numeric_private_domain_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 856 "../../asn1/p1/p1.cnf"
+#line 867 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_NumericString,
@@ -1844,7 +1855,7 @@ dissect_p1_T_numeric_private_domain_name(gboolean implicit_tag _U_, tvbuff_t *tv
 
 static int
 dissect_p1_T_printable_private_domain_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 814 "../../asn1/p1/p1.cnf"
+#line 825 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1874,7 +1885,7 @@ static const ber_choice_t PrivateDomainName_choice[] = {
 
 static int
 dissect_p1_PrivateDomainName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 730 "../../asn1/p1/p1.cnf"
+#line 739 "../../asn1/p1/p1.cnf"
 
 	do_address("/P=", NULL, actx);
 
@@ -1892,7 +1903,7 @@ dissect_p1_PrivateDomainName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int o
 
 static int
 dissect_p1_OrganizationName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 745 "../../asn1/p1/p1.cnf"
+#line 754 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*string = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1922,7 +1933,7 @@ dissect_p1_NumericUserIdentifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 static int
 dissect_p1_T_printable_surname(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 904 "../../asn1/p1/p1.cnf"
+#line 915 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*pstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1941,7 +1952,7 @@ dissect_p1_T_printable_surname(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 static int
 dissect_p1_T_printable_given_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 911 "../../asn1/p1/p1.cnf"
+#line 922 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*pstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1960,7 +1971,7 @@ dissect_p1_T_printable_given_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 
 static int
 dissect_p1_T_printable_initials(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 918 "../../asn1/p1/p1.cnf"
+#line 929 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*pstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -1979,7 +1990,7 @@ dissect_p1_T_printable_initials(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_p1_T_printable_generation_qualifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 925 "../../asn1/p1/p1.cnf"
+#line 936 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*pstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -2015,8 +2026,13 @@ dissect_p1_PersonalName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 static int
 dissect_p1_OrganizationalUnitName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 765 "../../asn1/p1/p1.cnf"
+#line 774 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*string = NULL;
+
+	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
+                                                        actx, tree, tvb, offset,
+                                                        1, ub_organizational_unit_name_length, hf_index, &string);
+
 
 	do_address("/OU=", string, actx);
 
@@ -2054,7 +2070,7 @@ static const ber_sequence_t BuiltInStandardAttributes_sequence[] = {
 
 static int
 dissect_p1_BuiltInStandardAttributes(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1081 "../../asn1/p1/p1.cnf"
+#line 1092 "../../asn1/p1/p1.cnf"
 	actx->subtree.tree = tree;
 
 	  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
@@ -2070,7 +2086,7 @@ dissect_p1_BuiltInStandardAttributes(gboolean implicit_tag _U_, tvbuff_t *tvb _U
 
 static int
 dissect_p1_T_printable_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 960 "../../asn1/p1/p1.cnf"
+#line 971 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*pstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -2089,7 +2105,7 @@ dissect_p1_T_printable_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int of
 
 static int
 dissect_p1_T_printable_value(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 967 "../../asn1/p1/p1.cnf"
+#line 978 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*pstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -2113,7 +2129,7 @@ static const ber_sequence_t BuiltInDomainDefinedAttribute_sequence[] = {
 
 static int
 dissect_p1_BuiltInDomainDefinedAttribute(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 974 "../../asn1/p1/p1.cnf"
+#line 985 "../../asn1/p1/p1.cnf"
 	actx->value_ptr = wmem_strbuf_new(wmem_packet_scope(), "");
 
 	  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
@@ -2196,21 +2212,25 @@ dissect_p1_ExtensionAttributeType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 
 static int
 dissect_p1_T_extension_attribute_value(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 576 "../../asn1/p1/p1.cnf"
+#line 582 "../../asn1/p1/p1.cnf"
 
 	proto_item_append_text(tree, " (%s)", val_to_str(actx->external.indirect_reference, p1_ExtensionAttributeType_vals, "extension-attribute-type %d"));
+	if (!actx->pinfo->private_table) {
+		actx->pinfo->private_table = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+	}
+	g_hash_table_insert(actx->pinfo->private_table, (gpointer)P1_ADDRESS_CTX, actx->subtree.tree_ctx);
 	if (dissector_try_uint(p1_extension_attribute_dissector_table, actx->external.indirect_reference, tvb, actx->pinfo, tree)) {
-		offset =tvb_length(tvb);
+		offset =tvb_reported_length(tvb);
 	} else {
-		proto_item *item = NULL;
-		proto_tree *next_tree = NULL;
+		proto_item *item;
+		proto_tree *next_tree;
 
-		item = proto_tree_add_text(tree, tvb, 0, tvb_length_remaining(tvb, offset),
+		next_tree = proto_tree_add_subtree_format(tree, tvb, 0, -1, ett_p1_unknown_extension_attribute_type, &item,
 			"Dissector for extension-attribute-type %d not implemented.  Contact Wireshark developers if you want this supported", actx->external.indirect_reference);
-		next_tree = proto_item_add_subtree(item, ett_p1_unknown_extension_attribute_type);
 		offset = dissect_unknown_ber(actx->pinfo, tvb, offset, next_tree);
 		expert_add_info(actx->pinfo, item, &ei_p1_unknown_extension_attribute_type);
 	}
+	g_hash_table_steal(actx->pinfo->private_table, (gpointer)P1_ADDRESS_CTX);
 
 
 
@@ -2267,7 +2287,7 @@ dissect_p1_ORName_U(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_
 
 int
 dissect_p1_ORName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1000 "../../asn1/p1/p1.cnf"
+#line 1011 "../../asn1/p1/p1.cnf"
 	p1_address_ctx_t* ctx;
 
 	if (actx->subtree.tree_ctx == NULL) {
@@ -2483,7 +2503,7 @@ static const value_string p1_BuiltInContentType_U_vals[] = {
 
 static int
 dissect_p1_BuiltInContentType_U(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 643 "../../asn1/p1/p1.cnf"
+#line 653 "../../asn1/p1/p1.cnf"
 	static guint32	ict = -1;
 	p1_address_ctx_t* ctx;
 
@@ -2528,7 +2548,7 @@ dissect_p1_BuiltInContentType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 
 int
 dissect_p1_ExtendedContentType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 622 "../../asn1/p1/p1.cnf"
+#line 632 "../../asn1/p1/p1.cnf"
 	const char *name = NULL;
 	p1_address_ctx_t* ctx;
 
@@ -2541,7 +2561,7 @@ dissect_p1_ExtendedContentType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 
 	if(ctx->content_type_id) {
-		name = oid_resolved_from_string(ctx->content_type_id);
+		name = oid_resolved_from_string(wmem_packet_scope(), ctx->content_type_id);
 
 		if(!name) name = ctx->content_type_id;
 
@@ -2659,7 +2679,7 @@ dissect_p1_PerMessageIndicators(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_p1_Time(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1123 "../../asn1/p1/p1.cnf"
+#line 1134 "../../asn1/p1/p1.cnf"
 	tvbuff_t *arrival = NULL;
 	p1_address_ctx_t* ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
 
@@ -2667,7 +2687,7 @@ dissect_p1_Time(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, as
 
 
 	if(arrival && ctx && ctx->do_address)
-		proto_item_append_text(actx->subtree.tree, " %s", tvb_format_text(arrival, 0, tvb_length(arrival)));
+		proto_item_append_text(actx->subtree.tree, " %s", tvb_format_text(arrival, 0, tvb_reported_length(arrival)));
 
 
 
@@ -2724,7 +2744,7 @@ dissect_p1_T_bilateral_domain(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 
 static int
 dissect_p1_T_bilateral_information(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1190 "../../asn1/p1/p1.cnf"
+#line 1200 "../../asn1/p1/p1.cnf"
 	proto_item *item = NULL;
 	int	    loffset = 0;
 	guint32	    len = 0;
@@ -2792,7 +2812,7 @@ static const value_string p1_RoutingAction_vals[] = {
 
 static int
 dissect_p1_RoutingAction(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1135 "../../asn1/p1/p1.cnf"
+#line 1146 "../../asn1/p1/p1.cnf"
 	int action = 0;
 
 	  offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
@@ -2853,7 +2873,7 @@ static const ber_sequence_t DomainSuppliedInformation_set[] = {
 
 static int
 dissect_p1_DomainSuppliedInformation(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1102 "../../asn1/p1/p1.cnf"
+#line 1113 "../../asn1/p1/p1.cnf"
 
 	set_do_address(actx, FALSE);
 
@@ -2878,7 +2898,7 @@ static const ber_sequence_t TraceInformationElement_sequence[] = {
 
 static int
 dissect_p1_TraceInformationElement(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1086 "../../asn1/p1/p1.cnf"
+#line 1097 "../../asn1/p1/p1.cnf"
 
 	set_do_address(actx, TRUE);
 
@@ -2969,7 +2989,7 @@ static const value_string p1_StandardExtension_vals[] = {
 
 static int
 dissect_p1_StandardExtension(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 608 "../../asn1/p1/p1.cnf"
+#line 618 "../../asn1/p1/p1.cnf"
 	actx->external.indirect_ref_present = TRUE;
 	actx->external.direct_ref_present = FALSE;
 	  offset = dissect_ber_integer(implicit_tag, actx, tree, tvb, offset, hf_index,
@@ -2985,7 +3005,7 @@ dissect_p1_StandardExtension(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int o
 
 static int
 dissect_p1_T_private_extension(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 613 "../../asn1/p1/p1.cnf"
+#line 623 "../../asn1/p1/p1.cnf"
 	actx->external.indirect_ref_present = FALSE;
 	actx->external.direct_reference = NULL;
 	  offset = dissect_ber_object_identifier_str(implicit_tag, actx, tree, tvb, offset, hf_index, &actx->external.direct_reference);
@@ -3040,26 +3060,25 @@ dissect_p1_Criticality(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset 
 
 static int
 dissect_p1_ExtensionValue(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 535 "../../asn1/p1/p1.cnf"
+#line 542 "../../asn1/p1/p1.cnf"
 	const char *name;
 
 	if(actx->external.indirect_ref_present) {
 		proto_item_append_text(tree, " (%s)", val_to_str(actx->external.indirect_reference, p1_StandardExtension_vals, "standard-extension %d"));
 		if (dissector_try_uint(p1_extension_dissector_table, actx->external.indirect_reference, tvb, actx->pinfo, tree)) {
-			offset = tvb_length(tvb);
+			offset = tvb_reported_length(tvb);
 		} else {
-			proto_item *item = NULL;
-			proto_tree *next_tree = NULL;
+			proto_item *item;
+			proto_tree *next_tree;
 
-			item = proto_tree_add_text(tree, tvb, 0, tvb_length_remaining(tvb, offset),
+			next_tree = proto_tree_add_subtree_format(tree, tvb, 0, -1, ett_p1_unknown_standard_extension, &item,
 				"Dissector for standard-extension %d not implemented.  Contact Wireshark developers if you want this supported", actx->external.indirect_reference);
-			next_tree = proto_item_add_subtree(item, ett_p1_unknown_standard_extension);
 			offset = dissect_unknown_ber(actx->pinfo, tvb, offset, next_tree);
 			expert_add_info(actx->pinfo, item, &ei_p1_unknown_standard_extension);
 		}
 	} else if (actx->external.direct_ref_present) {
 		offset = call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, actx->private_data);
-		name = oid_resolved_from_string(actx->external.direct_reference);
+		name = oid_resolved_from_string(wmem_packet_scope(), actx->external.direct_reference);
 		proto_item_append_text(tree, " (%s)", name ? name : actx->external.direct_reference);
 	}
 
@@ -3223,27 +3242,26 @@ dissect_p1_MessageTransferEnvelope(gboolean implicit_tag _U_, tvbuff_t *tvb _U_,
 
 int
 dissect_p1_Content(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 667 "../../asn1/p1/p1.cnf"
+#line 677 "../../asn1/p1/p1.cnf"
 	tvbuff_t *next_tvb;
 	p1_address_ctx_t* ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
 
 	/* we can do this now constructed octet strings are supported */
 	offset = dissect_ber_octet_string(FALSE, actx, tree, tvb, offset, hf_index, &next_tvb);
-	proto_item_set_text(actx->created_item, "content (%u bytes)", tvb_length (next_tvb));
+	proto_item_set_text(actx->created_item, "content (%u bytes)", tvb_reported_length (next_tvb));
 
 	if (next_tvb) {
 		if (ctx && ctx->content_type_id) {
 			(void) call_ber_oid_callback(ctx->content_type_id, next_tvb, 0, actx->pinfo, actx->subtree.top_tree ? actx->subtree.top_tree : tree, actx->private_data);
-	} else if (ctx && ctx->report_unknown_content_type) {
-		proto_item *item = NULL;
-		proto_tree *next_tree = NULL;
+		} else if (ctx && ctx->report_unknown_content_type) {
+			proto_item *item;
+			proto_tree *next_tree;
 
-		proto_tree_add_expert(actx->subtree.top_tree ? actx->subtree.top_tree : tree, actx->pinfo, &ei_p1_unknown_built_in_content_type,
-							  next_tvb, 0, tvb_length_remaining(tvb, offset));
-		if (item) {
+			item = proto_tree_add_expert(actx->subtree.top_tree ? actx->subtree.top_tree : tree, actx->pinfo, &ei_p1_unknown_built_in_content_type,
+							  next_tvb, 0, tvb_reported_length_remaining(tvb, offset));
 			next_tree=proto_item_add_subtree(item, ett_p1_content_unknown);
-		}
-		dissect_unknown_ber(actx->pinfo, next_tvb, 0, next_tree);
+
+			dissect_unknown_ber(actx->pinfo, next_tvb, 0, next_tree);
 		} else {
 			proto_item_append_text (actx->created_item, " (unknown content-type)");
 		}
@@ -3418,7 +3436,7 @@ dissect_p1_SubjectIntermediateTraceInformation(gboolean implicit_tag _U_, tvbuff
 
 static int
 dissect_p1_AdditionalInformation(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 517 "../../asn1/p1/p1.cnf"
+#line 524 "../../asn1/p1/p1.cnf"
    proto_item *item = NULL;
    int         loffset = 0;
    guint32     len = 0;
@@ -3638,7 +3656,7 @@ static const ber_choice_t ReportType_choice[] = {
 
 static int
 dissect_p1_ReportType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1222 "../../asn1/p1/p1.cnf"
+#line 1232 "../../asn1/p1/p1.cnf"
 	gint report = -1;
 
 	  offset = dissect_ber_choice(actx, tree, tvb, offset,
@@ -3778,7 +3796,7 @@ static const ber_choice_t MTS_APDU_choice[] = {
 
 static int
 dissect_p1_MTS_APDU(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1208 "../../asn1/p1/p1.cnf"
+#line 1218 "../../asn1/p1/p1.cnf"
 	gint apdu = -1;
 
 	  offset = dissect_ber_choice(actx, tree, tvb, offset,
@@ -3835,7 +3853,7 @@ static const ber_sequence_t MTASuppliedInformation_set[] = {
 
 static int
 dissect_p1_MTASuppliedInformation(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1111 "../../asn1/p1/p1.cnf"
+#line 1122 "../../asn1/p1/p1.cnf"
 
 	set_do_address(actx, FALSE);
 
@@ -3861,7 +3879,7 @@ static const ber_sequence_t InternalTraceInformationElement_sequence[] = {
 
 static int
 dissect_p1_InternalTraceInformationElement(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1094 "../../asn1/p1/p1.cnf"
+#line 1105 "../../asn1/p1/p1.cnf"
 
 	set_do_address(actx, TRUE);
 
@@ -3995,7 +4013,7 @@ static const ber_sequence_t MTSBindResult_set[] = {
 
 static int
 dissect_p1_MTSBindResult(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1246 "../../asn1/p1/p1.cnf"
+#line 1256 "../../asn1/p1/p1.cnf"
 	/* TODO: there may be other entry points where this global should be initialized... */
 	actx->subtree.tree = NULL;
 
@@ -4128,7 +4146,7 @@ static const ber_sequence_t MessageSubmissionArgument_sequence[] = {
 
 static int
 dissect_p1_MessageSubmissionArgument(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1231 "../../asn1/p1/p1.cnf"
+#line 1241 "../../asn1/p1/p1.cnf"
 	p1_initialize_content_globals(actx, tree, TRUE);
 	  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    MessageSubmissionArgument_sequence, hf_index, ett_p1_MessageSubmissionArgument);
@@ -4702,7 +4720,7 @@ static const ber_sequence_t MessageDeliveryArgument_sequence[] = {
 
 static int
 dissect_p1_MessageDeliveryArgument(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1236 "../../asn1/p1/p1.cnf"
+#line 1246 "../../asn1/p1/p1.cnf"
 	p1_initialize_content_globals(actx, tree, TRUE);
 	  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
                                    MessageDeliveryArgument_sequence, hf_index, ett_p1_MessageDeliveryArgument);
@@ -4812,7 +4830,7 @@ static const ber_sequence_t ReportDeliveryArgument_set[] = {
 
 static int
 dissect_p1_ReportDeliveryArgument(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1241 "../../asn1/p1/p1.cnf"
+#line 1251 "../../asn1/p1/p1.cnf"
 	p1_initialize_content_globals(actx, tree, TRUE);
 	  offset = dissect_ber_set(implicit_tag, actx, tree, tvb, offset,
                               ReportDeliveryArgument_set, hf_index, ett_p1_ReportDeliveryArgument);
@@ -4950,7 +4968,7 @@ dissect_p1_RefusedArgument(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int off
 
 static int
 dissect_p1_T_refused_extension(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 593 "../../asn1/p1/p1.cnf"
+#line 603 "../../asn1/p1/p1.cnf"
 /*XXX not implemented yet */
 
 
@@ -5025,7 +5043,7 @@ dissect_p1_UserName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_
 
 static int
 dissect_p1_T_x121_address(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 835 "../../asn1/p1/p1.cnf"
+#line 846 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_NumericString,
@@ -5343,7 +5361,7 @@ dissect_p1_T_standard_parameters(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 static int
 dissect_p1_T_type_extensions_item(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 532 "../../asn1/p1/p1.cnf"
+#line 539 "../../asn1/p1/p1.cnf"
 /*XXX not implemented yet */
 
 
@@ -5730,7 +5748,7 @@ static const ber_sequence_t ORAddress_sequence[] = {
 
 int
 dissect_p1_ORAddress(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 979 "../../asn1/p1/p1.cnf"
+#line 990 "../../asn1/p1/p1.cnf"
 	p1_address_ctx_t* ctx;
 
 	if (actx->subtree.tree_ctx == NULL) {
@@ -6068,59 +6086,6 @@ dissect_p1_ReportOriginAuthenticationCheck(gboolean implicit_tag _U_, tvbuff_t *
 }
 
 
-static const ber_sequence_t PerRecipientDeliveryReportFields_sequence[] = {
-  { &hf_p1_message_delivery_time, BER_CLASS_UNI, BER_UNI_TAG_UTCTime, BER_FLAGS_NOOWNTAG, dissect_p1_MessageDeliveryTime },
-  { &hf_p1_type_of_MTS_user , BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_p1_TypeOfMTSUser },
-  { &hf_p1_recipient_certificate, BER_CLASS_CON, 0, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_p1_RecipientCertificate },
-  { &hf_p1_proof_of_delivery, BER_CLASS_CON, 1, BER_FLAGS_OPTIONAL|BER_FLAGS_IMPLTAG, dissect_p1_ProofOfDelivery },
-  { NULL, 0, 0, 0, NULL }
-};
-
-static int
-dissect_p1_PerRecipientDeliveryReportFields(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
-                                   PerRecipientDeliveryReportFields_sequence, hf_index, ett_p1_PerRecipientDeliveryReportFields);
-
-  return offset;
-}
-
-
-static const ber_sequence_t PerRecipientNonDeliveryReportFields_sequence[] = {
-  { &hf_p1_non_delivery_reason_code, BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_NOOWNTAG, dissect_p1_NonDeliveryReasonCode },
-  { &hf_p1_non_delivery_diagnostic_code, BER_CLASS_UNI, BER_UNI_TAG_INTEGER, BER_FLAGS_OPTIONAL|BER_FLAGS_NOOWNTAG, dissect_p1_NonDeliveryDiagnosticCode },
-  { NULL, 0, 0, 0, NULL }
-};
-
-static int
-dissect_p1_PerRecipientNonDeliveryReportFields(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
-                                   PerRecipientNonDeliveryReportFields_sequence, hf_index, ett_p1_PerRecipientNonDeliveryReportFields);
-
-  return offset;
-}
-
-
-static const value_string p1_T_report_type_vals[] = {
-  {   0, "delivery" },
-  {   1, "non-delivery" },
-  { 0, NULL }
-};
-
-static const ber_choice_t T_report_type_choice[] = {
-  {   0, &hf_p1_report_type_delivery, BER_CLASS_CON, 0, BER_FLAGS_IMPLTAG, dissect_p1_PerRecipientDeliveryReportFields },
-  {   1, &hf_p1_non_delivery_report, BER_CLASS_CON, 1, BER_FLAGS_IMPLTAG, dissect_p1_PerRecipientNonDeliveryReportFields },
-  { 0, NULL, 0, 0, 0, NULL }
-};
-
-static int
-dissect_p1_T_report_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_ber_choice(actx, tree, tvb, offset,
-                                 T_report_type_choice, hf_index, ett_p1_T_report_type,
-                                 NULL);
-
-  return offset;
-}
-
 
 
 
@@ -6226,7 +6191,7 @@ dissect_p1_CertificateSelectors(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_p1_CommonName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 783 "../../asn1/p1/p1.cnf"
+#line 794 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*string = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -6245,7 +6210,7 @@ dissect_p1_CommonName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _
 
 static int
 dissect_p1_TeletexCommonName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 793 "../../asn1/p1/p1.cnf"
+#line 804 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*string = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -6343,7 +6308,7 @@ dissect_p1_UniversalCommonName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int
 
 static int
 dissect_p1_TeletexOrganizationName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 755 "../../asn1/p1/p1.cnf"
+#line 764 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*string = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -6371,7 +6336,7 @@ dissect_p1_UniversalOrganizationName(gboolean implicit_tag _U_, tvbuff_t *tvb _U
 
 static int
 dissect_p1_T_teletex_surname(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 932 "../../asn1/p1/p1.cnf"
+#line 943 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*tstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -6390,7 +6355,7 @@ dissect_p1_T_teletex_surname(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int o
 
 static int
 dissect_p1_T_teletex_given_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 939 "../../asn1/p1/p1.cnf"
+#line 950 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*tstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -6409,7 +6374,7 @@ dissect_p1_T_teletex_given_name(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, in
 
 static int
 dissect_p1_T_teletex_initials(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 946 "../../asn1/p1/p1.cnf"
+#line 957 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*tstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -6428,7 +6393,7 @@ dissect_p1_T_teletex_initials(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 
 static int
 dissect_p1_T_teletex_generation_qualifier(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 953 "../../asn1/p1/p1.cnf"
+#line 964 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*tstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -6481,7 +6446,7 @@ dissect_p1_UniversalPersonalName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, i
 
 static int
 dissect_p1_TeletexOrganizationalUnitName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 773 "../../asn1/p1/p1.cnf"
+#line 784 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*string = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -6546,7 +6511,7 @@ dissect_p1_PDSName(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_,
 
 static int
 dissect_p1_T_x121_dcc_code_01(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 870 "../../asn1/p1/p1.cnf"
+#line 881 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_NumericString,
@@ -6565,7 +6530,7 @@ dissect_p1_T_x121_dcc_code_01(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int 
 
 static int
 dissect_p1_T_iso_3166_alpha2_code_01(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 828 "../../asn1/p1/p1.cnf"
+#line 839 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_PrintableString,
@@ -6606,7 +6571,7 @@ dissect_p1_PhysicalDeliveryCountryName(gboolean implicit_tag _U_, tvbuff_t *tvb 
 
 static int
 dissect_p1_T_numeric_code(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 877 "../../asn1/p1/p1.cnf"
+#line 888 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*nstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_NumericString,
@@ -7030,7 +6995,7 @@ dissect_p1_TerminalType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset
 
 static int
 dissect_p1_T_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 885 "../../asn1/p1/p1.cnf"
+#line 896 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*tstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -7049,7 +7014,7 @@ dissect_p1_T_type(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, 
 
 static int
 dissect_p1_T_teletex_value(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 892 "../../asn1/p1/p1.cnf"
+#line 903 "../../asn1/p1/p1.cnf"
 	tvbuff_t	*tstring = NULL;
 
 	  offset = dissect_ber_constrained_restricted_string(implicit_tag, BER_UNI_TAG_TeletexString,
@@ -7073,7 +7038,7 @@ static const ber_sequence_t TeletexDomainDefinedAttribute_sequence[] = {
 
 static int
 dissect_p1_TeletexDomainDefinedAttribute(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 899 "../../asn1/p1/p1.cnf"
+#line 910 "../../asn1/p1/p1.cnf"
 	actx->value_ptr = wmem_strbuf_new(wmem_packet_scope(), "");
 
 	  offset = dissect_ber_sequence(implicit_tag, actx, tree, tvb, offset,
@@ -7136,7 +7101,7 @@ static const ber_sequence_t MTANameAndOptionalGDI_sequence[] = {
 
 static int
 dissect_p1_MTANameAndOptionalGDI(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1072 "../../asn1/p1/p1.cnf"
+#line 1083 "../../asn1/p1/p1.cnf"
 
 	set_do_address(actx, TRUE);
 
@@ -7196,18 +7161,17 @@ dissect_p1_TokenDataType(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offse
 
 static int
 dissect_p1_T_value(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-#line 1174 "../../asn1/p1/p1.cnf"
+#line 1185 "../../asn1/p1/p1.cnf"
 
 	proto_item_append_text(tree, " (%s)", val_to_str(actx->external.indirect_reference, p1_TokenDataType_vals, "tokendata-type %d"));
 	if (dissector_try_uint(p1_tokendata_dissector_table, actx->external.indirect_reference, tvb, actx->pinfo, tree)) {
-		offset = tvb_length(tvb);
+		offset = tvb_reported_length(tvb);
 	} else {
-		proto_item *item = NULL;
-		proto_tree *next_tree = NULL;
+		proto_item *item;
+		proto_tree *next_tree;
 
-		item = proto_tree_add_text(tree, tvb, 0, tvb_length_remaining(tvb, offset),
+		next_tree = proto_tree_add_subtree_format(tree, tvb, 0, -1, ett_p1_unknown_tokendata_type, &item,
 			"Dissector for tokendata-type %d not implemented.  Contact Wireshark developers if you want this supported", actx->external.indirect_reference);
-		next_tree = proto_item_add_subtree(item, ett_p1_unknown_tokendata_type);
 		offset = dissect_unknown_ber(actx->pinfo, tvb, offset, next_tree);
 		expert_add_info(actx->pinfo, item, &ei_p1_unknown_tokendata_type);
 	}
@@ -7355,25 +7319,33 @@ dissect_p1_BindTokenEncryptedData(gboolean implicit_tag _U_, tvbuff_t *tvb _U_, 
 
 /*--- PDUs ---*/
 
-static void dissect_InternalTraceInformation_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_InternalTraceInformation_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_InternalTraceInformation(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_InternalTraceInformation_PDU);
+  offset = dissect_p1_InternalTraceInformation(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_InternalTraceInformation_PDU);
+  return offset;
 }
-static void dissect_InternalTraceInformationElement_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_InternalTraceInformationElement_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_InternalTraceInformationElement(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_InternalTraceInformationElement_PDU);
+  offset = dissect_p1_InternalTraceInformationElement(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_InternalTraceInformationElement_PDU);
+  return offset;
 }
-static void dissect_TraceInformation_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TraceInformation_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_TraceInformation(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_TraceInformation_PDU);
+  offset = dissect_p1_TraceInformation(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_TraceInformation_PDU);
+  return offset;
 }
-static void dissect_TraceInformationElement_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TraceInformationElement_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_TraceInformationElement(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_TraceInformationElement_PDU);
+  offset = dissect_p1_TraceInformationElement(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_TraceInformationElement_PDU);
+  return offset;
 }
 static int dissect_MTSBindArgument_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
   int offset = 0;
@@ -7522,10 +7494,12 @@ static int dissect_PAR_remote_bind_error_PDU(tvbuff_t *tvb _U_, packet_info *pin
   offset = dissect_p1_PAR_remote_bind_error(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PAR_remote_bind_error_PDU);
   return offset;
 }
-static void dissect_MessageSubmissionTime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MessageSubmissionTime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageSubmissionTime(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MessageSubmissionTime_PDU);
+  offset = dissect_p1_MessageSubmissionTime(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MessageSubmissionTime_PDU);
+  return offset;
 }
 static int dissect_MessageDeliveryArgument_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
   int offset = 0;
@@ -7590,15 +7564,19 @@ static int dissect_RefusedOperation_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U
   offset = dissect_p1_RefusedOperation(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_RefusedOperation_PDU);
   return offset;
 }
-static void dissect_RecipientCertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_RecipientCertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_RecipientCertificate(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_RecipientCertificate_PDU);
+  offset = dissect_p1_RecipientCertificate(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_RecipientCertificate_PDU);
+  return offset;
 }
-static void dissect_ProofOfDelivery_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ProofOfDelivery_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ProofOfDelivery(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ProofOfDelivery_PDU);
+  offset = dissect_p1_ProofOfDelivery(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ProofOfDelivery_PDU);
+  return offset;
 }
 static int dissect_RegisterArgument_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
   int offset = 0;
@@ -7649,550 +7627,766 @@ static int dissect_PAR_old_credentials_incorrectly_specified_PDU(tvbuff_t *tvb _
   offset = dissect_p1_PAR_old_credentials_incorrectly_specified(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PAR_old_credentials_incorrectly_specified_PDU);
   return offset;
 }
-static void dissect_MessageSubmissionEnvelope_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MessageSubmissionEnvelope_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageSubmissionEnvelope(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MessageSubmissionEnvelope_PDU);
+  offset = dissect_p1_MessageSubmissionEnvelope(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MessageSubmissionEnvelope_PDU);
+  return offset;
 }
-static void dissect_PerRecipientMessageSubmissionFields_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PerRecipientMessageSubmissionFields_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PerRecipientMessageSubmissionFields(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PerRecipientMessageSubmissionFields_PDU);
+  offset = dissect_p1_PerRecipientMessageSubmissionFields(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PerRecipientMessageSubmissionFields_PDU);
+  return offset;
 }
-static void dissect_ProbeSubmissionEnvelope_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ProbeSubmissionEnvelope_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ProbeSubmissionEnvelope(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ProbeSubmissionEnvelope_PDU);
+  offset = dissect_p1_ProbeSubmissionEnvelope(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ProbeSubmissionEnvelope_PDU);
+  return offset;
 }
-static void dissect_PerRecipientProbeSubmissionFields_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PerRecipientProbeSubmissionFields_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PerRecipientProbeSubmissionFields(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PerRecipientProbeSubmissionFields_PDU);
+  offset = dissect_p1_PerRecipientProbeSubmissionFields(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PerRecipientProbeSubmissionFields_PDU);
+  return offset;
 }
-static void dissect_MessageDeliveryEnvelope_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MessageDeliveryEnvelope_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageDeliveryEnvelope(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MessageDeliveryEnvelope_PDU);
+  offset = dissect_p1_MessageDeliveryEnvelope(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MessageDeliveryEnvelope_PDU);
+  return offset;
 }
-static void dissect_ReportDeliveryEnvelope_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ReportDeliveryEnvelope_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ReportDeliveryEnvelope(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ReportDeliveryEnvelope_PDU);
+  offset = dissect_p1_ReportDeliveryEnvelope(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ReportDeliveryEnvelope_PDU);
+  return offset;
 }
-static void dissect_PerRecipientReportDeliveryFields_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PerRecipientReportDeliveryFields_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PerRecipientReportDeliveryFields(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PerRecipientReportDeliveryFields_PDU);
+  offset = dissect_p1_PerRecipientReportDeliveryFields(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PerRecipientReportDeliveryFields_PDU);
+  return offset;
 }
-static void dissect_ExtendedContentType_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ExtendedContentType_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ExtendedContentType(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ExtendedContentType_PDU);
+  offset = dissect_p1_ExtendedContentType(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ExtendedContentType_PDU);
+  return offset;
 }
-static void dissect_ContentIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ContentIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ContentIdentifier(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ContentIdentifier_PDU);
+  offset = dissect_p1_ContentIdentifier(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ContentIdentifier_PDU);
+  return offset;
 }
-static void dissect_PerMessageIndicators_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PerMessageIndicators_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PerMessageIndicators(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PerMessageIndicators_PDU);
+  offset = dissect_p1_PerMessageIndicators(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PerMessageIndicators_PDU);
+  return offset;
 }
-static void dissect_OriginatorReportRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_OriginatorReportRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_OriginatorReportRequest(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_OriginatorReportRequest_PDU);
+  offset = dissect_p1_OriginatorReportRequest(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_OriginatorReportRequest_PDU);
+  return offset;
 }
-static void dissect_DeferredDeliveryTime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_DeferredDeliveryTime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_DeferredDeliveryTime(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_DeferredDeliveryTime_PDU);
+  offset = dissect_p1_DeferredDeliveryTime(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_DeferredDeliveryTime_PDU);
+  return offset;
 }
-static void dissect_Priority_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_Priority_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_Priority(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_Priority_PDU);
+  offset = dissect_p1_Priority(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_Priority_PDU);
+  return offset;
 }
-static void dissect_ContentLength_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ContentLength_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ContentLength(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ContentLength_PDU);
+  offset = dissect_p1_ContentLength(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ContentLength_PDU);
+  return offset;
 }
-static void dissect_MessageDeliveryTime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MessageDeliveryTime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageDeliveryTime(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MessageDeliveryTime_PDU);
+  offset = dissect_p1_MessageDeliveryTime(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MessageDeliveryTime_PDU);
+  return offset;
 }
-static void dissect_DeliveryFlags_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_DeliveryFlags_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_DeliveryFlags(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_DeliveryFlags_PDU);
+  offset = dissect_p1_DeliveryFlags(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_DeliveryFlags_PDU);
+  return offset;
 }
-static void dissect_SubjectSubmissionIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_SubjectSubmissionIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_SubjectSubmissionIdentifier(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_SubjectSubmissionIdentifier_PDU);
+  offset = dissect_p1_SubjectSubmissionIdentifier(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_SubjectSubmissionIdentifier_PDU);
+  return offset;
 }
-static void dissect_RecipientReassignmentProhibited_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_RecipientReassignmentProhibited_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_RecipientReassignmentProhibited(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_RecipientReassignmentProhibited_PDU);
+  offset = dissect_p1_RecipientReassignmentProhibited(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_RecipientReassignmentProhibited_PDU);
+  return offset;
 }
-static void dissect_OriginatorRequestedAlternateRecipient_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_OriginatorRequestedAlternateRecipient_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_OriginatorRequestedAlternateRecipient(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_OriginatorRequestedAlternateRecipient_PDU);
+  offset = dissect_p1_OriginatorRequestedAlternateRecipient(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_OriginatorRequestedAlternateRecipient_PDU);
+  return offset;
 }
-static void dissect_DLExpansionProhibited_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_DLExpansionProhibited_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_DLExpansionProhibited(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_DLExpansionProhibited_PDU);
+  offset = dissect_p1_DLExpansionProhibited(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_DLExpansionProhibited_PDU);
+  return offset;
 }
-static void dissect_ConversionWithLossProhibited_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ConversionWithLossProhibited_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ConversionWithLossProhibited(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ConversionWithLossProhibited_PDU);
+  offset = dissect_p1_ConversionWithLossProhibited(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ConversionWithLossProhibited_PDU);
+  return offset;
 }
-static void dissect_LatestDeliveryTime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_LatestDeliveryTime_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_LatestDeliveryTime(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_LatestDeliveryTime_PDU);
+  offset = dissect_p1_LatestDeliveryTime(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_LatestDeliveryTime_PDU);
+  return offset;
 }
-static void dissect_RequestedDeliveryMethod_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_RequestedDeliveryMethod_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_RequestedDeliveryMethod(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_RequestedDeliveryMethod_PDU);
+  offset = dissect_p1_RequestedDeliveryMethod(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_RequestedDeliveryMethod_PDU);
+  return offset;
 }
-static void dissect_PhysicalForwardingProhibited_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalForwardingProhibited_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalForwardingProhibited(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalForwardingProhibited_PDU);
+  offset = dissect_p1_PhysicalForwardingProhibited(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalForwardingProhibited_PDU);
+  return offset;
 }
-static void dissect_PhysicalForwardingAddressRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalForwardingAddressRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalForwardingAddressRequest(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalForwardingAddressRequest_PDU);
+  offset = dissect_p1_PhysicalForwardingAddressRequest(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalForwardingAddressRequest_PDU);
+  return offset;
 }
-static void dissect_PhysicalDeliveryModes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalDeliveryModes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalDeliveryModes(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalDeliveryModes_PDU);
+  offset = dissect_p1_PhysicalDeliveryModes(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalDeliveryModes_PDU);
+  return offset;
 }
-static void dissect_RegisteredMailType_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_RegisteredMailType_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_RegisteredMailType(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_RegisteredMailType_PDU);
+  offset = dissect_p1_RegisteredMailType(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_RegisteredMailType_PDU);
+  return offset;
 }
-static void dissect_RecipientNumberForAdvice_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_RecipientNumberForAdvice_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_RecipientNumberForAdvice(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_RecipientNumberForAdvice_PDU);
+  offset = dissect_p1_RecipientNumberForAdvice(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_RecipientNumberForAdvice_PDU);
+  return offset;
 }
-static void dissect_PhysicalRenditionAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalRenditionAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalRenditionAttributes(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalRenditionAttributes_PDU);
+  offset = dissect_p1_PhysicalRenditionAttributes(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalRenditionAttributes_PDU);
+  return offset;
 }
-static void dissect_OriginatorReturnAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_OriginatorReturnAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_OriginatorReturnAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_OriginatorReturnAddress_PDU);
+  offset = dissect_p1_OriginatorReturnAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_OriginatorReturnAddress_PDU);
+  return offset;
 }
-static void dissect_PhysicalDeliveryReportRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalDeliveryReportRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalDeliveryReportRequest(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalDeliveryReportRequest_PDU);
+  offset = dissect_p1_PhysicalDeliveryReportRequest(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalDeliveryReportRequest_PDU);
+  return offset;
 }
-static void dissect_OriginatorCertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_OriginatorCertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_OriginatorCertificate(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_OriginatorCertificate_PDU);
+  offset = dissect_p1_OriginatorCertificate(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_OriginatorCertificate_PDU);
+  return offset;
 }
-static void dissect_MessageToken_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MessageToken_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageToken(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MessageToken_PDU);
+  offset = dissect_p1_MessageToken(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MessageToken_PDU);
+  return offset;
 }
-static void dissect_ContentConfidentialityAlgorithmIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ContentConfidentialityAlgorithmIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ContentConfidentialityAlgorithmIdentifier(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ContentConfidentialityAlgorithmIdentifier_PDU);
+  offset = dissect_p1_ContentConfidentialityAlgorithmIdentifier(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ContentConfidentialityAlgorithmIdentifier_PDU);
+  return offset;
 }
-static void dissect_ContentIntegrityCheck_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ContentIntegrityCheck_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ContentIntegrityCheck(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ContentIntegrityCheck_PDU);
+  offset = dissect_p1_ContentIntegrityCheck(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ContentIntegrityCheck_PDU);
+  return offset;
 }
-static void dissect_MessageOriginAuthenticationCheck_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MessageOriginAuthenticationCheck_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageOriginAuthenticationCheck(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MessageOriginAuthenticationCheck_PDU);
+  offset = dissect_p1_MessageOriginAuthenticationCheck(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MessageOriginAuthenticationCheck_PDU);
+  return offset;
 }
-void dissect_p1_MessageSecurityLabel_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+int dissect_p1_MessageSecurityLabel_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageSecurityLabel(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_p1_MessageSecurityLabel_PDU);
+  offset = dissect_p1_MessageSecurityLabel(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_p1_MessageSecurityLabel_PDU);
+  return offset;
 }
-static void dissect_ProofOfSubmissionRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ProofOfSubmissionRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ProofOfSubmissionRequest(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ProofOfSubmissionRequest_PDU);
+  offset = dissect_p1_ProofOfSubmissionRequest(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ProofOfSubmissionRequest_PDU);
+  return offset;
 }
-static void dissect_ProofOfDeliveryRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ProofOfDeliveryRequest_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ProofOfDeliveryRequest(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ProofOfDeliveryRequest_PDU);
+  offset = dissect_p1_ProofOfDeliveryRequest(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ProofOfDeliveryRequest_PDU);
+  return offset;
 }
-static void dissect_ContentCorrelator_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ContentCorrelator_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ContentCorrelator(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ContentCorrelator_PDU);
+  offset = dissect_p1_ContentCorrelator(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ContentCorrelator_PDU);
+  return offset;
 }
-static void dissect_ProbeOriginAuthenticationCheck_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ProbeOriginAuthenticationCheck_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ProbeOriginAuthenticationCheck(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ProbeOriginAuthenticationCheck_PDU);
+  offset = dissect_p1_ProbeOriginAuthenticationCheck(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ProbeOriginAuthenticationCheck_PDU);
+  return offset;
 }
-static void dissect_RedirectionHistory_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_RedirectionHistory_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_RedirectionHistory(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_RedirectionHistory_PDU);
+  offset = dissect_p1_RedirectionHistory(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_RedirectionHistory_PDU);
+  return offset;
 }
-static void dissect_Redirection_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_Redirection_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_Redirection(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_Redirection_PDU);
+  offset = dissect_p1_Redirection(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_Redirection_PDU);
+  return offset;
 }
-static void dissect_DLExpansionHistory_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_DLExpansionHistory_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_DLExpansionHistory(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_DLExpansionHistory_PDU);
+  offset = dissect_p1_DLExpansionHistory(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_DLExpansionHistory_PDU);
+  return offset;
 }
-static void dissect_DLExpansion_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_DLExpansion_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_DLExpansion(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_DLExpansion_PDU);
+  offset = dissect_p1_DLExpansion(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_DLExpansion_PDU);
+  return offset;
 }
-static void dissect_PhysicalForwardingAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalForwardingAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalForwardingAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalForwardingAddress_PDU);
+  offset = dissect_p1_PhysicalForwardingAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalForwardingAddress_PDU);
+  return offset;
 }
-static void dissect_OriginatorAndDLExpansionHistory_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_OriginatorAndDLExpansionHistory_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_OriginatorAndDLExpansionHistory(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_OriginatorAndDLExpansionHistory_PDU);
+  offset = dissect_p1_OriginatorAndDLExpansionHistory(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_OriginatorAndDLExpansionHistory_PDU);
+  return offset;
 }
-static void dissect_ReportingDLName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ReportingDLName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ReportingDLName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ReportingDLName_PDU);
+  offset = dissect_p1_ReportingDLName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ReportingDLName_PDU);
+  return offset;
 }
-static void dissect_ReportingMTACertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ReportingMTACertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ReportingMTACertificate(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ReportingMTACertificate_PDU);
+  offset = dissect_p1_ReportingMTACertificate(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ReportingMTACertificate_PDU);
+  return offset;
 }
-static void dissect_ReportOriginAuthenticationCheck_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ReportOriginAuthenticationCheck_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ReportOriginAuthenticationCheck(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ReportOriginAuthenticationCheck_PDU);
+  offset = dissect_p1_ReportOriginAuthenticationCheck(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ReportOriginAuthenticationCheck_PDU);
+  return offset;
 }
-static void dissect_OriginatingMTACertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_OriginatingMTACertificate_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_OriginatingMTACertificate(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_OriginatingMTACertificate_PDU);
+  offset = dissect_p1_OriginatingMTACertificate(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_OriginatingMTACertificate_PDU);
+  return offset;
 }
-static void dissect_ProofOfSubmission_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ProofOfSubmission_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ProofOfSubmission(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ProofOfSubmission_PDU);
+  offset = dissect_p1_ProofOfSubmission(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ProofOfSubmission_PDU);
+  return offset;
 }
-static void dissect_ReportingMTAName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ReportingMTAName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ReportingMTAName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ReportingMTAName_PDU);
+  offset = dissect_p1_ReportingMTAName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ReportingMTAName_PDU);
+  return offset;
 }
-static void dissect_ExtendedCertificates_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ExtendedCertificates_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ExtendedCertificates(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ExtendedCertificates_PDU);
+  offset = dissect_p1_ExtendedCertificates(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ExtendedCertificates_PDU);
+  return offset;
 }
-static void dissect_DLExemptedRecipients_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_DLExemptedRecipients_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_DLExemptedRecipients(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_DLExemptedRecipients_PDU);
+  offset = dissect_p1_DLExemptedRecipients(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_DLExemptedRecipients_PDU);
+  return offset;
 }
-static void dissect_CertificateSelectors_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_CertificateSelectors_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_CertificateSelectors(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_CertificateSelectors_PDU);
+  offset = dissect_p1_CertificateSelectors(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_CertificateSelectors_PDU);
+  return offset;
 }
-static void dissect_Content_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_Content_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_Content(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_Content_PDU);
+  offset = dissect_p1_Content(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_Content_PDU);
+  return offset;
 }
-static void dissect_MTSIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MTSIdentifier_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MTSIdentifier(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MTSIdentifier_PDU);
+  offset = dissect_p1_MTSIdentifier(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MTSIdentifier_PDU);
+  return offset;
 }
-static void dissect_ORName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ORName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ORName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ORName_PDU);
+  offset = dissect_p1_ORName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ORName_PDU);
+  return offset;
 }
-static void dissect_ORAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ORAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ORAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ORAddress_PDU);
+  offset = dissect_p1_ORAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ORAddress_PDU);
+  return offset;
 }
-static void dissect_CommonName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_CommonName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_CommonName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_CommonName_PDU);
+  offset = dissect_p1_CommonName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_CommonName_PDU);
+  return offset;
 }
-static void dissect_TeletexCommonName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TeletexCommonName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_TeletexCommonName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_TeletexCommonName_PDU);
+  offset = dissect_p1_TeletexCommonName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_TeletexCommonName_PDU);
+  return offset;
 }
-static void dissect_UniversalCommonName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalCommonName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalCommonName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalCommonName_PDU);
+  offset = dissect_p1_UniversalCommonName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalCommonName_PDU);
+  return offset;
 }
-static void dissect_TeletexOrganizationName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TeletexOrganizationName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_TeletexOrganizationName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_TeletexOrganizationName_PDU);
+  offset = dissect_p1_TeletexOrganizationName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_TeletexOrganizationName_PDU);
+  return offset;
 }
-static void dissect_UniversalOrganizationName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalOrganizationName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalOrganizationName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalOrganizationName_PDU);
+  offset = dissect_p1_UniversalOrganizationName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalOrganizationName_PDU);
+  return offset;
 }
-static void dissect_TeletexPersonalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TeletexPersonalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_TeletexPersonalName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_TeletexPersonalName_PDU);
+  offset = dissect_p1_TeletexPersonalName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_TeletexPersonalName_PDU);
+  return offset;
 }
-static void dissect_UniversalPersonalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalPersonalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalPersonalName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalPersonalName_PDU);
+  offset = dissect_p1_UniversalPersonalName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalPersonalName_PDU);
+  return offset;
 }
-static void dissect_TeletexOrganizationalUnitNames_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TeletexOrganizationalUnitNames_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_TeletexOrganizationalUnitNames(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_TeletexOrganizationalUnitNames_PDU);
+  offset = dissect_p1_TeletexOrganizationalUnitNames(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_TeletexOrganizationalUnitNames_PDU);
+  return offset;
 }
-static void dissect_UniversalOrganizationalUnitNames_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalOrganizationalUnitNames_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalOrganizationalUnitNames(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalOrganizationalUnitNames_PDU);
+  offset = dissect_p1_UniversalOrganizationalUnitNames(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalOrganizationalUnitNames_PDU);
+  return offset;
 }
-static void dissect_PDSName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PDSName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PDSName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PDSName_PDU);
+  offset = dissect_p1_PDSName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PDSName_PDU);
+  return offset;
 }
-static void dissect_PhysicalDeliveryCountryName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalDeliveryCountryName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalDeliveryCountryName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalDeliveryCountryName_PDU);
+  offset = dissect_p1_PhysicalDeliveryCountryName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalDeliveryCountryName_PDU);
+  return offset;
 }
-static void dissect_PostalCode_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PostalCode_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PostalCode(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PostalCode_PDU);
+  offset = dissect_p1_PostalCode(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PostalCode_PDU);
+  return offset;
 }
-static void dissect_PhysicalDeliveryOfficeName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalDeliveryOfficeName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalDeliveryOfficeName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalDeliveryOfficeName_PDU);
+  offset = dissect_p1_PhysicalDeliveryOfficeName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalDeliveryOfficeName_PDU);
+  return offset;
 }
-static void dissect_UniversalPhysicalDeliveryOfficeName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalPhysicalDeliveryOfficeName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalPhysicalDeliveryOfficeName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalPhysicalDeliveryOfficeName_PDU);
+  offset = dissect_p1_UniversalPhysicalDeliveryOfficeName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalPhysicalDeliveryOfficeName_PDU);
+  return offset;
 }
-static void dissect_PhysicalDeliveryOfficeNumber_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalDeliveryOfficeNumber_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalDeliveryOfficeNumber(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalDeliveryOfficeNumber_PDU);
+  offset = dissect_p1_PhysicalDeliveryOfficeNumber(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalDeliveryOfficeNumber_PDU);
+  return offset;
 }
-static void dissect_UniversalPhysicalDeliveryOfficeNumber_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalPhysicalDeliveryOfficeNumber_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalPhysicalDeliveryOfficeNumber(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalPhysicalDeliveryOfficeNumber_PDU);
+  offset = dissect_p1_UniversalPhysicalDeliveryOfficeNumber(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalPhysicalDeliveryOfficeNumber_PDU);
+  return offset;
 }
-static void dissect_ExtensionORAddressComponents_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ExtensionORAddressComponents_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ExtensionORAddressComponents(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ExtensionORAddressComponents_PDU);
+  offset = dissect_p1_ExtensionORAddressComponents(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ExtensionORAddressComponents_PDU);
+  return offset;
 }
-static void dissect_UniversalExtensionORAddressComponents_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalExtensionORAddressComponents_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalExtensionORAddressComponents(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalExtensionORAddressComponents_PDU);
+  offset = dissect_p1_UniversalExtensionORAddressComponents(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalExtensionORAddressComponents_PDU);
+  return offset;
 }
-static void dissect_PhysicalDeliveryPersonalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalDeliveryPersonalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalDeliveryPersonalName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalDeliveryPersonalName_PDU);
+  offset = dissect_p1_PhysicalDeliveryPersonalName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalDeliveryPersonalName_PDU);
+  return offset;
 }
-static void dissect_UniversalPhysicalDeliveryPersonalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalPhysicalDeliveryPersonalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalPhysicalDeliveryPersonalName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalPhysicalDeliveryPersonalName_PDU);
+  offset = dissect_p1_UniversalPhysicalDeliveryPersonalName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalPhysicalDeliveryPersonalName_PDU);
+  return offset;
 }
-static void dissect_PhysicalDeliveryOrganizationName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PhysicalDeliveryOrganizationName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PhysicalDeliveryOrganizationName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PhysicalDeliveryOrganizationName_PDU);
+  offset = dissect_p1_PhysicalDeliveryOrganizationName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PhysicalDeliveryOrganizationName_PDU);
+  return offset;
 }
-static void dissect_UniversalPhysicalDeliveryOrganizationName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalPhysicalDeliveryOrganizationName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalPhysicalDeliveryOrganizationName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalPhysicalDeliveryOrganizationName_PDU);
+  offset = dissect_p1_UniversalPhysicalDeliveryOrganizationName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalPhysicalDeliveryOrganizationName_PDU);
+  return offset;
 }
-static void dissect_ExtensionPhysicalDeliveryAddressComponents_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ExtensionPhysicalDeliveryAddressComponents_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ExtensionPhysicalDeliveryAddressComponents(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ExtensionPhysicalDeliveryAddressComponents_PDU);
+  offset = dissect_p1_ExtensionPhysicalDeliveryAddressComponents(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ExtensionPhysicalDeliveryAddressComponents_PDU);
+  return offset;
 }
-static void dissect_UniversalExtensionPhysicalDeliveryAddressComponents_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalExtensionPhysicalDeliveryAddressComponents_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalExtensionPhysicalDeliveryAddressComponents(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalExtensionPhysicalDeliveryAddressComponents_PDU);
+  offset = dissect_p1_UniversalExtensionPhysicalDeliveryAddressComponents(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalExtensionPhysicalDeliveryAddressComponents_PDU);
+  return offset;
 }
-static void dissect_UnformattedPostalAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UnformattedPostalAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UnformattedPostalAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UnformattedPostalAddress_PDU);
+  offset = dissect_p1_UnformattedPostalAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UnformattedPostalAddress_PDU);
+  return offset;
 }
-static void dissect_UniversalUnformattedPostalAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalUnformattedPostalAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalUnformattedPostalAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalUnformattedPostalAddress_PDU);
+  offset = dissect_p1_UniversalUnformattedPostalAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalUnformattedPostalAddress_PDU);
+  return offset;
 }
-static void dissect_StreetAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_StreetAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_StreetAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_StreetAddress_PDU);
+  offset = dissect_p1_StreetAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_StreetAddress_PDU);
+  return offset;
 }
-static void dissect_UniversalStreetAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalStreetAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalStreetAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalStreetAddress_PDU);
+  offset = dissect_p1_UniversalStreetAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalStreetAddress_PDU);
+  return offset;
 }
-static void dissect_PostOfficeBoxAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PostOfficeBoxAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PostOfficeBoxAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PostOfficeBoxAddress_PDU);
+  offset = dissect_p1_PostOfficeBoxAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PostOfficeBoxAddress_PDU);
+  return offset;
 }
-static void dissect_UniversalPostOfficeBoxAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalPostOfficeBoxAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalPostOfficeBoxAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalPostOfficeBoxAddress_PDU);
+  offset = dissect_p1_UniversalPostOfficeBoxAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalPostOfficeBoxAddress_PDU);
+  return offset;
 }
-static void dissect_PosteRestanteAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_PosteRestanteAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_PosteRestanteAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_PosteRestanteAddress_PDU);
+  offset = dissect_p1_PosteRestanteAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_PosteRestanteAddress_PDU);
+  return offset;
 }
-static void dissect_UniversalPosteRestanteAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalPosteRestanteAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalPosteRestanteAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalPosteRestanteAddress_PDU);
+  offset = dissect_p1_UniversalPosteRestanteAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalPosteRestanteAddress_PDU);
+  return offset;
 }
-static void dissect_UniquePostalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniquePostalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniquePostalName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniquePostalName_PDU);
+  offset = dissect_p1_UniquePostalName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniquePostalName_PDU);
+  return offset;
 }
-static void dissect_UniversalUniquePostalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalUniquePostalName_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalUniquePostalName(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalUniquePostalName_PDU);
+  offset = dissect_p1_UniversalUniquePostalName(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalUniquePostalName_PDU);
+  return offset;
 }
-static void dissect_LocalPostalAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_LocalPostalAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_LocalPostalAttributes(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_LocalPostalAttributes_PDU);
+  offset = dissect_p1_LocalPostalAttributes(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_LocalPostalAttributes_PDU);
+  return offset;
 }
-static void dissect_UniversalLocalPostalAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalLocalPostalAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalLocalPostalAttributes(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalLocalPostalAttributes_PDU);
+  offset = dissect_p1_UniversalLocalPostalAttributes(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalLocalPostalAttributes_PDU);
+  return offset;
 }
-static void dissect_ExtendedNetworkAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ExtendedNetworkAddress_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ExtendedNetworkAddress(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ExtendedNetworkAddress_PDU);
+  offset = dissect_p1_ExtendedNetworkAddress(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ExtendedNetworkAddress_PDU);
+  return offset;
 }
-static void dissect_TerminalType_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TerminalType_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_TerminalType(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_TerminalType_PDU);
+  offset = dissect_p1_TerminalType(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_TerminalType_PDU);
+  return offset;
 }
-static void dissect_TeletexDomainDefinedAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_TeletexDomainDefinedAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_TeletexDomainDefinedAttributes(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_TeletexDomainDefinedAttributes_PDU);
+  offset = dissect_p1_TeletexDomainDefinedAttributes(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_TeletexDomainDefinedAttributes_PDU);
+  return offset;
 }
-static void dissect_UniversalDomainDefinedAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_UniversalDomainDefinedAttributes_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_UniversalDomainDefinedAttributes(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_UniversalDomainDefinedAttributes_PDU);
+  offset = dissect_p1_UniversalDomainDefinedAttributes(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_UniversalDomainDefinedAttributes_PDU);
+  return offset;
 }
-static void dissect_ExtendedEncodedInformationType_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_ExtendedEncodedInformationType_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_ExtendedEncodedInformationType(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_ExtendedEncodedInformationType_PDU);
+  offset = dissect_p1_ExtendedEncodedInformationType(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_ExtendedEncodedInformationType_PDU);
+  return offset;
 }
-static void dissect_MTANameAndOptionalGDI_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MTANameAndOptionalGDI_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MTANameAndOptionalGDI(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MTANameAndOptionalGDI_PDU);
+  offset = dissect_p1_MTANameAndOptionalGDI(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MTANameAndOptionalGDI_PDU);
+  return offset;
 }
-static void dissect_AsymmetricToken_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_AsymmetricToken_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_AsymmetricToken(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_AsymmetricToken_PDU);
+  offset = dissect_p1_AsymmetricToken(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_AsymmetricToken_PDU);
+  return offset;
 }
-static void dissect_BindTokenSignedData_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_BindTokenSignedData_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_BindTokenSignedData(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_BindTokenSignedData_PDU);
+  offset = dissect_p1_BindTokenSignedData(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_BindTokenSignedData_PDU);
+  return offset;
 }
-static void dissect_MessageTokenSignedData_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MessageTokenSignedData_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageTokenSignedData(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MessageTokenSignedData_PDU);
+  offset = dissect_p1_MessageTokenSignedData(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MessageTokenSignedData_PDU);
+  return offset;
 }
-static void dissect_MessageTokenEncryptedData_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_MessageTokenEncryptedData_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_MessageTokenEncryptedData(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MessageTokenEncryptedData_PDU);
+  offset = dissect_p1_MessageTokenEncryptedData(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_MessageTokenEncryptedData_PDU);
+  return offset;
 }
-static void dissect_BindTokenEncryptedData_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_BindTokenEncryptedData_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_BindTokenEncryptedData(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_BindTokenEncryptedData_PDU);
+  offset = dissect_p1_BindTokenEncryptedData(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_BindTokenEncryptedData_PDU);
+  return offset;
 }
-static void dissect_SecurityClassification_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_SecurityClassification_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_p1_SecurityClassification(FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_SecurityClassification_PDU);
+  offset = dissect_p1_SecurityClassification(FALSE, tvb, offset, &asn1_ctx, tree, hf_p1_SecurityClassification_PDU);
+  return offset;
 }
 
 
 /*--- End of included file: packet-p1-fn.c ---*/
-#line 149 "../../asn1/p1/packet-p1-template.c"
+#line 165 "../../asn1/p1/packet-p1-template.c"
 
 
 /*--- Included file: packet-p1-table11.c ---*/
@@ -8224,7 +8418,7 @@ static const ros_opr_t p3_opr_tab[] = {
 
 
 /*--- End of included file: packet-p1-table11.c ---*/
-#line 151 "../../asn1/p1/packet-p1-template.c"
+#line 167 "../../asn1/p1/packet-p1-template.c"
 
 /*--- Included file: packet-p1-table21.c ---*/
 #line 1 "../../asn1/p1/packet-p1-table21.c"
@@ -8269,7 +8463,7 @@ static const ros_err_t p3_err_tab[] = {
 
 
 /*--- End of included file: packet-p1-table21.c ---*/
-#line 152 "../../asn1/p1/packet-p1-template.c"
+#line 168 "../../asn1/p1/packet-p1-template.c"
 
 static const ros_info_t p3_ros_info = {
   "P3",
@@ -8283,32 +8477,32 @@ static const ros_info_t p3_ros_info = {
 
 void p1_initialize_content_globals (asn1_ctx_t* actx, proto_tree *tree, gboolean report_unknown_cont_type)
 {
-	p1_address_ctx_t* ctx;
+    p1_address_ctx_t* ctx;
 
-	if (actx->subtree.tree_ctx == NULL) {
-		actx->subtree.tree_ctx = wmem_new0(wmem_packet_scope(), p1_address_ctx_t);
-	}
+    if (actx->subtree.tree_ctx == NULL) {
+        actx->subtree.tree_ctx = wmem_new0(wmem_packet_scope(), p1_address_ctx_t);
+    }
 
-	ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
+    ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
 
-	actx->subtree.top_tree = tree;
-	actx->external.direct_reference = NULL;
-	ctx->content_type_id = NULL;
-	ctx->report_unknown_content_type = report_unknown_cont_type;
+    actx->subtree.top_tree = tree;
+    actx->external.direct_reference = NULL;
+    ctx->content_type_id = NULL;
+    ctx->report_unknown_content_type = report_unknown_cont_type;
 }
 
 const char* p1_get_last_oraddress (asn1_ctx_t* actx)
 {
-	p1_address_ctx_t* ctx;
+    p1_address_ctx_t* ctx;
 
-	if ((actx == NULL) || (actx->subtree.tree_ctx == NULL))
-		return "";
+    if ((actx == NULL) || (actx->subtree.tree_ctx == NULL))
+        return "";
 
-	ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
-	if (wmem_strbuf_get_len(ctx->oraddress) <= 0)
-		return "";
+    ctx = (p1_address_ctx_t*)actx->subtree.tree_ctx;
+    if (wmem_strbuf_get_len(ctx->oraddress) <= 0)
+        return "";
 
-	return wmem_strbuf_get_str(ctx->oraddress);
+    return wmem_strbuf_get_str(ctx->oraddress);
 }
 
 /*
@@ -8317,24 +8511,24 @@ const char* p1_get_last_oraddress (asn1_ctx_t* actx)
 void
 dissect_p1_mts_apdu (tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 {
-	proto_item *item=NULL;
-	proto_tree *tree=NULL;
-	asn1_ctx_t asn1_ctx;
-	asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
+    proto_item *item=NULL;
+    proto_tree *tree=NULL;
+    asn1_ctx_t asn1_ctx;
+    asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
 
-	/* save parent_tree so subdissectors can create new top nodes */
-	p1_initialize_content_globals (&asn1_ctx, parent_tree, TRUE);
+    /* save parent_tree so subdissectors can create new top nodes */
+    p1_initialize_content_globals (&asn1_ctx, parent_tree, TRUE);
 
-	if(parent_tree){
-		item = proto_tree_add_item(parent_tree, proto_p1, tvb, 0, -1, ENC_NA);
-		tree = proto_item_add_subtree(item, ett_p1);
-	}
+    if(parent_tree){
+        item = proto_tree_add_item(parent_tree, proto_p1, tvb, 0, -1, ENC_NA);
+        tree = proto_item_add_subtree(item, ett_p1);
+    }
 
-	col_set_str(pinfo->cinfo, COL_PROTOCOL, "P1");
-  	col_set_str(pinfo->cinfo, COL_INFO, "Transfer");
+    col_set_str(pinfo->cinfo, COL_PROTOCOL, "P1");
+      col_set_str(pinfo->cinfo, COL_INFO, "Transfer");
 
-	dissect_p1_MTS_APDU (FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MTS_APDU_PDU);
-	p1_initialize_content_globals (&asn1_ctx, NULL, FALSE);
+    dissect_p1_MTS_APDU (FALSE, tvb, 0, &asn1_ctx, tree, hf_p1_MTS_APDU_PDU);
+    p1_initialize_content_globals (&asn1_ctx, NULL, FALSE);
 }
 
 /*
@@ -8343,72 +8537,74 @@ dissect_p1_mts_apdu (tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 static int
 dissect_p1(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void* data)
 {
-	int offset = 0;
-	int old_offset;
-	proto_item *item;
-	proto_tree *tree;
-	struct SESSION_DATA_STRUCTURE* session;
-	int (*p1_dissector)(gboolean implicit_tag _U_, tvbuff_t *tvb, int offset, asn1_ctx_t *actx _U_, proto_tree *tree, int hf_index _U_) = NULL;
-	const char *p1_op_name;
-	int hf_p1_index = -1;
-	asn1_ctx_t asn1_ctx;
-	asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
+    int offset = 0;
+    int old_offset;
+    proto_item *item;
+    proto_tree *tree;
+    struct SESSION_DATA_STRUCTURE* session;
+    int (*p1_dissector)(gboolean implicit_tag _U_, tvbuff_t *tvb, int offset, asn1_ctx_t *actx _U_, proto_tree *tree, int hf_index _U_) = NULL;
+    const char *p1_op_name;
+    int hf_p1_index = -1;
+    asn1_ctx_t asn1_ctx;
+    asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
 
-	/* do we have operation information from the ROS dissector? */
-	if (data == NULL)
-		return 0;
-	session  = (struct SESSION_DATA_STRUCTURE*)data;
+    /* do we have operation information from the ROS dissector? */
+    if (data == NULL)
+        return 0;
+    session  = (struct SESSION_DATA_STRUCTURE*)data;
 
-	/* save parent_tree so subdissectors can create new top nodes */
-	p1_initialize_content_globals (&asn1_ctx, parent_tree, TRUE);
+    /* save parent_tree so subdissectors can create new top nodes */
+    p1_initialize_content_globals (&asn1_ctx, parent_tree, TRUE);
 
-	asn1_ctx.private_data = session;
+    asn1_ctx.private_data = session;
 
-	item = proto_tree_add_item(parent_tree, proto_p1, tvb, 0, -1, ENC_NA);
-	tree = proto_item_add_subtree(item, ett_p1);
+    item = proto_tree_add_item(parent_tree, proto_p1, tvb, 0, -1, ENC_NA);
+    tree = proto_item_add_subtree(item, ett_p1);
 
-	col_set_str(pinfo->cinfo, COL_PROTOCOL, "P1");
-	col_clear(pinfo->cinfo, COL_INFO);
+    col_set_str(pinfo->cinfo, COL_PROTOCOL, "P1");
+    col_clear(pinfo->cinfo, COL_INFO);
 
-	switch(session->ros_op & ROS_OP_MASK) {
-	case (ROS_OP_BIND | ROS_OP_ARGUMENT):	/*  BindInvoke */
-	  p1_dissector = dissect_p1_MTABindArgument;
-	  p1_op_name = "Bind-Argument";
-	  hf_p1_index = hf_p1_MTABindArgument_PDU;
-	  break;
-	case (ROS_OP_BIND | ROS_OP_RESULT):	/*  BindResult */
-	  p1_dissector = dissect_p1_MTABindResult;
-	  p1_op_name = "Bind-Result";
-	  hf_p1_index = hf_p1_MTABindResult_PDU;
-	  break;
-	case (ROS_OP_BIND | ROS_OP_ERROR):	/*  BindError */
-	  p1_dissector = dissect_p1_MTABindError;
-	  p1_op_name = "Bind-Error";
-	  hf_p1_index = hf_p1_MTABindError_PDU;
-	  break;
-	case (ROS_OP_INVOKE | ROS_OP_ARGUMENT):	/*  Invoke Argument */
-	  p1_dissector = dissect_p1_MTS_APDU;
-	  p1_op_name = "Transfer";
-	  hf_p1_index = hf_p1_MTS_APDU_PDU;
-	  break;
-	default:
-	  proto_tree_add_text(tree, tvb, offset, -1,"Unsupported P1 PDU");
-	  return tvb_length(tvb);
-	}
+    switch(session->ros_op & ROS_OP_MASK) {
+    case (ROS_OP_BIND | ROS_OP_ARGUMENT):    /*  BindInvoke */
+      p1_dissector = dissect_p1_MTABindArgument;
+      p1_op_name = "Bind-Argument";
+      hf_p1_index = hf_p1_MTABindArgument_PDU;
+      break;
+    case (ROS_OP_BIND | ROS_OP_RESULT):    /*  BindResult */
+      p1_dissector = dissect_p1_MTABindResult;
+      p1_op_name = "Bind-Result";
+      hf_p1_index = hf_p1_MTABindResult_PDU;
+      break;
+    case (ROS_OP_BIND | ROS_OP_ERROR):    /*  BindError */
+      p1_dissector = dissect_p1_MTABindError;
+      p1_op_name = "Bind-Error";
+      hf_p1_index = hf_p1_MTABindError_PDU;
+      break;
+    case (ROS_OP_INVOKE | ROS_OP_ARGUMENT):    /*  Invoke Argument */
+      p1_dissector = dissect_p1_MTS_APDU;
+      p1_op_name = "Transfer";
+      hf_p1_index = hf_p1_MTS_APDU_PDU;
+      break;
+    default:
+      proto_tree_add_expert(tree, pinfo, &ei_p1_unsupported_pdu, tvb, offset, -1);
+      return tvb_captured_length(tvb);
+    }
 
-	col_set_str(pinfo->cinfo, COL_INFO, p1_op_name);
+    col_set_str(pinfo->cinfo, COL_INFO, p1_op_name);
 
-	while (tvb_reported_length_remaining(tvb, offset) > 0){
-		old_offset=offset;
-		offset=(*p1_dissector)(FALSE, tvb, offset, &asn1_ctx , tree, hf_p1_index);
-		if(offset == old_offset){
-			proto_tree_add_text(tree, tvb, offset, -1,"Internal error, zero-byte P1 PDU");
-			break;
-		}
-	}
-	p1_initialize_content_globals (&asn1_ctx, NULL, FALSE);
-	return tvb_length(tvb);
+    while (tvb_reported_length_remaining(tvb, offset) > 0){
+        old_offset=offset;
+        offset=(*p1_dissector)(FALSE, tvb, offset, &asn1_ctx , tree, hf_p1_index);
+        if(offset == old_offset){
+            proto_tree_add_expert(tree, pinfo, &ei_p1_zero_pdu, tvb, offset, -1);
+            break;
+        }
+    }
+    p1_initialize_content_globals (&asn1_ctx, NULL, FALSE);
+    return tvb_captured_length(tvb);
 }
+
+
 
 
 /*--- proto_register_p1 -------------------------------------------*/
@@ -9846,18 +10042,6 @@ void proto_register_p1(void) {
       { "origination-or-expansion-time", "p1.origination_or_expansion_time",
         FT_STRING, BASE_NONE, NULL, 0,
         "Time", HFILL }},
-    { &hf_p1_report_type,
-      { "report-type", "p1.report_type",
-        FT_UINT32, BASE_DEC, VALS(p1_T_report_type_vals), 0,
-        "T_report_type", HFILL }},
-    { &hf_p1_report_type_delivery,
-      { "delivery", "p1.delivery_element",
-        FT_NONE, BASE_NONE, NULL, 0,
-        "PerRecipientDeliveryReportFields", HFILL }},
-    { &hf_p1_non_delivery_report,
-      { "non-delivery", "p1.non_delivery_element",
-        FT_NONE, BASE_NONE, NULL, 0,
-        "PerRecipientNonDeliveryReportFields", HFILL }},
     { &hf_p1_domain,
       { "domain", "p1.domain_element",
         FT_NONE, BASE_NONE, NULL, 0,
@@ -10696,7 +10880,7 @@ void proto_register_p1(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-p1-hfarr.c ---*/
-#line 318 "../../asn1/p1/packet-p1-template.c"
+#line 336 "../../asn1/p1/packet-p1-template.c"
   };
 
   /* List of subtrees */
@@ -10828,8 +11012,6 @@ void proto_register_p1(void) {
     &ett_p1_DLExpansion,
     &ett_p1_OriginatorAndDLExpansionHistory,
     &ett_p1_OriginatorAndDLExpansion,
-    &ett_p1_PerRecipientReportFields,
-    &ett_p1_T_report_type,
     &ett_p1_PerRecipientDeliveryReportFields,
     &ett_p1_PerRecipientNonDeliveryReportFields,
     &ett_p1_ReportingMTAName,
@@ -10895,7 +11077,7 @@ void proto_register_p1(void) {
     &ett_p1_SEQUENCE_SIZE_1_ub_recipients_OF_PerRecipientProbeSubmissionFields,
 
 /*--- End of included file: packet-p1-ettarr.c ---*/
-#line 331 "../../asn1/p1/packet-p1-template.c"
+#line 349 "../../asn1/p1/packet-p1-template.c"
   };
 
   static ei_register_info ei[] = {
@@ -10903,6 +11085,8 @@ void proto_register_p1(void) {
      { &ei_p1_unknown_standard_extension, { "p1.unknown.standard_extension", PI_UNDECODED, PI_WARN, "Unknown standard-extension", EXPFILL }},
      { &ei_p1_unknown_built_in_content_type, { "p1.unknown.built_in_content_type", PI_UNDECODED, PI_WARN, "P1 Unknown Content (unknown built-in content-type)", EXPFILL }},
      { &ei_p1_unknown_tokendata_type, { "p1.unknown.tokendata_type", PI_UNDECODED, PI_WARN, "Unknown tokendata-type", EXPFILL }},
+     { &ei_p1_unsupported_pdu, { "p1.unsupported_pdu", PI_UNDECODED, PI_WARN, "Unsupported P1 PDU", EXPFILL }},
+     { &ei_p1_zero_pdu, { "p1.zero_pdu", PI_PROTOCOL, PI_ERROR, "Internal error, zero-byte P1 PDU", EXPFILL }},
   };
 
   expert_module_t* expert_p1;
@@ -10929,11 +11113,20 @@ void proto_register_p1(void) {
   p1_module = prefs_register_protocol_subtree("OSI/X.400", proto_p1, prefs_register_p1);
 
   prefs_register_uint_preference(p1_module, "tcp.port", "P1 TCP Port",
-				 "Set the port for P1 operations (if other"
-				 " than the default of 102)",
-				 10, &global_p1_tcp_port);
+                 "Set the port for P1 operations (if other"
+                 " than the default of 102)",
+                 10, &global_p1_tcp_port);
 
   register_ber_syntax_dissector("P1 Message", proto_p1, dissect_p1_mts_apdu);
+
+/*--- Included file: packet-p1-syn-reg.c ---*/
+#line 1 "../../asn1/p1/packet-p1-syn-reg.c"
+  /*--- Syntax registrations ---*/
+  new_register_ber_syntax_dissector("ORAddress", proto_p1, dissect_ORAddress_PDU);
+  new_register_ber_syntax_dissector("ORName", proto_p1, dissect_ORName_PDU);
+
+/*--- End of included file: packet-p1-syn-reg.c ---*/
+#line 390 "../../asn1/p1/packet-p1-template.c"
 }
 
 
@@ -10944,162 +11137,162 @@ void proto_reg_handoff_p1(void) {
 
 /*--- Included file: packet-p1-dis-tab.c ---*/
 #line 1 "../../asn1/p1/packet-p1-dis-tab.c"
-  dissector_add_uint("p1.extension", 1, create_dissector_handle(dissect_RecipientReassignmentProhibited_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 2, create_dissector_handle(dissect_OriginatorRequestedAlternateRecipient_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 3, create_dissector_handle(dissect_DLExpansionProhibited_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 4, create_dissector_handle(dissect_ConversionWithLossProhibited_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 5, create_dissector_handle(dissect_LatestDeliveryTime_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 6, create_dissector_handle(dissect_RequestedDeliveryMethod_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 7, create_dissector_handle(dissect_PhysicalForwardingProhibited_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 8, create_dissector_handle(dissect_PhysicalForwardingAddressRequest_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 9, create_dissector_handle(dissect_PhysicalDeliveryModes_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 10, create_dissector_handle(dissect_RegisteredMailType_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 11, create_dissector_handle(dissect_RecipientNumberForAdvice_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 12, create_dissector_handle(dissect_PhysicalRenditionAttributes_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 13, create_dissector_handle(dissect_OriginatorReturnAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 14, create_dissector_handle(dissect_PhysicalDeliveryReportRequest_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 15, create_dissector_handle(dissect_OriginatorCertificate_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 16, create_dissector_handle(dissect_MessageToken_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 17, create_dissector_handle(dissect_ContentConfidentialityAlgorithmIdentifier_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 18, create_dissector_handle(dissect_ContentIntegrityCheck_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 19, create_dissector_handle(dissect_MessageOriginAuthenticationCheck_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 20, create_dissector_handle(dissect_p1_MessageSecurityLabel_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 21, create_dissector_handle(dissect_ProofOfSubmissionRequest_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 22, create_dissector_handle(dissect_ProofOfDeliveryRequest_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 23, create_dissector_handle(dissect_ContentCorrelator_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 24, create_dissector_handle(dissect_ProbeOriginAuthenticationCheck_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 25, create_dissector_handle(dissect_RedirectionHistory_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 26, create_dissector_handle(dissect_DLExpansionHistory_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 27, create_dissector_handle(dissect_PhysicalForwardingAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 28, create_dissector_handle(dissect_RecipientCertificate_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 29, create_dissector_handle(dissect_ProofOfDelivery_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 30, create_dissector_handle(dissect_OriginatorAndDLExpansionHistory_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 31, create_dissector_handle(dissect_ReportingDLName_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 32, create_dissector_handle(dissect_ReportingMTACertificate_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 33, create_dissector_handle(dissect_ReportOriginAuthenticationCheck_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 34, create_dissector_handle(dissect_OriginatingMTACertificate_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 35, create_dissector_handle(dissect_ProofOfSubmission_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 37, create_dissector_handle(dissect_TraceInformation_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 38, create_dissector_handle(dissect_InternalTraceInformation_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 39, create_dissector_handle(dissect_ReportingMTAName_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 40, create_dissector_handle(dissect_ExtendedCertificates_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 42, create_dissector_handle(dissect_DLExemptedRecipients_PDU, proto_p1));
-  dissector_add_uint("p1.extension", 45, create_dissector_handle(dissect_CertificateSelectors_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 1, create_dissector_handle(dissect_CommonName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 2, create_dissector_handle(dissect_TeletexCommonName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 3, create_dissector_handle(dissect_TeletexOrganizationName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 4, create_dissector_handle(dissect_TeletexPersonalName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 5, create_dissector_handle(dissect_TeletexOrganizationalUnitNames_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 6, create_dissector_handle(dissect_TeletexDomainDefinedAttributes_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 7, create_dissector_handle(dissect_PDSName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 8, create_dissector_handle(dissect_PhysicalDeliveryCountryName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 9, create_dissector_handle(dissect_PostalCode_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 10, create_dissector_handle(dissect_PhysicalDeliveryOfficeName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 11, create_dissector_handle(dissect_PhysicalDeliveryOfficeNumber_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 12, create_dissector_handle(dissect_ExtensionORAddressComponents_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 13, create_dissector_handle(dissect_PhysicalDeliveryPersonalName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 14, create_dissector_handle(dissect_PhysicalDeliveryOrganizationName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 15, create_dissector_handle(dissect_ExtensionPhysicalDeliveryAddressComponents_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 16, create_dissector_handle(dissect_UnformattedPostalAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 17, create_dissector_handle(dissect_StreetAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 18, create_dissector_handle(dissect_PostOfficeBoxAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 19, create_dissector_handle(dissect_PosteRestanteAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 20, create_dissector_handle(dissect_UniquePostalName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 21, create_dissector_handle(dissect_LocalPostalAttributes_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 22, create_dissector_handle(dissect_ExtendedNetworkAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 23, create_dissector_handle(dissect_TerminalType_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 24, create_dissector_handle(dissect_UniversalCommonName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 25, create_dissector_handle(dissect_UniversalOrganizationName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 26, create_dissector_handle(dissect_UniversalPersonalName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 27, create_dissector_handle(dissect_UniversalOrganizationalUnitNames_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 28, create_dissector_handle(dissect_UniversalDomainDefinedAttributes_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 29, create_dissector_handle(dissect_UniversalPhysicalDeliveryOfficeName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 30, create_dissector_handle(dissect_UniversalPhysicalDeliveryOfficeNumber_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 31, create_dissector_handle(dissect_UniversalExtensionORAddressComponents_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 32, create_dissector_handle(dissect_UniversalPhysicalDeliveryPersonalName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 33, create_dissector_handle(dissect_UniversalPhysicalDeliveryOrganizationName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 34, create_dissector_handle(dissect_UniversalExtensionPhysicalDeliveryAddressComponents_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 35, create_dissector_handle(dissect_UniversalUnformattedPostalAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 36, create_dissector_handle(dissect_UniversalStreetAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 37, create_dissector_handle(dissect_UniversalPostOfficeBoxAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 38, create_dissector_handle(dissect_UniversalPosteRestanteAddress_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 39, create_dissector_handle(dissect_UniversalUniquePostalName_PDU, proto_p1));
-  dissector_add_uint("p1.extension-attribute", 40, create_dissector_handle(dissect_UniversalLocalPostalAttributes_PDU, proto_p1));
-  register_ber_oid_dissector("2.6.3.6.0", dissect_AsymmetricToken_PDU, proto_p1, "id-tok-asymmetricToken");
-  register_ber_oid_dissector("2.6.5.6.0", dissect_MTANameAndOptionalGDI_PDU, proto_p1, "id-on-mtaName");
-  dissector_add_uint("p1.tokendata", 1, create_dissector_handle(dissect_BindTokenSignedData_PDU, proto_p1));
-  dissector_add_uint("p1.tokendata", 2, create_dissector_handle(dissect_MessageTokenSignedData_PDU, proto_p1));
-  dissector_add_uint("p1.tokendata", 3, create_dissector_handle(dissect_MessageTokenEncryptedData_PDU, proto_p1));
-  dissector_add_uint("p1.tokendata", 4, create_dissector_handle(dissect_BindTokenEncryptedData_PDU, proto_p1));
-  register_ber_oid_dissector("2.6.5.2.0", dissect_ContentLength_PDU, proto_p1, "id-at-mhs-maximum-content-length");
-  register_ber_oid_dissector("2.6.5.2.1", dissect_ExtendedContentType_PDU, proto_p1, "id-at-mhs-deliverable-content-types");
-  register_ber_oid_dissector("2.6.5.2.2", dissect_ExtendedEncodedInformationType_PDU, proto_p1, "id-at-mhs-exclusively-acceptable-eits");
-  register_ber_oid_dissector("2.6.5.2.3", dissect_ORName_PDU, proto_p1, "id-at-mhs-dl-members");
-  register_ber_oid_dissector("2.6.5.2.6", dissect_ORAddress_PDU, proto_p1, "id-at-mhs-or-addresses");
-  register_ber_oid_dissector("2.6.5.2.9", dissect_ExtendedContentType_PDU, proto_p1, "id-at-mhs-supported-content-types");
-  register_ber_oid_dissector("2.6.5.2.12", dissect_ORName_PDU, proto_p1, "id-at-mhs-dl-archive-service");
-  register_ber_oid_dissector("2.6.5.2.15", dissect_ORName_PDU, proto_p1, "id-at-mhs-dl-subscription-service");
-  register_ber_oid_dissector("2.6.5.2.17", dissect_ExtendedEncodedInformationType_PDU, proto_p1, "id-at-mhs-acceptable-eits");
-  register_ber_oid_dissector("2.6.5.2.18", dissect_ExtendedEncodedInformationType_PDU, proto_p1, "id-at-mhs-unacceptable-eits");
-  register_ber_oid_dissector("2.16.840.1.101.2.1.5.47", dissect_ORName_PDU, proto_p1, "id-at-aLExemptedAddressProcessor");
-  register_ber_oid_dissector("2.16.840.1.101.2.2.1.134.1", dissect_ORAddress_PDU, proto_p1, "id-at-collective-mhs-or-addresses");
-  register_ber_oid_dissector("2.6.4.3.80", dissect_CertificateSelectors_PDU, proto_p1, "id-att-certificate-selectors");
-  register_ber_oid_dissector("2.6.4.3.1", dissect_Content_PDU, proto_p1, "id-att-content");
-  register_ber_oid_dissector("2.6.4.3.3", dissect_ContentCorrelator_PDU, proto_p1, "id-att-content-correlator");
-  register_ber_oid_dissector("2.6.4.3.4", dissect_ContentIdentifier_PDU, proto_p1, "id-att-content-identifier");
-  register_ber_oid_dissector("2.6.4.3.5", dissect_ContentIntegrityCheck_PDU, proto_p1, "id-att-content-inetgrity-check");
-  register_ber_oid_dissector("2.6.4.3.6", dissect_ContentLength_PDU, proto_p1, "id-att-content-length");
-  register_ber_oid_dissector("2.6.4.3.8", dissect_ExtendedContentType_PDU, proto_p1, "id-att-content-type");
-  register_ber_oid_dissector("2.6.4.3.9", dissect_ConversionWithLossProhibited_PDU, proto_p1, "id-att-conversion-with-loss-prohibited");
-  register_ber_oid_dissector("2.6.4.3.51", dissect_DeferredDeliveryTime_PDU, proto_p1, "id-att-deferred-delivery-time");
-  register_ber_oid_dissector("2.6.4.3.13", dissect_DeliveryFlags_PDU, proto_p1, "id-att-delivery-flags");
-  register_ber_oid_dissector("2.6.4.3.78", dissect_ORName_PDU, proto_p1, "id-att-dl-exempted-recipients");
-  register_ber_oid_dissector("2.6.4.3.14", dissect_DLExpansion_PDU, proto_p1, "id-att-dl-expansion-history");
-  register_ber_oid_dissector("2.6.4.3.53", dissect_DLExpansionProhibited_PDU, proto_p1, "id-att-dl-expansion-prohibited");
-  register_ber_oid_dissector("2.6.4.3.54", dissect_InternalTraceInformationElement_PDU, proto_p1, "id-att-internal-trace-information");
-  register_ber_oid_dissector("2.6.4.3.55", dissect_LatestDeliveryTime_PDU, proto_p1, "id-att-latest-delivery-time");
-  register_ber_oid_dissector("2.6.4.3.18", dissect_MessageDeliveryEnvelope_PDU, proto_p1, "id-att-message-delivery-envelope");
-  register_ber_oid_dissector("2.6.4.3.20", dissect_MessageDeliveryTime_PDU, proto_p1, "id-att-message-delivery-time");
-  register_ber_oid_dissector("2.6.4.3.19", dissect_MTSIdentifier_PDU, proto_p1, "id-att-message-identifier");
-  register_ber_oid_dissector("2.6.4.3.21", dissect_MessageOriginAuthenticationCheck_PDU, proto_p1, "id-at-message-orgin-authentication-check");
-  register_ber_oid_dissector("2.6.4.3.22", dissect_p1_MessageSecurityLabel_PDU, proto_p1, "id-att-message-security-label");
-  register_ber_oid_dissector("2.6.4.3.59", dissect_MessageSubmissionEnvelope_PDU, proto_p1, "id-att-message-submission-envelope");
-  register_ber_oid_dissector("2.6.4.3.23", dissect_MessageSubmissionTime_PDU, proto_p1, "id-att-message-submission-time");
-  register_ber_oid_dissector("2.6.4.3.24", dissect_MessageToken_PDU, proto_p1, "id-att-message-token");
-  register_ber_oid_dissector("2.6.4.3.81", dissect_ExtendedCertificates_PDU, proto_p1, "id-att-multiple-originator-certificates");
-  register_ber_oid_dissector("2.6.4.3.17", dissect_ORName_PDU, proto_p1, "id-att-originally-intended-recipient-name");
-  register_ber_oid_dissector("2.6.4.3.62", dissect_OriginatingMTACertificate_PDU, proto_p1, "id-att-originating-MTA-certificate");
-  register_ber_oid_dissector("2.6.4.3.26", dissect_OriginatorCertificate_PDU, proto_p1, "id-att-originator-certificate");
-  register_ber_oid_dissector("2.6.4.3.27", dissect_ORName_PDU, proto_p1, "id-att-originator-name");
-  register_ber_oid_dissector("2.6.4.3.63", dissect_OriginatorReportRequest_PDU, proto_p1, "id-att-originator-report-request");
-  register_ber_oid_dissector("2.6.4.3.64", dissect_OriginatorReturnAddress_PDU, proto_p1, "id-att-originator-return-address");
-  register_ber_oid_dissector("2.6.4.3.28", dissect_ORName_PDU, proto_p1, "id-att-other-recipient-names");
-  register_ber_oid_dissector("2.6.4.3.65", dissect_PerMessageIndicators_PDU, proto_p1, "id-att-per-message-indicators");
-  register_ber_oid_dissector("2.6.4.3.66", dissect_PerRecipientMessageSubmissionFields_PDU, proto_p1, "id-att-per-recipient-message-submission-fields");
-  register_ber_oid_dissector("2.6.4.3.67", dissect_PerRecipientProbeSubmissionFields_PDU, proto_p1, "id-att-per-recipient-probe-submission-fields");
-  register_ber_oid_dissector("2.6.4.3.30", dissect_PerRecipientReportDeliveryFields_PDU, proto_p1, "id-att-per-recipient-report-delivery-fields");
-  register_ber_oid_dissector("2.6.4.3.31", dissect_Priority_PDU, proto_p1, "id-att-priority");
-  register_ber_oid_dissector("2.6.4.3.68", dissect_ProbeOriginAuthenticationCheck_PDU, proto_p1, "id-att-probe-origin-authentication-check");
-  register_ber_oid_dissector("2.6.4.3.69", dissect_ProbeSubmissionEnvelope_PDU, proto_p1, "id-att-probe-submission-envelope");
-  register_ber_oid_dissector("2.6.4.3.32", dissect_ProofOfDeliveryRequest_PDU, proto_p1, "id-att-proof-of-delivery-request");
-  register_ber_oid_dissector("2.6.4.3.70", dissect_ProofOfSubmission_PDU, proto_p1, "id-att-proof-of-submission");
-  register_ber_oid_dissector("2.6.4.3.82", dissect_ExtendedCertificates_PDU, proto_p1, "id-att-recipient-certificate");
-  register_ber_oid_dissector("2.6.4.3.71", dissect_ORName_PDU, proto_p1, "id-att-recipient-names");
-  register_ber_oid_dissector("2.6.4.3.72", dissect_RecipientReassignmentProhibited_PDU, proto_p1, "id-att-recipient-reassignment-prohibited");
-  register_ber_oid_dissector("2.6.4.3.33", dissect_Redirection_PDU, proto_p1, "id-at-redirection-history");
-  register_ber_oid_dissector("2.6.4.3.34", dissect_ReportDeliveryEnvelope_PDU, proto_p1, "id-att-report-delivery-envelope");
-  register_ber_oid_dissector("2.6.4.3.35", dissect_ReportingDLName_PDU, proto_p1, "id-att-reporting-DL-name");
-  register_ber_oid_dissector("2.6.4.3.36", dissect_ReportingMTACertificate_PDU, proto_p1, "id-att-reporting-MTA-certificate");
-  register_ber_oid_dissector("2.6.4.3.37", dissect_ReportOriginAuthenticationCheck_PDU, proto_p1, "id-att-report-origin-authentication-check");
-  register_ber_oid_dissector("2.6.4.3.38", dissect_SecurityClassification_PDU, proto_p1, "id-att-security-classification");
-  register_ber_oid_dissector("2.6.4.3.40", dissect_SubjectSubmissionIdentifier_PDU, proto_p1, "id-att-subject-submission-identifier");
-  register_ber_oid_dissector("2.6.4.3.41", dissect_ORName_PDU, proto_p1, "id-att-this-recipient-name");
-  register_ber_oid_dissector("2.6.4.3.75", dissect_TraceInformationElement_PDU, proto_p1, "id-att-trace-information");
-  register_ber_oid_dissector("2.6.1.7.36", dissect_MessageToken_PDU, proto_p1, "id-hat-forwarded-token");
+  dissector_add_uint("p1.extension", 1, new_create_dissector_handle(dissect_RecipientReassignmentProhibited_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 2, new_create_dissector_handle(dissect_OriginatorRequestedAlternateRecipient_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 3, new_create_dissector_handle(dissect_DLExpansionProhibited_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 4, new_create_dissector_handle(dissect_ConversionWithLossProhibited_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 5, new_create_dissector_handle(dissect_LatestDeliveryTime_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 6, new_create_dissector_handle(dissect_RequestedDeliveryMethod_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 7, new_create_dissector_handle(dissect_PhysicalForwardingProhibited_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 8, new_create_dissector_handle(dissect_PhysicalForwardingAddressRequest_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 9, new_create_dissector_handle(dissect_PhysicalDeliveryModes_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 10, new_create_dissector_handle(dissect_RegisteredMailType_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 11, new_create_dissector_handle(dissect_RecipientNumberForAdvice_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 12, new_create_dissector_handle(dissect_PhysicalRenditionAttributes_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 13, new_create_dissector_handle(dissect_OriginatorReturnAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 14, new_create_dissector_handle(dissect_PhysicalDeliveryReportRequest_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 15, new_create_dissector_handle(dissect_OriginatorCertificate_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 16, new_create_dissector_handle(dissect_MessageToken_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 17, new_create_dissector_handle(dissect_ContentConfidentialityAlgorithmIdentifier_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 18, new_create_dissector_handle(dissect_ContentIntegrityCheck_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 19, new_create_dissector_handle(dissect_MessageOriginAuthenticationCheck_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 20, new_create_dissector_handle(dissect_p1_MessageSecurityLabel_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 21, new_create_dissector_handle(dissect_ProofOfSubmissionRequest_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 22, new_create_dissector_handle(dissect_ProofOfDeliveryRequest_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 23, new_create_dissector_handle(dissect_ContentCorrelator_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 24, new_create_dissector_handle(dissect_ProbeOriginAuthenticationCheck_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 25, new_create_dissector_handle(dissect_RedirectionHistory_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 26, new_create_dissector_handle(dissect_DLExpansionHistory_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 27, new_create_dissector_handle(dissect_PhysicalForwardingAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 28, new_create_dissector_handle(dissect_RecipientCertificate_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 29, new_create_dissector_handle(dissect_ProofOfDelivery_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 30, new_create_dissector_handle(dissect_OriginatorAndDLExpansionHistory_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 31, new_create_dissector_handle(dissect_ReportingDLName_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 32, new_create_dissector_handle(dissect_ReportingMTACertificate_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 33, new_create_dissector_handle(dissect_ReportOriginAuthenticationCheck_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 34, new_create_dissector_handle(dissect_OriginatingMTACertificate_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 35, new_create_dissector_handle(dissect_ProofOfSubmission_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 37, new_create_dissector_handle(dissect_TraceInformation_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 38, new_create_dissector_handle(dissect_InternalTraceInformation_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 39, new_create_dissector_handle(dissect_ReportingMTAName_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 40, new_create_dissector_handle(dissect_ExtendedCertificates_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 42, new_create_dissector_handle(dissect_DLExemptedRecipients_PDU, proto_p1));
+  dissector_add_uint("p1.extension", 45, new_create_dissector_handle(dissect_CertificateSelectors_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 1, new_create_dissector_handle(dissect_CommonName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 2, new_create_dissector_handle(dissect_TeletexCommonName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 3, new_create_dissector_handle(dissect_TeletexOrganizationName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 4, new_create_dissector_handle(dissect_TeletexPersonalName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 5, new_create_dissector_handle(dissect_TeletexOrganizationalUnitNames_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 6, new_create_dissector_handle(dissect_TeletexDomainDefinedAttributes_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 7, new_create_dissector_handle(dissect_PDSName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 8, new_create_dissector_handle(dissect_PhysicalDeliveryCountryName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 9, new_create_dissector_handle(dissect_PostalCode_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 10, new_create_dissector_handle(dissect_PhysicalDeliveryOfficeName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 11, new_create_dissector_handle(dissect_PhysicalDeliveryOfficeNumber_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 12, new_create_dissector_handle(dissect_ExtensionORAddressComponents_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 13, new_create_dissector_handle(dissect_PhysicalDeliveryPersonalName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 14, new_create_dissector_handle(dissect_PhysicalDeliveryOrganizationName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 15, new_create_dissector_handle(dissect_ExtensionPhysicalDeliveryAddressComponents_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 16, new_create_dissector_handle(dissect_UnformattedPostalAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 17, new_create_dissector_handle(dissect_StreetAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 18, new_create_dissector_handle(dissect_PostOfficeBoxAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 19, new_create_dissector_handle(dissect_PosteRestanteAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 20, new_create_dissector_handle(dissect_UniquePostalName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 21, new_create_dissector_handle(dissect_LocalPostalAttributes_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 22, new_create_dissector_handle(dissect_ExtendedNetworkAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 23, new_create_dissector_handle(dissect_TerminalType_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 24, new_create_dissector_handle(dissect_UniversalCommonName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 25, new_create_dissector_handle(dissect_UniversalOrganizationName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 26, new_create_dissector_handle(dissect_UniversalPersonalName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 27, new_create_dissector_handle(dissect_UniversalOrganizationalUnitNames_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 28, new_create_dissector_handle(dissect_UniversalDomainDefinedAttributes_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 29, new_create_dissector_handle(dissect_UniversalPhysicalDeliveryOfficeName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 30, new_create_dissector_handle(dissect_UniversalPhysicalDeliveryOfficeNumber_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 31, new_create_dissector_handle(dissect_UniversalExtensionORAddressComponents_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 32, new_create_dissector_handle(dissect_UniversalPhysicalDeliveryPersonalName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 33, new_create_dissector_handle(dissect_UniversalPhysicalDeliveryOrganizationName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 34, new_create_dissector_handle(dissect_UniversalExtensionPhysicalDeliveryAddressComponents_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 35, new_create_dissector_handle(dissect_UniversalUnformattedPostalAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 36, new_create_dissector_handle(dissect_UniversalStreetAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 37, new_create_dissector_handle(dissect_UniversalPostOfficeBoxAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 38, new_create_dissector_handle(dissect_UniversalPosteRestanteAddress_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 39, new_create_dissector_handle(dissect_UniversalUniquePostalName_PDU, proto_p1));
+  dissector_add_uint("p1.extension-attribute", 40, new_create_dissector_handle(dissect_UniversalLocalPostalAttributes_PDU, proto_p1));
+  new_register_ber_oid_dissector("2.6.3.6.0", dissect_AsymmetricToken_PDU, proto_p1, "id-tok-asymmetricToken");
+  new_register_ber_oid_dissector("2.6.5.6.0", dissect_MTANameAndOptionalGDI_PDU, proto_p1, "id-on-mtaName");
+  dissector_add_uint("p1.tokendata", 1, new_create_dissector_handle(dissect_BindTokenSignedData_PDU, proto_p1));
+  dissector_add_uint("p1.tokendata", 2, new_create_dissector_handle(dissect_MessageTokenSignedData_PDU, proto_p1));
+  dissector_add_uint("p1.tokendata", 3, new_create_dissector_handle(dissect_MessageTokenEncryptedData_PDU, proto_p1));
+  dissector_add_uint("p1.tokendata", 4, new_create_dissector_handle(dissect_BindTokenEncryptedData_PDU, proto_p1));
+  new_register_ber_oid_dissector("2.6.5.2.0", dissect_ContentLength_PDU, proto_p1, "id-at-mhs-maximum-content-length");
+  new_register_ber_oid_dissector("2.6.5.2.1", dissect_ExtendedContentType_PDU, proto_p1, "id-at-mhs-deliverable-content-types");
+  new_register_ber_oid_dissector("2.6.5.2.2", dissect_ExtendedEncodedInformationType_PDU, proto_p1, "id-at-mhs-exclusively-acceptable-eits");
+  new_register_ber_oid_dissector("2.6.5.2.3", dissect_ORName_PDU, proto_p1, "id-at-mhs-dl-members");
+  new_register_ber_oid_dissector("2.6.5.2.6", dissect_ORAddress_PDU, proto_p1, "id-at-mhs-or-addresses");
+  new_register_ber_oid_dissector("2.6.5.2.9", dissect_ExtendedContentType_PDU, proto_p1, "id-at-mhs-supported-content-types");
+  new_register_ber_oid_dissector("2.6.5.2.12", dissect_ORName_PDU, proto_p1, "id-at-mhs-dl-archive-service");
+  new_register_ber_oid_dissector("2.6.5.2.15", dissect_ORName_PDU, proto_p1, "id-at-mhs-dl-subscription-service");
+  new_register_ber_oid_dissector("2.6.5.2.17", dissect_ExtendedEncodedInformationType_PDU, proto_p1, "id-at-mhs-acceptable-eits");
+  new_register_ber_oid_dissector("2.6.5.2.18", dissect_ExtendedEncodedInformationType_PDU, proto_p1, "id-at-mhs-unacceptable-eits");
+  new_register_ber_oid_dissector("2.16.840.1.101.2.1.5.47", dissect_ORName_PDU, proto_p1, "id-at-aLExemptedAddressProcessor");
+  new_register_ber_oid_dissector("2.16.840.1.101.2.2.1.134.1", dissect_ORAddress_PDU, proto_p1, "id-at-collective-mhs-or-addresses");
+  new_register_ber_oid_dissector("2.6.4.3.80", dissect_CertificateSelectors_PDU, proto_p1, "id-att-certificate-selectors");
+  new_register_ber_oid_dissector("2.6.4.3.1", dissect_Content_PDU, proto_p1, "id-att-content");
+  new_register_ber_oid_dissector("2.6.4.3.3", dissect_ContentCorrelator_PDU, proto_p1, "id-att-content-correlator");
+  new_register_ber_oid_dissector("2.6.4.3.4", dissect_ContentIdentifier_PDU, proto_p1, "id-att-content-identifier");
+  new_register_ber_oid_dissector("2.6.4.3.5", dissect_ContentIntegrityCheck_PDU, proto_p1, "id-att-content-inetgrity-check");
+  new_register_ber_oid_dissector("2.6.4.3.6", dissect_ContentLength_PDU, proto_p1, "id-att-content-length");
+  new_register_ber_oid_dissector("2.6.4.3.8", dissect_ExtendedContentType_PDU, proto_p1, "id-att-content-type");
+  new_register_ber_oid_dissector("2.6.4.3.9", dissect_ConversionWithLossProhibited_PDU, proto_p1, "id-att-conversion-with-loss-prohibited");
+  new_register_ber_oid_dissector("2.6.4.3.51", dissect_DeferredDeliveryTime_PDU, proto_p1, "id-att-deferred-delivery-time");
+  new_register_ber_oid_dissector("2.6.4.3.13", dissect_DeliveryFlags_PDU, proto_p1, "id-att-delivery-flags");
+  new_register_ber_oid_dissector("2.6.4.3.78", dissect_ORName_PDU, proto_p1, "id-att-dl-exempted-recipients");
+  new_register_ber_oid_dissector("2.6.4.3.14", dissect_DLExpansion_PDU, proto_p1, "id-att-dl-expansion-history");
+  new_register_ber_oid_dissector("2.6.4.3.53", dissect_DLExpansionProhibited_PDU, proto_p1, "id-att-dl-expansion-prohibited");
+  new_register_ber_oid_dissector("2.6.4.3.54", dissect_InternalTraceInformationElement_PDU, proto_p1, "id-att-internal-trace-information");
+  new_register_ber_oid_dissector("2.6.4.3.55", dissect_LatestDeliveryTime_PDU, proto_p1, "id-att-latest-delivery-time");
+  new_register_ber_oid_dissector("2.6.4.3.18", dissect_MessageDeliveryEnvelope_PDU, proto_p1, "id-att-message-delivery-envelope");
+  new_register_ber_oid_dissector("2.6.4.3.20", dissect_MessageDeliveryTime_PDU, proto_p1, "id-att-message-delivery-time");
+  new_register_ber_oid_dissector("2.6.4.3.19", dissect_MTSIdentifier_PDU, proto_p1, "id-att-message-identifier");
+  new_register_ber_oid_dissector("2.6.4.3.21", dissect_MessageOriginAuthenticationCheck_PDU, proto_p1, "id-at-message-orgin-authentication-check");
+  new_register_ber_oid_dissector("2.6.4.3.22", dissect_p1_MessageSecurityLabel_PDU, proto_p1, "id-att-message-security-label");
+  new_register_ber_oid_dissector("2.6.4.3.59", dissect_MessageSubmissionEnvelope_PDU, proto_p1, "id-att-message-submission-envelope");
+  new_register_ber_oid_dissector("2.6.4.3.23", dissect_MessageSubmissionTime_PDU, proto_p1, "id-att-message-submission-time");
+  new_register_ber_oid_dissector("2.6.4.3.24", dissect_MessageToken_PDU, proto_p1, "id-att-message-token");
+  new_register_ber_oid_dissector("2.6.4.3.81", dissect_ExtendedCertificates_PDU, proto_p1, "id-att-multiple-originator-certificates");
+  new_register_ber_oid_dissector("2.6.4.3.17", dissect_ORName_PDU, proto_p1, "id-att-originally-intended-recipient-name");
+  new_register_ber_oid_dissector("2.6.4.3.62", dissect_OriginatingMTACertificate_PDU, proto_p1, "id-att-originating-MTA-certificate");
+  new_register_ber_oid_dissector("2.6.4.3.26", dissect_OriginatorCertificate_PDU, proto_p1, "id-att-originator-certificate");
+  new_register_ber_oid_dissector("2.6.4.3.27", dissect_ORName_PDU, proto_p1, "id-att-originator-name");
+  new_register_ber_oid_dissector("2.6.4.3.63", dissect_OriginatorReportRequest_PDU, proto_p1, "id-att-originator-report-request");
+  new_register_ber_oid_dissector("2.6.4.3.64", dissect_OriginatorReturnAddress_PDU, proto_p1, "id-att-originator-return-address");
+  new_register_ber_oid_dissector("2.6.4.3.28", dissect_ORName_PDU, proto_p1, "id-att-other-recipient-names");
+  new_register_ber_oid_dissector("2.6.4.3.65", dissect_PerMessageIndicators_PDU, proto_p1, "id-att-per-message-indicators");
+  new_register_ber_oid_dissector("2.6.4.3.66", dissect_PerRecipientMessageSubmissionFields_PDU, proto_p1, "id-att-per-recipient-message-submission-fields");
+  new_register_ber_oid_dissector("2.6.4.3.67", dissect_PerRecipientProbeSubmissionFields_PDU, proto_p1, "id-att-per-recipient-probe-submission-fields");
+  new_register_ber_oid_dissector("2.6.4.3.30", dissect_PerRecipientReportDeliveryFields_PDU, proto_p1, "id-att-per-recipient-report-delivery-fields");
+  new_register_ber_oid_dissector("2.6.4.3.31", dissect_Priority_PDU, proto_p1, "id-att-priority");
+  new_register_ber_oid_dissector("2.6.4.3.68", dissect_ProbeOriginAuthenticationCheck_PDU, proto_p1, "id-att-probe-origin-authentication-check");
+  new_register_ber_oid_dissector("2.6.4.3.69", dissect_ProbeSubmissionEnvelope_PDU, proto_p1, "id-att-probe-submission-envelope");
+  new_register_ber_oid_dissector("2.6.4.3.32", dissect_ProofOfDeliveryRequest_PDU, proto_p1, "id-att-proof-of-delivery-request");
+  new_register_ber_oid_dissector("2.6.4.3.70", dissect_ProofOfSubmission_PDU, proto_p1, "id-att-proof-of-submission");
+  new_register_ber_oid_dissector("2.6.4.3.82", dissect_ExtendedCertificates_PDU, proto_p1, "id-att-recipient-certificate");
+  new_register_ber_oid_dissector("2.6.4.3.71", dissect_ORName_PDU, proto_p1, "id-att-recipient-names");
+  new_register_ber_oid_dissector("2.6.4.3.72", dissect_RecipientReassignmentProhibited_PDU, proto_p1, "id-att-recipient-reassignment-prohibited");
+  new_register_ber_oid_dissector("2.6.4.3.33", dissect_Redirection_PDU, proto_p1, "id-at-redirection-history");
+  new_register_ber_oid_dissector("2.6.4.3.34", dissect_ReportDeliveryEnvelope_PDU, proto_p1, "id-att-report-delivery-envelope");
+  new_register_ber_oid_dissector("2.6.4.3.35", dissect_ReportingDLName_PDU, proto_p1, "id-att-reporting-DL-name");
+  new_register_ber_oid_dissector("2.6.4.3.36", dissect_ReportingMTACertificate_PDU, proto_p1, "id-att-reporting-MTA-certificate");
+  new_register_ber_oid_dissector("2.6.4.3.37", dissect_ReportOriginAuthenticationCheck_PDU, proto_p1, "id-att-report-origin-authentication-check");
+  new_register_ber_oid_dissector("2.6.4.3.38", dissect_SecurityClassification_PDU, proto_p1, "id-att-security-classification");
+  new_register_ber_oid_dissector("2.6.4.3.40", dissect_SubjectSubmissionIdentifier_PDU, proto_p1, "id-att-subject-submission-identifier");
+  new_register_ber_oid_dissector("2.6.4.3.41", dissect_ORName_PDU, proto_p1, "id-att-this-recipient-name");
+  new_register_ber_oid_dissector("2.6.4.3.75", dissect_TraceInformationElement_PDU, proto_p1, "id-att-trace-information");
+  new_register_ber_oid_dissector("2.6.1.7.36", dissect_MessageToken_PDU, proto_p1, "id-hat-forwarded-token");
 
 
 /*--- End of included file: packet-p1-dis-tab.c ---*/
-#line 377 "../../asn1/p1/packet-p1-template.c"
+#line 398 "../../asn1/p1/packet-p1-template.c"
 
   /* APPLICATION CONTEXT */
 
@@ -11111,8 +11304,13 @@ void proto_reg_handoff_p1(void) {
   register_rtse_oid_dissector_handle("2.6.0.2.12", p1_handle, 0, "id-as-mta-rtse", TRUE);
   register_rtse_oid_dissector_handle("2.6.0.2.7", p1_handle, 0, "id-as-mtse", FALSE);
 
+
   register_rtse_oid_dissector_handle("applicationProtocol.1", p1_handle, 0, "mts-transfer-protocol-1984", FALSE);
   register_rtse_oid_dissector_handle("applicationProtocol.12", p1_handle, 0, "mta-transfer-protocol", FALSE);
+
+  /* the ROS dissector will use the registered P3 ros info */
+  register_rtse_oid_dissector_handle(id_as_mts_rtse, NULL, 0, "id-as-mts-rtse", TRUE);
+  register_rtse_oid_dissector_handle(id_as_msse, NULL, 0, "id-as-msse", TRUE);
 
   /* remember the tpkt handler for change in preferences */
   tpkt_handle = find_dissector("tpkt");
@@ -11126,6 +11324,7 @@ void proto_reg_handoff_p1(void) {
 
 
   /* Register P3 with ROS */
+
   register_ros_protocol_info(id_as_msse, &p3_ros_info, 0, "id-as-msse", FALSE);
 
   register_ros_protocol_info(id_as_mdse_88, &p3_ros_info, 0, "id-as-mdse-88", FALSE);
@@ -11135,6 +11334,7 @@ void proto_reg_handoff_p1(void) {
   register_ros_protocol_info(id_as_mase_94, &p3_ros_info, 0, "id-as-mase-94", FALSE);
 
   register_ros_protocol_info(id_as_mts, &p3_ros_info, 0, "id-as-mts", FALSE);
+  register_ros_protocol_info(id_as_mts_rtse, &p3_ros_info, 0, "id-as-mts-rtse", TRUE);
 
 }
 
@@ -11155,3 +11355,16 @@ prefs_register_p1(void)
     dissector_add_uint("tcp.port", tcp_port, tpkt_handle);
 
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

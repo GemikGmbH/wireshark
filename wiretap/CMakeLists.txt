@@ -21,7 +21,7 @@
 
 include(UseABICheck)
 
-set(CLEAN_FILES
+set(WIRETAP_FILES
 	5views.c
 	aethra.c
 	ascendtext.c
@@ -29,6 +29,7 @@ set(CLEAN_FILES
 	ber.c
 	btsnoop.c
 	camins.c
+	capsa.c
 	catapult_dct2000.c
 	commview.c
 	cosine.c
@@ -45,10 +46,12 @@ set(CLEAN_FILES
 	ipfix.c
 	iptrace.c
 	iseries.c
+	json.c
 	k12.c
 	lanalyzer.c
 	libpcap.c
 	logcat.c
+	logcat_text.c
 	merge.c
 	mpeg.c
 	mime_file.c
@@ -57,6 +60,7 @@ set(CLEAN_FILES
 	netscaler.c
 	netscreen.c
 	nettl.c
+	nettrace_3gpp_32_423.c
 	network_instruments.c
 	netxray.c
 	ngsniffer.c
@@ -77,17 +81,9 @@ set(CLEAN_FILES
 	wtap.c
 )
 
-set(DIRTY_FILES
-)
-
-set(WIRETAP_FILES
-	${CLEAN_FILES}
-	${DIRTY_FILES}
-)
-
 if (WERROR)
 	set_source_files_properties(
-		${CLEAN_FILES}
+		${WIRETAP_FILES}
 		PROPERTIES
 		COMPILE_FLAGS -Werror
 	)
@@ -111,22 +107,37 @@ set(wiretap_LIBS
 
 add_library(wiretap ${LINK_MODE_LIB}
 	${WIRETAP_FILES}
+	${CMAKE_BINARY_DIR}/image/wiretap.rc
 )
 
-set(FULL_SO_VERSION "4.0.2")
+set(FULL_SO_VERSION "5.0.3")
 
-set_target_properties(wiretap PROPERTIES COMPILE_DEFINITIONS "WS_BUILD_DLL")
-set_target_properties(wiretap PROPERTIES LINK_FLAGS "${WS_LINK_FLAGS}")
-set_target_properties(wiretap PROPERTIES VERSION ${FULL_SO_VERSION} SOVERSION 4)
-set_target_properties(wiretap PROPERTIES FOLDER "DLLs")
+set_target_properties(wiretap PROPERTIES
+	COMPILE_DEFINITIONS "WS_BUILD_DLL"
+	LINK_FLAGS "${WS_LINK_FLAGS}"
+	VERSION ${FULL_SO_VERSION} SOVERSION 5
+	FOLDER "DLLs"
+)
+IF(MSVC)
+	set_target_properties(wiretap PROPERTIES OUTPUT_NAME "wiretap-${PROJECT_VERSION}")
+ENDIF()
+
+if(ENABLE_APPLICATION_BUNDLE)
+	set_target_properties(wiretap PROPERTIES
+		LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/run/Wireshark.app/Contents/Frameworks
+	)
+endif()
 
 ABICHECK(libwiretap)
 
 add_custom_command(OUTPUT libwiretap.abi.tar.gz
-	COMMAND cp ../config.h ${ABICHECK_TMPDIR}/
+	COMMAND ${CMAKE_COMMAND} -E remove_directory ${ABICHECK_TMPDIR}
+	COMMAND ${CMAKE_COMMAND} -E make_directory ${ABICHECK_TMPDIR}
+	COMMAND ${ABI_COPY_COMMAND} ../config.h ${ABICHECK_TMPDIR}/ ${ABI_COPY_FLAGS}
+	COMMAND ${ABI_COPY_COMMAND} ${ABICHECK_HEADERS} ${ABICHECK_TMPDIR}/ ${ABI_COPY_FLAGS}
 	COMMAND ${ABICHECK_COMMAND}
 	COMMAND cp ${CMAKE_CURRENT_BINARY_DIR}/abi_dumps/libwiretap/libwiretap_* ${CMAKE_CURRENT_BINARY_DIR}/libwiretap.abi.tar.gz
-	COMMAND rm -rf ${ABICHECK_TMPDIR}/* ${CMAKE_CURRENT_BINARY_DIR}/abi_dumps
+	COMMAND rm -rf ${ABICHECK_TMPDIR} ${CMAKE_CURRENT_BINARY_DIR}/abi_dumps
 	DEPENDS ${HEADERS} wiretap)
 
 target_link_libraries(wiretap ${wiretap_LIBS})
@@ -138,4 +149,3 @@ if(NOT ${ENABLE_STATIC})
 		ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
 	)
 endif()
-

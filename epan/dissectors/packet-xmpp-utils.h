@@ -118,7 +118,6 @@ typedef struct _xmpp_conv_info_t {
     wmem_tree_t *ibb_sessions;
     wmem_tree_t *gtalk_sessions;
     guint32      ssl_start;
-    guint32      ssl_proceed;
 } xmpp_conv_info_t;
 
 /** Struct conatins frame numbers (request frame(IQ set/get) and
@@ -160,7 +159,7 @@ extern void xmpp_unknown(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xm
 extern void xmpp_unknown_attrs(proto_tree *tree, tvbuff_t *tvb, packet_info *pinfo, xmpp_element_t *element, gboolean displ_short_list);
 
 /** Displays CDATA from element in tree. You can use your own header field hf or
- * pass -1. If you pass -1 then CDATA will be display as text(proto_tree_add_text):
+ * pass -1. If you pass -1 then CDATA will be display as text:
  * ELEMENT_NAME: CDATA
  * ELEMENT_NAME = element->name, if element is empty CDATA = "(empty)"
  */

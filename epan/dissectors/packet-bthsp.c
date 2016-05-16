@@ -27,8 +27,6 @@
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
-#include <epan/wmem/wmem.h>
-
 #include "packet-btrfcomm.h"
 #include "packet-btsdp.h"
 
@@ -94,7 +92,7 @@ typedef struct _fragment_t {
     guint32                  dlci;
     guint32                  role;
 
-    guint                    index;
+    guint                    idx;
     guint                    length;
     guint8                  *data;
     struct _fragment_t      *previous_fragment;
@@ -266,7 +264,7 @@ static const at_cmd_t at_cmds[] = {
     { "+VGM",       "Gain of Microphone",                       check_vgm,  dissect_vgm_parameter  },
     { "+CKPD",      "Control Keypad",                           check_ckpd, dissect_ckpd_parameter },
     { "ERROR",      "ERROR",                                    check_only_ag_role, dissect_no_parameter },
-    { "RING",       "Incomming Call Indication",                check_only_ag_role, dissect_no_parameter },
+    { "RING",       "Incoming Call Indication",                 check_only_ag_role, dissect_no_parameter },
     { "OK",         "OK",                                       check_only_ag_role, dissect_no_parameter },
     { NULL, NULL, NULL, NULL }
 };
@@ -298,9 +296,9 @@ dissect_at_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     gboolean         next;
     void            *data;
 
-    length = tvb_length_remaining(tvb, offset);
+    length = tvb_reported_length_remaining(tvb, offset);
     if (length <= 0)
-        return tvb_length(tvb);
+        return tvb_reported_length(tvb);
 
     if (!command_number) {
         proto_tree_add_item(tree, hf_data, tvb, offset, length, ENC_NA | ENC_ASCII);
@@ -519,23 +517,23 @@ dissect_at_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     first_response_in (if 0 - no response)
 
 
-            k_interface_id = interface_id;
-            k_adapter_id   = adapter_id;
-            k_chandle      = chandle;
-            k_dlci         = dlci;
-            k_frame_number = pinfo->fd->num;
+            interface_id = interface_id;
+            adapter_id   = adapter_id;
+            chandle      = chandle;
+            dlci         = dlci;
+            frame_number = pinfo->fd->num;
 
 
             key[0].length = 1;
-            key[0].key = &k_interface_id;
+            key[0].key = &interface_id;
             key[1].length = 1;
-            key[1].key = &k_adapter_id;
+            key[1].key = &adapter_id;
             key[2].length = 1;
-            key[2].key = &k_chandle;
+            key[2].key = &chandle;
             key[3].length = 1;
-            key[3].key = &k_dlci;
+            key[3].key = &dlci;
             key[4].length = 1;
-            key[4].key = &k_frame_number;
+            key[4].key = &frame_number;
             key[5].length = 0;
             key[5].key = NULL;
 
@@ -599,7 +597,7 @@ dissect_at_command(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
         i_char += i_char_fix;
         proto_item_set_len(command_item, i_char);
     } else {
-        length = tvb_length_remaining(tvb, offset);
+        length = tvb_reported_length_remaining(tvb, offset);
         if (length < 0)
             length = 0;
         proto_item_set_len(command_item, length);
@@ -636,20 +634,17 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     gint              offset = 0;
     guint32           role = ROLE_UNKNOWN;
     wmem_tree_key_t   key[10];
-    guint32           k_interface_id;
-    guint32           k_adapter_id;
-    guint32           k_chandle;
-    guint32           k_dlci;
-    guint32           k_role;
-    guint32           k_frame_number;
     guint32           interface_id;
     guint32           adapter_id;
     guint32           chandle;
     guint32           dlci;
+    guint32           frame_number;
+    guint32           direction;
+    guint32           bd_addr_oui;
+    guint32           bd_addr_id;
     fragment_t       *fragment;
     fragment_t       *previous_fragment;
     fragment_t       *i_fragment;
-    btrfcomm_data_t  *rfcomm_data;
     guint8           *at_stream;
     gint              length;
     gint              command_number;
@@ -657,13 +652,39 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     tvbuff_t         *reassembled_tvb = NULL;
     guint             reassemble_start_offset = 0;
     guint             reassemble_end_offset   = 0;
+    gint              previous_proto;
 
-    /* Reject the packet if data is NULL */
-    if (data == NULL)
-        return 0;
-    rfcomm_data = (btrfcomm_data_t *) data;
+    previous_proto = (GPOINTER_TO_INT(wmem_list_frame_data(wmem_list_frame_prev(wmem_list_tail(pinfo->layers)))));
+    if (data && previous_proto == proto_btrfcomm) {
+        btrfcomm_data_t  *rfcomm_data;
 
-    main_item = proto_tree_add_item(tree, proto_bthsp, tvb, 0, -1, ENC_NA);
+        rfcomm_data = (btrfcomm_data_t *) data;
+
+        interface_id = rfcomm_data->interface_id;
+        adapter_id   = rfcomm_data->adapter_id;
+        chandle      = rfcomm_data->chandle;
+        dlci         = rfcomm_data->dlci;
+        direction    = (rfcomm_data->is_local_psm) ? P2P_DIR_SENT : P2P_DIR_RECV;
+
+        if (direction == P2P_DIR_RECV) {
+            bd_addr_oui     = rfcomm_data->remote_bd_addr_oui;
+            bd_addr_id      = rfcomm_data->remote_bd_addr_id;
+        } else {
+            bd_addr_oui     = 0;
+            bd_addr_id      = 0;
+        }
+    } else {
+        interface_id = HCI_INTERFACE_DEFAULT;
+        adapter_id   = HCI_ADAPTER_DEFAULT;
+        chandle      = 0;
+        dlci         = 0;
+        direction    = P2P_DIR_UNKNOWN;
+
+        bd_addr_oui     = 0;
+        bd_addr_id      = 0;
+    }
+
+    main_item = proto_tree_add_item(tree, proto_bthsp, tvb, 0, tvb_captured_length(tvb), ENC_NA);
     main_tree = proto_item_add_subtree(main_item, ett_bthsp);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "HSP");
@@ -676,14 +697,9 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             col_set_str(pinfo->cinfo, COL_INFO, "Rcvd ");
             break;
         default:
-            col_add_fstr(pinfo->cinfo, COL_INFO, "Unknown direction %d ", pinfo->p2p_dir);
+            col_set_str(pinfo->cinfo, COL_INFO, "UnknownDirection ");
             break;
     }
-
-    interface_id = rfcomm_data->interface_id;
-    adapter_id   = rfcomm_data->adapter_id;
-    chandle      = rfcomm_data->chandle;
-    dlci         = rfcomm_data->dlci;
 
     if ((hsp_role == ROLE_AG && pinfo->p2p_dir == P2P_DIR_SENT) ||
             (hsp_role == ROLE_HS && pinfo->p2p_dir == P2P_DIR_RECV)) {
@@ -693,62 +709,50 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     }
 
     if (role == ROLE_UNKNOWN) {
-        guint32          k_sdp_psm;
-        guint32          k_direction;
-        guint32          k_bd_addr_oui;
-        guint32          k_bd_addr_id;
-        guint32          k_service_type;
-        guint32          k_service_channel;
+        guint32          sdp_psm;
+        guint32          service_type;
+        guint32          service_channel;
         service_info_t  *service_info;
 
-        k_interface_id    = rfcomm_data->interface_id;
-        k_adapter_id      = rfcomm_data->adapter_id;
-        k_sdp_psm         = SDP_PSM_DEFAULT;
-        k_direction       = (rfcomm_data->is_local_psm) ? P2P_DIR_SENT : P2P_DIR_RECV;
-        if (k_direction == P2P_DIR_RECV) {
-            k_bd_addr_oui     = rfcomm_data->remote_bd_addr_oui;
-            k_bd_addr_id      = rfcomm_data->remote_bd_addr_id;
-        } else {
-            k_bd_addr_oui     = 0;
-            k_bd_addr_id      = 0;
-        }
-        k_service_type    = BTSDP_RFCOMM_PROTOCOL_UUID;
-        k_service_channel = rfcomm_data->dlci >> 1;
-        k_frame_number    = pinfo->fd->num;
+        sdp_psm         = SDP_PSM_DEFAULT;
+
+        service_type    = BTSDP_RFCOMM_PROTOCOL_UUID;
+        service_channel = dlci >> 1;
+        frame_number    = pinfo->fd->num;
 
         key[0].length = 1;
-        key[0].key = &k_interface_id;
+        key[0].key = &interface_id;
         key[1].length = 1;
-        key[1].key = &k_adapter_id;
+        key[1].key = &adapter_id;
         key[2].length = 1;
-        key[2].key = &k_sdp_psm;
+        key[2].key = &sdp_psm;
         key[3].length = 1;
-        key[3].key = &k_direction;
+        key[3].key = &direction;
         key[4].length = 1;
-        key[4].key = &k_bd_addr_oui;
+        key[4].key = &bd_addr_oui;
         key[5].length = 1;
-        key[5].key = &k_bd_addr_id;
+        key[5].key = &bd_addr_id;
         key[6].length = 1;
-        key[6].key = &k_service_type;
+        key[6].key = &service_type;
         key[7].length = 1;
-        key[7].key = &k_service_channel;
+        key[7].key = &service_channel;
         key[8].length = 1;
-        key[8].key = &k_frame_number;
+        key[8].key = &frame_number;
         key[9].length = 0;
         key[9].key = NULL;
 
         service_info = btsdp_get_service_info(key);
-        if (service_info && service_info->interface_id == rfcomm_data->interface_id &&
-                service_info->adapter_id == rfcomm_data->adapter_id &&
+        if (service_info && service_info->interface_id == interface_id &&
+                service_info->adapter_id == adapter_id &&
                 service_info->sdp_psm == SDP_PSM_DEFAULT &&
                 ((service_info->direction == P2P_DIR_RECV &&
-                service_info->bd_addr_oui == rfcomm_data->remote_bd_addr_oui &&
-                service_info->bd_addr_id == rfcomm_data->remote_bd_addr_id) ||
+                service_info->bd_addr_oui == bd_addr_oui &&
+                service_info->bd_addr_id == bd_addr_id) ||
                 (service_info->direction != P2P_DIR_RECV &&
                 service_info->bd_addr_oui == 0 &&
                 service_info->bd_addr_id == 0)) &&
                 service_info->type == BTSDP_RFCOMM_PROTOCOL_UUID &&
-                service_info->channel == (rfcomm_data->dlci >> 1)) {
+                service_info->channel == (dlci >> 1)) {
             if ((service_info->uuid.bt_uuid == BTSDP_HSP_GW_SERVICE_UUID && service_info->direction == P2P_DIR_RECV && pinfo->p2p_dir == P2P_DIR_SENT) ||
                 (service_info->uuid.bt_uuid == BTSDP_HSP_GW_SERVICE_UUID && service_info->direction == P2P_DIR_SENT && pinfo->p2p_dir == P2P_DIR_RECV) ||
                 ((service_info->uuid.bt_uuid == BTSDP_HSP_SERVICE_UUID || service_info->uuid.bt_uuid == BTSDP_HSP_HS_SERVICE_UUID) && service_info->direction == P2P_DIR_RECV && pinfo->p2p_dir == P2P_DIR_RECV) ||
@@ -765,32 +769,27 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 
     if (role == ROLE_UNKNOWN) {
         col_append_fstr(pinfo->cinfo, COL_INFO, "Data: %s",
-                tvb_format_text(tvb, 0, tvb_length(tvb)));
-        proto_tree_add_item(main_tree, hf_data, tvb, 0, -1, ENC_NA | ENC_ASCII);
-        return tvb_length(tvb);
+                tvb_format_text(tvb, 0, tvb_reported_length(tvb)));
+        proto_tree_add_item(main_tree, hf_data, tvb, 0, tvb_captured_length(tvb), ENC_NA | ENC_ASCII);
+        return tvb_reported_length(tvb);
     }
 
     /* save fragments */
     if (!pinfo->fd->flags.visited) {
-        k_interface_id = interface_id;
-        k_adapter_id   = adapter_id;
-        k_chandle      = chandle;
-        k_dlci         = dlci;
-        k_role         = role;
-        k_frame_number = pinfo->fd->num - 1;
+        frame_number = pinfo->fd->num - 1;
 
         key[0].length = 1;
-        key[0].key = &k_interface_id;
+        key[0].key = &interface_id;
         key[1].length = 1;
-        key[1].key = &k_adapter_id;
+        key[1].key = &adapter_id;
         key[2].length = 1;
-        key[2].key = &k_chandle;
+        key[2].key = &chandle;
         key[3].length = 1;
-        key[3].key = &k_dlci;
+        key[3].key = &dlci;
         key[4].length = 1;
-        key[4].key = &k_role;
+        key[4].key = &role;
         key[5].length = 1;
-        key[5].key = &k_frame_number;
+        key[5].key = &frame_number;
         key[6].length = 0;
         key[6].key = NULL;
 
@@ -804,25 +803,20 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             previous_fragment = NULL;
         }
 
-        k_interface_id = interface_id;
-        k_adapter_id   = adapter_id;
-        k_chandle      = chandle;
-        k_dlci         = dlci;
-        k_role         = role;
-        k_frame_number = pinfo->fd->num;
+        frame_number = pinfo->fd->num;
 
         key[0].length = 1;
-        key[0].key = &k_interface_id;
+        key[0].key = &interface_id;
         key[1].length = 1;
-        key[1].key = &k_adapter_id;
+        key[1].key = &adapter_id;
         key[2].length = 1;
-        key[2].key = &k_chandle;
+        key[2].key = &chandle;
         key[3].length = 1;
-        key[3].key = &k_dlci;
+        key[3].key = &dlci;
         key[4].length = 1;
-        key[4].key = &k_role;
+        key[4].key = &role;
         key[5].length = 1;
-        key[5].key = &k_frame_number;
+        key[5].key = &frame_number;
         key[6].length = 0;
         key[6].key = NULL;
 
@@ -832,9 +826,9 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         fragment->chandle           = chandle;
         fragment->dlci              = dlci;
         fragment->role              = role;
-        fragment->index             = previous_fragment ? previous_fragment->index + previous_fragment->length : 0;
+        fragment->idx               = previous_fragment ? previous_fragment->idx + previous_fragment->length : 0;
         fragment->reassemble_state  = REASSEMBLE_FRAGMENT;
-        fragment->length            = tvb_length(tvb);
+        fragment->length            = tvb_reported_length(tvb);
         fragment->data              = (guint8 *) wmem_alloc(wmem_file_scope(), fragment->length);
         fragment->previous_fragment = previous_fragment;
         tvb_memcpy(tvb, fragment->data, offset, fragment->length);
@@ -842,8 +836,8 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         wmem_tree_insert32_array(fragments, key, fragment);
 
         /* Detect reassemble end character: \r for HS or \n for AG */
-        length = tvb_length(tvb);
-        at_stream = tvb_get_string(wmem_packet_scope(), tvb, 0, length);
+        length = tvb_reported_length(tvb);
+        at_stream = tvb_get_string_enc(wmem_packet_scope(), tvb, 0, length, ENC_ASCII);
 
         reassemble_start_offset = 0;
 
@@ -862,25 +856,20 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 reassemble_start_offset = i_length + 1;
             }
 
-            k_interface_id = interface_id;
-            k_adapter_id   = adapter_id;
-            k_chandle      = chandle;
-            k_dlci         = dlci;
-            k_role         = role;
-            k_frame_number = pinfo->fd->num;
+            frame_number = pinfo->fd->num;
 
             key[0].length = 1;
-            key[0].key = &k_interface_id;
+            key[0].key = &interface_id;
             key[1].length = 1;
-            key[1].key = &k_adapter_id;
+            key[1].key = &adapter_id;
             key[2].length = 1;
-            key[2].key = &k_chandle;
+            key[2].key = &chandle;
             key[3].length = 1;
-            key[3].key = &k_dlci;
+            key[3].key = &dlci;
             key[4].length = 1;
-            key[4].key = &k_role;
+            key[4].key = &role;
             key[5].length = 1;
-            key[5].key = &k_frame_number;
+            key[5].key = &frame_number;
             key[6].length = 0;
             key[6].key = NULL;
 
@@ -891,7 +880,7 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                     fragment->dlci == dlci &&
                     fragment->role == role) {
                 i_fragment = fragment;
-                while (i_fragment && i_fragment->index > 0) {
+                while (i_fragment && i_fragment->idx > 0) {
                     i_fragment = i_fragment->previous_fragment;
                 }
 
@@ -919,7 +908,8 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                         i_fragment->data[1] == '\n') {
                     fragment->reassemble_state = REASSEMBLE_DONE;
                 } else if (role == ROLE_HS) {
-                    fragment->reassemble_state = REASSEMBLE_PARTIALLY;
+/* XXX: Temporary disable reassembling of partial message, it seems to be broken */
+/*                    fragment->reassemble_state = REASSEMBLE_PARTIALLY;*/
                 }
                 fragment->reassemble_start_offset = reassemble_start_offset;
                 fragment->reassemble_end_offset = reassemble_end_offset;
@@ -928,25 +918,20 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
     }
 
     /* recover reassembled payload */
-    k_interface_id = interface_id;
-    k_adapter_id   = adapter_id;
-    k_chandle      = chandle;
-    k_dlci         = dlci;
-    k_role         = role;
-    k_frame_number = pinfo->fd->num;
+    frame_number = pinfo->fd->num;
 
     key[0].length = 1;
-    key[0].key = &k_interface_id;
+    key[0].key = &interface_id;
     key[1].length = 1;
-    key[1].key = &k_adapter_id;
+    key[1].key = &adapter_id;
     key[2].length = 1;
-    key[2].key = &k_chandle;
+    key[2].key = &chandle;
     key[3].length = 1;
-    key[3].key = &k_dlci;
+    key[3].key = &dlci;
     key[4].length = 1;
-    key[4].key = &k_role;
+    key[4].key = &role;
     key[5].length = 1;
-    key[5].key = &k_frame_number;
+    key[5].key = &frame_number;
     key[6].length = 0;
     key[6].key = NULL;
 
@@ -960,20 +945,19 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         guint8    *at_data;
         guint      i_data_offset;
 
-        i_data_offset = fragment->index + fragment->length;
-        at_data = (guint8 *) wmem_alloc(pinfo->pool, fragment->index + fragment->length);
+        i_data_offset = fragment->idx + fragment->length;
+        at_data = (guint8 *) wmem_alloc(pinfo->pool, fragment->idx + fragment->length);
 
         i_fragment = fragment;
 
         if (i_fragment && i_fragment->reassemble_state == REASSEMBLE_PARTIALLY) {
-                i_data_offset -= i_fragment->reassemble_end_offset;
-                memcpy(at_data + i_data_offset, i_fragment->data, i_fragment->reassemble_end_offset);
-
+            i_data_offset -= i_fragment->reassemble_end_offset;
+            memcpy(at_data + i_data_offset, i_fragment->data, i_fragment->reassemble_end_offset);
             i_fragment = i_fragment->previous_fragment;
         }
 
         if (i_fragment) {
-            while (i_fragment && i_fragment->index > 0) {
+            while (i_fragment && i_fragment->idx > 0) {
                 i_data_offset -= i_fragment->length;
                 memcpy(at_data + i_data_offset, i_fragment->data, i_fragment->length);
                 i_fragment = i_fragment->previous_fragment;
@@ -989,11 +973,11 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             }
         }
 
-        if (fragment->index > 0 && fragment->length > 0) {
+        if (fragment->idx > 0 && fragment->length > 0) {
             proto_tree_add_item(main_tree, hf_fragment, tvb, offset,
-                                tvb_length_remaining(tvb, offset), ENC_ASCII | ENC_NA);
+                    tvb_captured_length_remaining(tvb, offset), ENC_ASCII | ENC_NA);
             reassembled_tvb = tvb_new_child_real_data(tvb, at_data,
-                    fragment->index + fragment->length, fragment->index + fragment->length);
+                    fragment->idx + fragment->length, fragment->idx + fragment->length);
             add_new_data_source(pinfo, reassembled_tvb, "Reassembled HSP");
         }
 
@@ -1001,24 +985,26 @@ dissect_bthsp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
         if (reassembled_tvb) {
             guint reassembled_offset = 0;
 
-            while (tvb_length(reassembled_tvb) > reassembled_offset) {
+            while (tvb_reported_length(reassembled_tvb) > reassembled_offset) {
                 reassembled_offset = dissect_at_command(reassembled_tvb,
                         pinfo, main_tree, reassembled_offset, role, command_number);
                 command_number += 1;
             }
+            offset = tvb_captured_length(tvb);
         } else {
-            while (tvb_length(tvb) > (guint) offset) {
+            while (tvb_reported_length(tvb) > (guint) offset) {
                 offset = dissect_at_command(tvb, pinfo, main_tree, offset, role, command_number);
                 command_number += 1;
             }
         }
     } else {
         col_append_fstr(pinfo->cinfo, COL_INFO, "Fragment: %s",
-                tvb_format_text_wsp(tvb, offset, tvb_length_remaining(tvb, offset)));
+                tvb_format_text_wsp(tvb, offset, tvb_captured_length_remaining(tvb, offset)));
         pitem = proto_tree_add_item(main_tree, hf_fragmented, tvb, 0, 0, ENC_NA);
         PROTO_ITEM_SET_GENERATED(pitem);
         proto_tree_add_item(main_tree, hf_fragment, tvb, offset,
-                tvb_length_remaining(tvb, offset), ENC_ASCII | ENC_NA);
+                tvb_captured_length_remaining(tvb, offset), ENC_ASCII | ENC_NA);
+        offset = tvb_captured_length(tvb);
     }
 
     return offset;
@@ -1157,10 +1143,11 @@ proto_register_bthsp(void)
 void
 proto_reg_handoff_bthsp(void)
 {
-    dissector_add_uint("btrfcomm.service", BTSDP_HSP_SERVICE_UUID, bthsp_handle);
-    dissector_add_uint("btrfcomm.service", BTSDP_HSP_HS_SERVICE_UUID, bthsp_handle);
-    dissector_add_uint("btrfcomm.service", BTSDP_HSP_GW_SERVICE_UUID, bthsp_handle);
-    dissector_add_handle("btrfcomm.channel", bthsp_handle);
+    dissector_add_string("bluetooth.uuid",  "1108", bthsp_handle);
+    dissector_add_string("bluetooth.uuid",  "1112", bthsp_handle);
+    dissector_add_string("bluetooth.uuid",  "1131", bthsp_handle);
+
+    dissector_add_for_decode_as("btrfcomm.dlci", bthsp_handle);
 }
 
 /*

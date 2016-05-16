@@ -22,19 +22,19 @@
 #ifndef UAT_DIALOG_H
 #define UAT_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
-#include "epan/uat-int.h"
-
 #include "syntax_line_edit.h"
 
-#include <QComboBox>
 #include <QDialog>
-#include <QLineEdit>
-#include <QPushButton>
-#include <QTreeWidgetItem>
+
+class QComboBox;
+class QPushButton;
+class QTreeWidgetItem;
+
+struct epan_uat;
 
 namespace Ui {
 class UatDialog;
@@ -45,10 +45,10 @@ class UatDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit UatDialog(QWidget *parent = 0, uat_t *uat = NULL);
+    explicit UatDialog(QWidget *parent = 0, struct epan_uat *uat = NULL);
     ~UatDialog();
 
-    void setUat(uat_t *uat = NULL);
+    void setUat(struct epan_uat *uat = NULL);
 
 protected:
     void keyPressEvent(QKeyEvent *evt);
@@ -73,7 +73,7 @@ private:
     Ui::UatDialog *ui;
     QPushButton *ok_button_;
     QPushButton *help_button_;
-    uat_t *uat_;
+    struct epan_uat *uat_;
     int cur_column_;
     SyntaxLineEdit *cur_line_edit_;
     QString saved_string_pref_;
@@ -86,6 +86,7 @@ private:
     void activateLastItem();
     void applyChanges();
     void addRecord(bool copy_from_current = false);
+    const QByteArray unhexbytes(const QString input, QString &err);
 };
 
 #endif // UAT_DIALOG_H

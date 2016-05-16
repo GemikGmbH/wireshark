@@ -36,6 +36,7 @@ sttype_init(void)
 	sttype_register_integer();
 	sttype_register_pointer();
 	sttype_register_range();
+	sttype_register_set();
 	sttype_register_string();
 	sttype_register_test();
 }
@@ -226,3 +227,16 @@ stnode_deprecated(stnode_t *node)
 	}
 	return node->deprecated_token;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

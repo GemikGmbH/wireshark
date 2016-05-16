@@ -28,9 +28,8 @@
 #include <string.h>
 
 #include <epan/packet.h>
-#include <epan/packet_info.h>
 #include <epan/tap.h>
-#include <epan/stat_cmd_args.h>
+#include <epan/stat_tap_ui.h>
 #include <epan/dissectors/packet-mac-lte.h>
 
 void register_tap_listener_mac_lte_stat(void);
@@ -101,7 +100,7 @@ typedef struct mac_lte_row_data {
 
 /* One row/UE in the UE table */
 typedef struct mac_lte_ep {
-    struct mac_lte_ep* next;
+    struct mac_lte_ep *next;
     struct mac_lte_row_data stats;
 } mac_lte_ep_t;
 
@@ -142,8 +141,8 @@ typedef struct mac_lte_stat_t {
 static void
 mac_lte_stat_reset(void *phs)
 {
-    mac_lte_stat_t* mac_lte_stat = (mac_lte_stat_t *)phs;
-    mac_lte_ep_t* list = mac_lte_stat->ep_list;
+    mac_lte_stat_t *mac_lte_stat = (mac_lte_stat_t *)phs;
+    mac_lte_ep_t *list = mac_lte_stat->ep_list;
 
     /* Reset counts of unique ueids & rntis */
     memset(mac_lte_stat->used_ueids, 0, 65535);
@@ -163,15 +162,15 @@ mac_lte_stat_reset(void *phs)
 
 
 /* Allocate a mac_lte_ep_t struct to store info for new UE */
-static mac_lte_ep_t* alloc_mac_lte_ep(const struct mac_lte_tap_info *si, packet_info *pinfo _U_)
+static mac_lte_ep_t *alloc_mac_lte_ep(const struct mac_lte_tap_info *si, packet_info *pinfo _U_)
 {
-    mac_lte_ep_t* ep;
+    mac_lte_ep_t *ep;
 
     if (!si) {
         return NULL;
     }
 
-    if (!(ep = g_new(mac_lte_ep_t,1))) {
+    if (!(ep = g_new(mac_lte_ep_t, 1))) {
         return NULL;
     }
 
@@ -227,6 +226,7 @@ mac_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *edt _U_,
     /* Get reference to stat window instance */
     mac_lte_stat_t *hs = (mac_lte_stat_t *)phs;
     mac_lte_ep_t *tmp = NULL, *te = NULL;
+    int i;
 
     /* Cast tap info struct */
     const struct mac_lte_tap_info *si = (const struct mac_lte_tap_info *)phi;
@@ -291,7 +291,7 @@ mac_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *edt _U_,
         for (tmp = hs->ep_list;(tmp != NULL); tmp = tmp->next) {
             /* Match only by RNTI and UEId together */
             if ((tmp->stats.rnti == si->rnti) &&
-                (tmp->stats.ueid == si->ueid)){
+                (tmp->stats.ueid == si->ueid)) {
                 te = tmp;
                 break;
             }
@@ -337,9 +337,9 @@ mac_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *edt _U_,
 
         /* Update time range */
         if (te->stats.UL_frames == 0) {
-            te->stats.UL_time_start = si->time;
+            te->stats.UL_time_start = si->mac_lte_time;
         }
-        te->stats.UL_time_stop = si->time;
+        te->stats.UL_time_stop = si->mac_lte_time;
 
         te->stats.UL_frames++;
 
@@ -350,7 +350,9 @@ mac_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *edt _U_,
             te->stats.UL_total_bytes += si->single_number_of_bytes;
         }
         else {
-            te->stats.UL_total_bytes += si->single_number_of_bytes;
+            for (i = 0; i < 11; i++) {
+                te->stats.UL_total_bytes += si->bytes_for_lcid[i];
+            }
         }
     }
 
@@ -385,9 +387,9 @@ mac_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *edt _U_,
 
         /* Update time range */
         if (te->stats.DL_frames == 0) {
-            te->stats.DL_time_start = si->time;
+            te->stats.DL_time_start = si->mac_lte_time;
         }
-        te->stats.DL_time_stop = si->time;
+        te->stats.DL_time_stop = si->mac_lte_time;
 
         te->stats.DL_frames++;
 
@@ -398,7 +400,9 @@ mac_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *edt _U_,
             te->stats.DL_total_bytes += si->single_number_of_bytes;
         }
         else {
-            te->stats.DL_total_bytes += si->single_number_of_bytes;
+            for (i = 0; i < 11; i++) {
+                te->stats.DL_total_bytes += si->bytes_for_lcid[i];
+            }
         }
 
     }
@@ -438,7 +442,7 @@ mac_lte_stat_draw(void *phs)
 
     /* Deref the struct */
     mac_lte_stat_t *hs = (mac_lte_stat_t *)phs;
-    mac_lte_ep_t* list = hs->ep_list, *tmp = 0;
+    mac_lte_ep_t *list = hs->ep_list, *tmp = 0;
 
     /* System data */
     printf("System data:\n");
@@ -526,7 +530,7 @@ static void mac_lte_stat_init(const char *opt_arg, void *userdata _U_)
     }
 
     /* Create struct */
-    hs = g_new0(mac_lte_stat_t,1);
+    hs = g_new0(mac_lte_stat_t, 1);
     hs->ep_list = NULL;
 
     error_string = register_tap_listener("mac-lte", hs,
@@ -541,11 +545,31 @@ static void mac_lte_stat_init(const char *opt_arg, void *userdata _U_)
     }
 }
 
+static stat_tap_ui mac_lte_stat_ui = {
+    REGISTER_STAT_GROUP_GENERIC,
+    NULL,
+    "mac-lte,stat",
+    mac_lte_stat_init,
+    0,
+    NULL
+};
 
 /* Register this tap listener (need void on own so line register function found) */
 void
 register_tap_listener_mac_lte_stat(void)
 {
-    register_stat_cmd_arg("mac-lte,stat", mac_lte_stat_init, NULL);
+    register_stat_tap_ui(&mac_lte_stat_ui, NULL);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

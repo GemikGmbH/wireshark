@@ -31,8 +31,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 
 void proto_register_lanforge(void);
@@ -77,7 +75,7 @@ static gboolean dissect_lanforge(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
     guint32 pld_len, magic;
 
     /* check for min size */
-    if(tvb_length(tvb) < 28) {  /* Not a LANforge packet. */
+    if(tvb_captured_length(tvb) < 28) {  /* Not a LANforge packet. */
         return FALSE;
     }
 
@@ -149,15 +147,9 @@ static gboolean dissect_lanforge(tvbuff_t *tvb, packet_info *pinfo, proto_tree *
 
         proto_tree_add_time(lanforge_tree, hf_lanforge_timestamp, tvb, offset - 8, 8, &tstamp);
 
-#if 0
-        if(tvb_reported_length_remaining(tvb, offset) > 0) /* random data */
-            proto_tree_add_text(lanforge_tree, tvb, offset, -1, "Data (%u bytes)",
-                                tvb_length_remaining(tvb, offset));
-#else
         if(tvb_reported_length_remaining(tvb, offset) > 0) /* random data */
             call_dissector(data_handle, tvb_new_subset_remaining(tvb, offset), pinfo,
                 lanforge_tree);
-#endif
     }
 
     return TRUE;
@@ -288,9 +280,22 @@ void proto_register_lanforge(void)
 void proto_reg_handoff_lanforge(void)
 {
     /* Register as a heuristic UDP dissector */
-    heur_dissector_add("udp", dissect_lanforge, proto_lanforge);
-    heur_dissector_add("tcp", dissect_lanforge, proto_lanforge);
+    heur_dissector_add("udp", dissect_lanforge, "LANforge over UDP", "lanforge_udp", proto_lanforge, HEURISTIC_ENABLE);
+    heur_dissector_add("tcp", dissect_lanforge, "LANforge over TCP", "lanforge_tcp", proto_lanforge, HEURISTIC_ENABLE);
 
     /* Find data dissector handle */
     data_handle = find_dissector("data");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

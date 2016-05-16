@@ -24,15 +24,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-/*
-#define DEBUG	// for debug only
-*/
+#if 0
+#define DEBUG	/* for debug only */
+#endif
 
 /* Include files */
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "wimax_tlv.h"
 #include "wimax_mac.h"
@@ -151,3 +150,16 @@ proto_reg_handoff_mac_mgmt_msg_res_cmd(void)
 	handle = create_dissector_handle(dissect_mac_mgmt_msg_res_cmd_decoder, proto_mac_mgmt_msg_res_cmd_decoder);
 	dissector_add_uint("wmx.mgmtmsg", MAC_MGMT_MSG_RES_CMD, handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

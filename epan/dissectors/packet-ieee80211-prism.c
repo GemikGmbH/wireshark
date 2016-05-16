@@ -27,8 +27,6 @@
 #include <epan/packet.h>
 #include <wiretap/wtap.h>
 #include <wsutil/pint.h>
-#include <epan/wmem/wmem.h>
-
 #include "packet-ieee80211.h"
 
 void proto_register_ieee80211_prism(void);
@@ -38,6 +36,7 @@ void proto_reg_handoff_ieee80211_prism(void);
 
 static dissector_handle_t wlancap_handle;
 static dissector_handle_t ieee80211_handle;
+static dissector_handle_t ieee80211_radio_handle;
 
 static int proto_prism = -1;
 
@@ -124,12 +123,12 @@ static gint ett_prism_did = -1;
  * I'm not sure where these DID values come from, but they work with
  * at least one capture file.  However, in
  *
- *    http://ask.wireshark.org/questions/14963/how-to-get-the-field-did-unknown-4041-into-the-column
+ *    https://ask.wireshark.org/questions/14963/how-to-get-the-field-did-unknown-4041-into-the-column
  *
  * somebody reports a capture where *different* DID values, corresponding
  * to
  *
- *    http://home.martin.cc/linux/prism
+ *    http://www.martin.cc/linux/prism
  *
  * are used (and that's not a byte-order issue, as those values are *not*
  * just byte-swapped versions of the other values).
@@ -202,7 +201,8 @@ static const value_string prism_did_vals[] =
 /*
  * The header file mentioned above says 0 means "supplied" and 1 means
  * "not supplied".  I haven't seen a capture file with anything other
- * than 0 there.
+ * than 0 there, but there is at least one driver that appears to use
+ * 1 for values it doesn't supply (the Linux acx-20080210 driver).
  */
 static const value_string prism_status_vals[] =
 {
@@ -294,6 +294,9 @@ dissect_prism(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     guint byte_order;
     guint16 status;
     guint8 *devname_p;
+    guint32 channel;
+    guint32 rate;
+    struct ieee_802_11_phdr phdr;
 
     offset = 0;
     did = 0;
@@ -328,6 +331,13 @@ dissect_prism(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         return;
     }
 
+    /* We don't have any 802.11 metadata yet. */
+    phdr.fcs_len = -1;
+    phdr.decrypted = FALSE;
+    phdr.datapad = FALSE;
+    phdr.phy = PHDR_802_11_PHY_UNKNOWN;
+    phdr.presence_flags = 0;
+
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "Prism");
     col_clear(pinfo->cinfo, COL_INFO);
 
@@ -354,7 +364,7 @@ dissect_prism(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     if(tree) {
        proto_tree_add_item(prism_tree, hf_ieee80211_prism_devname, tvb, offset, 16, ENC_ASCII|ENC_NA);
     }
-    devname_p = tvb_get_string(wmem_packet_scope(), tvb, offset, 16);
+    devname_p = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, 16, ENC_ASCII);
     offset += 16;
 
     col_add_fstr(pinfo->cinfo, COL_INFO, "Device: %s, Message 0x%x, Length %d", devname_p, msgcode, msglen);
@@ -407,11 +417,14 @@ dissect_prism(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
               case PRISM_TYPE1_CHANNEL:
               case PRISM_TYPE2_CHANNEL:
+                channel = tvb_get_enctohl(tvb, offset, byte_order);
+                phdr.presence_flags |= PHDR_802_11_HAS_CHANNEL;
+                phdr.channel = channel;
                 if(tree){
                     proto_tree_add_item(prism_did_tree, hf_ieee80211_prism_did_channel, tvb, offset, 4, byte_order);
-                    proto_item_append_text(ti_did, " %d", tvb_get_enctohl(tvb, offset, byte_order) );
+                    proto_item_append_text(ti_did, " %u", channel);
                 }
-                col_add_fstr(pinfo->cinfo, COL_FREQ_CHAN, "%u", tvb_get_enctohl(tvb, offset, byte_order));
+                col_add_fstr(pinfo->cinfo, COL_FREQ_CHAN, "%u", channel);
               break;
 
               case PRISM_TYPE1_RSSI:
@@ -449,11 +462,14 @@ dissect_prism(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
               case PRISM_TYPE1_RATE:
               case PRISM_TYPE2_RATE:
+                rate = tvb_get_enctohl(tvb, offset, byte_order);
+                phdr.presence_flags |= PHDR_802_11_HAS_DATA_RATE;
+                phdr.data_rate = rate;
                 if(tree){
                     proto_tree_add_item(prism_did_tree, hf_ieee80211_prism_did_rate, tvb, offset, 4, byte_order);
-                    proto_item_append_text(ti_did, " %s Mb/s", prism_rate_return(tvb_get_enctohl(tvb, offset, byte_order)) );
+                    proto_item_append_text(ti_did, " %s Mb/s", prism_rate_return(rate));
                 }
-                col_add_fstr(pinfo->cinfo, COL_TX_RATE, "%s", prism_rate_return(tvb_get_enctohl(tvb, offset, byte_order)) );
+                col_add_fstr(pinfo->cinfo, COL_TX_RATE, "%s", prism_rate_return(rate));
               break;
 
               case PRISM_TYPE1_ISTX:
@@ -484,7 +500,7 @@ dissect_prism(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     /* dissect the 802.11 header next */
     next_tvb = tvb_new_subset_remaining(tvb, offset);
-    call_dissector(ieee80211_handle, next_tvb, pinfo, tree);
+    call_dissector_with_data(ieee80211_radio_handle, next_tvb, pinfo, tree, (void *)&phdr);
 }
 
 static hf_register_info hf_prism[] = {
@@ -547,7 +563,7 @@ static hf_register_info hf_prism[] = {
       NULL, HFILL }},
 
     { &hf_ieee80211_prism_did_rate,
-     {"Data rate (Mb/s)", "prism.did.rate", FT_UINT32, BASE_CUSTOM, prism_rate_base_custom, 0x0,
+     {"Data rate (Mb/s)", "prism.did.rate", FT_UINT32, BASE_CUSTOM, CF_FUNC(prism_rate_base_custom), 0x0,
       "Speed this frame was sent/received at", HFILL }},
 
     { &hf_ieee80211_prism_did_istx,
@@ -583,6 +599,7 @@ void proto_reg_handoff_ieee80211_prism(void)
   prism_handle = create_dissector_handle(dissect_prism, proto_prism);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_IEEE_802_11_PRISM, prism_handle);
   ieee80211_handle = find_dissector("wlan");
+  ieee80211_radio_handle = find_dissector("wlan_radio");
   wlancap_handle = find_dissector("wlancap");
 }
 

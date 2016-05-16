@@ -24,7 +24,6 @@
 
 #include "config.h"
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <math.h>
 #include <string.h>
@@ -45,10 +44,10 @@
 #include <epan/conv_id.h>
 
 #include "../../globals.h"
-#include "../../stat_menu.h"
 
+#include <epan/stat_groups.h>
 #include "ui/tap-tcp-stream.h"
-#include "ui/utf8_entities.h"
+#include <wsutil/utf8_entities.h>
 
 #include "ui/gtk/gui_utils.h"
 #include "ui/gtk/dlg_utils.h"
@@ -138,8 +137,7 @@ struct axis {
     GdkPixmap        *pixmap[2];
 #endif
     int               displayed;
-#define AXIS_ORIENTATION 1 << 0
-    int               flags;
+    gboolean is_horizontal_axis;
     /* dim and orig (relative to origin of window) of axis' pixmap */
     struct irect      p;
     /* dim and orig (relative to origin of axis' pixmap) of scale itself */
@@ -471,7 +469,7 @@ static int rint(double );   /* compiler template for Windows */
 static struct irect zoomrect;
 
 /*
- * Uncomment the following define to revert WIN32 to
+ * Uncomment the following define to revert Windows to
  * use original mouse button controls
  */
 
@@ -682,6 +680,7 @@ static void create_drawing_area(struct gtk_graph *g)
     char        *display_name;
     char         window_title[WINDOW_TITLE_LENGTH];
     GtkAllocation    widget_alloc;
+    char *src_addr, *dst_addr;
 #if 0
     /* Prep. to include the controls in the graph window */
     GtkWidget *frame;
@@ -692,15 +691,19 @@ static void create_drawing_area(struct gtk_graph *g)
 
     /* Set title of window with file + conversation details */
     display_name = cf_get_display_name(&cfile);
+    src_addr = (char*)address_to_str(NULL, &g->tg.src_address);
+    dst_addr = (char*)address_to_str(NULL, &g->tg.dst_address);
     g_snprintf(window_title, WINDOW_TITLE_LENGTH, "TCP Graph %d: %s %s:%d " UTF8_RIGHTWARDS_ARROW " %s:%d",
                refnum,
                display_name,
-               ep_address_to_str(&g->tg.src_address),
+               src_addr,
                g->tg.src_port,
-               ep_address_to_str(&g->tg.dst_address),
+               dst_addr,
                g->tg.dst_port
     );
     g_free(display_name);
+    wmem_free(NULL, src_addr);
+    wmem_free(NULL, dst_addr);
     g->toplevel = dlg_window_new("Tcp Graph");
     gtk_window_set_title(GTK_WINDOW(g->toplevel), window_title);
     gtk_widget_set_name(g->toplevel, "Test Graph");
@@ -1637,15 +1640,13 @@ static struct gtk_graph *graph_new(void)
     g->x_axis = (struct axis * )g_malloc0(sizeof(struct axis));
     g->y_axis = (struct axis * )g_malloc0(sizeof(struct axis));
     g->x_axis->g         = g;
-    g->x_axis->flags     = 0;
-    g->x_axis->flags    |= AXIS_ORIENTATION;
+    g->x_axis->is_horizontal_axis = TRUE;
     g->x_axis->s.x       = g->x_axis->s.y = 0;
     g->x_axis->s.height  = HAXIS_INIT_HEIGHT;
     g->x_axis->p.x       = VAXIS_INIT_WIDTH;
     g->x_axis->p.height  = HAXIS_INIT_HEIGHT;
     g->y_axis->g         = g;
-    g->y_axis->flags     = 0;
-    g->y_axis->flags    &= ~AXIS_ORIENTATION;
+    g->y_axis->is_horizontal_axis = FALSE;
     g->y_axis->p.x       = g->y_axis->p.y = 0;
     g->y_axis->p.width   = VAXIS_INIT_WIDTH;
     g->y_axis->s.x       = 0;
@@ -2009,7 +2010,7 @@ static void draw_element_line(struct gtk_graph *g, struct element *e, cairo_t *c
     int xx1, xx2, yy1, yy2;
 
     debug(DBS_GRAPH_DRAWING) printf("line element: (%.2f,%.2f)->(%.2f,%.2f), "
-                                    "seg %d ... ", e->p.line.dim.x1, e->p.line.dim.y1,
+                                    "seg %u ... ", e->p.line.dim.x1, e->p.line.dim.y1,
                                     e->p.line.dim.x2, e->p.line.dim.y2, e->parent->num);
 
     /* Set our new colour (if changed) */
@@ -2119,7 +2120,7 @@ static void axis_destroy(struct axis *axis)
 
 static void axis_display(struct axis *axis)
 {
-    if (axis->flags & AXIS_ORIENTATION)
+    if (axis->is_horizontal_axis)
         h_axis_pixmap_draw(axis);
     else
         v_axis_pixmap_draw(axis);
@@ -4498,3 +4499,16 @@ static int rint(double x)
     return(i);
 }
 #endif
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

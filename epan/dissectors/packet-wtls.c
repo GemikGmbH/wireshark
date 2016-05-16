@@ -31,8 +31,6 @@
 #include <stdio.h>
 #endif
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include "packet-wap.h"
 #include "packet-wtls.h"
@@ -41,86 +39,86 @@ void proto_register_wtls(void);
 void proto_reg_handoff_wtls(void);
 
 /* File scoped variables for the protocol and registered fields */
-static int proto_wtls = HF_EMPTY;
+static int proto_wtls = -1;
 
 /* These fields used by fixed part of header */
-static int hf_wtls_record = HF_EMPTY;
-static int hf_wtls_record_type = HF_EMPTY;
-static int hf_wtls_record_length = HF_EMPTY;
-static int hf_wtls_record_sequence = HF_EMPTY;
-static int hf_wtls_record_ciphered = HF_EMPTY;
-static int hf_wtls_hands = HF_EMPTY;
-static int hf_wtls_hands_type = HF_EMPTY;
-static int hf_wtls_hands_length = HF_EMPTY;
-static int hf_wtls_hands_cli_hello = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_version = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_gmt = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_random = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_session = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_session_str = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_cli_key_id = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_cli_key_len = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_trust_key_id = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_exchange = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_exchange_suite = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_parameter_index = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_parameter_set = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_identifier_type = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_identifier_charset = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_identifier_size = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_identifier = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_identifier_str = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_cipher_suite = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_cipher_suite_item = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_compression_methods = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_compression = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_sequence_mode = HF_EMPTY;
-static int hf_wtls_hands_cli_hello_key_refresh = HF_EMPTY;
-static int hf_wtls_hands_serv_hello = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_version = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_gmt = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_random = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_session = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_session_str = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_cli_key_id = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_cipher_suite_item = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_cipher_bulk = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_cipher_mac = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_compression = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_sequence_mode = HF_EMPTY;
-static int hf_wtls_hands_serv_hello_key_refresh = HF_EMPTY;
-static int hf_wtls_hands_certificates = HF_EMPTY;
-static int hf_wtls_hands_certificate = HF_EMPTY;
-static int hf_wtls_hands_certificate_type = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_version = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_signature_type = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_issuer_type = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_issuer_charset = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_issuer_size = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_issuer_name = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_valid_not_before = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_valid_not_after = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_subject_type = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_subject_charset = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_subject_size = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_subject_name = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_public_key_type = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_key_parameter_index = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_key_parameter_set = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_rsa_exponent = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_rsa_modules = HF_EMPTY;
-static int hf_wtls_hands_certificate_wtls_signature = HF_EMPTY;
-static int hf_wtls_alert = HF_EMPTY;
-static int hf_wtls_alert_level = HF_EMPTY;
-static int hf_wtls_alert_description = HF_EMPTY;
+static int hf_wtls_record = -1;
+static int hf_wtls_record_type = -1;
+static int hf_wtls_record_length = -1;
+static int hf_wtls_record_sequence = -1;
+static int hf_wtls_record_ciphered = -1;
+static int hf_wtls_hands = -1;
+static int hf_wtls_hands_type = -1;
+static int hf_wtls_hands_length = -1;
+static int hf_wtls_hands_cli_hello = -1;
+static int hf_wtls_hands_cli_hello_version = -1;
+static int hf_wtls_hands_cli_hello_gmt = -1;
+static int hf_wtls_hands_cli_hello_random = -1;
+static int hf_wtls_hands_cli_hello_session = -1;
+static int hf_wtls_hands_cli_hello_session_str = -1;
+static int hf_wtls_hands_cli_hello_cli_key_id = -1;
+static int hf_wtls_hands_cli_hello_cli_key_len = -1;
+static int hf_wtls_hands_cli_hello_trust_key_id = -1;
+static int hf_wtls_hands_cli_hello_key_exchange = -1;
+static int hf_wtls_hands_cli_hello_key_exchange_suite = -1;
+static int hf_wtls_hands_cli_hello_key_parameter_index = -1;
+static int hf_wtls_hands_cli_hello_key_parameter_set = -1;
+static int hf_wtls_hands_cli_hello_key_identifier_type = -1;
+static int hf_wtls_hands_cli_hello_key_identifier_charset = -1;
+static int hf_wtls_hands_cli_hello_key_identifier_size = -1;
+static int hf_wtls_hands_cli_hello_key_identifier = -1;
+static int hf_wtls_hands_cli_hello_key_identifier_str = -1;
+static int hf_wtls_hands_cli_hello_cipher_suite = -1;
+static int hf_wtls_hands_cli_hello_cipher_suite_item = -1;
+static int hf_wtls_hands_cli_hello_compression_methods = -1;
+static int hf_wtls_hands_cli_hello_compression = -1;
+static int hf_wtls_hands_cli_hello_sequence_mode = -1;
+static int hf_wtls_hands_cli_hello_key_refresh = -1;
+static int hf_wtls_hands_serv_hello = -1;
+static int hf_wtls_hands_serv_hello_version = -1;
+static int hf_wtls_hands_serv_hello_gmt = -1;
+static int hf_wtls_hands_serv_hello_random = -1;
+static int hf_wtls_hands_serv_hello_session = -1;
+static int hf_wtls_hands_serv_hello_session_str = -1;
+static int hf_wtls_hands_serv_hello_cli_key_id = -1;
+static int hf_wtls_hands_serv_hello_cipher_suite_item = -1;
+static int hf_wtls_hands_serv_hello_cipher_bulk = -1;
+static int hf_wtls_hands_serv_hello_cipher_mac = -1;
+static int hf_wtls_hands_serv_hello_compression = -1;
+static int hf_wtls_hands_serv_hello_sequence_mode = -1;
+static int hf_wtls_hands_serv_hello_key_refresh = -1;
+static int hf_wtls_hands_certificates = -1;
+static int hf_wtls_hands_certificate = -1;
+static int hf_wtls_hands_certificate_type = -1;
+static int hf_wtls_hands_certificate_wtls_version = -1;
+static int hf_wtls_hands_certificate_wtls_signature_type = -1;
+static int hf_wtls_hands_certificate_wtls_issuer_type = -1;
+static int hf_wtls_hands_certificate_wtls_issuer_charset = -1;
+static int hf_wtls_hands_certificate_wtls_issuer_size = -1;
+static int hf_wtls_hands_certificate_wtls_issuer_name = -1;
+static int hf_wtls_hands_certificate_wtls_valid_not_before = -1;
+static int hf_wtls_hands_certificate_wtls_valid_not_after = -1;
+static int hf_wtls_hands_certificate_wtls_subject_type = -1;
+static int hf_wtls_hands_certificate_wtls_subject_charset = -1;
+static int hf_wtls_hands_certificate_wtls_subject_size = -1;
+static int hf_wtls_hands_certificate_wtls_subject_name = -1;
+static int hf_wtls_hands_certificate_wtls_public_key_type = -1;
+static int hf_wtls_hands_certificate_wtls_key_parameter_index = -1;
+static int hf_wtls_hands_certificate_wtls_key_parameter_set = -1;
+static int hf_wtls_hands_certificate_wtls_rsa_exponent = -1;
+static int hf_wtls_hands_certificate_wtls_rsa_modules = -1;
+static int hf_wtls_hands_certificate_wtls_signature = -1;
+static int hf_wtls_alert = -1;
+static int hf_wtls_alert_level = -1;
+static int hf_wtls_alert_description = -1;
 
 /* Initialize the subtree pointers */
-static gint ett_wtls = ETT_EMPTY;
-static gint ett_wtls_rec = ETT_EMPTY;
-static gint ett_wtls_msg_type = ETT_EMPTY;
-static gint ett_wtls_msg_type_item = ETT_EMPTY;
-static gint ett_wtls_msg_type_item_sub = ETT_EMPTY;
-static gint ett_wtls_msg_type_item_sub_sub = ETT_EMPTY;
+static gint ett_wtls = -1;
+static gint ett_wtls_rec = -1;
+static gint ett_wtls_msg_type = -1;
+static gint ett_wtls_msg_type_item = -1;
+static gint ett_wtls_msg_type_item_sub = -1;
+static gint ett_wtls_msg_type_item_sub_sub = -1;
 
 static const value_string wtls_vals_record_type[] = {
 	{ 1, "change_cipher_data" },
@@ -367,7 +365,7 @@ dissect_wtls(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				count += offset-offset_wtls;
 			}
 			else {
-				count = tvb_length_remaining (tvb, offset_wtls);
+				count = tvb_reported_length_remaining (tvb, offset_wtls);
 			}
 			ti = proto_tree_add_uint(wtls_tree, hf_wtls_record, tvb, offset_wtls,
 				 count, pdut);
@@ -394,7 +392,7 @@ dissect_wtls(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				offset+=2;
 			}
 			else {
-				count = tvb_length_remaining (tvb, offset);
+				count = tvb_reported_length_remaining (tvb, offset);
 			}
 
 			if (pdut & WTLS_RECORD_TYPE_CIPHER_CUR) {
@@ -454,7 +452,6 @@ add_session_id(proto_tree *tree, int hf, int hf_str, tvbuff_t *tvb, int offset)
 	guint count;
 	guint i;
 	guint64 session_id;
-	header_field_info *hfinfo;
 
 	count = tvb_get_guint8(tvb, offset);
 	if (count == 0)
@@ -465,9 +462,7 @@ add_session_id(proto_tree *tree, int hf, int hf_str, tvbuff_t *tvb, int offset)
 			session_id = (session_id << 8) | tvb_get_guint8(tvb, offset + i);
 		proto_tree_add_uint64 (tree, hf, tvb, offset, count+1, session_id);
 	} else {
-		hfinfo = proto_registrar_get_nth(hf);
-		proto_tree_add_text (tree, tvb, offset, count+1, "%s: %s",
-		    hfinfo->name, tvb_bytes_to_ep_str(tvb, offset+1, count));
+		proto_tree_add_item(tree, hf, tvb, offset, count+1, ENC_NA);
 	}
 	return offset+1+count;
 }
@@ -1595,3 +1590,16 @@ proto_reg_handoff_wtls(void)
 	dissector_add_uint("udp.port", UDP_PORT_WTLS_WTP_WSP, wtls_handle);
 	dissector_add_uint("udp.port", UDP_PORT_WTLS_WSP_PUSH,wtls_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

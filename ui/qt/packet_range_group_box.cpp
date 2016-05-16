@@ -20,7 +20,7 @@
  */
 
 #include "packet_range_group_box.h"
-#include "ui_packet_range_group_box.h"
+#include <ui_packet_range_group_box.h>
 
 PacketRangeGroupBox::PacketRangeGroupBox(QWidget *parent) :
     QGroupBox(parent),
@@ -29,6 +29,7 @@ PacketRangeGroupBox::PacketRangeGroupBox(QWidget *parent) :
     syntax_state_(SyntaxLineEdit::Empty)
 {
     pr_ui_->setupUi(this);
+    setFlat(true);
 
     pr_ui_->displayedButton->setChecked(true);
     pr_ui_->allButton->setChecked(true);
@@ -51,7 +52,9 @@ void PacketRangeGroupBox::initRange(packet_range_t *range) {
     }
 
     if (range_->user_range) {
-        pr_ui_->rangeLineEdit->setText(range_convert_range(range_->user_range));
+        char* tmp_str = range_convert_range(NULL, range_->user_range);
+        pr_ui_->rangeLineEdit->setText(tmp_str);
+        wmem_free(NULL, tmp_str);
     }
     updateCounts();
 }
@@ -276,9 +279,8 @@ void PacketRangeGroupBox::updateCounts() {
 
 // Slots
 
-void PacketRangeGroupBox::on_rangeLineEdit_textChanged(const QString &range_str)
+void PacketRangeGroupBox::on_rangeLineEdit_textChanged(const QString &)
 {
-    Q_UNUSED(range_str)
     if (!pr_ui_->rangeButton->isChecked()) {
         pr_ui_->rangeButton->setChecked(true);
     } else {
@@ -320,10 +322,22 @@ void PacketRangeGroupBox::on_rangeButton_toggled(bool checked)
 
 void PacketRangeGroupBox::on_capturedButton_toggled(bool checked)
 {
-    if (checked) updateCounts();
+    if (checked) {
+        if (range_) range_->process_filtered = FALSE;
+        updateCounts();
+    }
 }
 
 void PacketRangeGroupBox::on_displayedButton_toggled(bool checked)
 {
-    if (checked) updateCounts();
+    if (checked) {
+        if (range_) range_->process_filtered = TRUE;
+        updateCounts();
+    }
+}
+
+void PacketRangeGroupBox::on_ignoredCheckBox_toggled(bool checked)
+{
+    if (range_) range_->remove_ignored = checked ? TRUE : FALSE;
+    updateCounts();
 }

@@ -22,18 +22,13 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <stdio.h>
 #include <stdlib.h>
 
 #include <epan/packet.h>
 #include <epan/conversation.h>
 #include <epan/expert.h>
-#include <epan/wmem/wmem.h>
-#include <epan/ipproto.h>
 #include <epan/prefs.h>
-#include <epan/strutil.h>
 #include <epan/addr_resolv.h>
 
 #include <wiretap/catapult_dct2000.h>
@@ -240,6 +235,7 @@ static const value_string rlc_rbid_vals[] = {
     { 25,    "MTCH"},
     { 0,     NULL}
 };
+static value_string_ext rlc_rbid_vals_ext = VALUE_STRING_EXT_INIT(rlc_rbid_vals);
 
 static const value_string ueid_type_vals[] = {
     { 0,     "URNTI"},
@@ -355,7 +351,7 @@ static gboolean find_ipprim_data_offset(tvbuff_t *tvb, int *data_offset, guint8 
     }
 
     /* Skip any other TLC fields before reach payload */
-    while (tvb_length_remaining(tvb, offset) > 2) {
+    while (tvb_reported_length_remaining(tvb, offset) > 2) {
         /* Look at next tag */
         tag = tvb_get_guint8(tvb, offset++);
 
@@ -462,7 +458,7 @@ static gboolean find_sctpprim_variant1_data_offset(tvbuff_t *tvb, int *data_offs
     offset += skipASNLength(first_length_byte);
 
     /* Skip any other fields before reach payload */
-    while (tvb_length_remaining(tvb, offset) > 2) {
+    while (tvb_reported_length_remaining(tvb, offset) > 2) {
         /* Look at next tag */
         tag = tvb_get_guint8(tvb, offset++);
 
@@ -617,7 +613,7 @@ static gboolean find_sctpprim_variant3_data_offset(tvbuff_t *tvb, int *data_offs
         offset += 2;
 
         /* Some optional params */
-        while ((tag != 0x0c00) && (tvb_length_remaining(tvb, offset) > 4)) {
+        while ((tag != 0x0c00) && (tvb_reported_length_remaining(tvb, offset) > 4)) {
             switch (tag) {
                 case 0x0900:   /* Dest address */
                     /* Length field */
@@ -726,7 +722,7 @@ static void dissect_rlc_umts(tvbuff_t *tvb, gint offset,
     }
 
     /* Keep going until reach data tag or end of frame */
-    while ((tag != 0x41) && tvb_length_remaining(tvb, offset)) { /* i.e. Data */
+    while ((tag != 0x41) && tvb_reported_length_remaining(tvb, offset)) { /* i.e. Data */
         tag = tvb_get_guint8(tvb, offset++);
         switch (tag) {
             case 0x72:  /* UE Id */
@@ -1026,7 +1022,7 @@ static void dissect_rrc_lte(tvbuff_t *tvb, gint offset,
     }
 
     /* Send to RRC dissector, if got here, have sub-dissector and some data left */
-    if ((protocol_handle != NULL) && (tvb_length_remaining(tvb, offset) > 0)) {
+    if ((protocol_handle != NULL) && (tvb_reported_length_remaining(tvb, offset) > 0)) {
         rrc_tvb = tvb_new_subset_remaining(tvb, offset);
         call_dissector_only(protocol_handle, rrc_tvb, pinfo, tree, NULL);
     }
@@ -1088,8 +1084,8 @@ static void dissect_ccpri_lte(tvbuff_t *tvb, gint offset,
     /* Send remainder to lapb dissector (lapb needs patch with preference
        set to call cpri C&M dissector instead of X.25) */
     protocol_handle = find_dissector("lapb");
-    if ((protocol_handle != NULL) && (tvb_length_remaining(tvb, offset) > 0)) {
-        ccpri_tvb = tvb_new_subset(tvb, offset, length, length);
+    if ((protocol_handle != NULL) && (tvb_reported_length_remaining(tvb, offset) > 0)) {
+        ccpri_tvb = tvb_new_subset_length(tvb, offset, length);
         call_dissector_only(protocol_handle, ccpri_tvb, pinfo, tree, NULL);
     }
 }
@@ -1252,7 +1248,7 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, gint offset,
 
             /* Other optional fields may follow */
             tag = tvb_get_guint8(tvb, offset++);
-            while ((tag != 0x41) && (tvb_length_remaining(tvb, offset) > 2)) {
+            while ((tag != 0x41) && (tvb_reported_length_remaining(tvb, offset) > 2)) {
 
                 if (tag == 0x35) {
                     /* This is MUI */
@@ -1263,16 +1259,16 @@ static void dissect_pdcp_lte(tvbuff_t *tvb, gint offset,
 
                     /* CNF follows MUI in AM */
                     if ((opcode == RLC_AM_DATA_REQ) || (opcode == RLC_AM_DATA_IND)) {
-                        proto_tree_add_boolean(tree, hf_catapult_dct2000_lte_rlc_cnf,
-                                               tvb, offset, 1, tvb_get_guint8(tvb, offset));
+                        proto_tree_add_item(tree, hf_catapult_dct2000_lte_rlc_cnf,
+                                               tvb, offset, 1, ENC_NA);
                         offset++;
                     }
                 }
                 else if (tag == 0x45) {
                     /* Discard Req */
                     offset++;
-                    proto_tree_add_boolean(tree, hf_catapult_dct2000_lte_rlc_discard_req,
-                                           tvb, offset, 1, tvb_get_guint8(tvb, offset));
+                    proto_tree_add_item(tree, hf_catapult_dct2000_lte_rlc_discard_req,
+                                           tvb, offset, 1, ENC_NA);
                     offset++;
                 }
 
@@ -1914,14 +1910,14 @@ static void dissect_tty_lines(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
     tty_tree = proto_item_add_subtree(ti, ett_catapult_dct2000_tty);
 
     /* Show the tty lines one at a time. */
-    while (tvb_reported_length_remaining(tvb, offset) > 0) {
+    while (tvb_offset_exists(tvb, offset)) {
         /* Find the end of the line. */
         int linelen = tvb_find_line_end_unquoted(tvb, offset, -1, &next_offset);
 
         /* Extract & add the string. */
-        char *string = (char*)tvb_get_string(wmem_packet_scope(), tvb, offset, linelen);
+        char *string = (char*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, linelen, ENC_ASCII);
         if (g_ascii_isprint(string[0])) {
-            /* If looks printable treat as string... */
+            /* If the first byte of the string is printable ASCII treat as string... */
             proto_tree_add_string_format(tty_tree, hf_catapult_dct2000_tty_line,
                                          tvb, offset,
                                          linelen, string,
@@ -1931,7 +1927,7 @@ static void dissect_tty_lines(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tre
             /* Otherwise show as $hex */
             int n, idx;
             char *hex_string;
-            int tty_string_length = tvb_length_remaining(tvb, offset);
+            int tty_string_length = tvb_reported_length_remaining(tvb, offset);
             int hex_string_length = 1+(2*tty_string_length)+1;
             hex_string = (char *)wmem_alloc(wmem_packet_scope(), hex_string_length);
 
@@ -2143,7 +2139,7 @@ dissect_catapult_dct2000(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                  displayed as a custom column... */
         proto_tree_add_double(dct2000_tree, hf_catapult_dct2000_timestamp, tvb,
                               offset, timestamp_length,
-                              atof(timestamp_string));
+                              g_ascii_strtod(timestamp_string, NULL));
     }
     offset += timestamp_length;
 
@@ -2462,7 +2458,7 @@ dissect_catapult_dct2000(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             if (strcmp(protocol_name, "comment") == 0) {
                 /* Extract & add the string. */
                 proto_item *string_ti;
-                char *string = (char*)tvb_get_string(wmem_packet_scope(), tvb, offset, tvb_length_remaining(tvb, offset));
+                char *string = (char*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_ASCII);
 
                 /* Show comment string */
                 string_ti = proto_tree_add_item(dct2000_tree, hf_catapult_dct2000_comment, tvb,
@@ -2489,7 +2485,7 @@ dissect_catapult_dct2000(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
             else
             if (strcmp(protocol_name, "sprint") == 0) {
                 /* Extract & add the string. */
-                char *string = (char*)tvb_get_string(wmem_packet_scope(), tvb, offset, tvb_length_remaining(tvb, offset));
+                char *string = (char*)tvb_get_string_enc(wmem_packet_scope(), tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_ASCII);
 
                 /* Show sprint string */
                 proto_tree_add_item(dct2000_tree, hf_catapult_dct2000_sprint, tvb,
@@ -2597,16 +2593,6 @@ dissect_catapult_dct2000(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
                     /* Try to add right stuff to pinfo so conversation stuff works... */
                     pinfo->ptype = type_of_port;
-                    switch (type_of_port) {
-                        case PT_UDP:
-                            pinfo->ipproto = IP_PROTO_UDP;
-                            break;
-                        case PT_TCP:
-                            pinfo->ipproto = IP_PROTO_TCP;
-                            break;
-                        default:
-                            pinfo->ipproto = IP_PROTO_NONE;
-                    }
 
                     /* Add addresses & ports into ipprim tree.
                        Also set address info in pinfo for conversations... */
@@ -2616,9 +2602,7 @@ dissect_catapult_dct2000(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                         TVB_SET_ADDRESS(&pinfo->net_src,
                                     (source_addr_length == 4) ? AT_IPv4 : AT_IPv6,
                                     tvb, source_addr_offset, source_addr_length);
-                        TVB_SET_ADDRESS(&pinfo->src,
-                                    (source_addr_length == 4) ? AT_IPv4 : AT_IPv6,
-                                    tvb, source_addr_offset, source_addr_length);
+                        COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->net_src);
 
                         proto_tree_add_item(ipprim_tree,
                                             (source_addr_length == 4) ?
@@ -2659,9 +2643,7 @@ dissect_catapult_dct2000(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                         TVB_SET_ADDRESS(&pinfo->net_dst,
                                     (dest_addr_length == 4) ? AT_IPv4 : AT_IPv6,
                                     tvb, dest_addr_offset, dest_addr_length);
-                        TVB_SET_ADDRESS(&pinfo->dst,
-                                    (dest_addr_length == 4) ? AT_IPv4 : AT_IPv6,
-                                    tvb, dest_addr_offset, dest_addr_length);
+                        COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->net_dst);
                         proto_tree_add_item(ipprim_tree,
                                             (dest_addr_length == 4) ?
                                                 hf_catapult_dct2000_ipprim_dst_addr_v4 :
@@ -2763,8 +2745,6 @@ dissect_catapult_dct2000(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                     /* Add these SCTPPRIM fields inside an SCTPPRIM subtree */
                     sctpprim_tree = proto_item_add_subtree(ti_local, ett_catapult_dct2000_sctpprim);
 
-                    pinfo->ipproto = IP_PROTO_SCTP;
-
                     /* Destination address */
                     if (dest_addr_offset != 0) {
                         proto_item *addr_ti;
@@ -2772,9 +2752,7 @@ dissect_catapult_dct2000(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                         TVB_SET_ADDRESS(&pinfo->net_dst,
                                     (dest_addr_length == 4) ? AT_IPv4 : AT_IPv6,
                                     tvb, dest_addr_offset, dest_addr_length);
-                        TVB_SET_ADDRESS(&pinfo->dst,
-                                    (dest_addr_length == 4) ? AT_IPv4 : AT_IPv6,
-                                    tvb, dest_addr_offset, dest_addr_length);
+                        COPY_ADDRESS_SHALLOW(&pinfo->dst, &pinfo->net_dst);
                         proto_tree_add_item(sctpprim_tree,
                                             (dest_addr_length == 4) ?
                                                 hf_catapult_dct2000_sctpprim_dst_addr_v4 :
@@ -3215,7 +3193,7 @@ void proto_register_catapult_dct2000(void)
         },
         { &hf_catapult_dct2000_rbid,
             { "Channel",
-              "dct2000.rbid", FT_UINT8, BASE_DEC, VALS(rlc_rbid_vals), 0x0,
+              "dct2000.rbid", FT_UINT8, BASE_DEC | BASE_EXT_STRING, &rlc_rbid_vals_ext, 0x0,
               "Channel (rbid)", HFILL
             }
         },
@@ -3376,3 +3354,15 @@ void proto_register_catapult_dct2000(void)
                                    &catapult_dct2000_dissect_mac_lte_oob_messages);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

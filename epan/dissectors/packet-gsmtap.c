@@ -40,12 +40,9 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/prefs.h>
 
 #include "packet-tetra.h"
-#include "packet-rrc.h"
 
 void proto_register_gsmtap(void);
 void proto_reg_handoff_gsmtap(void);
@@ -191,8 +188,8 @@ static int hf_gsmtap_timeslot = -1;
 static int hf_gsmtap_subslot = -1;
 static int hf_gsmtap_arfcn = -1;
 static int hf_gsmtap_uplink = -1;
-static int hf_gsmtap_noise_dbm = -1;
 static int hf_gsmtap_signal_dbm = -1;
+static int hf_gsmtap_snr_db = -1;
 static int hf_gsmtap_frame_nr = -1;
 static int hf_gsmtap_burst_type = -1;
 static int hf_gsmtap_channel_type = -1;
@@ -341,12 +338,12 @@ static const value_string gsmtap_channels[] = {
 	{ GSMTAP_CHANNEL_TCH_F,		"FACCH/F" },
 	{ GSMTAP_CHANNEL_TCH_H,		"FACCH/H" },
 	{ GSMTAP_CHANNEL_PACCH,		"PACCH" },
-	{ GSMTAP_CHANNEL_CBCH52,    "CBCH" },
-	{ GSMTAP_CHANNEL_PDCH,      "PDCH" },
-	{ GSMTAP_CHANNEL_PTCCH,     "PTTCH" },
-	{ GSMTAP_CHANNEL_CBCH51,    "CBCH" },
+	{ GSMTAP_CHANNEL_CBCH52,	"CBCH" },
+	{ GSMTAP_CHANNEL_PDCH,		"PDCH" },
+	{ GSMTAP_CHANNEL_PTCCH,		"PTTCH" },
+	{ GSMTAP_CHANNEL_CBCH51,	"CBCH" },
 
-    { GSMTAP_CHANNEL_ACCH|
+	{ GSMTAP_CHANNEL_ACCH|
 	  GSMTAP_CHANNEL_SDCCH,		"LSACCH" },
 	{ GSMTAP_CHANNEL_ACCH|
 	  GSMTAP_CHANNEL_SDCCH4,	"SACCH/4" },
@@ -477,7 +474,7 @@ dissect_gsmtap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	guint8 hdr_len, type, sub_type, timeslot, subslot;
 	guint16 arfcn;
 
-	len = tvb_length(tvb);
+	len = tvb_reported_length(tvb);
 
 	hdr_len = tvb_get_guint8(tvb, offset + 1) <<2;
 	type = tvb_get_guint8(tvb, offset + 2);
@@ -490,12 +487,10 @@ dissect_gsmtap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	 * of the packet (see TS 04.04) */
 	if (type == GSMTAP_TYPE_UM &&
 	    sub_type & GSMTAP_CHANNEL_ACCH) {
-		l1h_tvb = tvb_new_subset(tvb, hdr_len, 2, 2);
-		payload_tvb = tvb_new_subset(tvb, hdr_len+2, len-(hdr_len+2),
-					     len-(hdr_len+2));
+		l1h_tvb = tvb_new_subset_length(tvb, hdr_len, 2);
+		payload_tvb = tvb_new_subset_length(tvb, hdr_len+2, len-(hdr_len+2));
 	} else {
-		payload_tvb = tvb_new_subset(tvb, hdr_len, len-hdr_len,
-					     len-hdr_len);
+		payload_tvb = tvb_new_subset_length(tvb, hdr_len, len-hdr_len);
 	}
 
 	/* We don't want any UDP related info left in the INFO field, as the
@@ -522,7 +517,7 @@ dissect_gsmtap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		case GSMTAP_CHANNEL_PCH:
 		case GSMTAP_CHANNEL_AGCH:
 		case GSMTAP_CHANNEL_CBCH51:
-        case GSMTAP_CHANNEL_CBCH52:
+		case GSMTAP_CHANNEL_CBCH52:
 			col_set_str(pinfo->cinfo, COL_RES_NET_DST, "Broadcast");
 			break;
 		default:
@@ -569,9 +564,9 @@ dissect_gsmtap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 				    tvb, offset+4, 2, ENC_BIG_ENDIAN);
 		proto_tree_add_item(gsmtap_tree, hf_gsmtap_uplink,
 				    tvb, offset+4, 2, ENC_BIG_ENDIAN);
-		proto_tree_add_item(gsmtap_tree, hf_gsmtap_noise_dbm,
-				    tvb, offset+6, 1, ENC_BIG_ENDIAN);
 		proto_tree_add_item(gsmtap_tree, hf_gsmtap_signal_dbm,
+				    tvb, offset+6, 1, ENC_BIG_ENDIAN);
+		proto_tree_add_item(gsmtap_tree, hf_gsmtap_snr_db,
 				    tvb, offset+7, 1, ENC_BIG_ENDIAN);
 		proto_tree_add_item(gsmtap_tree, hf_gsmtap_frame_nr,
 				    tvb, offset+8, 4, ENC_BIG_ENDIAN);
@@ -717,8 +712,9 @@ dissect_gsmtap(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	if (sub_handle == GSMTAP_SUB_UMTS_RRC)
 		call_dissector(rrc_sub_handles[rrc_sub_handle], payload_tvb,
 			       pinfo, tree);
-	else
+	else if (sub_handles[sub_handle] != NULL)
 		call_dissector(sub_handles[sub_handle], payload_tvb, pinfo, tree);
+	/* TODO: warn user that the WiMAX plugin must be enabled for some types */
 }
 
 static const true_false_string sacch_l1h_fpc_mode_vals = {
@@ -742,10 +738,10 @@ proto_register_gsmtap(void)
 		  FT_UINT16, BASE_DEC, NULL, GSMTAP_ARFCN_MASK, NULL, HFILL } },
 		{ &hf_gsmtap_uplink, { "Uplink", "gsmtap.uplink",
 		  FT_UINT16, BASE_DEC, NULL, GSMTAP_ARFCN_F_UPLINK, NULL, HFILL } },
-		{ &hf_gsmtap_noise_dbm, { "Signal/Noise Ratio (dB)", "gsmtap.snr_db",
-		  FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL } },
 		{ &hf_gsmtap_signal_dbm, { "Signal Level (dBm)", "gsmtap.signal_dbm",
-		  FT_UINT8, BASE_DEC, NULL, 0, NULL, HFILL } },
+		  FT_INT8, BASE_DEC, NULL, 0, NULL, HFILL } },
+		{ &hf_gsmtap_snr_db, { "Signal/Noise Ratio (dB)", "gsmtap.snr_db",
+		  FT_INT8, BASE_DEC, NULL, 0, NULL, HFILL } },
 		{ &hf_gsmtap_frame_nr, { "GSM Frame Number", "gsmtap.frame_nr",
 		  FT_UINT32, BASE_DEC, NULL, 0, NULL, HFILL } },
 		{ &hf_gsmtap_burst_type, { "Burst Type", "gsmtap.burst_type",
@@ -786,6 +782,7 @@ proto_reg_handoff_gsmtap(void)
 {
 	dissector_handle_t gsmtap_handle;
 
+	/* TODO: some dissectors may be NULL if not loaded */
 	sub_handles[GSMTAP_SUB_DATA] = find_dissector("data");
 	sub_handles[GSMTAP_SUB_UM] = find_dissector("gsm_a_ccch");
 	sub_handles[GSMTAP_SUB_UM_LAPDM] = find_dissector("lapdm");
@@ -873,3 +870,16 @@ proto_reg_handoff_gsmtap(void)
 	gsmtap_handle = create_dissector_handle(dissect_gsmtap, proto_gsmtap);
 	dissector_add_uint("udp.port", GSMTAP_UDP_PORT, gsmtap_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

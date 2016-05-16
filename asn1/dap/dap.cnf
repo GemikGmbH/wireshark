@@ -263,8 +263,8 @@ OPERATION.&ResultType
 	dissect_ber_length(actx->pinfo, tree, tvb, offset+1, &len, NULL);
 
 	if(len == 0) {
-		/* its an empty set - i.e anonymous  (assuming version is DEFAULTed) */
-		proto_tree_add_text(tree, tvb, offset, -1,"Anonymous");
+		/* it's an empty set - i.e anonymous  (assuming version is DEFAULTed) */
+		proto_tree_add_expert(tree, actx->pinfo, &ei_dap_anonymous, tvb, offset, -1);
 
 		col_append_str(actx->pinfo->cinfo, COL_INFO, " anonymous");
 
@@ -290,7 +290,7 @@ OPERATION.&ResultType
 	%(DEFAULT_BODY)s
 
 	if(out_tvb) {
-		len = tvb_length(out_tvb);
+		len = tvb_reported_length(out_tvb);
 		/* now see if we can add a string representation */
 		for(i=0; i<len; i++)
 			if(!g_ascii_isprint(tvb_get_guint8(out_tvb, i)))

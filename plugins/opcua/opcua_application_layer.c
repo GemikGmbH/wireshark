@@ -15,15 +15,11 @@
 ** Description: OpcUa Application Layer Decoder.
 **
 ** Author: Gerhard Gappmeier <gerhard.gappmeier@ascolab.com>
-** Last change by: $Author: gergap $
-**
 ******************************************************************************/
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
-#include "opcua_simpletypes.h"
 #include "opcua_application_layer.h"
 
 /** NodeId encoding mask table */
@@ -50,15 +46,10 @@ void registerApplicationLayerTypes(int proto)
     /** header field definitions */
     static hf_register_info hf[] =
     {
-        { &hf_opcua_nodeid_encodingmask,
-        {  "NodeId EncodingMask",        "application.nodeid.encodingmask", FT_UINT8,   BASE_HEX,  VALS(g_nodeidmasks), 0x0,    NULL,    HFILL }
-        },
-        { &hf_opcua_app_nsid,
-        {  "NodeId Namespace Index",     "application.nodeid.nsid",         FT_UINT8,   BASE_DEC,  NULL, 0x0,    NULL,    HFILL }
-        },
-        { &hf_opcua_app_numeric,
-        {  "NodeId Identifier Numeric",  "application.nodeid.numeric",      FT_UINT32,  BASE_DEC,  VALS(g_requesttypes), 0x0,    NULL,    HFILL }
-        }
+        /* id                               full name                    abbreviation                       type       display   strings               bitmask blurb HFILL */
+        {&hf_opcua_nodeid_encodingmask,    {"NodeId EncodingMask",       "opcua.servicenodeid.encodingmask", FT_UINT8,  BASE_HEX, VALS(g_nodeidmasks),  0x0,    NULL, HFILL}},
+        {&hf_opcua_app_nsid,               {"NodeId Namespace Index",    "opcua.servicenodeid.nsid",         FT_UINT8,  BASE_DEC, NULL,                 0x0,    NULL, HFILL}},
+        {&hf_opcua_app_numeric,            {"NodeId Identifier Numeric", "opcua.servicenodeid.numeric",      FT_UINT32, BASE_DEC, VALS(g_requesttypes), 0x0,    NULL, HFILL}}
     };
 
     proto_register_field_array(proto, hf, array_length(hf));
@@ -92,8 +83,8 @@ int parseServiceNodeId(proto_tree *tree, tvbuff_t *tvb, gint *pOffset)
         iOffset+=2;
         break;
     case 0x02: /* numeric, that does not fit into four bytes */
-        proto_tree_add_item(tree, hf_opcua_app_nsid, tvb, iOffset, 4, ENC_LITTLE_ENDIAN);
-        iOffset+=4;
+        proto_tree_add_item(tree, hf_opcua_app_nsid, tvb, iOffset, 2, ENC_LITTLE_ENDIAN);
+        iOffset+=2;
         Numeric = tvb_get_letohl(tvb, iOffset);
         proto_tree_add_item(tree, hf_opcua_app_numeric, tvb, iOffset, 4, ENC_LITTLE_ENDIAN);
         iOffset+=4;
@@ -110,4 +101,15 @@ int parseServiceNodeId(proto_tree *tree, tvbuff_t *tvb, gint *pOffset)
     return Numeric;
 }
 
-
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

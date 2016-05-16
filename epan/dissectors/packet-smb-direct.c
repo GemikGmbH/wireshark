@@ -26,8 +26,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/reassemble.h>
 #include <epan/prefs.h>
@@ -77,20 +75,20 @@ static int hf_smb_direct_reassembled_length = -1;
 static int hf_smb_direct_reassembled_data = -1;
 
 static const fragment_items smb_direct_frag_items = {
-        &ett_smb_direct_fragment,
-        &ett_smb_direct_fragments,
-        &hf_smb_direct_fragments,
-        &hf_smb_direct_fragment,
-        &hf_smb_direct_fragment_overlap,
-        &hf_smb_direct_fragment_overlap_conflict,
-        &hf_smb_direct_fragment_multiple_tails,
-        &hf_smb_direct_fragment_too_long_fragment,
-        &hf_smb_direct_fragment_error,
-        &hf_smb_direct_fragment_count,
-        &hf_smb_direct_reassembled_in,
-        &hf_smb_direct_reassembled_length,
-        &hf_smb_direct_reassembled_data,
-        "SMB Direct fragments"
+	&ett_smb_direct_fragment,
+	&ett_smb_direct_fragments,
+	&hf_smb_direct_fragments,
+	&hf_smb_direct_fragment,
+	&hf_smb_direct_fragment_overlap,
+	&hf_smb_direct_fragment_overlap_conflict,
+	&hf_smb_direct_fragment_multiple_tails,
+	&hf_smb_direct_fragment_too_long_fragment,
+	&hf_smb_direct_fragment_error,
+	&hf_smb_direct_fragment_count,
+	&hf_smb_direct_reassembled_in,
+	&hf_smb_direct_reassembled_length,
+	&hf_smb_direct_reassembled_data,
+	"SMB Direct fragments"
 };
 
 enum SMB_DIRECT_HDR_TYPE {
@@ -113,6 +111,12 @@ smb_direct_reassemble_init(void)
 {
 	reassembly_table_init(&smb_direct_reassembly_table,
 	    &addresses_ports_reassembly_table_functions);
+}
+
+static void
+smb_direct_reassemble_cleanup(void)
+{
+	reassembly_table_destroy(&smb_direct_reassembly_table);
 }
 
 static void
@@ -213,15 +217,16 @@ dissect_smb_direct(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree,
 	proto_tree *data_tree = NULL;
 	int offset = 0;
 	guint32 status = 0;
-	guint16 flags = 0;
-	proto_tree *flags_tree = NULL;
-	proto_item *flags_item = NULL;
 	guint32 remaining_length = 0;
 	guint32 data_offset = 0;
 	guint32 data_length = 0;
 	guint rlen = tvb_reported_length(tvb);
 	gint len = 0;
 	tvbuff_t *next_tvb = NULL;
+	static const int * flags[] = {
+		&hf_smb_direct_flags_response_requested,
+		NULL
+	};
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "SMBDirect");
 	col_clear(pinfo->cinfo, COL_INFO);
@@ -354,12 +359,8 @@ dissect_smb_direct(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree,
 				    tvb, offset, 2, ENC_LITTLE_ENDIAN);
 		offset += 2;
 
-		flags = tvb_get_letohs(tvb, offset);
-		flags_item = proto_tree_add_item(data_tree, hf_smb_direct_flags,
-						 tvb, offset, 2, ENC_LITTLE_ENDIAN);
-		flags_tree = proto_item_add_subtree(flags_item, ett_smb_direct_flags);
-		proto_tree_add_boolean(flags_tree, hf_smb_direct_flags_response_requested,
-				       tvb, offset, 2, flags);
+		proto_tree_add_bitmask(tree, tvb, offset, hf_smb_direct_flags,
+			       ett_smb_direct_flags, flags, ENC_LITTLE_ENDIAN);
 		offset += 2;
 
 		/* 2 bytes reserved */
@@ -385,8 +386,8 @@ dissect_smb_direct(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree,
 		}
 
 		if (data_length <= (guint32)len) {
-			next_tvb = tvb_new_subset(tvb, data_offset,
-						  data_length, data_length);
+			next_tvb = tvb_new_subset_length(tvb, data_offset,
+						  data_length);
 		}
 
 		if (next_tvb != NULL) {
@@ -683,8 +684,7 @@ void proto_register_smb_direct(void)
 	proto_register_subtree_array(ett, array_length(ett));
 	proto_register_field_array(proto_smb_direct, hf, array_length(hf));
 
-	register_heur_dissector_list("smb_direct",
-				     &smb_direct_heur_subdissector_list);
+	smb_direct_heur_subdissector_list = register_heur_dissector_list("smb_direct");
 
 	smb_direct_module = prefs_register_protocol(proto_smb_direct, NULL);
 	prefs_register_bool_preference(smb_direct_module,
@@ -693,6 +693,7 @@ void proto_register_smb_direct(void)
 				       "Whether the SMB Direct dissector should reassemble fragmented payloads",
 				       &smb_direct_reassemble);
 	register_init_routine(smb_direct_reassemble_init);
+	register_cleanup_routine(smb_direct_reassemble_cleanup);
 }
 
 void
@@ -701,10 +702,12 @@ proto_reg_handoff_smb_direct(void)
 	data_handle = find_dissector("data");
 	heur_dissector_add("iwarp_ddp_rdmap",
 			   dissect_smb_direct_iwarp_heur,
-			   proto_smb_direct);
+               "SMB Direct over iWARP", "smb_direct_iwarp",
+			   proto_smb_direct, HEURISTIC_ENABLE);
 	heur_dissector_add("infiniband.payload",
 			   dissect_smb_direct_infiniband_heur,
-			   proto_smb_direct);
+			   "SMB Direct Infiniband", "smb_direct_infiniband",
+			   proto_smb_direct, HEURISTIC_ENABLE);
 
 }
 

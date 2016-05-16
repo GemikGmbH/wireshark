@@ -45,10 +45,10 @@
 
 #include "config.h"
 
-#include <glib.h>
+#include <wiretap/wtap.h>
+
 #include <epan/packet.h>
 #include <epan/exceptions.h>
-#include <epan/etypes.h>
 #include <epan/expert.h>
 #include <epan/prefs.h>
 #include <epan/show_exception.h>
@@ -66,7 +66,9 @@ static int hf_cwids_unknown3 = -1;
 
 static gint ett_cwids = -1;
 
-static dissector_handle_t ieee80211_handle;
+static expert_field ie_ieee80211_subpacket = EI_INIT;
+
+static dissector_handle_t ieee80211_radio_handle;
 
 static void
 dissect_cwids(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
@@ -75,7 +77,6 @@ dissect_cwids(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	proto_tree *ti, *cwids_tree;
 	volatile int offset = 0;
 	guint16 capturelen;
-	void *pd_save;
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "CWIDS");
 	col_set_str(pinfo->cinfo, COL_INFO, "Cwids: ");
@@ -83,14 +84,22 @@ dissect_cwids(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 	cwids_tree = NULL;
 
-	while(tvb_length_remaining(tvb, offset) > 0) {
+	while(tvb_reported_length_remaining(tvb, offset) > 0) {
+		struct ieee_802_11_phdr phdr;
+
 		ti = proto_tree_add_item(tree, proto_cwids, tvb, offset, 28, ENC_NA);
 		cwids_tree = proto_item_add_subtree(ti, ett_cwids);
 
+		phdr.fcs_len = 0;	/* no FCS */
+		phdr.decrypted = FALSE;
+		phdr.datapad = FALSE;
+		phdr.phy = PHDR_802_11_PHY_UNKNOWN;
+		phdr.presence_flags = PHDR_802_11_HAS_CHANNEL;
 		proto_tree_add_item(cwids_tree, hf_cwids_version, tvb, offset, 2, ENC_BIG_ENDIAN);
 		offset += 2;
 		proto_tree_add_item(cwids_tree, hf_cwids_unknown1, tvb, offset, 7, ENC_NA);
 		offset += 7;
+		phdr.channel = tvb_get_guint8(tvb, offset);
 		proto_tree_add_item(cwids_tree, hf_cwids_channel, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 		proto_tree_add_item(cwids_tree, hf_cwids_unknown2, tvb, offset, 6, ENC_NA);
@@ -103,29 +112,14 @@ dissect_cwids(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		proto_tree_add_item(cwids_tree, hf_cwids_unknown3, tvb, offset, 8, ENC_NA);
 		offset += 8;
 
-		wlan_tvb = tvb_new_subset(tvb, offset, capturelen, capturelen);
+		wlan_tvb = tvb_new_subset_length(tvb, offset, capturelen);
 		/* Continue after ieee80211 dissection errors */
-		pd_save = pinfo->private_data;
 		TRY {
-			call_dissector(ieee80211_handle, wlan_tvb, pinfo, tree);
+			call_dissector_with_data(ieee80211_radio_handle, wlan_tvb, pinfo, tree, &phdr);
 		} CATCH_BOUNDS_ERRORS {
 			show_exception(wlan_tvb, pinfo, tree, EXCEPT_CODE, GET_MESSAGE);
 
-			/*  Restore the private_data structure in case one of the
-			 *  called dissectors modified it (and, due to the exception,
-			 *  was unable to restore it).
-			 */
-			pinfo->private_data = pd_save;
-
-#if 0
-	wlan_tvb = tvb_new_subset(tvb, offset, capturelen, capturelen);
-			/* FIXME: Why does this throw an exception? */
-			proto_tree_add_text(cwids_tree, wlan_tvb, offset, capturelen,
-				"[Malformed or short IEEE80211 subpacket]");
-#else
-			tvb_new_subset(tvb, offset, capturelen, capturelen);
-#endif
-	;
+			expert_add_info(pinfo, ti, &ie_ieee80211_subpacket);
 		} ENDTRY;
 
 		offset += capturelen;
@@ -172,11 +166,18 @@ proto_register_cwids(void)
 		&ett_cwids,
 	};
 
+	static ei_register_info ei[] = {
+		{ &ie_ieee80211_subpacket, { "cwids.ieee80211_malformed", PI_MALFORMED, PI_ERROR, "Malformed or short IEEE80211 subpacket", EXPFILL }},
+	};
+
 	module_t *cwids_module;
+	expert_module_t* expert_cwids;
 
 	proto_cwids = proto_register_protocol("Cisco Wireless IDS Captures", "CWIDS", "cwids");
 	proto_register_field_array(proto_cwids, hf, array_length(hf));
 	proto_register_subtree_array(ett, array_length(ett));
+	expert_cwids = expert_register_protocol(proto_cwids);
+	expert_register_field_array(expert_cwids, ei, array_length(ei));
 
 	cwids_module = prefs_register_protocol(proto_cwids, proto_reg_handoff_cwids);
 	prefs_register_uint_preference(cwids_module, "udp.port",
@@ -195,8 +196,8 @@ proto_reg_handoff_cwids(void)
 
 	if (!initialized) {
 		cwids_handle = create_dissector_handle(dissect_cwids, proto_cwids);
-		dissector_add_handle("udp.port", cwids_handle);
-		ieee80211_handle = find_dissector("wlan_withoutfcs");
+		dissector_add_for_decode_as("udp.port", cwids_handle);
+		ieee80211_radio_handle = find_dissector("wlan_radio");
 		initialized = TRUE;
 	} else {
 		if (saved_udp_port != 0) {
@@ -209,3 +210,15 @@ proto_reg_handoff_cwids(void)
 	saved_udp_port = global_udp_port;
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

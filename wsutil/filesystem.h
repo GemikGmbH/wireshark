@@ -40,7 +40,7 @@ extern "C" {
  * and save it for future use.  Returns NULL on success, and a
  * g_mallocated string containing an error on failure.
  */
-WS_DLL_PUBLIC char *init_progfile_dir(const char *arg0, int (*main)(int, char **));
+WS_DLL_PUBLIC char *init_progfile_dir(const char *arg0, void *function_addr);
 
 /*
  * Get the directory in which the program resides.
@@ -55,11 +55,11 @@ WS_DLL_PUBLIC const char *get_progfile_dir(void);
 WS_DLL_PUBLIC const char *get_plugin_dir(void);
 
 /*
- * Get the directory in which python plugins are stored; this must not be
- * called before init_progfile_dir() is called, as they might be stored in a
+ * Get the directory in which extcap hooks are stored; this must not be called
+ * before init_progfile_dir() is called, as they might be stored in a
  * subdirectory of the program file directory.
  */
-WS_DLL_PUBLIC const char *get_wspython_dir(void);
+WS_DLL_PUBLIC const char *get_extcap_dir(void);
 
 /*
  * Get the flag indicating whether we're running from a build

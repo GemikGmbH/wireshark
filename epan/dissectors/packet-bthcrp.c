@@ -163,10 +163,10 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
                 "Parameter length is shorter than 2 in response");
     }
 
-    if (parameter_length < tvb_length_remaining(tvb, offset)) {
+    if (parameter_length < tvb_reported_length_remaining(tvb, offset)) {
         expert_add_info_format(pinfo, pitem, &ei_bthcrp_control_parameter_length,
                 "Parameter length is shorter than payload length");
-    } else if (parameter_length > tvb_length_remaining(tvb, offset)) {
+    } else if (parameter_length > tvb_reported_length_remaining(tvb, offset)) {
         expert_add_info_format(pinfo, pitem, &ei_bthcrp_control_parameter_length,
                 "Parameter length is larger than payload length");
     }
@@ -177,9 +177,9 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     }
 
     if (control_pdu_id >= 0x8000) {
-        if (tvb_length_remaining(tvb, offset)) {
-            proto_tree_add_item(tree, hf_bthcrp_data, tvb, offset, -1, ENC_NA);
-            offset += tvb_length_remaining(tvb, offset);
+        if (tvb_reported_length_remaining(tvb, offset)) {
+            proto_tree_add_item(tree, hf_bthcrp_data, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA);
+            offset += tvb_reported_length_remaining(tvb, offset);
         }
     } else switch(control_pdu_id) {
         case 0x0001: /* CR_DataChannelCreditGrant */
@@ -248,10 +248,10 @@ dissect_control(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
             } else {
                 guint8 *id;
 
-                proto_tree_add_item(tree, hf_bthcrp_control_1284_id, tvb, offset, -1, ENC_ASCII | ENC_NA);
-                id = tvb_get_string(NULL, tvb, offset, tvb_length_remaining(tvb, offset));
+                proto_tree_add_item(tree, hf_bthcrp_control_1284_id, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_ASCII | ENC_NA);
+                id = tvb_get_string_enc(wmem_packet_scope(), tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_ASCII);
                 col_append_fstr(pinfo->cinfo, COL_INFO, " - 1284 ID: %s", id);
-                offset += tvb_length_remaining(tvb, offset);
+                offset += tvb_reported_length_remaining(tvb, offset);
             }
             break;
         case 0x0007: /* CR_SoftReset */
@@ -310,7 +310,7 @@ dissect_data(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, gint offset)
     next_tvb = tvb_new_subset_remaining(tvb, offset);
     call_dissector(data_handle, next_tvb, pinfo, tree);
 
-    offset += tvb_length_remaining(tvb, offset);
+    offset += tvb_reported_length_remaining(tvb, offset);
 
     return offset;
 }
@@ -338,9 +338,9 @@ dissect_notification(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     if (notification_pdu_id >= 0x8000) {
         proto_item_append_text(pitem, " (Vendor Specific)");
         col_append_str(pinfo->cinfo, COL_INFO, " (Vendor Specific)");
-        if (tvb_length_remaining(tvb, offset)) {
-            proto_tree_add_item(tree, hf_bthcrp_data, tvb, offset, -1, ENC_NA);
-            offset += tvb_length_remaining(tvb, offset);
+        if (tvb_reported_length_remaining(tvb, offset)) {
+            proto_tree_add_item(tree, hf_bthcrp_data, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA);
+            offset += tvb_reported_length_remaining(tvb, offset);
         }
     } else if (notification_pdu_id != 0x001) {
         proto_item_append_text(pitem, " (Reserved)");
@@ -362,31 +362,101 @@ dissect_bthcrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
     proto_item      *main_item;
     proto_tree      *main_tree;
-    btl2cap_data_t  *l2cap_data;
     gint             offset = 0;
     gint             protocol = -1;
-    wmem_tree_key_t  key[10];
-    guint32          k_interface_id;
-    guint32          k_adapter_id;
-    guint32          k_sdp_psm;
-    guint32          k_direction;
-    guint32          k_bd_addr_oui;
-    guint32          k_bd_addr_id;
-    guint32          k_service_type;
-    guint32          k_service_channel;
-    guint32          k_frame_number;
-    guint32          interface_id;
-    guint32          adapter_id;
-    guint32          remote_bd_addr_oui;
-    guint32          remote_bd_addr_id;
-    service_info_t  *service_info;
+    gboolean         is_client_message = FALSE;
+    gint             previous_proto;
 
-    gboolean        is_client_message = FALSE;
+    previous_proto = (GPOINTER_TO_INT(wmem_list_frame_data(wmem_list_frame_prev(wmem_list_tail(pinfo->layers)))));
+    if (previous_proto == proto_btl2cap) {
+        btl2cap_data_t  *l2cap_data;
+        wmem_tree_key_t  key[10];
+        guint32          interface_id;
+        guint32          adapter_id;
+        guint32          sdp_psm = SDP_PSM_DEFAULT;
+        guint32          direction;
+        guint32          bd_addr_oui;
+        guint32          bd_addr_id;
+        guint32          service_type;
+        guint32          service_channel;
+        guint32          frame_number;
+        service_info_t  *service_info;
 
-    /* Reject the packet if data is NULL */
-    if (data == NULL)
-        return 0;
-    l2cap_data = (btl2cap_data_t *) data;
+        l2cap_data = (btl2cap_data_t *) data;
+
+        interface_id       = l2cap_data->interface_id;
+        adapter_id         = l2cap_data->adapter_id;
+
+        direction       = (l2cap_data->is_local_psm) ? P2P_DIR_SENT : P2P_DIR_RECV;
+        if (direction == P2P_DIR_RECV) {
+            bd_addr_oui = l2cap_data->remote_bd_addr_oui;
+            bd_addr_id  = l2cap_data->remote_bd_addr_id;
+        } else {
+            bd_addr_oui = 0;
+            bd_addr_id  = 0;
+        }
+
+        service_type    = BTSDP_L2CAP_PROTOCOL_UUID;
+        service_channel = l2cap_data->psm;
+        frame_number    = pinfo->fd->num;
+
+        key[0].length = 1;
+        key[0].key = &interface_id;
+        key[1].length = 1;
+        key[1].key = &adapter_id;
+        key[2].length = 1;
+        key[2].key = &sdp_psm;
+        key[3].length = 1;
+        key[3].key = &direction;
+        key[4].length = 1;
+        key[4].key = &bd_addr_oui;
+        key[5].length = 1;
+        key[5].key = &bd_addr_id;
+        key[6].length = 1;
+        key[6].key = &service_type;
+        key[7].length = 1;
+        key[7].key = &service_channel;
+        key[8].length = 1;
+        key[8].key = &frame_number;
+        key[9].length = 0;
+        key[9].key = NULL;
+
+        service_info = btsdp_get_service_info(key);
+        if (service_info && service_info->interface_id == interface_id &&
+                service_info->adapter_id == adapter_id &&
+                service_info->sdp_psm == SDP_PSM_DEFAULT &&
+                ((service_info->direction == P2P_DIR_RECV &&
+                service_info->bd_addr_oui == bd_addr_oui &&
+                service_info->bd_addr_id == bd_addr_id) ||
+                (service_info->direction != P2P_DIR_RECV &&
+                service_info->bd_addr_oui == 0 &&
+                service_info->bd_addr_id == 0)) &&
+                service_info->type == BTSDP_L2CAP_PROTOCOL_UUID &&
+                service_info->channel == l2cap_data->psm) {
+
+            if ((service_info->protocol == BTSDP_HARDCOPY_CONTROL_CHANNEL_PROTOCOL_UUID ||
+                    service_info->protocol == BTSDP_HARDCOPY_DATA_CHANNEL_PROTOCOL_UUID) &&
+                    ((!l2cap_data->is_local_psm && pinfo->p2p_dir == P2P_DIR_SENT) ||
+                    (l2cap_data->is_local_psm && pinfo->p2p_dir == P2P_DIR_RECV))) {
+                is_client_message = TRUE;
+            } else if (service_info->protocol == BTSDP_HARDCOPY_NOTIFICATION_PROTOCOL_UUID &&
+                    ((l2cap_data->is_local_psm && pinfo->p2p_dir == P2P_DIR_SENT) ||
+                    (!l2cap_data->is_local_psm && pinfo->p2p_dir == P2P_DIR_RECV))) {
+                is_client_message = TRUE;
+            }
+
+            protocol = service_info->protocol;
+        }
+
+        if (psm_control != 0 && l2cap_data->psm == psm_control) {
+            protocol = BTSDP_HARDCOPY_CONTROL_CHANNEL_PROTOCOL_UUID;
+        } else if (psm_data_stream != 0 && l2cap_data->psm == psm_data_stream) {
+            protocol = BTSDP_HARDCOPY_DATA_CHANNEL_PROTOCOL_UUID;
+        } else if (psm_notification != 0 && l2cap_data->psm == psm_notification) {
+            protocol = BTSDP_HARDCOPY_NOTIFICATION_PROTOCOL_UUID;
+        }
+
+    }
 
     main_item = proto_tree_add_item(tree, proto_bthcrp, tvb, offset, -1, ENC_NA);
     main_tree = proto_item_add_subtree(main_item, ett_bthcrp);
@@ -401,79 +471,8 @@ dissect_bthcrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
             col_set_str(pinfo->cinfo, COL_INFO, "Rcvd ");
             break;
         default:
-            col_add_fstr(pinfo->cinfo, COL_INFO, "Unknown direction %d ",
-                pinfo->p2p_dir);
+            col_set_str(pinfo->cinfo, COL_INFO, "UnknownDirection ");
             break;
-    }
-
-    interface_id       = l2cap_data->interface_id;
-    adapter_id         = l2cap_data->adapter_id;
-
-    k_interface_id    = interface_id;
-    k_adapter_id      = adapter_id;
-    k_sdp_psm         = SDP_PSM_DEFAULT;
-    k_direction       = (l2cap_data->is_local_psm) ? P2P_DIR_SENT : P2P_DIR_RECV;
-    if (k_direction == P2P_DIR_RECV) {
-        k_bd_addr_oui = l2cap_data->remote_bd_addr_oui;
-        k_bd_addr_id  = l2cap_data->remote_bd_addr_id;
-    } else {
-        k_bd_addr_oui = 0;
-        k_bd_addr_id  = 0;
-    }
-
-    remote_bd_addr_oui = k_bd_addr_oui;
-    remote_bd_addr_id  = k_bd_addr_id;
-
-    k_service_type    = BTSDP_L2CAP_PROTOCOL_UUID;
-    k_service_channel = l2cap_data->psm;
-    k_frame_number    = pinfo->fd->num;
-
-    key[0].length = 1;
-    key[0].key = &k_interface_id;
-    key[1].length = 1;
-    key[1].key = &k_adapter_id;
-    key[2].length = 1;
-    key[2].key = &k_sdp_psm;
-    key[3].length = 1;
-    key[3].key = &k_direction;
-    key[4].length = 1;
-    key[4].key = &k_bd_addr_oui;
-    key[5].length = 1;
-    key[5].key = &k_bd_addr_id;
-    key[6].length = 1;
-    key[6].key = &k_service_type;
-    key[7].length = 1;
-    key[7].key = &k_service_channel;
-    key[8].length = 1;
-    key[8].key = &k_frame_number;
-    key[9].length = 0;
-    key[9].key = NULL;
-
-    service_info = btsdp_get_service_info(key);
-    if (service_info && service_info->interface_id == interface_id &&
-            service_info->adapter_id == adapter_id &&
-            service_info->sdp_psm == SDP_PSM_DEFAULT &&
-            ((service_info->direction == P2P_DIR_RECV &&
-            service_info->bd_addr_oui == remote_bd_addr_oui &&
-            service_info->bd_addr_id == remote_bd_addr_id) ||
-            (service_info->direction != P2P_DIR_RECV &&
-            service_info->bd_addr_oui == 0 &&
-            service_info->bd_addr_id == 0)) &&
-            service_info->type == BTSDP_L2CAP_PROTOCOL_UUID &&
-            service_info->channel == l2cap_data->psm) {
-
-        if ((service_info->protocol == BTSDP_HARDCOPY_CONTROL_CHANNEL_PROTOCOL_UUID ||
-                service_info->protocol == BTSDP_HARDCOPY_DATA_CHANNEL_PROTOCOL_UUID) &&
-                ((!l2cap_data->is_local_psm && pinfo->p2p_dir == P2P_DIR_SENT) ||
-                (l2cap_data->is_local_psm && pinfo->p2p_dir == P2P_DIR_RECV))) {
-            is_client_message = TRUE;
-        } else if (service_info->protocol == BTSDP_HARDCOPY_NOTIFICATION_PROTOCOL_UUID &&
-                ((l2cap_data->is_local_psm && pinfo->p2p_dir == P2P_DIR_SENT) ||
-                (!l2cap_data->is_local_psm && pinfo->p2p_dir == P2P_DIR_RECV))) {
-            is_client_message = TRUE;
-        }
-
-        protocol = service_info->protocol;
     }
 
     if (force_client != FORCE_CLIENT_DEFAULT) {
@@ -481,23 +480,20 @@ dissect_bthcrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
                 (force_client != FORCE_CLIENT_YES && pinfo->p2p_dir == P2P_DIR_RECV);
     }
 
-    if ((psm_control != 0 && l2cap_data->psm == psm_control) ||
-            (psm_control == 0 && protocol == BTSDP_HARDCOPY_CONTROL_CHANNEL_PROTOCOL_UUID)) {
+    if (protocol == BTSDP_HARDCOPY_CONTROL_CHANNEL_PROTOCOL_UUID) {
         offset = dissect_control(tvb, pinfo, main_tree, offset, is_client_message);
-    } else if ((psm_data_stream != 0 && l2cap_data->psm == psm_data_stream) ||
-            (psm_data_stream == 0 && protocol == BTSDP_HARDCOPY_DATA_CHANNEL_PROTOCOL_UUID)) {
+    } else if (protocol == BTSDP_HARDCOPY_DATA_CHANNEL_PROTOCOL_UUID) {
         offset = dissect_data(tvb, pinfo, main_tree, offset);
-    } else if ((psm_notification != 0 && l2cap_data->psm == psm_notification) ||
-            (psm_notification == 0 && protocol == BTSDP_HARDCOPY_NOTIFICATION_PROTOCOL_UUID)) {
+    } else if (protocol == BTSDP_HARDCOPY_NOTIFICATION_PROTOCOL_UUID) {
         offset = dissect_notification(tvb, pinfo, main_tree, offset, is_client_message);
     } else {
-        col_append_fstr(pinfo->cinfo, COL_INFO, "HCRP stream (CID: 0x%04X)", l2cap_data->cid);
+        col_append_fstr(pinfo->cinfo, COL_INFO, "HCRP stream");
     }
 
-    if (tvb_length_remaining(tvb, offset)) {
+    if (tvb_reported_length_remaining(tvb, offset)) {
         proto_item *pitem;
 
-        pitem = proto_tree_add_item(main_tree, hf_bthcrp_data, tvb, offset, -1, ENC_NA);
+        pitem = proto_tree_add_item(main_tree, hf_bthcrp_data, tvb, offset, tvb_reported_length_remaining(tvb, offset), ENC_NA);
         expert_add_info(pinfo, pitem, &ei_bthcrp_unexpected_data);
     }
 
@@ -678,15 +674,15 @@ proto_reg_handoff_bthcrp(void)
 {
     data_handle = find_dissector("data");
 
-    dissector_add_uint("btl2cap.service", BTSDP_HARDCOPY_CONTROL_CHANNEL_PROTOCOL_UUID, bthcrp_handle);
-    dissector_add_uint("btl2cap.service", BTSDP_HARDCOPY_DATA_CHANNEL_PROTOCOL_UUID, bthcrp_handle);
-    dissector_add_uint("btl2cap.service", BTSDP_HARDCOPY_NOTIFICATION_PROTOCOL_UUID, bthcrp_handle);
-    dissector_add_uint("btl2cap.service", BTSDP_HCRP_PRINT_SERVICE_UUID, bthcrp_handle);
-    dissector_add_uint("btl2cap.service", BTSDP_HCRP_SCAN_SERVICE_UUID, bthcrp_handle);
-    dissector_add_uint("btl2cap.service", BTSDP_HCRP_SERVICE_UUID, bthcrp_handle);
+    dissector_add_string("bluetooth.uuid", "12", bthcrp_handle);
+    dissector_add_string("bluetooth.uuid", "14", bthcrp_handle);
+    dissector_add_string("bluetooth.uuid", "16", bthcrp_handle);
+    dissector_add_string("bluetooth.uuid", "1125", bthcrp_handle);
+    dissector_add_string("bluetooth.uuid", "1126", bthcrp_handle);
+    dissector_add_string("bluetooth.uuid", "1127", bthcrp_handle);
 
-    dissector_add_handle("btl2cap.psm", bthcrp_handle);
-    dissector_add_handle("btl2cap.cid", bthcrp_handle);
+    dissector_add_for_decode_as("btl2cap.psm", bthcrp_handle);
+    dissector_add_for_decode_as("btl2cap.cid", bthcrp_handle);
 }
 
 /*

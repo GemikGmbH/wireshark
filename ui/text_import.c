@@ -105,7 +105,6 @@
 #  define __EXTENSIONS__
 #endif
 
-#include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -125,7 +124,7 @@
 #include <wsutil/crc32.h>
 #include <epan/in_cksum.h>
 
-#ifdef NEED_STRPTIME_H
+#ifndef HAVE_STRPTIME
 # include "wsutil/strptime.h"
 #endif
 
@@ -143,7 +142,7 @@ static guint32 hdr_ethernet_proto = 0;
 
 /* Dummy IP header */
 static int hdr_ip = FALSE;
-static long hdr_ip_proto = 0;
+static guint hdr_ip_proto = 0;
 
 /* Dummy UDP header */
 static int hdr_udp = FALSE;
@@ -318,6 +317,11 @@ parse_num (const char *str, int offset)
 {
     unsigned long num;
     char *c;
+
+    if (str == NULL) {
+        fprintf(stderr, "FATAL ERROR: str is NULL\n");
+        exit(1);
+    }
 
     num = strtoul(str, &c, offset ? offset_base : 16);
     if (c==str) {
@@ -519,6 +523,7 @@ write_current_packet (void)
             /* Write the packet */
             struct wtap_pkthdr pkthdr;
             int err;
+            gchar *err_info;
 
             memset(&pkthdr, 0, sizeof(struct wtap_pkthdr));
 
@@ -531,7 +536,18 @@ write_current_packet (void)
             pkthdr.pack_flags |= direction;
             pkthdr.presence_flags = WTAP_HAS_CAP_LEN|WTAP_HAS_INTERFACE_ID|WTAP_HAS_TS|WTAP_HAS_PACK_FLAGS;
 
-            wtap_dump(wdh, &pkthdr, packet_buf, &err);
+            /* XXX - report errors! */
+            if (!wtap_dump(wdh, &pkthdr, packet_buf, &err, &err_info)) {
+                switch (err) {
+
+                case WTAP_ERR_UNWRITABLE_REC_DATA:
+                    g_free(err_info);
+                    break;
+
+                default:
+                    break;
+                }
+            }
         }
     }
 

@@ -25,8 +25,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/expert.h>
@@ -74,7 +72,7 @@ dissect_moldudp64_msgblk(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree,
     guint16     msglen, real_msglen, whole_len;
     gint        remaining;
 
-    if (tvb_length_remaining(tvb, offset) < MOLDUDP64_MSGLEN_LEN)
+    if (tvb_captured_length_remaining(tvb, offset) < MOLDUDP64_MSGLEN_LEN)
         return 0;
 
     msglen = tvb_get_ntohs(tvb, offset);
@@ -195,7 +193,7 @@ dissect_moldudp64(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *dat
     }
 
     /* Return the amount of data this dissector was able to dissect */
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 

@@ -24,10 +24,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <epan/arptypes.h>
-#include <epan/prefs.h>
 #include <epan/packet.h>
+#include <epan/arptypes.h>
 #include <wsutil/pint.h>
 #include "packet-sll.h"
 #include "packet-ipx.h"
@@ -197,7 +195,6 @@ dissect_sll(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	guint16 pkttype;
 	guint16 protocol;
 	guint16 hatype, halen;
-	const guint8 *src;
 	proto_item *ti;
 	tvbuff_t *next_tvb;
 	proto_tree *fh_tree = NULL;
@@ -247,30 +244,20 @@ dissect_sll(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	}
 	switch (halen) {
 	case 4:
-		src = tvb_get_ptr(tvb, 6, 4);
-		SET_ADDRESS(&pinfo->dl_src, AT_IPv4, 4, src);
-		SET_ADDRESS(&pinfo->src, AT_IPv4, 4, src);
-		if (tree) {
-			proto_tree_add_item(fh_tree, &hfi_sll_src_ipv4, tvb,
-			    6, 4, ENC_BIG_ENDIAN);
-		}
+		TVB_SET_ADDRESS(&pinfo->dl_src, AT_IPv4, tvb, 6, 4);
+		COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->dl_src);
+		proto_tree_add_item(fh_tree, &hfi_sll_src_ipv4, tvb, 6, 4, ENC_BIG_ENDIAN);
 		break;
 	case 6:
-		src = tvb_get_ptr(tvb, 6, 6);
-		SET_ADDRESS(&pinfo->dl_src, AT_ETHER, 6, src);
-		SET_ADDRESS(&pinfo->src, AT_ETHER, 6, src);
-		if (tree) {
-			proto_tree_add_ether(fh_tree, hfi_sll_src_eth.id, tvb,
-			    6, 6, src);
-		}
+		TVB_SET_ADDRESS(&pinfo->dl_src, AT_ETHER, tvb, 6, 6);
+		COPY_ADDRESS_SHALLOW(&pinfo->src, &pinfo->dl_src);
+		proto_tree_add_item(fh_tree, &hfi_sll_src_eth, tvb, 6, 6, ENC_NA);
 		break;
 	case 0:
 		break;
 	default:
-		if (tree) {
-			proto_tree_add_item(fh_tree, &hfi_sll_src_other, tvb,
+		proto_tree_add_item(fh_tree, &hfi_sll_src_other, tvb,
 			    6, halen > 8 ? 8 : halen, ENC_NA);
-		}
 		break;
 	}
 
@@ -329,7 +316,7 @@ proto_register_sll(void)
 		&hfi_sll_gretype,
 		/* registered here but handled in ethertype.c */
 		&hfi_sll_etype,
-                &hfi_sll_trailer,
+		&hfi_sll_trailer,
 	};
 #endif
 
@@ -368,3 +355,16 @@ proto_reg_handoff_sll(void)
 
 	dissector_add_uint("wtap_encap", WTAP_ENCAP_SLL, sll_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

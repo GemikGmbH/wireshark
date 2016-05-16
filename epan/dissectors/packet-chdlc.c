@@ -22,7 +22,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <wsutil/pint.h>
 #include <epan/etypes.h>
@@ -33,6 +32,9 @@
 #include "packet-chdlc.h"
 #include "packet-ppp.h"
 #include "packet-ip.h"
+#include "packet-juniper.h"
+#include "packet-l2tp.h"
+#include <epan/expert.h>
 
 /*
  * See section 4.3.1 of RFC 1547, and
@@ -47,16 +49,21 @@ void proto_reg_handoff_slarp(void);
 
 static int proto_chdlc = -1;
 static int hf_chdlc_addr = -1;
+static int hf_chdlc_control = -1;
 static int hf_chdlc_proto = -1;
+static int hf_chdlc_clns_padding = -1;
 
 static gint ett_chdlc = -1;
 
 static int proto_slarp = -1;
 static int hf_slarp_ptype = -1;
 static int hf_slarp_address = -1;
+static int hf_slarp_netmask = -1;
 static int hf_slarp_mysequence = -1;
-/* static int hf_slarp_yoursequence = -1; */
+static int hf_slarp_yoursequence = -1;
+static int hf_slarp_reliability = -1;
 
+static expert_field ei_slarp_reliability = EI_INIT;
 static gint ett_slarp = -1;
 
 static dissector_handle_t data_handle;
@@ -127,12 +134,10 @@ chdlctype(guint16 chdlc_type, tvbuff_t *tvb, int offset_after_chdlctype,
           int chdlctype_id)
 {
   tvbuff_t *next_tvb;
-  int       padbyte = 0;
+  int       padbyte;
 
-  if (tree) {
-    proto_tree_add_uint(fh_tree, chdlctype_id, tvb,
+  proto_tree_add_uint(fh_tree, chdlctype_id, tvb,
                         offset_after_chdlctype - 2, 2, chdlc_type);
-  }
 
   padbyte = tvb_get_guint8(tvb, offset_after_chdlctype);
   if (chdlc_type == CHDLCTYPE_OSI &&
@@ -140,8 +145,7 @@ chdlctype(guint16 chdlc_type, tvbuff_t *tvb, int offset_after_chdlctype,
        padbyte == NLPID_ISO9542_ESIS ||
        padbyte == NLPID_ISO10589_ISIS)) {
     /* There is a Padding Byte for CLNS protocols over Cisco HDLC */
-    proto_tree_add_text(fh_tree, tvb, offset_after_chdlctype, 1, "CLNS Padding: 0x%02x",
-        padbyte);
+    proto_tree_add_item(fh_tree, hf_chdlc_clns_padding, tvb, offset_after_chdlctype, 1, ENC_BIG_ENDIAN);
     next_tvb = tvb_new_subset_remaining(tvb, offset_after_chdlctype + 1);
   } else {
     next_tvb = tvb_new_subset_remaining(tvb, offset_after_chdlctype);
@@ -161,7 +165,6 @@ dissect_chdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
   proto_item *ti;
   proto_tree *fh_tree = NULL;
-  guint8      addr;
   guint16     proto;
 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "CHDLC");
@@ -185,14 +188,14 @@ dissect_chdlc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     break;
   }
 
-  addr = tvb_get_guint8(tvb, 0);
   proto = tvb_get_ntohs(tvb, 2);
 
   if (tree) {
     ti = proto_tree_add_item(tree, proto_chdlc, tvb, 0, 4, ENC_NA);
     fh_tree = proto_item_add_subtree(ti, ett_chdlc);
 
-    proto_tree_add_uint(fh_tree, hf_chdlc_addr, tvb, 0, 1, addr);
+    proto_tree_add_item(fh_tree, hf_chdlc_addr, tvb, 0, 1, ENC_NA);
+    proto_tree_add_item(fh_tree, hf_chdlc_control, tvb, 1, 1, ENC_NA);
   }
 
   decode_fcs(tvb, fh_tree, chdlc_fcs_decode, 2);
@@ -207,10 +210,17 @@ proto_register_chdlc(void)
     { &hf_chdlc_addr,
       { "Address", "chdlc.address", FT_UINT8, BASE_HEX,
         VALS(chdlc_address_vals), 0x0, NULL, HFILL }},
+    { &hf_chdlc_control,
+      { "Control", "chdlc.control", FT_UINT8, BASE_HEX,
+        NULL, 0x0, NULL, HFILL }},
     { &hf_chdlc_proto,
       { "Protocol", "chdlc.protocol", FT_UINT16, BASE_HEX,
         VALS(chdlc_vals), 0x0, NULL, HFILL }},
+    { &hf_chdlc_clns_padding,
+      { "CLNS Padding", "chdlc.clns_padding", FT_UINT8, BASE_HEX,
+        NULL, 0x0, NULL, HFILL }},
   };
+
   static gint *ett[] = {
     &ett_chdlc,
   };
@@ -221,7 +231,7 @@ proto_register_chdlc(void)
   proto_register_field_array(proto_chdlc, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
-/* subdissector code */
+  /* subdissector code */
   subdissector_table = register_dissector_table("chdlc.protocol",
                                                 "Cisco HDLC protocol",
                                                 FT_UINT16, BASE_HEX);
@@ -249,6 +259,8 @@ proto_reg_handoff_chdlc(void)
   chdlc_handle = find_dissector("chdlc");
   dissector_add_uint("wtap_encap", WTAP_ENCAP_CHDLC, chdlc_handle);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_CHDLC_WITH_PHDR, chdlc_handle);
+  dissector_add_uint("juniper.proto", JUNIPER_PROTO_CHDLC, chdlc_handle);
+  dissector_add_uint("l2tp.pw_type", L2TPv3_PROTOCOL_CHDLC, chdlc_handle);
 }
 
 
@@ -274,6 +286,7 @@ dissect_slarp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   guint32     addr;
   guint32     mysequence;
   guint32     yoursequence;
+  proto_item* reliability_item;
 
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "SLARP");
   col_clear(pinfo->cinfo, COL_INFO);
@@ -296,8 +309,7 @@ dissect_slarp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     if (tree) {
       proto_tree_add_uint(slarp_tree, hf_slarp_ptype, tvb, 0, 4, code);
       proto_tree_add_item(slarp_tree, hf_slarp_address, tvb, 4, 4, ENC_BIG_ENDIAN);
-      proto_tree_add_text(slarp_tree, tvb, 8, 4,
-                          "Netmask: %s", tvb_ip_to_str(tvb, 8));
+      proto_tree_add_item(slarp_tree, hf_slarp_netmask, tvb, 8, 4, ENC_BIG_ENDIAN);
     }
     break;
 
@@ -312,8 +324,13 @@ dissect_slarp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
       proto_tree_add_uint(slarp_tree, hf_slarp_ptype, tvb, 0, 4, code);
       proto_tree_add_uint(slarp_tree, hf_slarp_mysequence, tvb, 4, 4,
                           mysequence);
-      proto_tree_add_uint(slarp_tree, hf_slarp_mysequence, tvb, 8, 4,
+      proto_tree_add_uint(slarp_tree, hf_slarp_yoursequence, tvb, 8, 4,
                           yoursequence);
+      reliability_item = proto_tree_add_item(slarp_tree, hf_slarp_reliability, tvb,
+        12, 2, ENC_BIG_ENDIAN);
+      if (tvb_get_ntohs(tvb, 12) != 0xFFFF) {
+        expert_add_info(pinfo, reliability_item, &ei_slarp_reliability);
+      }
     }
     break;
 
@@ -331,6 +348,8 @@ dissect_slarp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 void
 proto_register_slarp(void)
 {
+  expert_module_t* expert_slarp;
+
   static hf_register_info hf[] = {
     { &hf_slarp_ptype,
       { "Packet type", "slarp.ptype", FT_UINT32, BASE_DEC,
@@ -340,22 +359,34 @@ proto_register_slarp(void)
         NULL, 0x0, NULL, HFILL }},
     /* XXX - need an FT_ for netmasks, which is like FT_IPV4 but doesn't
        get translated to a host name. */
+    { &hf_slarp_netmask,
+      { "Netmask", "slarp.netmask", FT_IPv4, BASE_NETMASK,
+        NULL, 0x0, NULL, HFILL }},
     { &hf_slarp_mysequence,
       { "Outgoing sequence number", "slarp.mysequence", FT_UINT32, BASE_DEC,
         NULL, 0x0, NULL, HFILL }},
-#if 0
     { &hf_slarp_yoursequence,
       { "Returned sequence number", "slarp.yoursequence", FT_UINT32, BASE_DEC,
         NULL, 0x0, NULL, HFILL }},
-#endif
+    { &hf_slarp_reliability,
+      { "Reliability", "slarp.reliability", FT_UINT16, BASE_HEX,
+        NULL, 0x0, NULL, HFILL }},
   };
   static gint *ett[] = {
     &ett_slarp,
   };
 
+  static ei_register_info ei[] = {
+    { &ei_slarp_reliability, { "slarp.reliability.invalid", PI_MALFORMED, PI_ERROR,
+      "Reliability must be 0xFFFF", EXPFILL }}
+  };
+
   proto_slarp = proto_register_protocol("Cisco SLARP", "SLARP", "slarp");
   proto_register_field_array(proto_slarp, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
+
+  expert_slarp = expert_register_protocol(proto_slarp);
+  expert_register_field_array(expert_slarp, ei, array_length(ei));
 }
 
 void
@@ -366,3 +397,16 @@ proto_reg_handoff_slarp(void)
   slarp_handle = create_dissector_handle(dissect_slarp, proto_slarp);
   dissector_add_uint("chdlc.protocol", CISCO_SLARP, slarp_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

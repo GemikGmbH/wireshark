@@ -30,14 +30,11 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/crc32-tvb.h>
 #include <epan/etypes.h>
 #include <epan/expert.h>
-#include <epan/wmem/wmem.h>
 #include "packet-fc.h"
 
 void proto_register_fcoe(void);
@@ -167,7 +164,7 @@ dissect_fcoe(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "FCoE");
     crc_offset = header_len + frame_len;
     eof_offset = crc_offset + 4;
-    bytes_remaining = tvb_length_remaining(tvb, header_len);
+    bytes_remaining = tvb_captured_length_remaining(tvb, header_len);
     if (bytes_remaining > frame_len)
         bytes_remaining = frame_len;        /* backing length */
     next_tvb = tvb_new_subset(tvb, header_len, bytes_remaining, frame_len);
@@ -231,10 +228,10 @@ dissect_fcoe(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                                    crc, crc_computed);
         }
         proto_tree_set_appendix(fcoe_tree, tvb, crc_offset,
-                                tvb_length_remaining (tvb, crc_offset));
+                                tvb_captured_length_remaining (tvb, crc_offset));
     } else {
-        item = proto_tree_add_text(fcoe_tree, tvb, crc_offset, 0,
-                                   "CRC: [missing]");
+        item = proto_tree_add_uint_format_value(fcoe_tree, hf_fcoe_crc, tvb, crc_offset, 0,
+                                   0, "CRC: [missing]");
     }
     crc_tree = proto_item_add_subtree(item, ett_fcoe_crc);
     ti = proto_tree_add_boolean(crc_tree, hf_fcoe_crc_bad, tvb,
@@ -341,3 +338,16 @@ proto_reg_handoff_fcoe(void)
     data_handle = find_dissector("data");
     fc_handle   = find_dissector("fc");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

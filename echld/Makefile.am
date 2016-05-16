@@ -45,17 +45,18 @@ AM_CPPFLAGS = -I$(srcdir)/.. -I$(srcdir)/../wiretap
 
 libechld_la_SOURCES = \
 	$(LIBECHLD_SRC)		\
-	$(LIBECHLD_INCLUDES)	\
-	$(LIBECHLD_MORE_SRC)
+	$(LIBECHLD_INCLUDES)
 
 
 libechld_la_DEPENDENCIES = \
+	../caputils/libcaputils.a	\
 	../epan/libwireshark.la		\
 	../wiretap/libwiretap.la	\
 	../wsutil/libwsutil.la
 
 
 libechld_la_LIBADD =			\
+	../caputils/libcaputils.a	\
 	../epan/libwireshark.la		\
 	../wsutil/libwsutil.la		\
 	../wiretap/libwiretap.la	\

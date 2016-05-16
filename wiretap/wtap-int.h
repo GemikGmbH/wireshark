@@ -21,10 +21,6 @@
 #ifndef __WTAP_INT_H__
 #define __WTAP_INT_H__
 
-#ifdef HAVE_SYS_TIME_H
-#include <sys/time.h>
-#endif
-
 #include <glib.h>
 #include <stdio.h>
 #include <time.h>
@@ -55,8 +51,8 @@ struct wtap {
     struct Buffer               *frame_buffer;
     struct wtap_pkthdr          phdr;
     struct wtapng_section_s     shb_hdr;
-    guint                       number_of_interfaces;   /**< The number of interfaces a capture was made on, number of IDB:s in a pcapng file or equivalent(?)*/
     GArray                      *interface_data;        /**< An array holding the interface data from pcapng IDB:s or equivalent(?)*/
+    wtapng_name_res_t           *nrb_hdr;               /**< holds the Name Res Block's comment/custom_opts, or NULL */
 
     void                        *priv;          /* this one holds per-file state and is free'd automatically by wtap_close() */
     void                        *wslua_data;    /* this one holds wslua state info and is not free'd */
@@ -68,10 +64,18 @@ struct wtap {
     int                         file_encap;    /* per-file, for those
                                                 * file formats that have
                                                 * per-file encapsulation
-                                                * types
+                                                * types rather than per-packet
+                                                * encapsulation types
                                                 */
-    int                         tsprecision;   /* timestamp precision of the lower 32bits
-                                                * e.g. WTAP_FILE_TSPREC_USEC
+    int                         file_tsprec;   /* per-file timestamp precision
+                                                * of the fractional part of
+                                                * the time stamp, for those
+                                                * file formats that have
+                                                * per-file timestamp
+                                                * precision rather than
+                                                * per-packet timestamp
+                                                * precision
+                                                * e.g. WTAP_TSPREC_USEC
                                                 */
     wtap_new_ipv4_callback_t    add_new_ipv4;
     wtap_new_ipv6_callback_t    add_new_ipv6;
@@ -87,29 +91,31 @@ typedef void *WFILE_T;
 
 typedef gboolean (*subtype_write_func)(struct wtap_dumper*,
                                        const struct wtap_pkthdr*,
-                                       const guint8*, int*);
-typedef gboolean (*subtype_close_func)(struct wtap_dumper*, int*);
+                                       const guint8*, int*, gchar**);
+typedef gboolean (*subtype_finish_func)(struct wtap_dumper*, int*);
 
 struct wtap_dumper {
     WFILE_T                 fh;
+    gboolean                is_stdout;      /* TRUE if we're writing to the standard output */
     int                     file_type_subtype;
     int                     snaplen;
     int                     encap;
     gboolean                compressed;
     gint64                  bytes_dumped;
 
-    void                    *priv;       /* this one holds per-file state and is free'd automatically by wtap_dump_close() */
-    void                    *wslua_data; /* this one holds wslua state info and is not free'd */
+    void                    *priv;          /* this one holds per-file state and is free'd automatically by wtap_dump_close() */
+    void                    *wslua_data;    /* this one holds wslua state info and is not free'd */
 
-    subtype_write_func      subtype_write;
-    subtype_close_func      subtype_close;
+    subtype_write_func      subtype_write;  /* write out a record */
+    subtype_finish_func     subtype_finish; /* write out information to finish writing file */
 
     int                     tsprecision;    /**< timestamp precision of the lower 32bits
-                                             * e.g. WTAP_FILE_TSPREC_USEC
+                                             * e.g. WTAP_TSPREC_USEC
                                              */
-    addrinfo_lists_t        *addrinfo_lists;        /**< Struct containing lists of resolved addresses */
-    struct wtapng_section_s *shb_hdr;
-    GArray                  *interface_data;        /**< An array holding the interface data from pcapng IDB:s or equivalent(?) NULL if not present.*/
+    addrinfo_lists_t        *addrinfo_lists; /**< Struct containing lists of resolved addresses */
+    wtapng_section_t        *shb_hdr;
+    wtapng_name_res_t       *nrb_hdr;        /**< name resolution comment/custom_opt, or NULL */
+    GArray                  *interface_data; /**< An array holding the interface data from pcapng IDB:s or equivalent(?) NULL if not present.*/
 };
 
 WS_DLL_PUBLIC gboolean wtap_dump_file_write(wtap_dumper *wdh, const void *buf,
@@ -237,33 +243,6 @@ extern gint wtap_num_file_types;
     }
 #endif
 
-#define wtap_file_read_unknown_bytes(target, num_bytes, fh, err, err_info) \
-    G_STMT_START \
-    { \
-        int _bytes_read; \
-        _bytes_read = file_read((target), (num_bytes), (fh)); \
-        if (_bytes_read != (int) (num_bytes)) { \
-            *(err) = file_error((fh), (err_info)); \
-            return FALSE; \
-        } \
-    } \
-    G_STMT_END
-
-#define wtap_file_read_expected_bytes(target, num_bytes, fh, err, err_info) \
-    G_STMT_START \
-    { \
-        int _bytes_read; \
-        _bytes_read = file_read((target), (num_bytes), (fh)); \
-        if (_bytes_read != (int) (num_bytes)) { \
-            *(err) = file_error((fh), (err_info)); \
-            if (*(err) == 0 && _bytes_read > 0) { \
-                *(err) = WTAP_ERR_SHORT_READ; \
-            } \
-            return FALSE; \
-        } \
-    } \
-    G_STMT_END
-
 /* glib doesn't have g_ptr_array_len of all things!*/
 #ifndef g_ptr_array_len
 #define g_ptr_array_len(a)      ((a)->len)
@@ -271,6 +250,43 @@ extern gint wtap_num_file_types;
 
 /*** get GSList of all compressed file extensions ***/
 GSList *wtap_get_compressed_file_extensions(void);
+
+/*
+ * Read a given number of bytes from a file.
+ *
+ * If we succeed, return TRUE.
+ *
+ * If we get an EOF, return FALSE with *err set to 0, reporting this
+ * as an EOF.
+ *
+ * If we get fewer bytes than the specified number, return FALSE with
+ * *err set to WTAP_ERR_SHORT_READ, reporting this as a short read
+ * error.
+ *
+ * If we get a read error, return FALSE with *err and *err_info set
+ * appropriately.
+ */
+WS_DLL_PUBLIC
+gboolean
+wtap_read_bytes_or_eof(FILE_T fh, void *buf, unsigned int count, int *err,
+    gchar **err_info);
+
+/*
+ * Read a given number of bytes from a file.
+ *
+ * If we succeed, return TRUE.
+ *
+ * If we get fewer bytes than the specified number, including getting
+ * an EOF, return FALSE with *err set to WTAP_ERR_SHORT_READ, reporting
+ * this as a short read error.
+ *
+ * If we get a read error, return FALSE with *err and *err_info set
+ * appropriately.
+ */
+WS_DLL_PUBLIC
+gboolean
+wtap_read_bytes(FILE_T fh, void *buf, unsigned int count, int *err,
+    gchar **err_info);
 
 /*
  * Read packet data into a Buffer, growing the buffer as necessary.

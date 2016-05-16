@@ -16,11 +16,6 @@
  *      env                               \
  *        G_DEBUG=gc-friendly             \
  *        G_SLICE=always-malloc           \
- *        WIRESHARK_DEBUG_EP_NO_CHUNKS=1  \
- *        WIRESHARK_DEBUG_SE_NO_CHUNKS=1  \
- *        WIRESHARK_DEBUG_SE_USE_CANARY=1 \
- *        WIRESHARK_EP_VERIFY_POINTERS=1  \
- *        WIRESHARK_SE_VERIFY_POINTERS=1  \
  *      valgrind --leak-check=full --show-reachable=yes ./reassemble_test
  *
  *  2. Debug functions have been added which will print information
@@ -58,7 +53,6 @@
 
 #include "config.h"
 
-#include <epan/emem.h>
 #include <epan/packet.h>
 #include <epan/packet_info.h>
 #include <epan/proto.h>
@@ -116,7 +110,6 @@ static struct _fd_flags {
     {FD_DATALEN_SET          ,"DS"},
     {FD_SUBSET_TVB,          ,"ST"},
     {FD_BLOCKSEQUENCE        ,"BS"},
-    {FD_DATA_NOT_PRESENT     ,"NP"},
     {FD_PARTIAL_REASSEMBLY   ,"PR"},
     {FD_OVERLAP              ,"OL"},
     {FD_OVERLAPCONFLICT      ,"OC"},
@@ -1004,9 +997,9 @@ test_fragment_add_seq_duplicate_conflict(void)
 
 static void
 test_fragment_add_seq_check_work(fragment_head *(*fn)(reassembly_table *,
-				 tvbuff_t *, const int, const packet_info *,
-				 const guint32, const void *, const guint32,
-				 const guint32, const gboolean))
+                                 tvbuff_t *, const int, const packet_info *,
+                                 const guint32, const void *, const guint32,
+                                 const guint32, const gboolean))
 {
     fragment_head *fd_head;
 
@@ -1347,6 +1340,9 @@ test_simple_fragment_add_seq_next(void)
 }
 
 
+#if 0
+/* XXX remove this? fragment_add_seq does not have the special case for
+ * fragments having truncated tvbs anymore! */
 /* This tests the case where some data is missing from one of the fragments.
  * It should prevent reassembly.
  */
@@ -1519,6 +1515,7 @@ test_missing_data_fragment_add_seq_next_3(void)
     ASSERT_EQ(NULL,fd_head->tvb_data);
     ASSERT_EQ(NULL,fd_head->next);
 }
+#endif
 
 
 /**********************************************************************************
@@ -1545,16 +1542,15 @@ main(int argc _U_, char **argv _U_)
         test_fragment_add_seq_802_11_0,
         test_fragment_add_seq_802_11_1,
         test_simple_fragment_add_seq_next,
+#if 0
         test_missing_data_fragment_add_seq_next,
         test_missing_data_fragment_add_seq_next_2,
         test_missing_data_fragment_add_seq_next_3,
+#endif
 #if 0
         test_fragment_add_seq_check_multiple
 #endif
     };
-
-    /* initialise stuff */
-    emem_init();
 
     /* a tvbuff for testing with */
     data = (char *)g_malloc(DATA_LEN);
@@ -1574,7 +1570,7 @@ main(int argc _U_, char **argv _U_)
     for(i=0; i < sizeof(tests)/sizeof(tests[0]); i++ ) {
         /* re-init the fragment tables */
         reassembly_table_init(&test_reassembly_table,
-        		      &addresses_reassembly_table_functions);
+                              &addresses_reassembly_table_functions);
         ASSERT(test_reassembly_table.fragment_table != NULL);
         ASSERT(test_reassembly_table.reassembled_table != NULL);
 
@@ -1594,3 +1590,16 @@ main(int argc _U_, char **argv _U_)
     printf(failure?"FAILURE\n":"SUCCESS\n");
     return failure;
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

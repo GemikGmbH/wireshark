@@ -24,12 +24,9 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/asn1.h>
 #include <epan/prefs.h>
-#include <epan/expert.h>
 
 #include "packet-tcp.h"
 #include "packet-x509af.h"
@@ -60,6 +57,10 @@ static int hf_text = -1;
 
 static gint ett_db_lsp = -1;
 
+static heur_dissector_list_t heur_subdissector_list;
+
+/* Use heuristic */
+static gboolean try_heuristic = TRUE;
 /* desegmentation of tcp payload */
 static gboolean db_lsp_desegment = TRUE;
 
@@ -111,7 +112,7 @@ dissect_db_lsp_pdu (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
   proto_tree_add_item (db_lsp_tree, hf_length, tvb, offset, 2, ENC_BIG_ENDIAN);
   offset += 2;
 
-  if (magic != 0x0301 || length > tvb_length_remaining (tvb, offset)) {
+  if (magic != 0x0301 || length > tvb_reported_length_remaining (tvb, offset)) {
     /* Probably an unknown packet */
     /* expert_add_info_format (pinfo, db_lsp_item, PI_UNDECODED, PI_WARN, "Unknown packet"); */
     return 0;
@@ -123,8 +124,8 @@ dissect_db_lsp_pdu (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
 
     if (opvalue == OP_CERT) {
       /* X509 Certificate */
-      tvbuff_t *cert_tvb = tvb_new_subset (tvb, offset+10, length-10, length-10);
-      dissect_x509af_Certificate_PDU (cert_tvb, pinfo, db_lsp_tree);
+      tvbuff_t *cert_tvb = tvb_new_subset_length (tvb, offset+10, length-10);
+      dissect_x509af_Certificate_PDU (cert_tvb, pinfo, db_lsp_tree, NULL);
     } else {
       proto_tree_add_item (db_lsp_tree, hf_value, tvb, offset, length, ENC_NA);
     }
@@ -137,15 +138,16 @@ dissect_db_lsp_pdu (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
 
   proto_item_append_text (db_lsp_item, ", Type: %d, Length: %d", type, length);
   proto_item_set_len (db_lsp_item, length + 5);
-  return tvb_length(tvb);
+  return tvb_reported_length(tvb);
 }
 
 static guint
-get_db_lsp_pdu_len (packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_db_lsp_pdu_len (packet_info *pinfo _U_, tvbuff_t *tvb,
+                    int offset, void *data _U_)
 {
   if (tvb_get_ntohs (tvb, offset + 1) != 0x0301) {
     /* Unknown data, eat remaining data for this frame */
-    return tvb_length_remaining (tvb, offset);
+    return tvb_reported_length_remaining (tvb, offset);
   }
 
   return tvb_get_ntohs (tvb, offset + 3) + 5;
@@ -156,7 +158,7 @@ dissect_db_lsp_tcp (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* d
 {
   tcp_dissect_pdus (tvb, pinfo, tree, db_lsp_desegment, 5,
                     get_db_lsp_pdu_len, dissect_db_lsp_pdu, data);
-  return tvb_length(tvb);
+  return tvb_reported_length(tvb);
 }
 
 static void
@@ -165,6 +167,8 @@ dissect_db_lsp_disc (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   proto_tree *db_lsp_tree;
   proto_item *db_lsp_item;
   gint        offset = 0;
+  heur_dtbl_entry_t *hdtbl_entry;
+  proto_tree *data_subtree;
 
   col_set_str (pinfo->cinfo, COL_PROTOCOL, PSNAME_DISC);
   col_set_str (pinfo->cinfo, COL_INFO, PNAME_DISC);
@@ -172,6 +176,15 @@ dissect_db_lsp_disc (tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   db_lsp_item = proto_tree_add_item (tree, proto_db_lsp_disc, tvb, offset, -1, ENC_NA);
   db_lsp_tree = proto_item_add_subtree (db_lsp_item, ett_db_lsp);
 
+  /* try the heuristic dissectors */
+  if (try_heuristic) {
+    data_subtree = proto_item_add_subtree(db_lsp_item, ett_db_lsp);
+    if (dissector_try_heuristic(heur_subdissector_list, tvb, pinfo, data_subtree, &hdtbl_entry, NULL)) {
+      return;
+    }
+  }
+
+  /* heuristic failed. Print remaining bytes as text */
   proto_tree_add_item (db_lsp_tree, hf_text, tvb, offset, -1, ENC_ASCII|ENC_NA);
 }
 
@@ -226,6 +239,8 @@ proto_register_db_lsp (void)
   new_register_dissector ("db-lsp.tcp", dissect_db_lsp_tcp, proto_db_lsp);
   register_dissector ("db-lsp.udp", dissect_db_lsp_disc, proto_db_lsp_disc);
 
+  heur_subdissector_list = register_heur_dissector_list("db-lsp");
+
   proto_register_field_array (proto_db_lsp, hf, array_length (hf));
   proto_register_subtree_array (ett, array_length (ett));
 
@@ -239,6 +254,11 @@ proto_register_db_lsp (void)
                                   " To use this option, you must also enable \"Allow subdissectors"
                                   " to reassemble TCP streams\" in the TCP protocol settings.",
                                   &db_lsp_desegment);
+
+  prefs_register_bool_preference(db_lsp_module, "try_heuristic",
+                                  "Try heuristic sub-dissectors",
+                                  "Try to decode the payload using an heuristic sub-dissector",
+                                  &try_heuristic);
 }
 
 void

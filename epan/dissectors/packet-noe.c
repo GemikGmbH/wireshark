@@ -23,11 +23,7 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include "epan/packet.h"
-#include <epan/wmem/wmem.h>
-
 void proto_register_noe(void);
 void proto_reg_handoff_noe(void);
 
@@ -609,6 +605,8 @@ static int  hf_noe_aindx                = -1;
 static int  hf_noe_errcode              = -1;
 static int  hf_noe_value                = -1;
 static int  hf_noe_message              = -1;
+static int  hf_noe_key_name             = -1;
+static int  hf_noe_bonded               = -1;
 static int  hf_noe_property_item_u8     = -1;
 static int  hf_noe_property_item_u16    = -1;
 static int  hf_noe_property_item_u24    = -1;
@@ -913,7 +911,7 @@ static void decode_evt_error(proto_tree *tree,
     offset  += 1;
     length  -= 1;
 
-    proto_tree_add_item(tree, hf_noe_aindx, tvb, offset, 1, ENC_NA);
+    proto_tree_add_item(tree, hf_noe_aindx, tvb, offset, 1, ENC_BIG_ENDIAN);
     offset  += 1;
     length  -= 1;
 
@@ -938,19 +936,17 @@ static void decode_tlv(proto_tree *tree,
                        guint       offset,
                        guint       length)
 {
-    proto_item *property_item;
     proto_tree *property_tree;
     guint8      property_type;
     guint16     property_length;
 /*  guint64     property_index;*/
 
     /* add text to the frame tree */
-    property_item = proto_tree_add_text(tree,
+    property_tree = proto_tree_add_subtree(tree,
         tvb,
         offset,
-        length,
+        length, ett_body, NULL,
         "NOE Message Body");
-    property_tree = proto_item_add_subtree(property_item, ett_body);
 
     while(length > 0)
     {
@@ -961,7 +957,7 @@ static void decode_tlv(proto_tree *tree,
 
         if (property_type >= P_ARRAY)
         {
-            proto_tree_add_item(property_item, hf_noe_aindx, tvb, offset, 1, ENC_NA);
+            proto_tree_add_item(property_tree, hf_noe_aindx, tvb, offset, 1, ENC_BIG_ENDIAN);
             offset += 1;
             length -= 1;
         }
@@ -1030,17 +1026,15 @@ static void decode_getproperty_tlv(proto_tree *tree,
                                    guint       offset,
                                    guint       length)
 {
-    proto_item *body_item;
     proto_tree *body_tree;
     guint8      body_type;
 
     /* add text to the frame tree */
-    body_item = proto_tree_add_text(tree,
+    body_tree = proto_tree_add_subtree(tree,
         tvb,
         offset,
-        length,
+        length, ett_property, NULL,
         "NOE Message Body");
-    body_tree = proto_item_add_subtree(body_item, ett_property);
 
     while(length > 0)
     {
@@ -1052,7 +1046,7 @@ static void decode_getproperty_tlv(proto_tree *tree,
 
         if (body_type >= P_ARRAY)
         {
-            proto_tree_add_item(body_item, hf_noe_aindx, tvb, offset, 1, ENC_NA);
+            proto_tree_add_item(body_tree, hf_noe_aindx, tvb, offset, 1, ENC_BIG_ENDIAN);
             offset += 1;
             length -= 1;
         }
@@ -1126,13 +1120,13 @@ static void decode_evt(proto_tree  *tree,
             proto_item_append_text(tree, ", %s",
                 key_name);
 
-            proto_tree_add_text(tree,
+            proto_tree_add_string_format_value(tree, hf_noe_key_name,
                 tvb,
                 offset,
-                length,
-                "Key Name: %s (UTF-8 Value: %s, Unicode Value: 0x%" G_GINT64_MODIFIER "x)",
+                length, key_name,
+                "%s (UTF-8 Value: %s, Unicode Value: 0x%" G_GINT64_MODIFIER "x)",
                 key_name,
-                tvb_bytes_to_ep_str(tvb, offset, length),
+                tvb_bytes_to_str(wmem_packet_scope(), tvb, offset, length),
                 unicode_value);
             break;
         }
@@ -1164,21 +1158,15 @@ static void decode_evt(proto_tree  *tree,
             offset += 2;
             /*length -= 2;*/
 
-            /* XXX - should a 16-bit value be gotten if the size is only 8-bit? */
-            proto_tree_add_text(tree,
-                tvb,
-                offset,
-                1,
-                "Bonded: %d",
-                tvb_get_ntohs(tvb, offset));
+            proto_tree_add_item(tree, hf_noe_bonded, tvb, offset, 1, ENC_BIG_ENDIAN);
             offset += 1;
             /*length -= 1;*/
 
-            proto_tree_add_text(tree,
+            proto_tree_add_uint_format_value(tree, hf_noe_value,
                 tvb,
                 offset,
-                1,
-                "Value: %d",
+                1, tvb_get_ntohs(tvb, offset),
+                "%d",
                 tvb_get_ntohs(tvb, offset));
             break;
         }
@@ -1624,6 +1612,30 @@ void proto_register_noe(void)
                   HFILL
               }
             },
+            { &hf_noe_bonded,
+              {
+                  "Bonded",
+                  "noe.bonded",
+                  FT_UINT8,
+                  BASE_DEC,
+                  NULL,
+                  0x0,
+                  NULL,
+                  HFILL
+              }
+            },
+            { &hf_noe_key_name,
+              {
+                  "Key name",
+                  "noe.keyname",
+                  FT_STRING,
+                  BASE_NONE,
+                  NULL,
+                  0x0,
+                  NULL,
+                  HFILL
+              }
+            },
         };
 
     static gint *ett[] =
@@ -1656,3 +1668,16 @@ void proto_reg_handoff_noe(void)
     dissector_add_uint("ua.opcode", 0x15, handle_noe);
 #endif
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

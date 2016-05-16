@@ -20,7 +20,7 @@
  */
 
 #include "packet_comment_dialog.h"
-#include "ui_packet_comment_dialog.h"
+#include <ui_packet_comment_dialog.h>
 
 #include "wireshark_application.h"
 
@@ -29,6 +29,7 @@ PacketCommentDialog::PacketCommentDialog(QWidget *parent, QString comment) :
     pc_ui_(new Ui::PacketCommentDialog)
 {
     pc_ui_->setupUi(this);
+    setWindowTitle(wsApp->windowTitleString(tr("Packet Comment")));
 
     pc_ui_->commentTextEdit->setPlainText(comment);
 }

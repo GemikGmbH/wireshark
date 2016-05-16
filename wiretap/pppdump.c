@@ -19,12 +19,9 @@
 
 #include "config.h"
 #include "wtap-int.h"
-#include <wsutil/buffer.h>
 #include "pppdump.h"
 #include "file_wrappers.h"
 
-#include <glib.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <errno.h>
 #include <string.h>
@@ -242,11 +239,10 @@ init_state(pppdump_t *state)
 }
 
 
-int
+wtap_open_return_val
 pppdump_open(wtap *wth, int *err, gchar **err_info)
 {
 	guint8		buffer[6];	/* Looking for: 0x07 t3 t2 t1 t0 ID */
-	int		bytes_read;
 	pppdump_t	*state;
 
 	/* There is no file header, only packet records. Fortunately for us,
@@ -257,12 +253,11 @@ pppdump_open(wtap *wth, int *err, gchar **err_info)
 	* representing the timestamp.
 	*/
 
-	bytes_read = file_read(buffer, sizeof(buffer), wth->fh);
-	if (bytes_read != (int) sizeof(buffer)) {
-		*err = file_error(wth->fh, err_info);
-		if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-			return -1;
-		return 0;
+	if (!wtap_read_bytes(wth->fh, buffer, sizeof(buffer),
+	    err, err_info)) {
+		if (*err != WTAP_ERR_SHORT_READ)
+			return WTAP_OPEN_ERROR;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
 	if (buffer[0] == PPPD_RESET_TIME &&
@@ -275,13 +270,13 @@ pppdump_open(wtap *wth, int *err, gchar **err_info)
 		goto my_file_type;
 	}
 	else {
-		return 0;
+		return WTAP_OPEN_NOT_MINE;
 	}
 
   my_file_type:
 
 	if (file_seek(wth->fh, 5, SEEK_SET, err) == -1)
-		return -1;
+		return WTAP_OPEN_ERROR;
 
 	state = (pppdump_t *)g_malloc(sizeof(pppdump_t));
 	wth->priv = (void *)state;
@@ -298,7 +293,7 @@ pppdump_open(wtap *wth, int *err, gchar **err_info)
 	wth->subtype_read = pppdump_read;
 	wth->subtype_seek_read = pppdump_seek_read;
 	wth->subtype_close = pppdump_close;
-	wth->tsprecision = WTAP_FILE_TSPREC_DSEC;
+	wth->file_tsprec = WTAP_TSPREC_DSEC;
 
 	state->seek_state = g_new(pppdump_t,1);
 
@@ -311,7 +306,7 @@ pppdump_open(wtap *wth, int *err, gchar **err_info)
 		state->pids = NULL;
 	state->pkt_cnt = 0;
 
-	return 1;
+	return WTAP_OPEN_MINE;
 }
 
 /* Set part of the struct wtap_pkthdr. */
@@ -351,12 +346,12 @@ pppdump_read(wtap *wth, int *err, gchar **err_info, gint64 *data_offset)
 	} else
 		pid = NULL;	/* sequential only */
 
-	buffer_assure_space(wth->frame_buffer, PPPD_BUF_SIZE);
-	buf = buffer_start_ptr(wth->frame_buffer);
+	ws_buffer_assure_space(wth->frame_buffer, PPPD_BUF_SIZE);
+	buf = ws_buffer_start_ptr(wth->frame_buffer);
 
 	if (!collate(state, wth->fh, err, err_info, buf, &num_bytes, &direction,
 	    pid, 0)) {
-	    	if (pid != NULL)
+		if (pid != NULL)
 			g_free(pid);
 		return FALSE;
 	}
@@ -659,14 +654,16 @@ collate(pppdump_t* state, FILE_T fh, int *err, gchar **err_info, guint8 *pd,
 				break;
 
 			case PPPD_RESET_TIME:
-				wtap_file_read_unknown_bytes(&time_long, sizeof(guint32), fh, err, err_info);
+				if (!wtap_read_bytes(fh, &time_long, sizeof(guint32), err, err_info))
+					return FALSE;
 				state->offset += sizeof(guint32);
 				state->timestamp = pntoh32(&time_long);
 				state->tenths = 0;
 				break;
 
 			case PPPD_TIME_STEP_LONG:
-				wtap_file_read_unknown_bytes(&time_long, sizeof(guint32), fh, err, err_info);
+				if (!wtap_read_bytes(fh, &time_long, sizeof(guint32), err, err_info))
+					return FALSE;
 				state->offset += sizeof(guint32);
 				state->tenths += pntoh32(&time_long);
 
@@ -678,7 +675,8 @@ collate(pppdump_t* state, FILE_T fh, int *err, gchar **err_info, guint8 *pd,
 				break;
 
 			case PPPD_TIME_STEP_SHORT:
-				wtap_file_read_unknown_bytes(&time_short, sizeof(guint8), fh, err, err_info);
+				if (!wtap_read_bytes(fh, &time_short, sizeof(guint8), err, err_info))
+					return FALSE;
 				state->offset += sizeof(guint8);
 				state->tenths += time_short;
 
@@ -746,8 +744,8 @@ pppdump_seek_read(wtap *wth,
 	init_state(state->seek_state);
 	state->seek_state->offset = pid->offset;
 
-	buffer_assure_space(buf, PPPD_BUF_SIZE);
-	pd = buffer_start_ptr(buf);
+	ws_buffer_assure_space(buf, PPPD_BUF_SIZE);
+	pd = ws_buffer_start_ptr(buf);
 
 	/*
 	 * We'll start reading at the first record containing data from
@@ -792,3 +790,16 @@ pppdump_close(wtap *wth)
 		g_ptr_array_free(state->pids, TRUE);
 	}
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

@@ -22,31 +22,27 @@
 
 #include "config.h"
 
-#include <gtk/gtk.h>
-
-#ifdef HAVE_LIBPCAP
-
 #include <string.h>
 
 #include <epan/prefs.h>
 #include <epan/to_str.h>
 
 #include "../capture_opts.h"
-#include "../capture_session.h"
-#include "../capture_ifinfo.h"
-#include "../capture.h"
-#include "../capture-pcap-util.h"
-#include "../capture_ui_utils.h"
+#include <capchild/capture_session.h>
+#include "caputils/capture_ifinfo.h"
+#include "ui/capture.h"
+#include "caputils/capture-pcap-util.h"
 #include "wsutil/file_util.h"
 #include <wiretap/wtap.h>
 
+#include "ui/capture_ui_utils.h"
 #include "ui/capture_globals.h"
 #include "ui/recent.h"
 #include "ui/simple_dialog.h"
 
 #ifdef _WIN32
 #include "ui/gtk/capture_if_details_dlg_win32.h"
-#include "../../capture-wpcap.h"
+#include "caputils/capture-wpcap.h"
 #endif
 
 #include "ui/gtk/stock_icons.h"
@@ -64,6 +60,8 @@
 #include "ui/gtk/main_welcome.h"
 
 #include "ui/gtk/old-gtk-compat.h"
+
+#ifdef HAVE_LIBPCAP
 
 #ifdef HAVE_AIRPCAP
 #include "../../image/toolbar/capture_airpcap_16.xpm"
@@ -84,8 +82,8 @@
 
 
 #ifdef HAVE_AIRPCAP
-#include "airpcap.h"
-#include "airpcap_loader.h"
+#include <caputils/airpcap.h>
+#include <caputils/airpcap_loader.h>
 #include "airpcap_gui_utils.h"
 #include "airpcap_dlg.h"
 #endif
@@ -224,7 +222,7 @@ capture_do_cb(GtkWidget *capture_bt_arg _U_, gpointer if_data _U_)
     if_array = g_array_remove_index(if_array, ifs);
     g_array_insert_val(if_array, ifs, data);
 #ifdef HAVE_AIRPCAP
-    airpcap_if_active = get_airpcap_if_from_name(airpcap_if_list, gtk_label_get_text(GTK_LABEL(data.device_lb)));
+    airpcap_if_active = get_airpcap_if_from_name(g_airpcap_if_list, gtk_label_get_text(GTK_LABEL(data.device_lb)));
     airpcap_if_selected = airpcap_if_active;
 #endif
   }
@@ -424,6 +422,14 @@ GtkWidget * capture_get_if_icon(interface_t *device)
     return xpm_to_widget(network_virtual_16_xpm);
   case IF_WIRED:
     return pixbuf_to_widget(network_wired_pb_data);
+#ifdef HAVE_EXTCAP
+  case IF_EXTCAP:
+#ifdef _WIN32
+    if (strncmp(device->friendly_name, "USBPcap", 7) == 0) {
+      return pixbuf_to_widget(network_usb_pb_data);
+    }
+#endif
+#endif
   case IF_PIPE:
   case IF_STDIN:
     return pixbuf_to_widget(pipe_pb_data);
@@ -465,7 +471,8 @@ set_ip_addr_label(GSList *addr_list, GtkWidget *ip_lb, guint selected_ip_addr)
 {
   GSList      *curr_addr;
   if_addr_t   *addr;
-  const gchar *addr_str = NULL;
+  address     addr_address;
+  char       *addr_str = NULL;
 
   curr_addr = g_slist_nth(addr_list, selected_ip_addr);
   if (curr_addr) {
@@ -473,11 +480,13 @@ set_ip_addr_label(GSList *addr_list, GtkWidget *ip_lb, guint selected_ip_addr)
     switch (addr->ifat_type) {
 
     case IF_AT_IPv4:
-      addr_str = ip_to_str((guint8 *)&addr->addr.ip4_addr);
+      SET_ADDRESS(&addr_address, AT_IPv4, 4, &addr->addr.ip4_addr);
+      addr_str = (char*)address_to_str(NULL, &addr_address);
       break;
 
     case IF_AT_IPv6:
-      addr_str = ip6_to_str((struct e_in6_addr *)&addr->addr.ip6_addr);
+      SET_ADDRESS(&addr_address, AT_IPv6, 16, addr->addr.ip6_addr);
+      addr_str = (char*)address_to_str(NULL, &addr_address);
       break;
 
     default:
@@ -491,6 +500,7 @@ set_ip_addr_label(GSList *addr_list, GtkWidget *ip_lb, guint selected_ip_addr)
   } else {
     gtk_label_set_text(GTK_LABEL(ip_lb), "none");
   }
+  wmem_free(NULL, addr_str);
   g_object_set_data(G_OBJECT(ip_lb), CAPTURE_IF_SELECTED_IP_ADDR, GINT_TO_POINTER(selected_ip_addr));
 
   return addr_str;
@@ -866,7 +876,7 @@ capture_if_cb(GtkWidget *w _U_, gpointer d _U_)
 
   /* If no airpcap interface is present, gray everything */
   if (airpcap_if_active == NULL) {
-    if (airpcap_if_list == NULL) {
+    if (g_airpcap_if_list == NULL) {
       /*No airpcap device found */
       airpcap_enable_toolbar_widgets(wireless_tb,FALSE);
     } else {

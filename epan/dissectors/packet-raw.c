@@ -24,10 +24,7 @@
 
 #include "config.h"
 
-#include <string.h>
-#include <glib.h>
 #include <epan/packet.h>
-#include <epan/prefs.h>
 #include <wiretap/wtap.h>
 #include "packet-raw.h"
 #include "packet-ip.h"
@@ -100,9 +97,7 @@ capture_raw(const guchar *pd, int len, packet_counts *ld)
 static void
 dissect_raw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 {
-  proto_tree	*fh_tree;
-  proto_item	*ti;
-  tvbuff_t	*next_tvb;
+  tvbuff_t      *next_tvb;
 
   /* load the top pane info. This should be overwritten by
      the next protocol in the stack */
@@ -113,19 +108,7 @@ dissect_raw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
   /* populate a tree in the second pane with the status of the link
      layer (ie none) */
-  if (tree) {
-    ti = proto_tree_add_item(tree, proto_raw, tvb, 0, 0, ENC_NA);
-    fh_tree = proto_item_add_subtree(ti, ett_raw);
-    proto_tree_add_text(fh_tree, tvb, 0, 0, "No link information available");
-  }
-
-  if (pinfo->fd->lnk_t == WTAP_ENCAP_RAW_IP4) {
-    call_dissector(ip_handle, tvb, pinfo, tree);
-  }
-  else if (pinfo->fd->lnk_t == WTAP_ENCAP_RAW_IP6) {
-    call_dissector(ipv6_handle, tvb, pinfo, tree);
-  }
-  else
+  proto_tree_add_item(tree, proto_raw, tvb, 0, tvb_captured_length(tvb), ENC_NA);
 
   /* So far, the only time we get raw connection types are with Linux and
    * Irix PPP connections.  We can't tell what type of data is coming down
@@ -136,46 +119,46 @@ dissect_raw(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
    * sometimes.  This check should be removed when 2.2 is out.
    */
   if (tvb_get_ntohs(tvb, 0) == 0xff03) {
-	call_dissector(ppp_hdlc_handle, tvb, pinfo, tree);
+    call_dissector(ppp_hdlc_handle, tvb, pinfo, tree);
   }
   /* The Linux ISDN driver sends a fake MAC address before the PPP header
    * on its ippp interfaces... */
   else if (tvb_get_ntohs(tvb, 6) == 0xff03) {
-	next_tvb = tvb_new_subset_remaining(tvb, 6);
-	call_dissector(ppp_hdlc_handle, next_tvb, pinfo, tree);
+    next_tvb = tvb_new_subset_remaining(tvb, 6);
+    call_dissector(ppp_hdlc_handle, next_tvb, pinfo, tree);
   }
   /* ...except when it just puts out one byte before the PPP header... */
   else if (tvb_get_ntohs(tvb, 1) == 0xff03) {
-	next_tvb = tvb_new_subset_remaining(tvb, 1);
-	call_dissector(ppp_hdlc_handle, next_tvb, pinfo, tree);
+    next_tvb = tvb_new_subset_remaining(tvb, 1);
+    call_dissector(ppp_hdlc_handle, next_tvb, pinfo, tree);
   }
   /* ...and if the connection is currently down, it sends 10 bytes of zeroes
    * instead of a fake MAC address and PPP header. */
   else if (tvb_memeql(tvb, 0, zeroes,10) == 0) {
-	next_tvb = tvb_new_subset_remaining(tvb, 10);
-	call_dissector(ip_handle, next_tvb, pinfo, tree);
+    next_tvb = tvb_new_subset_remaining(tvb, 10);
+    call_dissector(ip_handle, next_tvb, pinfo, tree);
   }
   else {
-	/*
-	 * OK, is this IPv4 or IPv6?
-	 */
-	switch (tvb_get_guint8(tvb, 0) & 0xF0) {
+    /*
+     * OK, is this IPv4 or IPv6?
+     */
+    switch (tvb_get_guint8(tvb, 0) & 0xF0) {
 
-	case 0x40:
-	  /* IPv4 */
-	  call_dissector(ip_handle, tvb, pinfo, tree);
-	  break;
+    case 0x40:
+      /* IPv4 */
+      call_dissector(ip_handle, tvb, pinfo, tree);
+      break;
 
-	case 0x60:
-	  /* IPv6 */
-	  call_dissector(ipv6_handle, tvb, pinfo, tree);
-	  break;
+    case 0x60:
+      /* IPv6 */
+      call_dissector(ipv6_handle, tvb, pinfo, tree);
+      break;
 
-	default:
-	  /* None of the above. */
-	  call_dissector(data_handle, tvb, pinfo, tree);
-	  break;
-	}
+    default:
+      /* None of the above. */
+      call_dissector(data_handle, tvb, pinfo, tree);
+      break;
+    }
   }
 }
 
@@ -205,6 +188,17 @@ proto_reg_handoff_raw(void)
   ppp_hdlc_handle = find_dissector("ppp_hdlc");
   raw_handle = create_dissector_handle(dissect_raw, proto_raw);
   dissector_add_uint("wtap_encap", WTAP_ENCAP_RAW_IP, raw_handle);
-  dissector_add_uint("wtap_encap", WTAP_ENCAP_RAW_IP4, raw_handle);
-  dissector_add_uint("wtap_encap", WTAP_ENCAP_RAW_IP6, raw_handle);
 }
+
+/*
+ * Editor modelines
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

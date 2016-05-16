@@ -23,9 +23,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-#include <epan/prefs.h>
 #include <epan/packet.h>
+#include <epan/prefs.h>
 #include <epan/asn1.h>
 #include <epan/expert.h>
 
@@ -51,6 +50,7 @@ static gint ett_mms = -1;
 
 static expert_field ei_mms_mal_timeofday_encoding = EI_INIT;
 static expert_field ei_mms_mal_utctime_encoding = EI_INIT;
+static expert_field ei_mms_zero_pdu = EI_INIT;
 
 #include "packet-mms-fn.c"
 
@@ -78,7 +78,7 @@ dissect_mms(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree)
 		old_offset=offset;
 		offset=dissect_mms_MMSpdu(FALSE, tvb, offset, &asn1_ctx , tree, -1);
 		if(offset == old_offset){
-			proto_tree_add_text(tree, tvb, offset, -1,"Internal error, zero-byte MMS PDU");
+			proto_tree_add_expert(tree, pinfo, &ei_mms_zero_pdu, tvb, offset, -1);
 			break;
 		}
 	}
@@ -103,6 +103,7 @@ void proto_register_mms(void) {
   static ei_register_info ei[] = {
      { &ei_mms_mal_timeofday_encoding, { "mms.malformed.timeofday_encoding", PI_MALFORMED, PI_WARN, "BER Error: malformed TimeOfDay encoding", EXPFILL }},
      { &ei_mms_mal_utctime_encoding, { "mms.malformed.utctime", PI_MALFORMED, PI_WARN, "BER Error: malformed IEC61850 UTCTime encoding", EXPFILL }},
+     { &ei_mms_zero_pdu, { "mms.zero_pdu", PI_PROTOCOL, PI_ERROR, "Internal error, zero-byte MMS PDU", EXPFILL }},
   };
 
   expert_module_t* expert_mms;
@@ -171,7 +172,7 @@ dissect_mms_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, voi
 void proto_reg_handoff_mms(void) {
 	register_ber_oid_dissector("1.0.9506.2.3", dissect_mms, proto_mms,"MMS");
 	register_ber_oid_dissector("1.0.9506.2.1", dissect_mms, proto_mms,"mms-abstract-syntax-version1(1)");
-	heur_dissector_add("cotp", dissect_mms_heur, proto_mms);
-	heur_dissector_add("cotp_is", dissect_mms_heur, proto_mms);
+	heur_dissector_add("cotp", dissect_mms_heur, "MMS over COTP", "mms_cotp", proto_mms, HEURISTIC_ENABLE);
+	heur_dissector_add("cotp_is", dissect_mms_heur, "MMS over COTP (inactive subset)", "mms_cotp_is", proto_mms, HEURISTIC_ENABLE);
 }
 

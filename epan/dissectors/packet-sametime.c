@@ -24,11 +24,9 @@
 #include "config.h"
 
 #include <epan/packet.h>
-#include <epan/wmem/wmem.h>
-#include <epan/dissectors/packet-tcp.h>
 #include <epan/prefs.h>
-#include <epan/tap.h>
 #include <epan/stats_tree.h>
+#include "packet-tcp.h"
 
 #define DEFAULT_SAMETIME_PORT 1533
 
@@ -624,7 +622,7 @@ dissect_sametime_content(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, vo
    }
 
    tap_queue_packet(sametime_tap, pinfo, sinfo);
-   return tvb_length(tvb);
+   return tvb_captured_length(tvb);
 }
 
 
@@ -667,13 +665,14 @@ sametime_stats_tree_init(stats_tree* st)
         length of the sametime message
 */
 static guint
-get_sametime_message_len(packet_info *pinfo _U_, tvbuff_t *tvb, int offset)
+get_sametime_message_len(packet_info *pinfo _U_, tvbuff_t *tvb,
+                         int offset, void *data _U_)
 {
    /* XXX: Actually: the length of the tvb will always be 4 or greater at this point */
    /*      because tcp_dissect_pdus was called with 4 as a required "fixed length".  */
    /*        But newer variants of this protocol with a full encrypted network stream  */
    /*        may require a more sophisticated dissection logic here                    */
-   guint32 N = tvb_length_remaining(tvb, offset);
+   guint32 N = tvb_captured_length_remaining(tvb, offset);
 
    return (N < 4) ? N : tvb_get_ntohl(tvb, offset) + 4;
 }
@@ -690,7 +689,7 @@ dissect_sametime(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data
 
    tcp_dissect_pdus(tvb, pinfo, tree, global_sametime_reassemble_packets, 4,
          get_sametime_message_len, dissect_sametime_content, data);
-   return tvb_length(tvb);
+   return tvb_captured_length(tvb);
 }
 
 

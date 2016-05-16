@@ -31,9 +31,9 @@ Time
 Validity
 Version
 
-#.PDU
+#.PDU_NEW
 
-#.REGISTER
+#.REGISTER_NEW
 Certificate				B "2.5.4.36" "id-at-userCertificate"
 Certificate				B "2.5.4.37" "id-at-cAcertificate"
 CertificateList			B "2.5.4.38" "id-at-authorityRevocationList"
@@ -70,16 +70,28 @@ CertificateList/signedCertificateList/revokedCertificates/_item/userCertificate	
 
   %(DEFAULT_BODY)s
 
-  algorithm_id = actx->external.direct_reference;
+  if (algorithm_id) {
+    wmem_free(wmem_file_scope(), (void*)algorithm_id);
+  }
 
   if(actx->external.direct_reference) {
-    name = oid_resolved_from_string(actx->external.direct_reference);
+    algorithm_id = (const char *)wmem_strdup(wmem_file_scope(), actx->external.direct_reference);
+
+    name = oid_resolved_from_string(wmem_packet_scope(), actx->external.direct_reference);
 
     proto_item_append_text(tree, " (%%s)", name ? name : actx->external.direct_reference);
+  } else {
+    algorithm_id = NULL;
   }
 
 #.FN_BODY AlgorithmIdentifier/parameters
   offset=call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, NULL);
+
+#.FN_HDR SubjectPublicKeyInfo
+  int orig_offset = offset;
+#.FN_FTR SubjectPublicKeyInfo
+  x509af_export_publickey(tvb, actx, orig_offset, offset - orig_offset);
+#.END
 
 #.FN_PARS Extension/extnId
   FN_VARIANT = _str  HF_INDEX = hf_x509af_extension_id  VAL_PTR = &actx->external.direct_reference
@@ -90,7 +102,7 @@ CertificateList/signedCertificateList/revokedCertificates/_item/userCertificate	
   %(DEFAULT_BODY)s
 
   if(actx->external.direct_reference) {
-    name = oid_resolved_from_string(actx->external.direct_reference);
+    name = oid_resolved_from_string(wmem_packet_scope(), actx->external.direct_reference);
 
     proto_item_append_text(tree, " (%%s)", name ? name : actx->external.direct_reference);
   }
@@ -112,5 +124,13 @@ CertificateList/signedCertificateList/revokedCertificates/_item/userCertificate	
 
   str = x509if_get_last_dn();
   proto_item_append_text(proto_item_get_parent(tree), " (%%s)", str?str:"");
+
+#.TYPE_ATTR
+CertificateSerialNumber TYPE = FT_INT64
+DSS-Params/p TYPE = FT_BYTES  DISPLAY = BASE_NONE
+DSS-Params/q TYPE = FT_BYTES  DISPLAY = BASE_NONE
+DSS-Params/g TYPE = FT_BYTES  DISPLAY = BASE_NONE
+
+#.FN_PARS CertificateSerialNumber FN_VARIANT = 64
 
 #.END

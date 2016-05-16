@@ -25,7 +25,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 #include "packet-dcom.h"
@@ -51,7 +50,7 @@ static int hf_remact_authn_hint = -1;
 
 static int proto_remact = -1;
 static gint ett_remact = -1;
-static e_uuid_t uuid_remact = { 0x4d9f4ab8, 0x7d1c, 0x11cf, { 0x86, 0x1e, 0x00, 0x20, 0xaf, 0x6e, 0x7c, 0x57 } };
+static e_guid_t uuid_remact = { 0x4d9f4ab8, 0x7d1c, 0x11cf, { 0x86, 0x1e, 0x00, 0x20, 0xaf, 0x6e, 0x7c, 0x57 } };
 static guint16  ver_remact = 0;
 
 
@@ -66,8 +65,8 @@ dissect_remact_remote_activation_rqst(tvbuff_t *tvb, int offset,
 	guint32 u32ArraySize;
 	guint32 u32ItemIdx;
 	guint16 u16ProtSeqs;
-	e_uuid_t clsid;
-	e_uuid_t iid;
+	e_guid_t clsid;
+	e_guid_t iid;
 
 	gchar 	szObjName[1000] = { 0 };
 	guint32 u32ObjNameLen = sizeof(szObjName);
@@ -130,7 +129,7 @@ dissect_remact_remote_activation_resp(tvbuff_t *tvb, int offset,
 				      packet_info *pinfo, proto_tree *tree, dcerpc_info *di, guint8 *drep)
 {
 	guint32	u32Pointer;
-	e_uuid_t ipid;
+	e_guid_t ipid;
 	guint32	u32AuthnHint;
 	guint16	u16VersionMajor;
 	guint16	u16VersionMinor;
@@ -251,3 +250,16 @@ proto_reg_handoff_remact (void)
 	/* Register the protocol as dcerpc */
 	dcerpc_init_uuid (proto_remact, ett_remact, &uuid_remact, ver_remact, remact_dissectors, hf_remact_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

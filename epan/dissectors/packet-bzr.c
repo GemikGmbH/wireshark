@@ -27,10 +27,8 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/prefs.h>
-#include "packet-tcp.h"
 
 void proto_register_bzr(void);
 void proto_reg_handoff_bzr(void);
@@ -128,6 +126,7 @@ dissect_prefixed_bencode(tvbuff_t *tvb, gint offset, packet_info *pinfo,
     guint32     plen;
     proto_tree *prefixed_bencode_tree;
     proto_item *ti;
+    tvbuff_t *subtvb;
 
     plen = tvb_get_ntohl(tvb, offset);
 
@@ -135,15 +134,11 @@ dissect_prefixed_bencode(tvbuff_t *tvb, gint offset, packet_info *pinfo,
                              plen, ENC_NA);
     prefixed_bencode_tree = proto_item_add_subtree(ti, ett_prefixed_bencode);
 
-    if (prefixed_bencode_tree)
-    {
-        tvbuff_t *subtvb;
-        proto_tree_add_item(prefixed_bencode_tree, hf_bzr_prefixed_bencode_len,
+    proto_tree_add_item(prefixed_bencode_tree, hf_bzr_prefixed_bencode_len,
                             tvb, offset, 4, ENC_BIG_ENDIAN);
 
-        subtvb = tvb_new_subset(tvb, offset+4, plen, plen);
-        call_dissector(bencode_handle, subtvb, pinfo, prefixed_bencode_tree);
-    }
+    subtvb = tvb_new_subset_length(tvb, offset+4, plen);
+    call_dissector(bencode_handle, subtvb, pinfo, prefixed_bencode_tree);
 
     return 4 + plen;
 }
@@ -181,7 +176,7 @@ dissect_body(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree)
 
     while (tvb_reported_length_remaining(tvb, offset) > 0) {
         cmd = tvb_get_guint8(tvb, offset);
-        proto_tree_add_item(tree, hf_bzr_packet_kind, tvb, offset, 1, ENC_NA);
+        proto_tree_add_item(tree, hf_bzr_packet_kind, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset += 1;
 
         switch (cmd) {
@@ -193,7 +188,7 @@ dissect_body(tvbuff_t *tvb, gint offset, packet_info *pinfo, proto_tree *tree)
             break;
         case 'o':
             proto_tree_add_item(tree, hf_bzr_result, tvb, offset, 1,
-                                ENC_NA);
+                                ENC_BIG_ENDIAN);
             offset += 1;
             break;
         case 'e':
@@ -250,7 +245,7 @@ dissect_bzr(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                 pdu_len = tvb_reported_length_remaining(tvb, offset);
             }
         }
-        next_tvb = tvb_new_subset(tvb, offset, pdu_len, pdu_len);
+        next_tvb = tvb_new_subset_length(tvb, offset, pdu_len);
         dissect_bzr_pdu(next_tvb, pinfo, tree);
         offset += pdu_len;
     }
@@ -329,3 +324,16 @@ proto_reg_handoff_bzr(void)
     bzr_handle = find_dissector("bzr");
     dissector_add_uint("tcp.port", TCP_PORT_BZR, bzr_handle);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

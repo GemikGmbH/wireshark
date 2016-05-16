@@ -29,19 +29,21 @@
 
 #include "config.h"
 
-#include <glib.h>
-
-#include <epan/wmem/wmem.h>
 #include <epan/packet.h>
 #include <epan/tvbparse.h>
+#include <wsutil/jsmn.h>
 
 #include <wsutil/str_util.h>
 #include <wsutil/unicode-utils.h>
+
+#include <wiretap/wtap.h>
 
 void proto_register_json(void);
 void proto_reg_handoff_json(void);
 
 static dissector_handle_t json_handle;
+
+static int proto_json = -1;
 
 static gint ett_json = -1;
 static gint ett_json_array = -1;
@@ -119,6 +121,20 @@ dissect_json(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 	const char *data_name;
 	int offset;
 
+	/* JSON dissector can be called in a JSON native file or when transported
+	 * by another protocol. We set the column values only if they've not been
+	 * already set by someone else.
+	 */
+	wmem_list_frame_t *proto = wmem_list_frame_prev(wmem_list_tail(pinfo->layers));
+	if (proto) {
+		const char *name = proto_get_protocol_filter_name(GPOINTER_TO_INT(wmem_list_frame_data(proto)));
+
+		if (!strcmp(name, "frame")) {
+			col_set_str(pinfo->cinfo, COL_PROTOCOL, "JSON");
+			col_set_str(pinfo->cinfo, COL_INFO, "JavaScript Object Notation");
+		}
+	}
+
 	data_name = pinfo->match_string;
 	if (! (data_name && data_name[0])) {
 		/*
@@ -129,13 +145,7 @@ dissect_json(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 			/*
 			 * No information from dissector data
 			 */
-			data_name = (char *)(pinfo->private_data);
-			if (! (data_name && data_name[0])) {
-				/*
-				 * No information from "private_data"
-				 */
-				data_name = NULL;
-			}
+			data_name = NULL;
 		}
 	}
 
@@ -163,21 +173,26 @@ dissect_json(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data)
 	proto_item_set_len(ti, offset);
 
 	/* if we have some unparsed data, pass to data-text-lines dissector (?) */
-	if (tvb_length_remaining(tvb, offset) > 0) {
-		int datalen, reported_datalen;
+	if (tvb_reported_length_remaining(tvb, offset) > 0) {
 		tvbuff_t *next_tvb;
 
-		datalen = tvb_length_remaining(tvb, offset);
-		reported_datalen = tvb_reported_length_remaining(tvb, offset);
+		next_tvb = tvb_new_subset_remaining(tvb, offset);
 
-		next_tvb = tvb_new_subset(tvb, offset, datalen, reported_datalen);
-
-		call_dissector(text_lines_handle, next_tvb, pinfo, tree);
+		call_dissector_with_data(text_lines_handle, next_tvb, pinfo, tree, data);
 	} else if (data_name) {
 		col_append_sep_fstr(pinfo->cinfo, COL_INFO, " ", "(%s)", data_name);
 	}
 
-	return tvb_length(tvb);
+	return tvb_captured_length(tvb);
+}
+
+/*
+ * For dissecting JSON in a file; we don't get passed a media type.
+ */
+static int
+dissect_json_file(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
+{
+	return dissect_json(tvb, pinfo, tree, NULL);
 }
 
 static void before_object(void *tvbparse_data, const void *wanted_data _U_, tvbparse_elem_t *tok) {
@@ -221,7 +236,7 @@ static void after_member(void *tvbparse_data, const void *wanted_data _U_, tvbpa
 		tvbparse_elem_t *key_tok = tok->sub;
 
 		if (key_tok && key_tok->id == JSON_TOKEN_STRING) {
-			char *key = tvb_get_string(wmem_packet_scope(), key_tok->tvb, key_tok->offset, key_tok->len);
+			char *key = tvb_get_string_enc(wmem_packet_scope(), key_tok->tvb, key_tok->offset, key_tok->len, ENC_ASCII);
 
 			proto_item_append_text(tree, " Key: %s", key);
 		}
@@ -577,6 +592,20 @@ static void init_json_parser(void) {
 	/* XXX, heur? */
 }
 
+/* This function leverages the libjsmn to undestand if the payload is json or not
+*/
+static gboolean
+dissect_json_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
+{
+	guint len = tvb_captured_length(tvb);
+	const guint8* buf = tvb_get_string_enc(wmem_packet_scope(), tvb, 0, len, ENC_ASCII);
+
+	if (jsmn_is_json(buf, len) == FALSE)
+		return FALSE;
+
+	return (dissect_json(tvb, pinfo, tree, data) != 0);
+}
+
 void
 proto_register_json(void)
 {
@@ -601,8 +630,6 @@ proto_register_json(void)
 	};
 #endif
 
-	int proto_json;
-
 	proto_json = proto_register_protocol("JavaScript Object Notation", "JSON", "json");
 	hfi_json = proto_registrar_get_nth(proto_json);
 
@@ -617,6 +644,12 @@ proto_register_json(void)
 void
 proto_reg_handoff_json(void)
 {
+	dissector_handle_t json_file_handle = new_create_dissector_handle(dissect_json_file, proto_json);
+
+	heur_dissector_add("hpfeeds", dissect_json_heur, "JSON over HPFEEDS", "json_hpfeeds", proto_json, HEURISTIC_ENABLE);
+	heur_dissector_add("db-lsp", dissect_json_heur, "JSON over DB-LSP", "json_db_lsp", proto_json, HEURISTIC_ENABLE);
+	dissector_add_uint("wtap_encap", WTAP_ENCAP_JSON, json_file_handle);
+
 	dissector_add_string("media_type", "application/json", json_handle); /* RFC 4627 */
 	dissector_add_string("media_type", "application/json-rpc", json_handle); /* JSON-RPC over HTTP */
 	dissector_add_string("media_type", "application/jsonrequest", json_handle); /* JSON-RPC over HTTP */
@@ -624,3 +657,15 @@ proto_reg_handoff_json(void)
 	text_lines_handle = find_dissector("data-text-lines");
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

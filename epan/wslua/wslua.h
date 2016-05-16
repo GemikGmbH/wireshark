@@ -68,7 +68,7 @@
 #define LOG_DOMAIN_LUA "wslua"
 
 /* type conversion macros - lua_Number is a double, so casting isn't kosher; and
-   using Lua's already-available lua_tointeger() and luaL_checkint() might be different
+   using Lua's already-available lua_tointeger() and luaL_checkinteger() might be different
    on different machines; so use these instead please! */
 #define wslua_togint(L,i)       (gint)            ( lua_tointeger(L,i) )
 #define wslua_togint32(L,i)     (gint32)          ( lua_tonumber(L,i) )
@@ -77,17 +77,17 @@
 #define wslua_toguint32(L,i)    (guint32)         ( lua_tonumber(L,i) )
 #define wslua_toguint64(L,i)    (guint64)         ( lua_tonumber(L,i) )
 
-#define wslua_checkgint(L,i)    (gint)            ( luaL_checkint(L,i) )
+#define wslua_checkgint(L,i)    (gint)            ( luaL_checkinteger(L,i) )
 #define wslua_checkgint32(L,i)  (gint32)          ( luaL_checknumber(L,i) )
 #define wslua_checkgint64(L,i)  (gint64)          ( luaL_checknumber(L,i) )
-#define wslua_checkguint(L,i)   (guint)           ( luaL_checkint(L,i) )
+#define wslua_checkguint(L,i)   (guint)           ( luaL_checkinteger(L,i) )
 #define wslua_checkguint32(L,i) (guint32)         ( luaL_checknumber(L,i) )
 #define wslua_checkguint64(L,i) (guint64)         ( luaL_checknumber(L,i) )
 
-#define wslua_optgint(L,i,d)    (gint)            ( luaL_optint(L,i,d) )
+#define wslua_optgint(L,i,d)    (gint)            ( luaL_optinteger(L,i,d) )
 #define wslua_optgint32(L,i,d)  (gint32)          ( luaL_optnumber(L,i,d) )
 #define wslua_optgint64(L,i,d)  (gint64)          ( luaL_optnumber(L,i,d) )
-#define wslua_optguint(L,i,d)   (guint)           ( luaL_optint(L,i,d) )
+#define wslua_optguint(L,i,d)   (guint)           ( luaL_optinteger(L,i,d) )
 #define wslua_optguint32(L,i,d) (guint32)         ( luaL_optnumber(L,i,d) )
 #define wslua_optguint64(L,i,d) (guint64)         ( luaL_optnumber(L,i,d) )
 
@@ -118,7 +118,7 @@ typedef struct _wslua_field_t {
     int hfid;
     int ett;
     char* name;
-    char* abbr;
+    char* abbrev;
     char* blob;
     enum ftenum type;
     unsigned base;
@@ -128,7 +128,7 @@ typedef struct _wslua_field_t {
 
 typedef struct _wslua_expert_field_t {
     expert_field ids;
-    const gchar *abbr;
+    const gchar *abbrev;
     const gchar *text;
     int group;
     int severity;
@@ -162,7 +162,7 @@ typedef struct _wslua_pref_t {
         void* p;
     } value;
     union {
-      guint32 max_value;		/**< maximum value of a range */
+      guint32 max_value;         /**< maximum value of a range */
       struct {
           const enum_val_t *enumvals;    /**< list of name & values */
           gboolean radio_buttons;    /**< TRUE if it should be shown as
@@ -170,6 +170,7 @@ typedef struct _wslua_pref_t {
                          option menu or combo box in
                          the preferences tab */
       } enum_info;            /**< for PREF_ENUM */
+      gchar* default_s;       /**< default value for value.s */
     } info;                    /**< display/text file information */
 
     struct _wslua_pref_t* next;
@@ -178,6 +179,7 @@ typedef struct _wslua_pref_t {
 
 typedef struct _wslua_proto_t {
     gchar* name;
+    gchar* loname;
     gchar* desc;
     int hfid;
     int ett;
@@ -187,12 +189,19 @@ typedef struct _wslua_proto_t {
     expert_module_t *expert_module;
     module_t *prefs_module;
     dissector_handle_t handle;
+    GArray *hfa;
+    GArray *etta;
+    GArray *eia;
     gboolean is_postdissector;
+    gboolean expired;
 } wslua_proto_t;
 
 struct _wslua_distbl_t {
     dissector_table_t table;
     const gchar* name;
+    const gchar* ui_name;
+    gboolean created;
+    gboolean expired;
 };
 
 struct _wslua_col_info {
@@ -294,7 +303,7 @@ struct _wslua_dir {
 };
 
 struct _wslua_progdlg {
-    funnel_progress_window_t* pw;
+    struct progdlg* pw;
     char* title;
     char* task;
     gboolean stopped;
@@ -646,6 +655,26 @@ extern int C##_register(lua_State* L); \
 extern gboolean is##C(lua_State* L,int i); \
 extern C shift##C(lua_State* L,int i)
 
+
+/* Throws a Wireshark exception, catchable via normal exceptions.h routines. */
+#define THROW_LUA_ERROR(...) \
+    THROW_FORMATTED(DissectorError, __VA_ARGS__)
+
+/* Catches any Wireshark exceptions in code and convert it into a LUA error.
+ * Normal restrictions for TRY/CATCH apply, in particular, do not return! */
+#define WRAP_NON_LUA_EXCEPTIONS(code) \
+{ \
+    volatile gboolean has_error = FALSE; \
+    TRY { \
+        code \
+    } CATCH_ALL { \
+        lua_pushstring(L, GET_MESSAGE);  \
+        has_error = TRUE; \
+    } ENDTRY; \
+    if (has_error) { lua_error(L); } \
+}
+
+
 extern packet_info* lua_pinfo;
 extern TreeItem lua_tree;
 extern tvbuff_t* lua_tvb;
@@ -681,9 +710,14 @@ extern void wslua_prefs_changed(void);
 extern void proto_register_lua(void);
 extern GString* lua_register_all_taps(void);
 extern void wslua_prime_dfilter(epan_dissect_t *edt);
+extern gboolean wslua_has_field_extractors(void);
 extern void lua_prime_all_fields(proto_tree* tree);
 
 extern int Proto_commit(lua_State* L);
+
+extern TreeItem create_TreeItem(proto_tree* tree, proto_item* item);
+
+extern void clear_outstanding_FuncSavers(void);
 
 extern void Int64_pack(lua_State* L, luaL_Buffer *b, gint idx, gboolean asLittleEndian);
 extern int Int64_unpack(lua_State* L, const gchar *buff, gboolean asLittleEndian);
@@ -691,6 +725,7 @@ extern void UInt64_pack(lua_State* L, luaL_Buffer *b, gint idx, gboolean asLittl
 extern int UInt64_unpack(lua_State* L, const gchar *buff, gboolean asLittleEndian);
 
 extern Tvb* push_Tvb(lua_State* L, tvbuff_t* tvb);
+extern int push_wsluaTvb(lua_State* L, Tvb t);
 extern gboolean push_TvbRange(lua_State* L, tvbuff_t* tvb, int offset, int len);
 extern void clear_outstanding_Tvb(void);
 extern void clear_outstanding_TvbRange(void);
@@ -701,20 +736,22 @@ extern void clear_outstanding_Column(void);
 extern void clear_outstanding_Columns(void);
 extern void clear_outstanding_PrivateTable(void);
 
-extern TreeItem* push_TreeItem(lua_State* L, TreeItem ti);
+extern int get_hf_wslua_text(void);
+extern TreeItem push_TreeItem(lua_State *L, proto_tree *tree, proto_item *item);
 extern void clear_outstanding_TreeItem(void);
 
+extern FieldInfo* push_FieldInfo(lua_State *L, field_info* f);
 extern void clear_outstanding_FieldInfo(void);
 
 extern void wslua_print_stack(char* s, lua_State* L);
 
-extern int wslua_init(register_cb cb, gpointer client_data);
-extern int wslua_cleanup(void);
+extern void wslua_init(register_cb cb, gpointer client_data);
+extern void wslua_cleanup(void);
 
 extern tap_extractor_t wslua_get_tap_extractor(const gchar* name);
 extern int wslua_set_tap_enums(lua_State* L);
 
-extern int wslua_is_field_available(lua_State* L, const char* field_abbr);
+extern ProtoField wslua_is_field_available(lua_State* L, const char* field_abbr);
 
 extern char* wslua_get_actual_filename(const char* fname);
 
@@ -722,4 +759,28 @@ extern int wslua_bin2hex(lua_State* L, const guint8* data, const guint len, cons
 extern int wslua_hex2bin(lua_State* L, const char* data, const guint len, const gchar* sep);
 extern int luaopen_rex_glib(lua_State *L);
 
+extern const gchar* get_current_plugin_version(void);
+extern void clear_current_plugin_version(void);
+
+extern int wslua_deregister_heur_dissectors(lua_State* L);
+extern int wslua_deregister_protocols(lua_State* L);
+extern int wslua_deregister_dissector_tables(lua_State* L);
+extern int wslua_deregister_listeners(lua_State* L);
+extern int wslua_deregister_fields(lua_State* L);
+extern int wslua_deregister_filehandlers(lua_State* L);
+extern void wslua_deregister_menus(void);
+
 #endif
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

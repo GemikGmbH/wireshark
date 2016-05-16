@@ -28,15 +28,13 @@
 
 #include <stdlib.h>
 
-#include <string.h>
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/strutil.h>
 #include <epan/conversation.h>
 #include <epan/prefs.h>
 #include <epan/reassemble.h>
-#include <epan/wmem/wmem.h>
 #include "packet-ssl.h"
+#include "packet-ssl-utils.h"
 
 void proto_register_pop(void);
 void proto_reg_handoff_pop(void);
@@ -70,9 +68,10 @@ static gint ett_pop_reqresp = -1;
 static gint ett_pop_data_fragment = -1;
 static gint ett_pop_data_fragments = -1;
 
+static dissector_handle_t pop_handle;
 static dissector_handle_t data_handle;
-static dissector_handle_t imf_handle = NULL;
-static dissector_handle_t ssl_handle = NULL;
+static dissector_handle_t imf_handle;
+static dissector_handle_t ssl_handle;
 
 #define TCP_PORT_POP            110
 #define TCP_PORT_SSL_POP        995
@@ -115,7 +114,6 @@ struct pop_data_val {
   guint32 msg_read_len;  /* Length of RETR message read so far */
   guint32 msg_tot_len;   /* Total length of RETR message */
   gboolean stls_request;  /* Received STLS request */
-  guint32  last_nontls_frame; /* last non-TLS frame; 0 if not known or no TLS */
 };
 
 
@@ -158,26 +156,6 @@ dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
      conversation_add_proto_data(conversation, proto_pop, data_val);
   }
 
-  /* Are we doing TLS? */
-  if (data_val->last_nontls_frame != 0 && pinfo->fd->num > data_val->last_nontls_frame) {
-    guint16 save_can_desegment;
-    guint32 save_last_nontls_frame;
-
-    /* This is TLS, not raw POP/IMF. TLS can desegment */
-    save_can_desegment = pinfo->can_desegment;
-    pinfo->can_desegment = pinfo->saved_can_desegment;
-
-    /* Make sure the SSL dissector will not be called again after decryption */
-    save_last_nontls_frame = data_val->last_nontls_frame;
-    data_val->last_nontls_frame = 0;
-
-    call_dissector(ssl_handle, tvb, pinfo, tree);
-
-    pinfo->can_desegment = save_can_desegment;
-    data_val->last_nontls_frame = save_last_nontls_frame;
-    return;
-  }
-
   /*
    * Find the end of the first line.
    *
@@ -203,7 +181,7 @@ dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
    * Otherwise, just call it a continuation.
    */
   if (is_continuation) {
-    length_remaining = tvb_length_remaining(tvb, offset);
+    length_remaining = tvb_reported_length_remaining(tvb, offset);
     col_add_fstr(pinfo->cinfo, COL_INFO, "S: DATA fragment, %d byte%s",
                    length_remaining, plurality (length_remaining, "", "s"));
   }
@@ -220,7 +198,7 @@ dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
       if (!frame_data_p) {
 
-        data_val->msg_read_len += tvb_length(tvb);
+        data_val->msg_read_len += tvb_reported_length(tvb);
 
         frame_data_p = wmem_new(wmem_file_scope(), struct pop_proto_data);
 
@@ -234,7 +212,7 @@ dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
                                        pinfo,
                                        frame_data_p->conversation_id,
                                        NULL,
-                                       tvb_length(tvb),
+                                       tvb_reported_length(tvb),
                                        frame_data_p->more_frags);
 
       next_tvb = process_reassembled_data(tvb, offset, pinfo,
@@ -320,7 +298,7 @@ dissect_pop(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
         if (data_val->stls_request) {
           if (g_ascii_strncasecmp(line, "+OK ", 4) == 0) {
               /* This is the last non-TLS frame. */
-              data_val->last_nontls_frame = pinfo->fd->num;
+              ssl_starttls_ack(ssl_handle, pinfo, pop_handle);
           }
           data_val->stls_request = FALSE;
         }
@@ -387,6 +365,11 @@ static void pop_data_reassemble_init (void)
 {
   reassembly_table_init (&pop_data_reassembly_table,
                          &addresses_ports_reassembly_table_functions);
+}
+
+static void pop_data_reassemble_cleanup (void)
+{
+  reassembly_table_destroy(&pop_data_reassembly_table);
 }
 
 void
@@ -467,6 +450,7 @@ proto_register_pop(void)
   proto_register_field_array(proto_pop, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
   register_init_routine (&pop_data_reassemble_init);
+  register_cleanup_routine (&pop_data_reassemble_cleanup);
 
   /* Preferences */
   pop_module = prefs_register_protocol(proto_pop, NULL);
@@ -481,8 +465,6 @@ proto_register_pop(void)
 void
 proto_reg_handoff_pop(void)
 {
-  dissector_handle_t pop_handle;
-
   pop_handle = find_dissector("pop");
   dissector_add_uint("tcp.port", TCP_PORT_POP, pop_handle);
   ssl_dissector_add(TCP_PORT_SSL_POP, "pop", TRUE);
@@ -494,3 +476,16 @@ proto_reg_handoff_pop(void)
   /* find the SSL dissector */
   ssl_handle = find_dissector("ssl");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local Variables:
+ * c-basic-offset: 2
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * ex: set shiftwidth=2 tabstop=8 expandtab:
+ * :indentSize=2:tabSize=8:noTabs=true:
+ */

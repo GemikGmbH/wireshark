@@ -24,8 +24,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 
 #include "packet-aim.h"
@@ -104,7 +102,7 @@ static int dissect_aim_location_setuserinfo(tvbuff_t *tvb, packet_info *pinfo, p
 static int dissect_aim_location_watcher_notification(tvbuff_t *tvb, packet_info *pinfo, proto_tree *loc_tree)
 {
 	int offset = 0;
-	while (tvb_length_remaining(tvb, offset) > 0) {
+	while (tvb_reported_length_remaining(tvb, offset) > 0) {
 		offset = dissect_aim_buddyname(tvb, pinfo, offset, loc_tree);
 	}
 	return offset;
@@ -214,3 +212,16 @@ proto_reg_handoff_aim_location(void)
 {
 	aim_init_family(proto_aim_location, ett_aim_location, FAMILY_LOCATION, aim_fnac_family_location);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

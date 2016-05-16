@@ -32,18 +32,15 @@
 
 #include "config.h"
 
+#include <epan/packet.h>
 #include <epan/conversation.h>
-#include <epan/prefs.h>
 #include <epan/reassemble.h>
-#include <epan/expert.h>
 #include <epan/asn1.h>
 #include <epan/uat.h>
-#include <epan/wmem/wmem.h>
 #include <epan/to_str.h>
-#include <epan/dissectors/packet-x509af.h>
-#include <packet-tcp.h>
-#include <packet-ssl-utils.h>
-#include <packet-reload.h>
+#include "packet-x509af.h"
+#include "packet-ssl-utils.h"
+#include "packet-reload.h"
 
 void proto_register_reload(void);
 void proto_reg_handoff_reload(void);
@@ -1036,6 +1033,12 @@ reload_defragment_init(void)
 {
   reassembly_table_init(&reload_reassembly_table,
                         &addresses_reassembly_table_functions);
+}
+
+static void
+reload_defragment_cleanup(void)
+{
+  reassembly_table_destroy(&reload_reassembly_table);
 }
 
 
@@ -3828,7 +3831,7 @@ extern gint dissect_reload_messagecontents(tvbuff_t *tvb, packet_info *pinfo, pr
       if (error_code <= 19) {
         guint16 info_length = tvb_get_ntohs(tvb,offset+2);
         if (info_length>0) {
-          proto_item_append_text(ti_error, " (%s)", tvb_get_string(wmem_packet_scope(), tvb, offset+4, info_length));
+          proto_item_append_text(ti_error, " (%s)", tvb_get_string_enc(wmem_packet_scope(), tvb, offset+4, info_length, ENC_ASCII));
         }
       }
       break;
@@ -3934,7 +3937,7 @@ dissect_reload_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
   gboolean              update_col_info = TRUE;
 
   offset = 0;
-  effective_length = tvb_length(tvb);
+  effective_length = tvb_captured_length(tvb);
 
   /* First, make sure we have enough data to do the check. */
   if (effective_length < MIN_HDR_LENGTH)
@@ -4157,7 +4160,7 @@ dissect_reload_message(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     offset = 0;
   }
 
-  effective_length = tvb_length(tvb);
+  effective_length = tvb_captured_length(tvb);
   if (effective_length < msg_length) {
     /* The effective length is too small for the packet */
     expert_add_info(pinfo, NULL, &ei_reload_truncated_packet);
@@ -5934,6 +5937,7 @@ proto_register_reload(void)
                                    "topology plugin", "topology plugin defined in the overlay", &reload_topology_plugin);
 
   register_init_routine(reload_defragment_init);
+  register_cleanup_routine(reload_defragment_cleanup);
 }
 
 void
@@ -5943,8 +5947,8 @@ proto_reg_handoff_reload(void)
   data_handle = find_dissector("data");
   xml_handle  = find_dissector("xml");
 
-  heur_dissector_add("udp", dissect_reload_heur, proto_reload);
-  heur_dissector_add("tcp", dissect_reload_heur, proto_reload);
+  heur_dissector_add("udp", dissect_reload_heur, "RELOAD over UDP", "reload_udp", proto_reload, HEURISTIC_ENABLE);
+  heur_dissector_add("tcp", dissect_reload_heur, "RELOAD over TCP", "reload_tcp", proto_reload, HEURISTIC_ENABLE);
 }
 
 /*

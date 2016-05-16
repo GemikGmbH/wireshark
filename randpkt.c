@@ -21,7 +21,7 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
-#include "config.h"
+#include <config.h>
 
 #ifdef HAVE_UNISTD_H
 #include <unistd.h>
@@ -48,6 +48,7 @@
 #include <glib.h>
 #include "wiretap/wtap.h"
 #include "wsutil/file_util.h"
+#include <wsutil/ws_diag_control.h>
 
 #ifdef _WIN32
 #include <wsutil/unicode-utils.h>
@@ -499,9 +500,11 @@ main(int argc, char **argv)
 {
 
 	wtap_dumper		*dump;
+	const char		*filename;
 	struct wtap_pkthdr	pkthdr;
 	union wtap_pseudo_header *ps_header = &pkthdr.pseudo_header;
 	int 			i, j, len_this_pkt, len_random, err;
+	gchar                   *err_info;
 	guint8			buffer[65536];
 
 	int			opt;
@@ -511,10 +514,12 @@ main(int argc, char **argv)
 	char			*produce_filename = NULL;
 	int			produce_max_bytes = 5000;
 	pkt_example		*example;
+DIAG_OFF(cast-qual)
 	static const struct option long_options[] = {
 		{(char *)"help", no_argument, NULL, 'h'},
 		{0, 0, 0, 0 }
 	};
+DIAG_ON(cast-qual)
 
 #ifdef _WIN32
 	arg_list_utf_16to8(argc, argv);
@@ -560,11 +565,19 @@ main(int argc, char **argv)
 	example = find_example(produce_type);
 
 
-	dump = wtap_dump_open(produce_filename, WTAP_FILE_TYPE_SUBTYPE_PCAP,
-		example->sample_wtap_encap, produce_max_bytes, FALSE /* compressed */, &err);
+	if (strcmp(produce_filename, "-") == 0) {
+		/* Write to the standard output. */
+		dump = wtap_dump_open_stdout(WTAP_FILE_TYPE_SUBTYPE_PCAP,
+			example->sample_wtap_encap, produce_max_bytes, FALSE /* compressed */, &err);
+		filename = "the standard output";
+	} else {
+		dump = wtap_dump_open(produce_filename, WTAP_FILE_TYPE_SUBTYPE_PCAP,
+			example->sample_wtap_encap, produce_max_bytes, FALSE /* compressed */, &err);
+		filename = produce_filename;
+	}
 	if (!dump) {
 		fprintf(stderr,
-		    "randpkt: Error writing to %s\n", produce_filename);
+		    "randpkt: Error writing to %s\n", filename);
 		exit(2);
 	}
 
@@ -627,10 +640,72 @@ main(int argc, char **argv)
 			}
 		}
 
-		wtap_dump(dump, &pkthdr, &buffer[0], &err);
+		if (!wtap_dump(dump, &pkthdr, &buffer[0], &err, &err_info)) {
+			fprintf(stderr, "randpkt: Error writing to %s: %s\n",
+			    filename, wtap_strerror(err));
+			switch (err) {
+
+			case WTAP_ERR_UNWRITABLE_ENCAP:
+				/*
+				 * This is a problem with the particular
+				 * frame we're writing and the file type
+				 * and subtype we're writing; note that,
+				 * and report the file type/subtype.
+				 */
+				fprintf(stderr,
+				    "Frame has a network type that can't be saved in a \"%s\" file.\n",
+				    wtap_file_type_subtype_short_string(WTAP_FILE_TYPE_SUBTYPE_PCAP));
+				break;
+
+			case WTAP_ERR_PACKET_TOO_LARGE:
+				/*
+				 * This is a problem with the particular
+				 * frame we're writing and the file type
+				 * and subtype we're writing; note that,
+				 * and report the file type/subtype.
+				 */
+				fprintf(stderr,
+				    "Frame is too large for a \"%s\" file.\n",
+				    wtap_file_type_subtype_short_string(WTAP_FILE_TYPE_SUBTYPE_PCAP));
+				break;
+
+			case WTAP_ERR_UNWRITABLE_REC_TYPE:
+				/*
+				 * This is a problem with the particular
+				 * record we're writing and the file type
+				 * and subtype we're writing; note that,
+				 * and report the file type/subtype.
+				 */
+				fprintf(stderr,
+				    "Record has a record type that can't be saved in a \"%s\" file.\n",
+				    wtap_file_type_subtype_short_string(WTAP_FILE_TYPE_SUBTYPE_PCAP));
+				break;
+
+			case WTAP_ERR_UNWRITABLE_REC_DATA:
+				/*
+				 * This is a problem with the particular
+				 * record we're writing and the file type
+				 * and subtype we're writing; note that,
+				 * and report the file type/subtype.
+				 */
+				fprintf(stderr,
+				    "Record has data that can't be saved in a \"%s\" file.\n(%s)\n",
+				    wtap_file_type_subtype_short_string(WTAP_FILE_TYPE_SUBTYPE_PCAP),
+				    err_info != NULL ? err_info : "no information supplied");
+				g_free(err_info);
+				break;
+
+			default:
+				break;
+			}
+		}
 	}
 
-	wtap_dump_close(dump, &err);
+	if (!wtap_dump_close(dump, &err)) {
+		fprintf(stderr, "Error writing to %s: %s\n",
+		    filename, wtap_strerror(err));
+		return 2;
+	}
 
 	return 0;
 

@@ -35,12 +35,11 @@
 #include "ui/gtk/gtkglobals.h"
 
 #include <epan/packet.h>
-#include <epan/packet_info.h>
 #include <epan/tap.h>
 #include <epan/dissectors/packet-rlc-lte.h>
 
 #include "ui/simple_dialog.h"
-#include "../stat_menu.h"
+#include <epan/stat_groups.h>
 
 #include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/gui_stat_menu.h"
@@ -49,7 +48,8 @@
 #include "ui/gtk/help_dlg.h"
 #include "ui/gtk/main.h"
 
-#include "ui/gtk/old-gtk-compat.h"
+#include "ui/recent.h"
+
 
 void register_tap_listener_rlc_lte_stat(void);
 
@@ -460,9 +460,9 @@ static int rlc_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *ed
     if (si->direction == DIRECTION_UPLINK) {
         /* Update time range */
         if (te->stats.UL_frames == 0) {
-            te->stats.UL_time_start = si->time;
+            te->stats.UL_time_start = si->rlc_lte_time;
         }
-        te->stats.UL_time_stop = si->time;
+        te->stats.UL_time_stop = si->rlc_lte_time;
 
         te->stats.UL_frames++;
         te->stats.UL_total_bytes += si->pduLength;
@@ -470,9 +470,9 @@ static int rlc_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *ed
     else {
         /* Update time range */
         if (te->stats.DL_frames == 0) {
-            te->stats.DL_time_start = si->time;
+            te->stats.DL_time_start = si->rlc_lte_time;
         }
-        te->stats.DL_time_stop = si->time;
+        te->stats.DL_time_stop = si->rlc_lte_time;
 
         te->stats.DL_frames++;
         te->stats.DL_total_bytes += si->pduLength;
@@ -516,9 +516,9 @@ static int rlc_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *ed
     if (si->direction == DIRECTION_UPLINK) {
         /* Update time range */
         if (channel_stats->UL_frames == 0) {
-            channel_stats->UL_time_start = si->time;
+            channel_stats->UL_time_start = si->rlc_lte_time;
         }
-        channel_stats->UL_time_stop = si->time;
+        channel_stats->UL_time_stop = si->rlc_lte_time;
 
         channel_stats->UL_frames++;
         channel_stats->UL_bytes += si->pduLength;
@@ -534,9 +534,9 @@ static int rlc_lte_stat_packet(void *phs, packet_info *pinfo, epan_dissect_t *ed
     else {
         /* Update time range */
         if (channel_stats->DL_frames == 0) {
-            channel_stats->DL_time_start = si->time;
+            channel_stats->DL_time_start = si->rlc_lte_time;
         }
-        channel_stats->DL_time_stop = si->time;
+        channel_stats->DL_time_stop = si->rlc_lte_time;
 
         channel_stats->DL_frames++;
         channel_stats->DL_bytes += si->pduLength;
@@ -938,6 +938,7 @@ static void toggle_show_mac(GtkWidget *widget, gpointer data)
 
     /* Read state */
     hs->show_mac = gtk_toggle_button_get_active(GTK_TOGGLE_BUTTON(widget));
+    recent.gui_rlc_use_pdus_from_mac = hs->show_mac;
 
     /* Retap */
     cf_retap_packets(&cfile);
@@ -1316,7 +1317,7 @@ static void gtk_rlc_lte_stat_init(const char *opt_arg, void *userdata _U_)
     g_snprintf(title, sizeof(title), "Wireshark: LTE RLC Statistics: %s",
                display_name);
     g_free(display_name);
-    hs->dlg_w = window_new_with_geom(GTK_WINDOW_TOPLEVEL, title, "LTE RLC Statistics");
+    hs->dlg_w = window_new_with_geom(GTK_WINDOW_TOPLEVEL, title, "LTE RLC Statistics", GTK_WIN_POS_CENTER_ON_PARENT);
 
     /* Window size */
     gtk_window_set_default_size(GTK_WINDOW(hs->dlg_w), 600, 300);
@@ -1336,9 +1337,10 @@ static void gtk_rlc_lte_stat_init(const char *opt_arg, void *userdata _U_)
                          "decoded inside MAC PDUs (enabled in MAC dissector preferences)");
 
 
-    /* MAC on by default */
-    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(show_mac_cb), TRUE);
-    hs->show_mac = TRUE;
+    /* Get settings from recent. */
+    gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(show_mac_cb),
+                                 recent.gui_rlc_use_pdus_from_mac);
+    hs->show_mac = recent.gui_rlc_use_pdus_from_mac;
     gtk_box_pack_start(GTK_BOX(top_level_vbox), pdu_source_lb, FALSE, FALSE, 0);
     /* TODO: add tooltips... */
     g_signal_connect(show_mac_cb, "toggled", G_CALLBACK(toggle_show_mac), hs);
@@ -1649,7 +1651,7 @@ static void gtk_rlc_lte_stat_init(const char *opt_arg, void *userdata _U_)
 
 
 static tap_param rlc_lte_stat_params[] = {
-    { PARAM_FILTER, "Filter", NULL }
+    { PARAM_FILTER, "filter", "Filter", NULL, TRUE }
 };
 
 static tap_param_dlg rlc_lte_stat_dlg = {
@@ -1658,7 +1660,8 @@ static tap_param_dlg rlc_lte_stat_dlg = {
     gtk_rlc_lte_stat_init,
     -1,
     G_N_ELEMENTS(rlc_lte_stat_params),
-    rlc_lte_stat_params
+    rlc_lte_stat_params,
+    NULL
 };
 
 
@@ -1668,3 +1671,16 @@ register_tap_listener_rlc_lte_stat(void)
 {
     register_param_stat(&rlc_lte_stat_dlg, "_RLC", REGISTER_STAT_GROUP_TELEPHONY_LTE);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

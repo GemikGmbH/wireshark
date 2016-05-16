@@ -18,6 +18,7 @@
 #   - ptvcursor_add_no_advance
 #   - ptvcursor_add_with_subtree   !! ToDo: encoding arg not last arg
 #
+# ToDo: Rework program so that it can better be used to *validate* encoding-args
 #
 # Wireshark - Network traffic analyzer
 # By Gerald Combs <gerald@wireshark.org>
@@ -56,14 +57,15 @@ my $searchReplaceFalseTrueHRef =
 
 my $searchReplaceEncNAHRef =
    {
-    "FALSE"             => "ENC_NA",
-    "0"                 => "ENC_NA",
-    "TRUE"              => "ENC_NA",
-    "1"                 => "ENC_NA",
-    "ENC_LITTLE_ENDIAN" => "ENC_NA",
-    "ENC_BIG_ENDIAN"    => "ENC_NA"
+    "FALSE"              => "ENC_NA",
+    "0"                  => "ENC_NA",
+    "TRUE"               => "ENC_NA",
+    "1"                  => "ENC_NA",
+    "ENC_LITTLE_ENDIAN"  => "ENC_NA",
+    "ENC_BIG_ENDIAN"     => "ENC_NA",
+    "ENC_ASCII|ENC_NA"   => "ENC_NA",
+    "ENC_ASCII | ENC_NA" => "ENC_NA"
    };
-
 
 # ---------------------------------------------------------------------
 # Conversion "request" structure
@@ -127,6 +129,9 @@ my @types_UINT_STRING =
     "1"                       => "ENC_ASCII|ENC_LITTLE_ENDIAN",
     "ENC_BIG_ENDIAN"          => "ENC_ASCII|ENC_BIG_ENDIAN",
     "ENC_LITTLE_ENDIAN"       => "ENC_ASCII|ENC_LITTLE_ENDIAN",
+    "ENC_ASCII|ENC_NA"        => "ENC_ASCII|ENC_BIG_ENDIAN",
+    "ENC_ASCII"               => "ENC_ASCII|ENC_BIG_ENDIAN",
+    "ENC_NA"                  => "ENC_ASCII|ENC_BIG_ENDIAN"
    }
   );
 
@@ -209,6 +214,7 @@ my @findAllFunctionList =
          proto_tree_add_bits_item
          proto_tree_add_bits_ret_val
          proto_tree_add_bitmask
+         proto_tree_add_bitmask_with_flags
          tvb_get_bits
          tvb_get_bits16
          tvb_get_bits24
@@ -283,6 +289,7 @@ while (my $fileName = $ARGV[0]) {
 
     # delete leading './'
     $fileName =~ s{ ^ \. / } {}xo;
+    ##print "$fileName\n";
 
     # Read in the file (ouch, but it's easier that way)
     open(FCI, "<", $fileName) || die("Couldn't open $fileName");
@@ -311,6 +318,7 @@ while (my $fileName = $ARGV[0]) {
         # Find and replace: alters <fcn_name>() encoding arg in $fileContents
         $found += fix_encoding_args(1, $searchReplaceFalseTrueHRef, "proto_tree_add_bits_(?:item|ret_val)",      \$fileContents, $fileName);
         $found += fix_encoding_args(1, $searchReplaceFalseTrueHRef, "proto_tree_add_bitmask",                    \$fileContents, $fileName);
+        $found += fix_encoding_args(1, $searchReplaceFalseTrueHRef, "proto_tree_add_bitmask_with_flags",         \$fileContents, $fileName);
         $found += fix_encoding_args(1, $searchReplaceFalseTrueHRef, "tvb_get_bits(?:16|24|32|64)?",              \$fileContents, $fileName);
         $found += fix_encoding_args(1, $searchReplaceFalseTrueHRef, "tvb_get_(?:ephemeral_)?unicode_string[z]?", \$fileContents, $fileName);
 
@@ -449,8 +457,8 @@ sub find_hf_array_entries {
             # just match for <fcn_name>() statements which have an encoding arg matching one of the
             #   keys in the searchReplace hash.
             # Escape any "|" characters in the keys
-            #  and then create "alternatives" string containing all the values (A|B|C\|D|...)
-            $encArgPat = join "|",  map { s{ ( \| ) }{\\$1}gx; $_ } keys %$searchReplaceHRef;
+            #  and then create "alternatives" string containing all the resulting key strings. Ex: "(A|B|C\|D|..."
+            $encArgPat = join "|",  map { my $copy = $_; $copy =~ s{ ( \| ) }{\\$1}gx; $copy } keys %$searchReplaceHRef;
         } elsif ($subFlag == 3) {
             # match for <fcn_name>() statements for any value of the encoding parameter
             # IOW: find all the <fcn_name> statements
@@ -459,17 +467,21 @@ sub find_hf_array_entries {
 
         # build the complete pattern
         my $patRegEx = qr /
-                              ( # part 1: $1
+                              # part 1: $1
+                              (
                                   (?:^|=)            # don't try to handle fcn_name call when arg of another fcn call
                                   \s*
                                   $fcn_name \s* \(
                                   [^;]+?             # a bit dangerous
                                   ,\s*
                               )
-                              ( # part 2: $2
-                                  $encArgPat
-                              )
-                              ( # part 3: $3
+
+                              # part 2: $2
+                              #  exact match of pattern (including spaces)
+                              ((?-x)$encArgPat)
+
+                              # part 3: $3
+                              (
                                   \s* \)
                                   \s* ;
                               )
@@ -548,16 +560,16 @@ sub find_hf_array_entries {
             # just match for <fcn_name>() statements which have an encoding arg matching one of the
             #   keys in the searchReplace hash.
             # Escape any "|" characters in the keys
-            #  and then create "alternatives" string containing all the values (A|B|C\|D|...)
-            $encArgPat = join "|",  map { s{ ( \| ) }{\\$1}gx; $_ } keys %$searchReplaceHRef;
+            #  and then create "alternatives" string containing all the resulting key strings. Ex: "A|B|C\|D|..."
+            $encArgPat = join "|",  map { my $copy = $_; $copy =~ s{ ( \| ) }{\\$1}gx; $copy } keys %$searchReplaceHRef;
         } elsif ($subFlag == 2) {
             # Find all the <fcn_name>() statements wherein the encoding arg is a value other than
             #      one of the "replace" values.
             #  Uses zero-length negative-lookahead to find <fcn_name>() statements for which the encoding
             #    arg is something other than one of the the provided replace values.
             # Escape any "|" characters in the values to be matched
-            #  and then create "alternatives" string containing all the values (A|B|C\|D|...)
-            my $match_str = join "|",  map { s{ ( \| ) }{\\$1}gx; $_ } values %$searchReplaceHRef;
+            #  and then create "alternatives" string containing all the value strings. Ex: "A|B|C\|D|..."
+            my $match_str = join "|",  map { my $copy = $_; $copy =~ s{ ( \| ) }{\\$1}gx; $copy } values %$searchReplaceHRef;
             $encArgPat = qr /
                                 (?!                  # negative zero-length look-ahead
                                     \s*
@@ -585,7 +597,8 @@ sub find_hf_array_entries {
 
             # build the complete pattern
             my $patRegEx = qr /
-                                  ( # part 1: $1
+                                  # part 1: $1
+                                  (
                                       $fcn_name \s* \(
                                       [^;]+?
                                       ,\s*
@@ -594,16 +607,20 @@ sub find_hf_array_entries {
                                       [^;]+
                                       ,\s*
                                   )
-                                  ( # part 2: $2
-                                      $encArgPat
-                                  )
-                                  ( # part 3: $3
+
+                                  # part 2: $2
+                                  #  exact match of pattern (including spaces)
+                                  ((?-x)$encArgPat)
+
+                                  # part 3: $3
+                                  (
                                       \s* \)
                                       \s* ;
                                   )
                               /xs;
 
             ##print "\n$hf_index_name $hf_field_type\n";
+            ##print "\n$patRegEx\n";
 
             ## Match and substitute as specified
             $$fileContentsRef =~ s/ $patRegEx /patsub($1,$2,$3)/xges;

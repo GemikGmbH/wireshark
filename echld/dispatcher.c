@@ -118,8 +118,8 @@ static long dbg_r = 0;
 
 #define DISP_DBG(attrs) ( dispatcher_debug attrs )
 #define DISP_DBG_INIT() do { debug_fp = stderr;  DCOM(); } while(0)
-#define DISP_DBG_START(fname) do { debug_fp = fopen(fname,"a"); DCOM(); DISP_DBG((0,"Log Started"));  } while(0)
-#define DISP_WRITE(FD,BA,CH,T,RH) ( dbg_r = echld_write_frame(FD,BA,CH,T,RH,NULL), DISP_DBG((1,"SND fd=%d ch=%d ty='%s' rh=%d msg='%s'",FD,CH,TY(T),RH, (dbg_r>0?"ok":strerror(errno)))), dbg_r )
+#define DISP_DBG_START(fname) do { debug_fp = ws_fopen(fname,"a"); DCOM(); DISP_DBG((0,"Log Started"));  } while(0)
+#define DISP_WRITE(FD,BA,CH,T,RH) ( dbg_r = echld_write_frame(FD,BA,CH,T,RH,NULL), DISP_DBG((1,"SND fd=%d ch=%d ty='%s' rh=%d msg='%s'",FD,CH,TY(T),RH, (dbg_r>0?"ok":g_strerror(errno)))))
 #define CHLD_SET_STATE(c,st) do { DISP_DBG((1,"Child[%d] State %s => %s",(c)->chld_id, ST((c)->state), ST((st)) )); (c)->state=(st); } while(0)
 #else
 #define DISP_DBG(attrs)
@@ -138,7 +138,7 @@ static echld_epan_stuff_t stuff;
 static void init_stuff(void) {
 #ifdef HAVE_LIBPCAP
 	capture_opts_init(&stuff.cap_opts);
-	capture_session_init(&stuff.cap_sess, (void *)&stuff.cfile);
+	capture_session_init(&stuff.cap_sess, &stuff.cfile);
 #endif
 
 }
@@ -207,7 +207,6 @@ static char* intflist2json(GList* if_list, char** if_cap_err) {
     if_capabilities_t *caps;
     char        addr_str[ADDRSTRLEN];
     GString     *str = g_string_new("{ what='interfaces', interfaces={ \n");
-    char* s;
 
     for (if_entry = g_list_first(if_list); if_entry != NULL;
          if_entry = g_list_next(if_entry)) {
@@ -265,7 +264,7 @@ static char* intflist2json(GList* if_list, char** if_cap_err) {
 
 
 
-		caps = capture_get_if_capabilities(if_info->name, 0, if_cap_err, NULL);
+		caps = capture_get_if_capabilities(if_info->name, 0, NULL, if_cap_err, NULL);
 
 		if (caps != NULL) {
 			if (caps->data_link_types != NULL) {
@@ -288,7 +287,7 @@ static char* intflist2json(GList* if_list, char** if_cap_err) {
 
 			if (caps->can_set_rfmon) {
 				free_if_capabilities(caps);
-				caps = capture_get_if_capabilities(if_info->name, 1, if_cap_err, NULL);
+				caps = capture_get_if_capabilities(if_info->name, 1, NULL, if_cap_err, NULL);
 
 				if (caps->data_link_types != NULL) {
 					GList* lt_entry = caps->data_link_types;
@@ -315,9 +314,7 @@ static char* intflist2json(GList* if_list, char** if_cap_err) {
     g_string_truncate(str,str->len - 2); /* the comma and return */
     g_string_append(str,"}");
 
-    s=str->str;
-    g_string_free(str,FALSE);
-    return s;
+    return g_string_free(str,FALSE);
 }
 
 static char* intf_list = NULL;
@@ -382,7 +379,6 @@ static char* param_get_version(char** err _U_) {
 
 static char* param_get_capture_types(char** err _U_) {
   GString* str = g_string_new("");
-  char* s;
   int i;
 
   for (i = 0; i < WTAP_NUM_FILE_TYPES_SUBTYPES; i++) {
@@ -392,9 +388,7 @@ static char* param_get_capture_types(char** err _U_) {
     }
   }
 
-  s = str->str;
-  g_string_free(str,FALSE);
-  return s;
+  return g_string_free(str,FALSE);
 }
 
 static echld_bool_t param_set_add_hosts_file(char* val, char** err) {
@@ -470,24 +464,24 @@ static void set_dumpcap_pid(int pid) {
 }
 
 static void preinit_epan(char* argv0, int (*main)(int, char **)) {
-	// char *gpf_path, *pf_path;
 	char *gdp_path, *dp_path;
-	// int gpf_open_errno, gpf_read_errno;
-	// int pf_open_errno, pf_read_errno;
+#if 0
+	char *gpf_path, *pf_path;
+	int gpf_open_errno, gpf_read_errno;
+	int pf_open_errno, pf_read_errno;
+#endif
 	int gdp_open_errno, gdp_read_errno;
 	int dp_open_errno, dp_read_errno;
 	char* error;
 
-	error = init_progfile_dir(argv0, main);
+	error = init_progfile_dir(argv0, (void *)main);
 
-	comp_info_str = g_string_new("Compiled ");
-	get_compiled_version_info(comp_info_str, NULL, epan_get_compiled_version_info);
+	comp_info_str = get_compiled_version_info(NULL, epan_get_compiled_version_info);
 
-	runtime_info_str = g_string_new("Running ");
-	get_runtime_version_info(runtime_info_str, NULL);
+	runtime_info_str = get_runtime_version_info(NULL);
 
-	version_long_str = g_strdup_printf("%s%s\n%s\n%s\n%s",
-		version_str, wireshark_gitversion, get_copyright_info(),
+	version_long_str = g_strdup_printf("Echld %s\n%s\n%s\n%s",
+		get_ws_vcs_version_info(), get_copyright_info(),
 		comp_info_str->str, runtime_info_str->str);
 
 	if (error) {
@@ -495,8 +489,8 @@ static void preinit_epan(char* argv0, int (*main)(int, char **)) {
 	}
 
 	 /* Add it to the information to be reported on a crash. */
-	ws_add_crash_info("Echld " VERSION "%s\n%s\n%s",
-		wireshark_gitversion, comp_info_str->str, runtime_info_str->str);
+	ws_add_crash_info("Echld %s\n%s\n%s",
+		get_ws_vcs_version_info(), comp_info_str->str, runtime_info_str->str);
 
 	init_stuff();
 
@@ -514,12 +508,13 @@ static void preinit_epan(char* argv0, int (*main)(int, char **)) {
 
 	/* disabled protocols as per configuration file */
 	set_disabled_protos_list();
-
+	set_disabled_heur_dissector_list();
 
 	setlocale(LC_ALL, "");
 	DISP_DBG((1,"---5"));
 
 	read_disabled_protos_list(&gdp_path, &gdp_open_errno, &gdp_read_errno, &dp_path, &dp_open_errno, &dp_read_errno);
+	read_disabled_heur_dissector_list(&gdp_path, &gdp_open_errno, &gdp_read_errno, &dp_path, &dp_open_errno, &dp_read_errno);
 
 	DISP_DBG((1,"---6"));
 
@@ -527,14 +522,15 @@ static void preinit_epan(char* argv0, int (*main)(int, char **)) {
 	DISP_DBG((1,"---7"));
 
 	DISP_DBG((1,"---8"));
-    timestamp_set_precision(TS_PREC_AUTO_USEC);
+	timestamp_set_precision(TS_PREC_AUTO);
 
-	// sleep(10);
+#if 0
+	sleep(10);
 
-	// initialize_funnel_ops();
-	// stuff.prefs = read_prefs(&gpf_open_errno, &gpf_read_errno, &gpf_path, &pf_open_errno, &pf_read_errno, &pf_path);
-	// check 4 errors
-
+	initialize_funnel_ops();
+	stuff.prefs = read_prefs(&gpf_open_errno, &gpf_read_errno, &gpf_path, &pf_open_errno, &pf_read_errno, &pf_path);
+	check 4 errors
+#endif
 
 	DISP_DBG((2,"epan preinit done"));
 }
@@ -712,7 +708,7 @@ static void detach_new_child(enc_msg_t* em,  echld_chld_id_t chld_id) {
 
 		DISP_DBG((5,"new_child pipe(dispatcher)"));
 		if( pipe(disp_pipe_fds) < 0) {
-			dispatcher_err(ECHLD_ERR_CANNOT_FORK,"CANNOT OPEN PARENT PIPE: %s",strerror(errno));
+			dispatcher_err(ECHLD_ERR_CANNOT_FORK,"CANNOT OPEN PARENT PIPE: %s",g_strerror(errno));
 			return;
 		}
 
@@ -723,7 +719,7 @@ static void detach_new_child(enc_msg_t* em,  echld_chld_id_t chld_id) {
 		if( pipe(child_pipe_fds) < 0) {
 			close(pipe_from_disp);
 			close(pipe_to_child);
-			dispatcher_err(ECHLD_ERR_CANNOT_FORK,"CANNOT OPEN CHILD PIPE: %s",strerror(errno));
+			dispatcher_err(ECHLD_ERR_CANNOT_FORK,"CANNOT OPEN CHILD PIPE: %s",g_strerror(errno));
 			return;
 		}
 
@@ -737,7 +733,7 @@ static void detach_new_child(enc_msg_t* em,  echld_chld_id_t chld_id) {
 				close(pipe_to_disp);
 				close(pipe_from_child);
 				close(pipe_from_disp);
-				dispatcher_err(ECHLD_ERR_CANNOT_FORK,"CANNOT FORK: %s",strerror(errno));
+				dispatcher_err(ECHLD_ERR_CANNOT_FORK,"CANNOT FORK: %s",g_strerror(errno));
 				return;
 			}
 			case 0: {
@@ -957,7 +953,7 @@ int dispatcher_loop(void) {
 		DISP_DBG((5,"Select()ed nfds=%d",nchld,nfds));
 
 		if (nfds < 0) {
-			DISP_DBG((1,"select error='%s'",strerror(errno) ));
+			DISP_DBG((1,"select error='%s'",g_strerror(errno) ));
 			continue;
 		}
 

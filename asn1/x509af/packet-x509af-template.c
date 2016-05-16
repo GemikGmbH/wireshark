@@ -23,7 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/oids.h>
 #include <epan/asn1.h>
@@ -34,6 +33,9 @@
 #include "packet-x509if.h"
 #include "packet-x509sat.h"
 #include "packet-ldap.h"
+#if defined(HAVE_LIBGNUTLS)
+#include <gnutls/gnutls.h>
+#endif
 
 #define PNAME  "X.509 Authentication Framework"
 #define PSNAME "X509AF"
@@ -51,8 +53,26 @@ static int hf_x509af_extension_id = -1;
 /* Initialize the subtree pointers */
 static gint ett_pkix_crl = -1;
 #include "packet-x509af-ett.c"
-static const char *algorithm_id;
+static const char *algorithm_id = NULL;
+static void
+x509af_export_publickey(tvbuff_t *tvb, asn1_ctx_t *actx, int offset, int len);
 #include "packet-x509af-fn.c"
+
+/* Exports the SubjectPublicKeyInfo structure as gnutls_datum_t.
+ * actx->private_data is assumed to be a gnutls_datum_t pointer which will be
+ * filled in if non-NULL. */
+static void
+x509af_export_publickey(tvbuff_t *tvb _U_, asn1_ctx_t *actx _U_, int offset _U_, int len _U_)
+{
+#if defined(HAVE_LIBGNUTLS)
+  gnutls_datum_t *subjectPublicKeyInfo = (gnutls_datum_t *)actx->private_data;
+  if (subjectPublicKeyInfo) {
+    subjectPublicKeyInfo->data = (guchar *) tvb_get_ptr(tvb, offset, len);
+    subjectPublicKeyInfo->size = len;
+    actx->private_data = NULL;
+  }
+#endif
+}
 
 const char *x509af_get_last_algorithm_id(void) {
   return algorithm_id;
@@ -62,8 +82,7 @@ const char *x509af_get_last_algorithm_id(void) {
 static int
 dissect_pkix_crl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, void *data _U_)
 {
-	proto_item *item=NULL;
-	proto_tree *tree=NULL;
+	proto_tree *tree;
 	asn1_ctx_t asn1_ctx;
 	asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
 
@@ -72,12 +91,15 @@ dissect_pkix_crl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, voi
 	col_set_str(pinfo->cinfo, COL_INFO, "Certificate Revocation List");
 
 
-	if(parent_tree){
-		item=proto_tree_add_text(parent_tree, tvb, 0, -1, "Certificate Revocation List");
-		tree = proto_item_add_subtree(item, ett_pkix_crl);
-	}
+	tree=proto_tree_add_subtree(parent_tree, tvb, 0, -1, ett_pkix_crl, NULL, "Certificate Revocation List");
 
 	return dissect_x509af_CertificateList(FALSE, tvb, 0, &asn1_ctx, tree, -1);
+}
+
+static void
+x509af_cleanup_protocol(void)
+{
+  algorithm_id = NULL;
 }
 
 /*--- proto_register_x509af ----------------------------------------------*/
@@ -109,10 +131,11 @@ void proto_register_x509af(void) {
   proto_register_field_array(proto_x509af, hf, array_length(hf));
   proto_register_subtree_array(ett, array_length(ett));
 
+  register_cleanup_routine(&x509af_cleanup_protocol);
 
-  register_ber_syntax_dissector("Certificate", proto_x509af, dissect_x509af_Certificate_PDU);
-  register_ber_syntax_dissector("CertificateList", proto_x509af, dissect_CertificateList_PDU);
-  register_ber_syntax_dissector("CrossCertificatePair", proto_x509af, dissect_CertificatePair_PDU);
+  new_register_ber_syntax_dissector("Certificate", proto_x509af, dissect_x509af_Certificate_PDU);
+  new_register_ber_syntax_dissector("CertificateList", proto_x509af, dissect_CertificateList_PDU);
+  new_register_ber_syntax_dissector("CrossCertificatePair", proto_x509af, dissect_CertificatePair_PDU);
 
   register_ber_oid_syntax(".cer", NULL, "Certificate");
   register_ber_oid_syntax(".crt", NULL, "Certificate");
@@ -129,8 +152,8 @@ void proto_reg_handoff_x509af(void) {
 
 #include "packet-x509af-dis-tab.c"
 
-	/*XXX these should really go to a better place but since that
-	  I have not that ITU standard, ill put it here for the time
+	/*XXX these should really go to a better place but since
+	  I have not that ITU standard, I'll put it here for the time
 	  being.
 	  Only implemented those algorithms that take no parameters
 	  for the time being,   ronnie
@@ -160,15 +183,15 @@ void proto_reg_handoff_x509af(void) {
 
 	/* these will generally be encoded as ";binary" in LDAP */
 
-	register_ldap_name_dissector("cACertificate", dissect_x509af_Certificate_PDU, proto_x509af);
-	register_ldap_name_dissector("userCertificate", dissect_x509af_Certificate_PDU, proto_x509af);
+	new_register_ldap_name_dissector("cACertificate", dissect_x509af_Certificate_PDU, proto_x509af);
+	new_register_ldap_name_dissector("userCertificate", dissect_x509af_Certificate_PDU, proto_x509af);
 
-	register_ldap_name_dissector("certificateRevocationList", dissect_CertificateList_PDU, proto_x509af);
-	register_ldap_name_dissector("crl", dissect_CertificateList_PDU, proto_x509af);
+	new_register_ldap_name_dissector("certificateRevocationList", dissect_CertificateList_PDU, proto_x509af);
+	new_register_ldap_name_dissector("crl", dissect_CertificateList_PDU, proto_x509af);
 
-	register_ldap_name_dissector("authorityRevocationList", dissect_CertificateList_PDU, proto_x509af);
-	register_ldap_name_dissector("arl", dissect_CertificateList_PDU, proto_x509af);
+	new_register_ldap_name_dissector("authorityRevocationList", dissect_CertificateList_PDU, proto_x509af);
+	new_register_ldap_name_dissector("arl", dissect_CertificateList_PDU, proto_x509af);
 
-	register_ldap_name_dissector("crossCertificatePair", dissect_CertificatePair_PDU, proto_x509af);
+	new_register_ldap_name_dissector("crossCertificatePair", dissect_CertificatePair_PDU, proto_x509af);
 }
 

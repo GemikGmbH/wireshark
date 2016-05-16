@@ -22,25 +22,25 @@
  */
 
 #include "lbm_lbtrm_transport_dialog.h"
-#include "ui_lbm_lbtrm_transport_dialog.h"
+#include <ui_lbm_lbtrm_transport_dialog.h>
 
 #include "file.h"
 
+#include "qt_ui_utils.h"
 #include "wireshark_application.h"
 
 #include <QClipboard>
+#include <QMenu>
 #include <QMessageBox>
 #include <QTreeWidget>
 #include <QTreeWidgetItemIterator>
 #include <QMenu>
+
 #include <epan/packet_info.h>
 #include <epan/tap.h>
 #include <epan/to_str.h>
-#include <epan/wmem/wmem.h>
 #include <epan/dissectors/packet-lbm.h>
 #include <wsutil/nstime.h>
-
-#include <QDebug>
 
 namespace
 {
@@ -1059,7 +1059,7 @@ void LBMLBTRMTransportDialogInfo::processPacket(const packet_info * pinfo, const
             {
                 LBMLBTRMSourceEntry * source = NULL;
                 LBMLBTRMSourceMapIterator it;
-                QString src_address = QString(address_to_str(wmem_packet_scope(), &(pinfo->src)));
+                QString src_address = address_to_qstring(&(pinfo->src));
 
                 it = m_sources.find(src_address);
                 if (m_sources.end() == it)
@@ -1086,7 +1086,7 @@ void LBMLBTRMTransportDialogInfo::processPacket(const packet_info * pinfo, const
             {
                 LBMLBTRMReceiverEntry * receiver = NULL;
                 LBMLBTRMReceiverMapIterator it;
-                QString src_address = QString(address_to_str(wmem_packet_scope(), &(pinfo->src)));
+                QString src_address = address_to_qstring(&(pinfo->src));
 
                 it = m_receivers.find(src_address);
                 if (m_receivers.end() == it)
@@ -1303,7 +1303,7 @@ void LBMLBTRMTransportDialog::fillTree(void)
     }
     m_dialog_info->setDialog(this);
 
-    error_string = register_tap_listener("lbtrm",
+    error_string = register_tap_listener("lbm_lbtrm",
         (void *)m_dialog_info,
         m_ui->displayFilterLineEdit->text().toUtf8().constData(),
         TL_REQUIRES_COLUMNS,
@@ -1338,10 +1338,8 @@ void LBMLBTRMTransportDialog::resetTap(void * tap_data)
     info->clearMaps();
 }
 
-gboolean LBMLBTRMTransportDialog::tapPacket(void * tap_data, packet_info * pinfo, epan_dissect_t * edt, const void * tap_info)
+gboolean LBMLBTRMTransportDialog::tapPacket(void * tap_data, packet_info * pinfo, epan_dissect_t *, const void * tap_info)
 {
-    Q_UNUSED(edt)
-
     if (pinfo->fd->flags.passed_dfilter == 1)
     {
         const lbm_lbtrm_tap_info_t * tapinfo = (const lbm_lbtrm_tap_info_t *)tap_info;
@@ -1352,9 +1350,8 @@ gboolean LBMLBTRMTransportDialog::tapPacket(void * tap_data, packet_info * pinfo
     return (TRUE);
 }
 
-void LBMLBTRMTransportDialog::drawTreeItems(void * tap_data)
+void LBMLBTRMTransportDialog::drawTreeItems(void *)
 {
-    Q_UNUSED(tap_data)
 }
 
 void LBMLBTRMTransportDialog::on_applyFilterButton_clicked(void)
@@ -1389,10 +1386,8 @@ void LBMLBTRMTransportDialog::sourcesDetailCurrentChanged(int index)
     sourcesItemClicked(m_current_source_transport, 0);
 }
 
-void LBMLBTRMTransportDialog::sourcesItemClicked(QTreeWidgetItem * item, int column)
+void LBMLBTRMTransportDialog::sourcesItemClicked(QTreeWidgetItem * item, int)
 {
-    Q_UNUSED(column)
-
     LBMLBTRMSourceTransportEntry * transport = dynamic_cast<LBMLBTRMSourceTransportEntry *>(item);
 
     resetSourcesDetail();
@@ -1459,10 +1454,8 @@ void LBMLBTRMTransportDialog::loadSourceSMDetails(LBMLBTRMSourceTransportEntry *
     }
 }
 
-void LBMLBTRMTransportDialog::receiversItemClicked(QTreeWidgetItem * item, int column)
+void LBMLBTRMTransportDialog::receiversItemClicked(QTreeWidgetItem * item, int)
 {
-    Q_UNUSED(column)
-
     LBMLBTRMReceiverTransportEntry * transport = dynamic_cast<LBMLBTRMReceiverTransportEntry *>(item);
 
     resetReceiversDetail();
@@ -1485,10 +1478,8 @@ void LBMLBTRMTransportDialog::loadReceiverNAKDetails(LBMLBTRMReceiverTransportEn
     }
 }
 
-void LBMLBTRMTransportDialog::sourcesDetailItemDoubleClicked(QTreeWidgetItem * item, int column)
+void LBMLBTRMTransportDialog::sourcesDetailItemDoubleClicked(QTreeWidgetItem * item, int)
 {
-    Q_UNUSED(column)
-
     LBMLBTRMFrameEntry * frame = dynamic_cast<LBMLBTRMFrameEntry *>(item);
     if (frame == NULL)
     {
@@ -1498,10 +1489,8 @@ void LBMLBTRMTransportDialog::sourcesDetailItemDoubleClicked(QTreeWidgetItem * i
     emit goToPacket((int)frame->getFrame());
 }
 
-void LBMLBTRMTransportDialog::receiversDetailItemDoubleClicked(QTreeWidgetItem * item, int column)
+void LBMLBTRMTransportDialog::receiversDetailItemDoubleClicked(QTreeWidgetItem * item, int)
 {
-    Q_UNUSED(column)
-
     LBMLBTRMFrameEntry * frame = dynamic_cast<LBMLBTRMFrameEntry *>(item);
     if (frame == NULL)
     {

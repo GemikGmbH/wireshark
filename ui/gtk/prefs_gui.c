@@ -31,21 +31,15 @@
 
 #include "cfile.h"
 
-#include "ui/recent.h"
 
 #include "ui/gtk/prefs_gui.h"
-#include "ui/gtk/gtkglobals.h"
 #include "ui/gtk/help_dlg.h"
 #include "ui/gtk/supported_protos_dlg.h"
 #include "ui/gtk/prefs_dlg.h"
 #include "ui/gtk/main_titlebar.h"
 #include "ui/gtk/gui_utils.h"
-#include "ui/gtk/dlg_utils.h"
 #include "ui/gtk/main.h"
-#include "ui/gtk/packet_list.h"
-#include "ui/gtk/packet_panes.h"
 #include "ui/gtk/main_toolbar.h"
-#include "ui/gtk/font_utils.h"
 #include "ui/gtk/webbrowser.h"
 #include "ui/gtk/main_welcome.h"
 
@@ -211,8 +205,8 @@ gui_prefs_show(void)
 
 #if defined(HAVE_IGE_MAC_INTEGRATION) || defined(HAVE_GTKOSXAPPLICATION)
 	macosx_style_cb = create_preference_check_button(main_grid, pos++,
-	    "Mac OS X style",
-	    "Create a Mac OS X look and feel. Checking this box will move the "
+	    "OS X style",
+	    "Create an OS X look and feel. Checking this box will move the "
 	    "menu bar to the top of the screen instead of the top of the Wireshark window. "
 	    "Requires a restart of Wireshark to take effect.",
 	    prefs.gui_macosx_style);

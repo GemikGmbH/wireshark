@@ -31,7 +31,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 
 #include "packet-ber.h"
@@ -93,7 +92,7 @@ static int hf_logotypecertextn_hashAlg = -1;      /* AlgorithmIdentifier */
 static int hf_logotypecertextn_hashValue = -1;    /* OCTET_STRING */
 
 /*--- End of included file: packet-logotypecertextn-hf.c ---*/
-#line 43 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
+#line 42 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
 
 /* Initialize the subtree pointers */
 
@@ -120,7 +119,7 @@ static gint ett_logotypecertextn_T_refStructURI = -1;
 static gint ett_logotypecertextn_HashAlgAndValue = -1;
 
 /*--- End of included file: packet-logotypecertextn-ett.c ---*/
-#line 46 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
+#line 45 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
 
 
 
@@ -509,15 +508,17 @@ dissect_logotypecertextn_LogotypeExtn(gboolean implicit_tag _U_, tvbuff_t *tvb _
 
 /*--- PDUs ---*/
 
-static void dissect_LogotypeExtn_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_) {
+static int dissect_LogotypeExtn_PDU(tvbuff_t *tvb _U_, packet_info *pinfo _U_, proto_tree *tree _U_, void *data _U_) {
+  int offset = 0;
   asn1_ctx_t asn1_ctx;
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_BER, TRUE, pinfo);
-  dissect_logotypecertextn_LogotypeExtn(FALSE, tvb, 0, &asn1_ctx, tree, hf_logotypecertextn_LogotypeExtn_PDU);
+  offset = dissect_logotypecertextn_LogotypeExtn(FALSE, tvb, offset, &asn1_ctx, tree, hf_logotypecertextn_LogotypeExtn_PDU);
+  return offset;
 }
 
 
 /*--- End of included file: packet-logotypecertextn-fn.c ---*/
-#line 49 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
+#line 48 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
 
 
 /*--- proto_register_logotypecertextn ----------------------------------------------*/
@@ -694,7 +695,7 @@ void proto_register_logotypecertextn(void) {
         "OCTET_STRING", HFILL }},
 
 /*--- End of included file: packet-logotypecertextn-hfarr.c ---*/
-#line 57 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
+#line 56 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
   };
 
   /* List of subtrees */
@@ -723,7 +724,7 @@ void proto_register_logotypecertextn(void) {
     &ett_logotypecertextn_HashAlgAndValue,
 
 /*--- End of included file: packet-logotypecertextn-ettarr.c ---*/
-#line 62 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
+#line 61 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
   };
 
   /* Register protocol */
@@ -741,12 +742,12 @@ void proto_reg_handoff_logotypecertextn(void) {
 
 /*--- Included file: packet-logotypecertextn-dis-tab.c ---*/
 #line 1 "../../asn1/logotypecertextn/packet-logotypecertextn-dis-tab.c"
-  register_ber_oid_dissector("1.3.6.1.5.5.7.1.12", dissect_LogotypeExtn_PDU, proto_logotypecertextn, "id-pe-logotype");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.20.1", dissect_LogotypeExtn_PDU, proto_logotypecertextn, "id-pe-logo-loyalty");
-  register_ber_oid_dissector("1.3.6.1.5.5.7.20.2", dissect_LogotypeExtn_PDU, proto_logotypecertextn, "id-pe-logo-background");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.1.12", dissect_LogotypeExtn_PDU, proto_logotypecertextn, "id-pe-logotype");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.20.1", dissect_LogotypeExtn_PDU, proto_logotypecertextn, "id-pe-logo-loyalty");
+  new_register_ber_oid_dissector("1.3.6.1.5.5.7.20.2", dissect_LogotypeExtn_PDU, proto_logotypecertextn, "id-pe-logo-background");
 
 
 /*--- End of included file: packet-logotypecertextn-dis-tab.c ---*/
-#line 77 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
+#line 76 "../../asn1/logotypecertextn/packet-logotypecertextn-template.c"
 }
 

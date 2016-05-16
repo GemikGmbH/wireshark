@@ -32,12 +32,8 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
-#include <epan/conversation.h>
 #include <epan/xdlc.h>
-#include <epan/crc16-tvb.h>
 
 void proto_register_v5dl(void);
 
@@ -229,9 +225,9 @@ dissect_v5dl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	 * Check the checksum, if available.
 	 * The checksum is a CCITT CRC-16 at the end of the packet, so
 	 * if we don't have the entire packet in the capture - i.e., if
-	 * tvb_length(tvb) != tvb_reported_length(tvb) we can't check it.
+	 * tvb_captured_length(tvb) != tvb_reported_length(tvb) we can't check it.
 	 */
-	length = tvb_length(tvb);
+	length = tvb_captured_length(tvb);
 	reported_length = tvb_reported_length(tvb);
 
 	/*
@@ -274,7 +270,7 @@ dissect_v5dl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		 * Remove the V5DL header *and* the checksum.
 		 */
 		next_tvb = tvb_new_subset(tvb, v5dl_header_len,
-		    tvb_length_remaining(tvb, v5dl_header_len) - 2,
+		    tvb_captured_length_remaining(tvb, v5dl_header_len) - 2,
 		    tvb_reported_length_remaining(tvb, v5dl_header_len) - 2);
 	} else {
 		/*
@@ -289,7 +285,7 @@ dissect_v5dl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			 * and both bytes from the reported length.
 			 */
 			next_tvb = tvb_new_subset(tvb, v5dl_header_len,
-			    tvb_length_remaining(tvb, v5dl_header_len) - 1,
+			    tvb_captured_length_remaining(tvb, v5dl_header_len) - 1,
 			    tvb_reported_length_remaining(tvb, v5dl_header_len) - 2);
 		} else {
 			/*
@@ -299,7 +295,7 @@ dissect_v5dl(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 			 * length.
 			 */
 			next_tvb = tvb_new_subset(tvb, v5dl_header_len,
-			    tvb_length_remaining(tvb, v5dl_header_len),
+			    tvb_captured_length_remaining(tvb, v5dl_header_len),
 			    tvb_reported_length_remaining(tvb, v5dl_header_len) - 2);
 		}
 	}
@@ -442,3 +438,16 @@ proto_reg_handoff_v5dl(void)
 {
 	v52_handle = find_dissector("v52");
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

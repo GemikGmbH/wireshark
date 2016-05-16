@@ -22,7 +22,7 @@
 #ifndef TCP_STREAM_DIALOG_H
 #define TCP_STREAM_DIALOG_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
@@ -46,7 +46,7 @@ class TCPStreamDialog : public QDialog
     Q_OBJECT
 
 public:
-    explicit TCPStreamDialog(QWidget *parent = 0, capture_file *cf = NULL, tcp_graph_type graph_type = GRAPH_TSEQ_STEVENS);
+    explicit TCPStreamDialog(QWidget *parent = 0, capture_file *cf = NULL, tcp_graph_type graph_type = GRAPH_TSEQ_TCPTRACE);
     ~TCPStreamDialog();
 
 signals:
@@ -93,6 +93,8 @@ private:
     void findStream();
     void fillGraph();
     void zoomAxes(bool in);
+    void zoomXAxis(bool in);
+    void zoomYAxis(bool in);
     void panAxes(int x_pixels, int y_pixels);
     void resetAxes();
     void fillStevens();
@@ -119,7 +121,11 @@ private slots:
     void on_dragRadioButton_toggled(bool checked);
     void on_zoomRadioButton_toggled(bool checked);
     void on_actionZoomIn_triggered();
+    void on_actionZoomInX_triggered();
+    void on_actionZoomInY_triggered();
     void on_actionZoomOut_triggered();
+    void on_actionZoomOutX_triggered();
+    void on_actionZoomOutY_triggered();
     void on_actionReset_triggered();
     void on_actionMoveRight10_triggered();
     void on_actionMoveLeft10_triggered();

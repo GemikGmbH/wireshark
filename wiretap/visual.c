@@ -25,7 +25,6 @@
 #include <string.h>
 #include "wtap-int.h"
 #include "file_wrappers.h"
-#include <wsutil/buffer.h>
 #include "visual.h"
 
 /*
@@ -142,14 +141,14 @@ struct visual_read_info
 {
     guint32 num_pkts;           /* Number of pkts in the file */
     guint32 current_pkt;        /* Next packet to be read */
-    double  start_time;         /* Capture start time in microseconds */
+    time_t  start_time;         /* Capture start time in seconds */
 };
 
 
 /* Additional information for writing Visual files */
 struct visual_write_info
 {
-    guint start_time;        /* Capture start time in seconds */
+    time_t  start_time;         /* Capture start time in seconds */
     int     index_table_index;  /* Index of the next index entry */
     int     index_table_size;   /* Allocated size of the index table */
     guint32 * index_table;      /* File offsets for the packets */
@@ -165,44 +164,35 @@ static gboolean visual_seek_read(wtap *wth, gint64 seek_off,
 static gboolean visual_read_packet(wtap *wth, FILE_T fh,
     struct wtap_pkthdr *phdr, Buffer *buf, int *err, gchar **err_info);
 static gboolean visual_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
-    const guint8 *pd, int *err);
-static gboolean visual_dump_close(wtap_dumper *wdh, int *err);
+    const guint8 *pd, int *err, gchar **err_info);
+static gboolean visual_dump_finish(wtap_dumper *wdh, int *err);
 static void visual_dump_free(wtap_dumper *wdh);
 
 
 /* Open a file for reading */
-int visual_open(wtap *wth, int *err, gchar **err_info)
+wtap_open_return_val visual_open(wtap *wth, int *err, gchar **err_info)
 {
-    int bytes_read;
     char magic[sizeof visual_magic];
     struct visual_file_hdr vfile_hdr;
     struct visual_read_info * visual;
     int encap;
 
     /* Check the magic string at the start of the file */
-    errno = WTAP_ERR_CANT_READ;
-    bytes_read = file_read(magic, sizeof magic, wth->fh);
-    if (bytes_read != sizeof magic)
+    if (!wtap_read_bytes(wth->fh, magic, sizeof magic, err, err_info))
     {
-        *err = file_error(wth->fh, err_info);
-        if (*err != 0 && *err != WTAP_ERR_SHORT_READ)
-            return -1;
-        return 0;
+        if (*err != WTAP_ERR_SHORT_READ)
+            return WTAP_OPEN_ERROR;
+        return WTAP_OPEN_NOT_MINE;
     }
     if (memcmp(magic, visual_magic, sizeof visual_magic) != 0)
     {
-        return 0;
+        return WTAP_OPEN_NOT_MINE;
     }
 
     /* Read the rest of the file header. */
-    errno = WTAP_ERR_CANT_READ;
-    bytes_read = file_read(&vfile_hdr, sizeof vfile_hdr, wth->fh);
-    if (bytes_read != sizeof vfile_hdr)
+    if (!wtap_read_bytes(wth->fh, &vfile_hdr, sizeof vfile_hdr, err, err_info))
     {
-        *err = file_error(wth->fh, err_info);
-        if (*err == 0)
-            *err = WTAP_ERR_SHORT_READ;
-        return -1;
+        return WTAP_OPEN_ERROR;
     }
 
     /* Verify the file version is known */
@@ -211,7 +201,7 @@ int visual_open(wtap *wth, int *err, gchar **err_info)
     {
         *err = WTAP_ERR_UNSUPPORTED;
         *err_info = g_strdup_printf("visual: file version %u unsupported", vfile_hdr.file_version);
-        return -1;
+        return WTAP_OPEN_ERROR;
     }
 
     /* Translate the encapsulation type; these values are SNMP ifType
@@ -224,28 +214,28 @@ int visual_open(wtap *wth, int *err, gchar **err_info)
        XXX - should we use WTAP_ENCAP_PER_PACKET for that? */
     switch (pletoh16(&vfile_hdr.media_type))
     {
-    case  6:	/* ethernet-csmacd */
+    case  6:    /* ethernet-csmacd */
         encap = WTAP_ENCAP_ETHERNET;
         break;
 
-    case  9:	/* IEEE802.5 */
+    case  9:    /* IEEE802.5 */
         encap = WTAP_ENCAP_TOKEN_RING;
         break;
 
-    case 16:	/* lapb */
+    case 16:    /* lapb */
         encap = WTAP_ENCAP_LAPB;
         break;
 
-    case 22:	/* propPointToPointSerial */
-    case 118:	/* HDLC */
+    case 22:    /* propPointToPointSerial */
+    case 118:   /* HDLC */
         encap = WTAP_ENCAP_CHDLC_WITH_PHDR;
         break;
 
-    case 32:	/* frame-relay */
+    case 32:    /* frame-relay */
         encap = WTAP_ENCAP_FRELAY_WITH_PHDR;
         break;
 
-    case 37:	/* ATM */
+    case 37:    /* ATM */
        encap = WTAP_ENCAP_ATM_PDUS;
        break;
 
@@ -253,7 +243,7 @@ int visual_open(wtap *wth, int *err, gchar **err_info)
         *err = WTAP_ERR_UNSUPPORTED;
         *err_info = g_strdup_printf("visual: network type %u unknown or unsupported",
                                      vfile_hdr.media_type);
-        return -1;
+        return WTAP_OPEN_ERROR;
     }
 
     /* Fill in the wiretap struct with data from the file header */
@@ -264,16 +254,16 @@ int visual_open(wtap *wth, int *err, gchar **err_info)
     /* Set up the pointers to the handlers for this file type */
     wth->subtype_read = visual_read;
     wth->subtype_seek_read = visual_seek_read;
-    wth->tsprecision = WTAP_FILE_TSPREC_USEC;
+    wth->file_tsprec = WTAP_TSPREC_MSEC;
 
     /* Add Visual-specific information to the wiretap struct for later use. */
     visual = (struct visual_read_info *)g_malloc(sizeof(struct visual_read_info));
     wth->priv = (void *)visual;
     visual->num_pkts = pletoh32(&vfile_hdr.num_pkts);
-    visual->start_time = ((double) pletoh32(&vfile_hdr.start_time)) * 1000000;
+    visual->start_time = pletoh32(&vfile_hdr.start_time);
     visual->current_pkt = 1;
 
-    return 1;
+    return WTAP_OPEN_MINE;
 }
 
 
@@ -325,25 +315,15 @@ visual_read_packet(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr,
 {
     struct visual_read_info *visual = (struct visual_read_info *)wth->priv;
     struct visual_pkt_hdr vpkt_hdr;
-    int bytes_read;
     guint32 packet_size;
     struct visual_atm_hdr vatm_hdr;
-    double  t;
-    time_t  secs;
-    guint32 usecs;
+    guint32 relmsecs;
     guint32 packet_status;
     guint8 *pd;
 
     /* Read the packet header. */
-    errno = WTAP_ERR_CANT_READ;
-    bytes_read = file_read(&vpkt_hdr, (unsigned int)sizeof vpkt_hdr, fh);
-    if (bytes_read < 0 || (size_t)bytes_read != sizeof vpkt_hdr)
+    if (!wtap_read_bytes_or_eof(fh, &vpkt_hdr, (unsigned int)sizeof vpkt_hdr, err, err_info))
     {
-        *err = file_error(fh, err_info);
-        if (*err == 0 && bytes_read != 0)
-        {
-            *err = WTAP_ERR_SHORT_READ;
-        }
         return FALSE;
     }
 
@@ -354,12 +334,9 @@ visual_read_packet(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr,
     phdr->presence_flags = WTAP_HAS_TS|WTAP_HAS_CAP_LEN;
 
     /* Set the packet time and length. */
-    t = visual->start_time;
-    t += ((double)pletoh32(&vpkt_hdr.ts_delta))*1000;
-    secs = (time_t)(t/1000000);
-    usecs = (guint32)(t - secs*1000000);
-    phdr->ts.secs = secs;
-    phdr->ts.nsecs = usecs * 1000;
+    relmsecs = pletoh32(&vpkt_hdr.ts_delta);
+    phdr->ts.secs = visual->start_time + relmsecs/1000;
+    phdr->ts.nsecs = (relmsecs % 1000)*1000000;
 
     phdr->len = pletoh16(&vpkt_hdr.orig_len);
 
@@ -459,15 +436,8 @@ visual_read_packet(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr,
 
            ATM packets have an additional packet header; read and
            process it. */
-        errno = WTAP_ERR_CANT_READ;
-        bytes_read = file_read(&vatm_hdr, (unsigned int)sizeof vatm_hdr, fh);
-        if (bytes_read < 0 || (size_t)bytes_read != sizeof vatm_hdr)
+        if (!wtap_read_bytes(fh, &vatm_hdr, (unsigned int)sizeof vatm_hdr, err, err_info))
         {
-            *err = file_error(fh, err_info);
-            if (*err == 0)
-            {
-                *err = WTAP_ERR_SHORT_READ;
-            }
             return FALSE;
         }
 
@@ -573,7 +543,7 @@ visual_read_packet(wtap *wth, FILE_T fh, struct wtap_pkthdr *phdr,
            be configured for auto-detect, in which case the encapsulation
            hint is 13, and the encapsulation must be guessed from the
            packet contents.  Auto-detect is the default. */
-        pd = buffer_start_ptr(buf);
+        pd = ws_buffer_start_ptr(buf);
 
         /* If PPP is specified in the encap hint, then use that */
         if (vpkt_hdr.encap_hint == 14)
@@ -629,7 +599,7 @@ int visual_dump_can_write_encap(int encap)
         return 0;
     }
 
-    return WTAP_ERR_UNSUPPORTED_ENCAP;
+    return WTAP_ERR_UNWRITABLE_ENCAP;
 }
 
 
@@ -642,7 +612,7 @@ gboolean visual_dump_open(wtap_dumper *wdh, int *err)
 
     /* Set the write routines for a visual file. */
     wdh->subtype_write = visual_dump;
-    wdh->subtype_close = visual_dump_close;
+    wdh->subtype_finish = visual_dump_finish;
 
     /* Create a struct to hold file information for the duration
        of the write */
@@ -657,7 +627,7 @@ gboolean visual_dump_open(wtap_dumper *wdh, int *err)
        just skip over it for now.  It will be created after all
        of the packets have been written. */
     if (wtap_dump_file_seek(wdh, CAPTUREFILE_HEADER_SIZE, SEEK_SET, err) == -1)
-	return FALSE;
+        return FALSE;
 
     return TRUE;
 }
@@ -666,7 +636,7 @@ gboolean visual_dump_open(wtap_dumper *wdh, int *err)
 /* Write a packet to a Visual dump file.
    Returns TRUE on success, FALSE on failure. */
 static gboolean visual_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
-    const guint8 *pd, int *err)
+    const guint8 *pd, int *err, gchar **err_info _U_)
 {
     const union wtap_pseudo_header *pseudo_header = &phdr->pseudo_header;
     struct visual_write_info * visual = (struct visual_write_info *)wdh->priv;
@@ -677,7 +647,7 @@ static gboolean visual_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
 
     /* We can only write packet records. */
     if (phdr->rec_type != REC_TYPE_PACKET) {
-        *err = WTAP_ERR_REC_TYPE_UNSUPPORTED;
+        *err = WTAP_ERR_UNWRITABLE_REC_TYPE;
         return FALSE;
     }
 
@@ -702,7 +672,7 @@ static gboolean visual_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
     if (visual->index_table_index == 0)
     {
         /* This is the first packet.  Save its start time as the file time. */
-        visual->start_time = (guint32) phdr->ts.secs;
+        visual->start_time = phdr->ts.secs;
 
         /* Initialize the index table */
         visual->index_table = (guint32 *)g_malloc(1024 * sizeof *visual->index_table);
@@ -711,7 +681,7 @@ static gboolean visual_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
 
     /* Calculate milliseconds since capture start. */
     delta_msec = phdr->ts.nsecs / 1000000;
-    delta_msec += ( (guint32) phdr->ts.secs - visual->start_time) * 1000;
+    delta_msec += (guint32)((phdr->ts.secs - visual->start_time) * 1000);
     vpkt_hdr.ts_delta = GUINT32_TO_LE(delta_msec);
 
     /* Fill in the length fields. */
@@ -790,7 +760,7 @@ static gboolean visual_dump(wtap_dumper *wdh, const struct wtap_pkthdr *phdr,
 
 /* Finish writing to a dump file.
    Returns TRUE on success, FALSE on failure. */
-static gboolean visual_dump_close(wtap_dumper *wdh, int *err)
+static gboolean visual_dump_finish(wtap_dumper *wdh, int *err)
 {
     struct visual_write_info * visual = (struct visual_write_info *)wdh->priv;
     size_t n_to_write;
@@ -817,7 +787,7 @@ static gboolean visual_dump_close(wtap_dumper *wdh, int *err)
 
     /* Write the magic number at the start of the file. */
     if (wtap_dump_file_seek(wdh, 0, SEEK_SET, err) == -1)
-	return FALSE;
+        return FALSE;
     magicp = visual_magic;
     magic_size = sizeof visual_magic;
     if (!wtap_dump_file_write(wdh, magicp, magic_size, err))
@@ -886,3 +856,16 @@ static void visual_dump_free(wtap_dumper *wdh)
             g_free(visual->index_table);
     }
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

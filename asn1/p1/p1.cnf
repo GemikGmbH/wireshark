@@ -36,6 +36,10 @@ RTABapdu
 AbortReason
 #.END
 
+#.OMIT_ASSIGNMENT
+PerRecipientReportFields
+#PerRecipientReportFields/report-type
+
 #.NO_EMIT
 # These fields are only used through COMPONENTS OF,
 # and consequently generate unused code warnings
@@ -45,8 +49,9 @@ PerReportTransferFields
 PerMessageSubmissionFields
 PerProbeSubmissionFields
 PerReportDeliveryFields
-PerRecipientReportFields
-#PerRecipientReportFields/report-type
+PerRecipientDeliveryReportFields
+PerRecipientNonDeliveryReportFields
+
 InternalAdditionalActions
 AdditionalActions
 NonBasicParameters
@@ -100,6 +105,10 @@ TeletexNonBasicParameters
 UniversalOrBMPString
 NonDeliveryReasonCode
 NonDeliveryDiagnosticCode
+
+#.SYNTAX_NEW
+ORAddress
+ORName
 
 # Forward declaration of Classes
 # CONNECTION-PACKAGE CONTRACT from ROS
@@ -220,7 +229,7 @@ ExtensionField/value			extension-value
 
 LastTraceInformation/report-type	trace-report-type
 PerRecipientReportDeliveryFields/report-type	delivery-report-type
-PerRecipientReportFields/report-type/delivery		report-type-delivery
+#PerRecipientReportFields/report-type/delivery		report-type-delivery
 
 PerRecipientMessageSubmissionFields/recipient-name	submission-recipient-name
 PerRecipientProbeSubmissionFields/recipient-name	probe-recipient-name
@@ -229,7 +238,7 @@ PerRecipientReportTransferFields/actual-recipient-name	mta-actual-recipient-name
 
 MessageClass/priority			class-priority
 DeliveryQueue/octets			delivery-queue-octets
-PerRecipientReportFields/report-type/non-delivery	non-delivery-report
+#PerRecipientReportFields/report-type/non-delivery	non-delivery-report
 
 MTABindResult/authenticated	authenticated-result
 MTABindArgument/authenticated	authenticated-argument
@@ -287,8 +296,6 @@ AsymmetricTokenData/name/recipient-name			token-recipient-name
 TokenData/type						token-data-type
 CertificateSelectors/content-integrity-check		selectors-content-integrity-check
 
-#.PDU
-
 # This table creates the value_sting to name P3 operation codes and errors
 # in file packet-p3-table.c which is included in the template file
 #
@@ -340,7 +347,7 @@ OPERATION.&ResultType
 #.END
 
 
-#.REGISTER
+#.REGISTER_NEW
 RecipientReassignmentProhibited				N p1.extension 1
 OriginatorRequestedAlternateRecipient	N p1.extension 2
 DLExpansionProhibited						N p1.extension 3
@@ -537,20 +544,19 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 	if(actx->external.indirect_ref_present) {
 		proto_item_append_text(tree, " (%%s)", val_to_str(actx->external.indirect_reference, p1_StandardExtension_vals, "standard-extension %%d"));
 		if (dissector_try_uint(p1_extension_dissector_table, actx->external.indirect_reference, tvb, actx->pinfo, tree)) {
-			offset = tvb_length(tvb);
+			offset = tvb_reported_length(tvb);
 		} else {
-			proto_item *item = NULL;
-			proto_tree *next_tree = NULL;
+			proto_item *item;
+			proto_tree *next_tree;
 
-			item = proto_tree_add_text(tree, tvb, 0, tvb_length_remaining(tvb, offset),
+			next_tree = proto_tree_add_subtree_format(tree, tvb, 0, -1, ett_p1_unknown_standard_extension, &item,
 				"Dissector for standard-extension %%d not implemented.  Contact Wireshark developers if you want this supported", actx->external.indirect_reference);
-			next_tree = proto_item_add_subtree(item, ett_p1_unknown_standard_extension);
 			offset = dissect_unknown_ber(actx->pinfo, tvb, offset, next_tree);
 			expert_add_info(actx->pinfo, item, &ei_p1_unknown_standard_extension);
 		}
 	} else if (actx->external.direct_ref_present) {
 		offset = call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, actx->private_data);
-		name = oid_resolved_from_string(actx->external.direct_reference);
+		name = oid_resolved_from_string(wmem_packet_scope(), actx->external.direct_reference);
 		proto_item_append_text(tree, " (%%s)", name ? name : actx->external.direct_reference);
 	}
 
@@ -563,7 +569,7 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 
 	if (actx->external.direct_reference) {
 		offset = call_ber_oid_callback(actx->external.direct_reference, tvb, offset, actx->pinfo, tree, actx->private_data);
-		name = oid_resolved_from_string(actx->external.direct_reference);
+		name = oid_resolved_from_string(wmem_packet_scope(), actx->external.direct_reference);
 		proto_item_append_text(tree, " (%%s)", name ? name : actx->external.direct_reference);
 	} else {
 		offset = dissect_unknown_ber(actx->pinfo, tvb, offset, tree);
@@ -575,18 +581,22 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 #.FN_BODY ExtensionAttribute/extension-attribute-value
 
 	proto_item_append_text(tree, " (%%s)", val_to_str(actx->external.indirect_reference, p1_ExtensionAttributeType_vals, "extension-attribute-type %%d"));
+	if (!actx->pinfo->private_table) {
+		actx->pinfo->private_table = g_hash_table_new_full(g_str_hash, g_str_equal, g_free, g_free);
+	}
+	g_hash_table_insert(actx->pinfo->private_table, (gpointer)P1_ADDRESS_CTX, actx->subtree.tree_ctx);
 	if (dissector_try_uint(p1_extension_attribute_dissector_table, actx->external.indirect_reference, tvb, actx->pinfo, tree)) {
-		offset =tvb_length(tvb);
+		offset =tvb_reported_length(tvb);
 	} else {
-		proto_item *item = NULL;
-		proto_tree *next_tree = NULL;
+		proto_item *item;
+		proto_tree *next_tree;
 
-		item = proto_tree_add_text(tree, tvb, 0, tvb_length_remaining(tvb, offset),
+		next_tree = proto_tree_add_subtree_format(tree, tvb, 0, -1, ett_p1_unknown_extension_attribute_type, &item,
 			"Dissector for extension-attribute-type %%d not implemented.  Contact Wireshark developers if you want this supported", actx->external.indirect_reference);
-		next_tree = proto_item_add_subtree(item, ett_p1_unknown_extension_attribute_type);
 		offset = dissect_unknown_ber(actx->pinfo, tvb, offset, next_tree);
 		expert_add_info(actx->pinfo, item, &ei_p1_unknown_extension_attribute_type);
 	}
+	g_hash_table_steal(actx->pinfo->private_table, (gpointer)P1_ADDRESS_CTX);
 
 
 #.FN_BODY RefusedOperation/refused-argument/refused-extension
@@ -630,7 +640,7 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 	%(DEFAULT_BODY)s
 
 	if(ctx->content_type_id) {
-		name = oid_resolved_from_string(ctx->content_type_id);
+		name = oid_resolved_from_string(wmem_packet_scope(), ctx->content_type_id);
 
 		if(!name) name = ctx->content_type_id;
 
@@ -669,21 +679,20 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 
 	/* we can do this now constructed octet strings are supported */
 	offset = dissect_ber_octet_string(FALSE, actx, tree, tvb, offset, hf_index, &next_tvb);
-	proto_item_set_text(actx->created_item, "content (%%u bytes)", tvb_length (next_tvb));
+	proto_item_set_text(actx->created_item, "content (%%u bytes)", tvb_reported_length (next_tvb));
 
 	if (next_tvb) {
 		if (ctx && ctx->content_type_id) {
 			(void) call_ber_oid_callback(ctx->content_type_id, next_tvb, 0, actx->pinfo, actx->subtree.top_tree ? actx->subtree.top_tree : tree, actx->private_data);
-	} else if (ctx && ctx->report_unknown_content_type) {
-		proto_item *item = NULL;
-		proto_tree *next_tree = NULL;
+		} else if (ctx && ctx->report_unknown_content_type) {
+			proto_item *item;
+			proto_tree *next_tree;
 
-		proto_tree_add_expert(actx->subtree.top_tree ? actx->subtree.top_tree : tree, actx->pinfo, &ei_p1_unknown_built_in_content_type,
-							  next_tvb, 0, tvb_length_remaining(tvb, offset));
-		if (item) {
+			item = proto_tree_add_expert(actx->subtree.top_tree ? actx->subtree.top_tree : tree, actx->pinfo, &ei_p1_unknown_built_in_content_type,
+							  next_tvb, 0, tvb_reported_length_remaining(tvb, offset));
 			next_tree=proto_item_add_subtree(item, ett_p1_content_unknown);
-		}
-		dissect_unknown_ber(actx->pinfo, next_tvb, 0, next_tree);
+
+			dissect_unknown_ber(actx->pinfo, next_tvb, 0, next_tree);
 		} else {
 			proto_item_append_text (actx->created_item, " (unknown content-type)");
 		}
@@ -699,10 +708,10 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 	%(DEFAULT_BODY)s
 
 	if (ctx && ctx->do_address) {
-		proto_item_append_text(actx->subtree.tree, " %%s", tvb_format_text(mtaname, 0, tvb_length(mtaname)));
+		proto_item_append_text(actx->subtree.tree, " %%s", tvb_format_text(mtaname, 0, tvb_reported_length(mtaname)));
 	} else {
 		if (mtaname) {
-			col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %%s", tvb_format_text(mtaname, 0, tvb_length(mtaname)));
+			col_append_fstr(actx->pinfo->cinfo, COL_INFO, " %%s", tvb_format_text(mtaname, 0, tvb_reported_length(mtaname)));
 		}
 	}
 
@@ -763,6 +772,8 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 
 #.FN_BODY OrganizationalUnitName
 	tvbuff_t	*string = NULL;
+
+	%(DEFAULT_BODY)s
 
 	do_address("/OU=", string, actx);
 
@@ -1054,10 +1065,10 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 
 	if(id) {
 		if (ctx && ctx->do_address)
-			proto_item_append_text(actx->subtree.tree, " $ %%s)", tvb_format_text(id, 0, tvb_length(id)));
+			proto_item_append_text(actx->subtree.tree, " $ %%s)", tvb_format_text(id, 0, tvb_reported_length(id)));
 
 		if (hf_index == hf_p1_subject_identifier)
-			col_append_fstr(actx->pinfo->cinfo, COL_INFO, " $ %%s)", tvb_format_text(id, 0, tvb_length(id)));
+			col_append_fstr(actx->pinfo->cinfo, COL_INFO, " $ %%s)", tvb_format_text(id, 0, tvb_reported_length(id)));
 	}
 
 #.FN_BODY MTSIdentifier
@@ -1126,7 +1137,7 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 	%(DEFAULT_BODY)s
 
 	if(arrival && ctx && ctx->do_address)
-		proto_item_append_text(actx->subtree.tree, " %%s", tvb_format_text(arrival, 0, tvb_length(arrival)));
+		proto_item_append_text(actx->subtree.tree, " %%s", tvb_format_text(arrival, 0, tvb_reported_length(arrival)));
 
 #.FN_PARS RoutingAction
 	VAL_PTR = &action
@@ -1174,14 +1185,13 @@ MessageToken						B	"2.6.1.7.36"	"id-hat-forwarded-token"
 
 	proto_item_append_text(tree, " (%%s)", val_to_str(actx->external.indirect_reference, p1_TokenDataType_vals, "tokendata-type %%d"));
 	if (dissector_try_uint(p1_tokendata_dissector_table, actx->external.indirect_reference, tvb, actx->pinfo, tree)) {
-		offset = tvb_length(tvb);
+		offset = tvb_reported_length(tvb);
 	} else {
-		proto_item *item = NULL;
-		proto_tree *next_tree = NULL;
+		proto_item *item;
+		proto_tree *next_tree;
 
-		item = proto_tree_add_text(tree, tvb, 0, tvb_length_remaining(tvb, offset),
+		next_tree = proto_tree_add_subtree_format(tree, tvb, 0, -1, ett_p1_unknown_tokendata_type, &item,
 			"Dissector for tokendata-type %%d not implemented.  Contact Wireshark developers if you want this supported", actx->external.indirect_reference);
-		next_tree = proto_item_add_subtree(item, ett_p1_unknown_tokendata_type);
 		offset = dissect_unknown_ber(actx->pinfo, tvb, offset, next_tree);
 		expert_add_info(actx->pinfo, item, &ei_p1_unknown_tokendata_type);
 	}

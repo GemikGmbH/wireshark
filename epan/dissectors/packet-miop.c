@@ -32,11 +32,9 @@
 
 #include <epan/packet.h>
 
-#include <epan/wmem/wmem.h>
 #include <epan/expert.h>
 
 #include "packet-giop.h"
-#include "packet-tcp.h"
 
 void proto_register_miop(void);
 void proto_reg_handoff_miop(void);
@@ -96,7 +94,7 @@ dissect_miop_heur (tvbuff_t * tvb, packet_info * pinfo, proto_tree * tree, void 
   /* check magic number and version */
 
 
-  tot_len = tvb_length(tvb);
+  tot_len = tvb_captured_length(tvb);
 
   if (tot_len < MIOP_HEADER_SIZE) /* tot_len < 16 */
     {
@@ -314,9 +312,9 @@ void proto_reg_handoff_miop (void) {
   dissector_handle_t miop_handle;
 
   miop_handle = find_dissector("miop");
-  dissector_add_handle("udp.port", miop_handle);    /* for 'Decode As' */
+  dissector_add_for_decode_as("udp.port", miop_handle);
 
-  heur_dissector_add("udp", dissect_miop_heur, proto_miop);
+  heur_dissector_add("udp", dissect_miop_heur, "MIOP over UDP", "miop_udp", proto_miop, HEURISTIC_ENABLE);
 
 }
 

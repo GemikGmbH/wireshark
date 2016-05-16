@@ -48,20 +48,23 @@ ExportDissectionDialog::ExportDissectionDialog(QWidget *parent, capture_file *ca
     QFileDialog(parent),
     export_type_(export_type),
     cap_file_(cap_file)
-  #if !defined(Q_OS_WIN)
+#if !defined(Q_OS_WIN)
     , save_bt_(NULL)
- #endif /* Q_OS_WIN */
+#endif /* Q_OS_WIN */
 {
 #if !defined(Q_OS_WIN)
     QDialogButtonBox *button_box = findChild<QDialogButtonBox *>();
+    // Add extra widgets
+    // https://wiki.qt.io/Qt_project_org_faq#How_can_I_add_widgets_to_my_QFileDialog_instance.3F
+    setOption(QFileDialog::DontUseNativeDialog, true);
     QGridLayout *fd_grid = qobject_cast<QGridLayout*>(layout());
     QHBoxLayout *h_box = new QHBoxLayout();
     QStringList name_filters;
     int last_row;
 
-    setWindowTitle(tr("Wireshark: Export Packet Dissections"));
+    setWindowTitle(wsApp->windowTitleString(tr("Export Packet Dissections")));
     setAcceptMode(QFileDialog::AcceptSave);
-    setLabelText(FileType, tr("Export as:"));
+    setLabelText(FileType, tr("Export As:"));
 
     // export_type_map_keys() sorts alphabetically. We don't want that.
     name_filters
@@ -83,6 +86,7 @@ ExportDissectionDialog::ExportDissectionDialog(QWidget *parent, capture_file *ca
     fd_grid->addItem(new QSpacerItem(1, 1), last_row, 0);
     fd_grid->addLayout(h_box, last_row, 1);
 
+    print_args_.file = NULL;
     /* Init the export range */
     packet_range_init(&print_args_.range, cap_file_);
     /* Default to displayed packets */
@@ -117,6 +121,9 @@ ExportDissectionDialog::ExportDissectionDialog(QWidget *parent, capture_file *ca
 
 ExportDissectionDialog::~ExportDissectionDialog()
 {
+#if !defined(Q_OS_WIN)
+    g_free(print_args_.file);
+#endif
 }
 
 int ExportDissectionDialog::exec()
@@ -134,7 +141,7 @@ int ExportDissectionDialog::exec()
 
         /* Fill in our print (and export) args */
 
-        print_args_.file                = file_name.toUtf8().data();
+        print_args_.file                = qstring_strdup(file_name);
         print_args_.format              = PR_FMT_TEXT;
         print_args_.to_file             = TRUE;
         print_args_.cmd                 = NULL;
@@ -161,7 +168,7 @@ int ExportDissectionDialog::exec()
                 open_failure_alert_box(print_args_.file, errno, TRUE);
                 return QDialog::Rejected;
             }
-            status = cf_print_packets(cap_file_, &print_args_);
+            status = cf_print_packets(cap_file_, &print_args_, TRUE);
             break;
         case export_type_csv:       /* CSV */
             status = cf_write_csv_packets(cap_file_, &print_args_);

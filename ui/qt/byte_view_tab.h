@@ -22,7 +22,7 @@
 #ifndef BYTE_VIEW_TAB_H
 #define BYTE_VIEW_TAB_H
 
-#include "config.h"
+#include <config.h>
 
 #include <epan/packet.h>
 #include <epan/proto.h>
@@ -31,29 +31,49 @@
 #include "cfile.h"
 
 #include <QTabWidget>
-#include <QTreeWidget>
+
+class QTreeWidget;
+class QTreeWidgetItem;
 
 class ByteViewTab : public QTabWidget
 {
     Q_OBJECT
 public:
+    enum copyDataType {
+        copyDataHexTextDump,
+        copyDataHexDump,
+        copyDataPrintableText,
+        copyDataHexStream,
+        copyDataBinary
+    };
+
     explicit ByteViewTab(QWidget *parent = 0);
     void addTab(const char *name = "", tvbuff_t *tvb = NULL, proto_tree *tree = NULL, QTreeWidget *protoTree = NULL, packet_char_enc encoding = PACKET_CHAR_ENC_CHAR_ASCII);
     void clear();
+    void copyData(copyDataType copy_type, field_info *fi = NULL);
 
 private:
-    void setTabsVisible();
     capture_file *cap_file_;
+    QFont mono_font_;
+
+    void setTabsVisible();
+    void copyHexTextDump(const guint8 *data_p, int data_len, bool append_text);
+    void copyPrintableText(const guint8 *data_p, int data_len);
+    void copyHexStream(const guint8 *data_p, int data_len);
+    void copyBinary(const guint8 *data_p, int data_len);
 
 protected:
     void tabInserted(int index);
     void tabRemoved(int index);
 
 signals:
+    void monospaceFontChanged(const QFont &mono_font);
+    void byteFieldHovered(const QString &);
 
 public slots:
     void protoTreeItemChanged(QTreeWidgetItem *current);
     void setCaptureFile(capture_file *cf);
+    void setMonospaceFont(const QFont &mono_font);
 };
 
 #endif // BYTE_VIEW_TAB_H

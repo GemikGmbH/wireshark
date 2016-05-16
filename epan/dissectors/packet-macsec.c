@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/etypes.h>
 
@@ -85,15 +83,15 @@ static int dissect_macsec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
     }
 
     /* Check for short length */
-    if (tvb_length(tvb) <= (sectag_length + icv_length)) {
+    if (tvb_captured_length(tvb) <= (sectag_length + icv_length)) {
         return 0;
     }
 
     data_offset = sectag_length;
-    data_length = tvb_length(tvb) - sectag_length - icv_length;
+    data_length = tvb_captured_length(tvb) - sectag_length - icv_length;
     icv_offset  = data_length + data_offset;
 
-    next_tvb = tvb_new_subset(tvb, data_offset, data_length, data_length);
+    next_tvb = tvb_new_subset_length(tvb, data_offset, data_length);
 
     col_set_str(pinfo->cinfo, COL_PROTOCOL, "MACSEC");
     col_set_str(pinfo->cinfo, COL_INFO, "MACsec frame");
@@ -116,21 +114,21 @@ static int dissect_macsec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
                 (TCI_AN_MASK &   tci_an_field));
         tci_tree = proto_item_add_subtree(tci_item, ett_macsec_tci);
 
-        proto_tree_add_item(tci_tree, hf_macsec_TCI_V, tvb, sectag_offset, 1, ENC_NA);
-        proto_tree_add_item(tci_tree, hf_macsec_TCI_ES, tvb, sectag_offset, 1, ENC_NA);
-        proto_tree_add_item(tci_tree, hf_macsec_TCI_SC, tvb, sectag_offset, 1, ENC_NA);
-        proto_tree_add_item(tci_tree, hf_macsec_TCI_SCB, tvb, sectag_offset, 1, ENC_NA);
-        proto_tree_add_item(tci_tree, hf_macsec_TCI_E, tvb, sectag_offset, 1, ENC_NA);
-        proto_tree_add_item(tci_tree, hf_macsec_TCI_C, tvb, sectag_offset, 1, ENC_NA);
-        proto_tree_add_item(tci_tree, hf_macsec_AN, tvb, sectag_offset, 1, ENC_NA);
-        proto_tree_add_item(macsec_tree, hf_macsec_SL, tvb, sectag_offset + 1, 1, ENC_NA);
-        proto_tree_add_item(macsec_tree, hf_macsec_PN, tvb, sectag_offset + 2, 4, ENC_NA);
+        proto_tree_add_item(tci_tree, hf_macsec_TCI_V, tvb, sectag_offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tci_tree, hf_macsec_TCI_ES, tvb, sectag_offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tci_tree, hf_macsec_TCI_SC, tvb, sectag_offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tci_tree, hf_macsec_TCI_SCB, tvb, sectag_offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tci_tree, hf_macsec_TCI_E, tvb, sectag_offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tci_tree, hf_macsec_TCI_C, tvb, sectag_offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(tci_tree, hf_macsec_AN, tvb, sectag_offset, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(macsec_tree, hf_macsec_SL, tvb, sectag_offset + 1, 1, ENC_BIG_ENDIAN);
+        proto_tree_add_item(macsec_tree, hf_macsec_PN, tvb, sectag_offset + 2, 4, ENC_BIG_ENDIAN);
 
         if (sectag_length == 14) {
             proto_tree_add_item(macsec_tree, hf_macsec_SCI_System_identifier,
                     tvb, sectag_offset + 6, 6, ENC_NA);
             proto_tree_add_item(macsec_tree, hf_macsec_SCI_port_number, tvb,
-                    sectag_offset + 12, 2, ENC_NA);
+                    sectag_offset + 12, 2, ENC_BIG_ENDIAN);
         }
 
         call_dissector(data_handle, next_tvb, pinfo, tree);
@@ -139,7 +137,7 @@ static int dissect_macsec(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, v
                 icv_length, ENC_NA);
     }
 
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 void

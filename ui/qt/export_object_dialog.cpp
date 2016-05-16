@@ -20,19 +20,20 @@
  */
 
 #include "export_object_dialog.h"
-#include "ui_export_object_dialog.h"
+#include <ui_export_object_dialog.h>
+
+#include <ui/alert_box.h>
+#include <wsutil/utf8_entities.h>
+
+#include <wsutil/filesystem.h>
+#include <wsutil/str_util.h>
+
 #include "wireshark_application.h"
 
 #include <QDialogButtonBox>
-#include <QPushButton>
-#include <QMessageBox>
 #include <QFileDialog>
-
-#include <ui/alert_box.h>
-
-#include <wsutil/filesystem.h>
-
-#include <wsutil/str_util.h>
+#include <QMessageBox>
+#include <QPushButton>
 
 extern "C" {
 
@@ -59,10 +60,9 @@ eo_reset(void *tapdata)
 
 } // extern "C"
 
-ExportObjectDialog::ExportObjectDialog(QWidget *parent, capture_file *cf, ObjectType object_type) :
-    QDialog(parent),
+ExportObjectDialog::ExportObjectDialog(QWidget &parent, CaptureFile &cf, ObjectType object_type) :
+    WiresharkDialog(parent, cf),
     eo_ui_(new Ui::ExportObjectDialog),
-    cap_file_(cf),
     save_bt_(NULL),
     save_all_bt_(NULL),
     tap_name_(NULL),
@@ -99,20 +99,24 @@ ExportObjectDialog::ExportObjectDialog(QWidget *parent, capture_file *cf, Object
         tap_packet_ = eo_smb_packet;
         eo_protocoldata_resetfn_ = eo_smb_cleanup;
         break;
+    case Tftp:
+        tap_name_ = "tftp_eo";
+        name_ = "TFTP";
+        tap_packet_ = eo_tftp_packet;
+        break;
     }
 
     save_bt_ = eo_ui_->buttonBox->button(QDialogButtonBox::Save);
     save_all_bt_ = eo_ui_->buttonBox->button(QDialogButtonBox::SaveAll);
     close_bt = eo_ui_->buttonBox->button(QDialogButtonBox::Close);
 
-    this->setWindowTitle(QString(tr("Wireshark: %1 object list")).arg(name_));
+    setWindowTitle(wsApp->windowTitleString(QStringList() << tr("Export") << tr("%1 object list").arg(name_)));
 
     if (save_bt_) save_bt_->setEnabled(false);
     if (save_all_bt_) save_all_bt_->setEnabled(false);
     if (close_bt) close_bt->setDefault(true);
 
-    connect(wsApp, SIGNAL(captureFileClosing(const capture_file*)),
-            this, SLOT(captureFileClosing(const capture_file*)));
+    connect(&cap_file_, SIGNAL(captureFileClosing()), this, SLOT(captureFileClosing()));
 
     show();
     raise();
@@ -123,7 +127,7 @@ ExportObjectDialog::~ExportObjectDialog()
 {
     delete eo_ui_;
     export_object_list_.eod = NULL;
-    remove_tap_listener((void *)&export_object_list_);
+    removeTapListeners();
 }
 
 void ExportObjectDialog::addObjectEntry(export_object_entry_t *entry)
@@ -168,29 +172,16 @@ void ExportObjectDialog::resetObjects()
 
 void ExportObjectDialog::show()
 {
-    GString *error_msg;
-
-    if (!cap_file_) destroy(); // Assert?
-
     /* Data will be gathered via a tap callback */
-    error_msg = register_tap_listener(tap_name_, (void *)&export_object_list_, NULL, 0,
-                                      eo_reset,
-                                      tap_packet_,
-                                      NULL);
-
-    if (error_msg) {
-        QMessageBox::warning(
-                    this,
-                    tr("Tap registration error"),
-                    QString(tr("Unable to register ")) + name_ + QString(tr(" tap: ")) + error_msg->str,
-                    QMessageBox::Ok
-                    );
-        g_string_free(error_msg, TRUE);
+    if (!registerTapListener(tap_name_, &export_object_list_, NULL, 0,
+                             eo_reset,
+                             tap_packet_,
+                             NULL)) {
         return;
     }
 
     QDialog::show();
-    cf_retap_packets(cap_file_);
+    cap_file_.retapPackets();
     eo_ui_->progressFrame->hide();
     for (int i = 0; i < eo_ui_->objectTree->columnCount(); i++)
         eo_ui_->objectTree->resizeColumnToContents(i);
@@ -202,11 +193,9 @@ void ExportObjectDialog::accept()
     // Don't close the dialog.
 }
 
-void ExportObjectDialog::captureFileClosing(const capture_file *cf)
+void ExportObjectDialog::captureFileClosing()
 {
-    if (cap_file_ && cf == cap_file_) {
-        close();
-    }
+    close();
 }
 
 void ExportObjectDialog::on_buttonBox_helpRequested()
@@ -214,10 +203,8 @@ void ExportObjectDialog::on_buttonBox_helpRequested()
     wsApp->helpTopicAction(HELP_EXPORT_OBJECT_LIST);
 }
 
-void ExportObjectDialog::on_objectTree_currentItemChanged(QTreeWidgetItem *item, QTreeWidgetItem *previous)
+void ExportObjectDialog::on_objectTree_currentItemChanged(QTreeWidgetItem *item, QTreeWidgetItem *)
 {
-    Q_UNUSED(previous);
-
     if (!item) {
         if (save_bt_) save_bt_->setEnabled(false);
         return;
@@ -226,8 +213,8 @@ void ExportObjectDialog::on_objectTree_currentItemChanged(QTreeWidgetItem *item,
     if (save_bt_) save_bt_->setEnabled(true);
 
     export_object_entry_t *entry = item->data(0, Qt::UserRole).value<export_object_entry_t *>();
-    if (entry && cap_file_) {
-        cf_goto_frame(cap_file_, entry->pkt_num);
+    if (entry && !file_closed_) {
+        cf_goto_frame(cap_file_.capFile(), entry->pkt_num);
     }
 }
 
@@ -257,7 +244,7 @@ void ExportObjectDialog::saveCurrentEntry()
     entry = item->data(0, Qt::UserRole).value<export_object_entry_t *>();
     if (!entry) return;
 
-    file_name = QFileDialog::getSaveFileName(this, tr("Wireshark: Save Object As..."),
+    file_name = QFileDialog::getSaveFileName(this, wsApp->windowTitleString(tr("Save Object As" UTF8_HORIZONTAL_ELLIPSIS)),
                                              path.filePath(entry->filename));
 
     if (file_name.length() > 0) {
@@ -270,19 +257,29 @@ void ExportObjectDialog::saveAllEntries()
 {
     int i;
     QTreeWidgetItem *item;
-    QDir path(wsApp->lastOpenDir());
-    QString file_path;
+    QDir save_in_dir(wsApp->lastOpenDir());
+    QString save_in_path;
     bool all_saved = true;
 
-    file_path = QFileDialog::getSaveFileName(this, tr("Wireshark: Save All Objects In..."),
-                                             path.canonicalPath(), QString(), NULL,
-                                             QFileDialog::ShowDirsOnly);
+    //
+    // We want the user to be able to specify a directory in which
+    // to drop files for all the objects, not a file name.
+    //
+    // XXX - what we *really* want is something that asks the user
+    // for an existing directory *but* lets them create a new
+    // directory in the process.  That's what we get on OS X,
+    // as the native dialog is used, and it supports that; does
+    // that also work on Windows and with Qt's own dialog?
+    //
+    save_in_path = QFileDialog::getExistingDirectory(this, wsApp->windowTitleString(tr("Save All Objects In" UTF8_HORIZONTAL_ELLIPSIS)),
+                                                     save_in_dir.canonicalPath(),
+                                                     QFileDialog::ShowDirsOnly);
 
-    if (file_path.length() < 1 || file_path.length() > MAXFILELEN) return;
+    if (save_in_path.length() < 1 || save_in_path.length() > MAXFILELEN) return;
 
-    for (i = 0, item = eo_ui_->objectTree->topLevelItem(i); item != NULL; i++) {
+    for (i = 0; (item = eo_ui_->objectTree->topLevelItem(i)) != NULL; i++) {
         int count = 0;
-        QString file_name;
+        gchar *save_as_fullpath = NULL;
         export_object_entry_t *entry = item->data(0, Qt::UserRole).value<export_object_entry_t *>();
 
         if (!entry) continue;
@@ -290,10 +287,10 @@ void ExportObjectDialog::saveAllEntries()
         do {
             GString *safe_filename;
 
-            path.setCurrent(file_path);
+            g_free(save_as_fullpath);
             if (entry->filename)
                 safe_filename = eo_massage_str(entry->filename,
-                    MAXFILELEN - file_path.length(), count);
+                    MAXFILELEN - save_in_path.length(), count);
             else {
                 char generic_name[256];
                 const char *ext;
@@ -302,13 +299,16 @@ void ExportObjectDialog::saveAllEntries()
                     "object%u%s%s", entry->pkt_num, ext ? "." : "",
                     ext ? ext : "");
                 safe_filename = eo_massage_str(generic_name,
-                    MAXFILELEN - file_path.length(), count);
+                    MAXFILELEN - save_in_path.length(), count);
             }
-            file_name = path.filePath(safe_filename->str);
+            save_as_fullpath = g_build_filename(save_in_path.toUtf8().constData(),
+                                                safe_filename->str, NULL);
             g_string_free(safe_filename, TRUE);
-        } while (g_file_test(file_path.toUtf8().constData(), G_FILE_TEST_EXISTS) && ++count < 1000);
-        if (!eo_save_entry(file_path.toUtf8().constData(), entry, FALSE))
+        } while (g_file_test(save_as_fullpath, G_FILE_TEST_EXISTS) && ++count < 1000);
+        if (!eo_save_entry(save_as_fullpath, entry, FALSE))
             all_saved = false;
+        g_free(save_as_fullpath);
+        save_as_fullpath = NULL;
     }
     if (!all_saved) {
         QMessageBox::warning(

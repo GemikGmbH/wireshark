@@ -28,12 +28,8 @@
 
 #include <stdlib.h>
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <epan/conversation.h>
-#include <epan/strutil.h>
-#include <epan/wmem/wmem.h>
 #include <epan/prefs.h>
 #include <wsutil/str_util.h>
 
@@ -42,7 +38,7 @@
 void proto_register_msrp(void);
 void proto_reg_handoff_msrp(void);
 
-#define TCP_PORT_MSRP 0
+#define TCP_PORT_MSRP 2855
 
 #define MSRP_HDR "MSRP"
 #define MSRP_HDR_LEN (strlen (MSRP_HDR))
@@ -64,6 +60,7 @@ static int hf_msrp_request_line     = -1;
 static int hf_msrp_transactionID    = -1;
 static int hf_msrp_method           = -1;
 static int hf_msrp_status_code      = -1;
+static int hf_msrp_hdr              = -1;
 static int hf_msrp_msg_hdr          = -1;
 static int hf_msrp_end_line         = -1;
 static int hf_msrp_cnt_flg          = -1;
@@ -348,7 +345,7 @@ check_msrp_header(tvbuff_t *tvb)
      * is not longer than what's in the buffer, so the
      * "tvb_get_ptr()" calls below won't throw exceptions.   *
      */
-    if(tvb_length(tvb) < 4 ||  tvb_get_ntohl(tvb, 0) != 0x4d535250 /* MSRP */){
+    if(tvb_captured_length(tvb) < 4 ||  tvb_get_ntohl(tvb, 0) != 0x4d535250 /* MSRP */){
         return FALSE;
     }
 
@@ -397,7 +394,7 @@ find_end_line(tvbuff_t *tvb, gint start)
 {
     gint offset = start, next_offset, linelen;
 
-    while (tvb_length_remaining(tvb, offset) > 0) {
+    while (tvb_offset_exists(tvb, offset)) {
         /* 'desegment' is FALSE so will set next_offset to beyond the end of
            the buffer if no line ending is found */
         linelen =  tvb_find_line_end(tvb, offset, -1, &next_offset, FALSE);
@@ -469,13 +466,14 @@ dissect_msrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
     gint value_len;
     char *value;
     gboolean have_body = FALSE;
-    gboolean found_match = FALSE;
+    int found_match = 0;
     gint content_type_len, content_type_parameter_str_len;
     gchar *media_type_str_lower_case = NULL;
     char *content_type_parameter_str = NULL;
     tvbuff_t *next_tvb;
     gint parameter_offset;
     gint semi_colon_offset;
+    gchar* hdr_str;
 
     if ( !check_msrp_header(tvb)){
         return 0;
@@ -535,9 +533,6 @@ dissect_msrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
         col_append_fstr(pinfo->cinfo, COL_INFO, "Transaction ID: %s",
                 tvb_format_text(tvb, token_2_start, token_2_len));
     }else{
-        proto_tree_add_text(tree, tvb, token_3_start, token_3_len,
-                "Col %s L=%u", tvb_format_text(tvb, token_3_start, token_3_len),token_3_len);
-
         col_add_fstr(pinfo->cinfo, COL_INFO, "Request: %s ",
                 tvb_format_text(tvb, token_3_start, token_3_len));
 
@@ -587,7 +582,7 @@ dissect_msrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
         /*
          * Process the headers
          */
-        while (tvb_reported_length_remaining(tvb, offset) > 0 && offset < end_line_offset  ) {
+        while (tvb_offset_exists(tvb, offset) && offset < end_line_offset  ) {
             /* 'desegment' is FALSE so will set next_offset to beyond the end of
                the buffer if no line ending is found */
             linelen = tvb_find_line_end(tvb, offset, -1, &next_offset, FALSE);
@@ -605,17 +600,17 @@ dissect_msrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
                 /*
                  * Malformed header - no colon after the name.
                  */
-                proto_tree_add_text(msrp_hdr_tree, tvb, offset,
-                                    next_offset - offset, "%s",
-                                    tvb_format_text(tvb, offset, linelen));
+                hdr_str = tvb_format_text(tvb, offset, linelen);
+                proto_tree_add_string_format(msrp_hdr_tree, hf_msrp_hdr, tvb, offset,
+                                    next_offset - offset, hdr_str, "%s", hdr_str);
             } else {
                 header_len = colon_offset - offset;
                 hf_index = msrp_is_known_msrp_header(tvb, offset, header_len);
 
                 if (hf_index == -1) {
-                    proto_tree_add_text(msrp_hdr_tree, tvb,
-                                    offset, next_offset - offset, "%s",
-                                    tvb_format_text(tvb, offset, linelen));
+                    hdr_str = tvb_format_text(tvb, offset, linelen);
+                    proto_tree_add_string_format(msrp_hdr_tree, hf_msrp_hdr, tvb,
+                                    offset, next_offset - offset, hdr_str, "%s", hdr_str);
                 } else {
                     /*
                      * Skip whitespace after the colon.
@@ -689,16 +684,13 @@ dissect_msrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
             /* give the content type parameters to sub dissectors */
 
             if ( media_type_str_lower_case != NULL ) {
-                void *save_private_data = pinfo->private_data;
-                pinfo->private_data = content_type_parameter_str;
                 found_match = dissector_try_string(media_type_dissector_table,
                                                media_type_str_lower_case,
                                                next_tvb, pinfo,
-                                               msrp_data_tree, NULL);
-                pinfo->private_data = save_private_data;
+                                               msrp_data_tree, content_type_parameter_str);
                 /* If no match dump as text */
             }
-            if ( found_match != TRUE )
+            if ( found_match == 0 )
             {
                 offset = 0;
                 while (tvb_offset_exists(next_tvb, offset)) {
@@ -721,15 +713,14 @@ dissect_msrp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_
         /* continuation-flag */
         proto_tree_add_item(msrp_end_tree,hf_msrp_cnt_flg,tvb,end_line_offset+end_line_len-1,1,ENC_UTF_8|ENC_NA);
 
-        if (global_msrp_raw_text){
-            ti = proto_tree_add_text(tree, tvb, 0, -1,"Message Session Relay Protocol(as raw text)");
-            raw_tree = proto_item_add_subtree(ti, ett_msrp);
+        if (global_msrp_raw_text && tree) {
+            raw_tree = proto_tree_add_subtree(tree, tvb, 0, -1, ett_msrp, NULL, "Message Session Relay Protocol(as raw text)");
             tvb_raw_text_add(tvb,raw_tree);
         }
 
     }/* if tree */
     return message_end_offset;
-    /*  return tvb_length(tvb); */
+    /*  return tvb_captured_length(tvb); */
 
 /* If this protocol has a sub-dissector call it here, see section 1.8 */
 }
@@ -774,6 +765,11 @@ proto_register_msrp(void)
         { &hf_msrp_status_code,
             { "Status code",        "msrp.status.code",
             FT_UINT16, BASE_DEC,NULL,0x0,
+            NULL, HFILL }
+        },
+        { &hf_msrp_hdr,
+            { "Header",         "msrp.hdr",
+            FT_STRING, BASE_NONE,NULL,0x0,
             NULL, HFILL }
         },
         { &hf_msrp_msg_hdr,
@@ -925,8 +921,21 @@ void
 proto_reg_handoff_msrp(void)
 {
     msrp_handle = find_dissector("msrp");
-    dissector_add_handle("tcp.port", msrp_handle);   /* for "decode-as" */
-    heur_dissector_add("tcp", dissect_msrp_heur, proto_msrp);
+    dissector_add_for_decode_as("tcp.port", msrp_handle);   /* for "decode-as" */
+    heur_dissector_add("tcp", dissect_msrp_heur, "MSRP over TCP", "msrp_tcp", proto_msrp, HEURISTIC_ENABLE);
+    dissector_add_uint("tcp.port", TCP_PORT_MSRP, msrp_handle);
     media_type_dissector_table = find_dissector_table("media_type");
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

@@ -101,6 +101,11 @@ QSize SparkLineDelegate::sizeHint(const QStyleOptionViewItem &option,
     return QSize(option.fontMetrics.height() * SPARKLINE_MIN_EM_WIDTH, QStyledItemDelegate::sizeHint(option, index).height());
 }
 
+QWidget *SparkLineDelegate::createEditor(QWidget *, const QStyleOptionViewItem &, const QModelIndex &) const
+{
+    return NULL;
+}
+
 /*
  * Editor modelines
  *

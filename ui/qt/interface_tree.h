@@ -1,4 +1,6 @@
 /* interface_tree.h
+ * Display of interface names, traffic sparklines, and, if available,
+ * extcap options
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -22,20 +24,30 @@
 #ifndef INTERFACE_TREE_H
 #define INTERFACE_TREE_H
 
-#include "config.h"
+#include <config.h>
 
 #include <glib.h>
 
 #ifdef HAVE_LIBPCAP
-#include "capture.h"
-#include "capture-pcap-util.h"
+#include "ui/capture.h"
+#include "caputils/capture-pcap-util.h"
 #include "capture_opts.h"
-#include "capture_ui_utils.h"
+#include "ui/capture_ui_utils.h"
 #endif
 
 #include <QTreeWidget>
 
 typedef QList<int> PointList;
+
+enum InterfaceTreeColumns
+{
+#if HAVE_EXTCAP
+    IFTREE_COL_EXTCAP,
+#endif
+    IFTREE_COL_NAME,
+    IFTREE_COL_STATS,
+    IFTREE_COL_MAX
+};
 
 class InterfaceTree : public QTreeWidget
 {
@@ -44,10 +56,16 @@ public:
     explicit InterfaceTree(QWidget *parent = 0);
     ~InterfaceTree();
 
+    void resetColumnCount();
+
+    // Used by CaptureInterfacesDialog.
+    static void updateGlobalDeviceSelections(QTreeWidget *if_tree, int name_col);
+
 protected:
     void hideEvent(QHideEvent *evt);
     void showEvent(QShowEvent *evt);
     void resizeEvent(QResizeEvent *evt);
+    void display();
 
 private:
 #ifdef HAVE_LIBPCAP
@@ -56,7 +74,6 @@ private:
 #endif // HAVE_LIBPCAP
 
 signals:
-    void interfaceUpdated(const char *device_name, bool selected);
 
 public slots:
     // add_interface_to_list
@@ -64,11 +81,14 @@ public slots:
     // change_interface_selection_for_all
     //void getPoints(int row, QList<int> *pts);
     void getPoints(int row, PointList *pts);
+    void interfaceListChanged();
+    void selectedInterfaceChanged() { updateGlobalDeviceSelections(this, IFTREE_COL_NAME); }
+    void updateSelectedInterfaces();
+    void updateToolTips();
 
 private slots:
     void getInterfaceList();
     void updateStatistics(void);
-    void updateSelectedInterfaces();
 };
 
 

@@ -187,7 +187,7 @@ dissect_dmx_sip(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 		offset += 1;
 
-		if (offset < tvb_length(tvb))
+		if (offset < tvb_reported_length(tvb))
 			proto_tree_add_item(dmx_sip_tree, hf_dmx_sip_trailer, tvb,
 					offset, -1, ENC_NA);
 	}
@@ -303,3 +303,15 @@ proto_register_dmx_sip(void)
 	register_dissector("dmx-sip", dissect_dmx_sip, proto_dmx_sip);
 }
 
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

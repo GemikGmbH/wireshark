@@ -1,4 +1,4 @@
-/* sctp_chunck_statistics_dialog.cpp
+/* sctp_chunk_statistics_dialog.cpp
  *
  * Wireshark - Network traffic analyzer
  * By Gerald Combs <gerald@wireshark.org>
@@ -20,7 +20,7 @@
  */
 
 #include "sctp_chunk_statistics_dialog.h"
-#include "ui_sctp_chunk_statistics_dialog.h"
+#include <ui_sctp_chunk_statistics_dialog.h>
 #include "uat_dialog.h"
 
 #include <string>
@@ -33,6 +33,11 @@ SCTPChunkStatisticsDialog::SCTPChunkStatisticsDialog(QWidget *parent, sctp_assoc
     cap_file_(cf)
 {
     ui->setupUi(this);
+    Qt::WindowFlags flags = Qt::Window | Qt::WindowSystemMenuHint
+            | Qt::WindowMinimizeButtonHint
+            | Qt::WindowMaximizeButtonHint
+            | Qt::WindowCloseButtonHint;
+    this->setWindowFlags(flags);
 #if (QT_VERSION < QT_VERSION_CHECK(5, 0, 0))
     ui->tableWidget->verticalHeader()->setClickable(true);
     ui->tableWidget->verticalHeader()->setMovable(true);
@@ -74,11 +79,11 @@ void SCTPChunkStatisticsDialog::initializeChunkMap()
     for (int i = 0; i < 256; i++) {
         temp.id = i;
         temp.row = i;
-        sprintf(buf, "%d", i);
-        strcpy(temp.name, val_to_str_const(i, chunk_type_values, "NA"));
+        g_snprintf(buf, sizeof buf, "%d", i);
+        g_strlcpy(temp.name, val_to_str_const(i, chunk_type_values, "NA"), sizeof temp.name);
         if (strcmp(temp.name, "NA") == 0) {
             temp.hide = 1;
-            strcpy(temp.name, buf);
+            g_strlcpy(temp.name, buf, sizeof temp.name);
         } else {
             temp.hide = 0;
         }
@@ -88,7 +93,7 @@ void SCTPChunkStatisticsDialog::initializeChunkMap()
 
 void SCTPChunkStatisticsDialog::fillTable(bool all)
 {
-    FILE* fp;
+    FILE* fp = NULL;
 
     pref_t *pref = prefs_find_preference(prefs_find_module("sctp"),"statistics_chunk_types");
     uat_t *uat = pref->varp.uat;
@@ -132,19 +137,20 @@ void SCTPChunkStatisticsDialog::fillTable(bool all)
         }
     } else {
         char line[100];
-        size_t cap = 100;
         char *token, id[5];
         int i = 0, j = 0;
         struct chunkTypes temp;
 
-        while (fgets(line, cap, fp)) {
+        while (fgets(line, (int)sizeof line, fp)) {
             if (line[0] == '#')
                 continue;
             token = strtok(line, ",");
             /* Get rid of the quotation marks */
             QString ch = QString(token).mid(1, (int)strlen(token)-2);
-            strcpy(id, qPrintable(ch));
+            g_strlcpy(id, qPrintable(ch), sizeof id);
             temp.id = atoi(id);
+            temp.hide = 0;
+            temp.name[0] = '\0';
             while(token != NULL) {
                 token = strtok(NULL, ",");
                 if (token) {
@@ -154,7 +160,7 @@ void SCTPChunkStatisticsDialog::fillTable(bool all)
                         temp.hide = 0;
                     } else {
                         QString ch = QString(token).mid(1, (int)strlen(token)-2);
-                        strcpy(temp.name, qPrintable(ch));
+                        g_strlcpy(temp.name, qPrintable(ch), sizeof temp.name);
                     }
                 }
             }
@@ -181,8 +187,9 @@ void SCTPChunkStatisticsDialog::fillTable(bool all)
                 j++;
             }
         }
-        fclose(fp);
     }
+    if (fp)
+        fclose(fp);
 }
 
 void SCTPChunkStatisticsDialog::contextMenuEvent( QContextMenuEvent * event)
@@ -230,7 +237,7 @@ void SCTPChunkStatisticsDialog::on_pushButton_clicked()
     char str[40];
 
     for (int i = 0; i < chunks.size(); i++) {
-        sprintf(str, "\"%d\",\"%s\",\"%s\"\n", chunks.value(i).id, chunks.value(i).name, (chunks.value(i).hide==0?"Show":"Hide"));
+        g_snprintf(str, sizeof str, "\"%d\",\"%s\",\"%s\"\n", chunks.value(i).id, chunks.value(i).name, (chunks.value(i).hide==0?"Show":"Hide"));
         fputs(str, fp);
         void *rec = g_malloc0(uat->record_size);
         uat_add_record(uat, rec, TRUE);
@@ -269,19 +276,24 @@ void SCTPChunkStatisticsDialog::on_actionHideChunkType_triggered()
 
 void SCTPChunkStatisticsDialog::on_actionChunkTypePreferences_triggered()
 {
-    const gchar* err = NULL;
+    gchar* err = NULL;
 
     pref_t *pref = prefs_find_preference(prefs_find_module("sctp"),"statistics_chunk_types");
     uat_t *uat = pref->varp.uat;
     uat_clear(uat);
 
-    uat_load(pref->varp.uat, &err);
-    if (err) {
+    if (!uat_load(pref->varp.uat, &err)) {
+        /* XXX - report this through the GUI */
         printf("Error loading table '%s': %s",pref->varp.uat->name,err);
+        g_free(err);
     }
 
     UatDialog *uatdialog = new UatDialog(this, pref->varp.uat);
     uatdialog->exec();
+    // Emitting PacketDissectionChanged directly from a QDialog can cause
+    // problems on OS X.
+    wsApp->flushAppSignals();
+
     ui->tableWidget->clear();
     ui->tableWidget->setRowCount(0);
     ui->tableWidget->setHorizontalHeaderItem(0, new QTableWidgetItem(QString(tr("Association"))));

@@ -32,7 +32,6 @@
 
 #include "config.h"
 
-#include <glib.h>
 #include <epan/packet.h>
 #include <epan/exceptions.h>
 #include <epan/conversation.h>
@@ -286,7 +285,7 @@ static int hf_t124_Segmentation_begin = -1;
 static int hf_t124_Segmentation_end = -1;
 
 /*--- End of included file: packet-t124-hf.c ---*/
-#line 54 "../../asn1/t124/packet-t124-template.c"
+#line 53 "../../asn1/t124/packet-t124-template.c"
 
 /* Initialize the subtree pointers */
 static int ett_t124 = -1;
@@ -298,8 +297,6 @@ static int hf_t124_DomainMCSPDU_PDU = -1;
 
 static guint32 channelId = -1;
 
-static const char *t124Identifier = NULL; /* extensions identifier */
-static tvbuff_t *t124NSIdentifier = NULL; /* extensions non-standard identifier */
 static dissector_table_t t124_ns_dissector_table=NULL;
 static dissector_table_t t124_sd_dissector_table=NULL;
 
@@ -409,7 +406,7 @@ static gint ett_t124_TokenTestConfirm = -1;
 static gint ett_t124_DomainMCSPDU = -1;
 
 /*--- End of included file: packet-t124-ett.c ---*/
-#line 71 "../../asn1/t124/packet-t124-template.c"
+#line 68 "../../asn1/t124/packet-t124-template.c"
 
 
 /*--- Included file: packet-t124-fn.c ---*/
@@ -440,7 +437,7 @@ dissect_t124_H221NonStandardIdentifier(tvbuff_t *tvb _U_, int offset _U_, asn1_c
 #line 217 "../../asn1/t124/t124.cnf"
 
       offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
-                                       4, 255, FALSE, &t124NSIdentifier);
+                                       4, 255, FALSE, (tvbuff_t**)&actx->private_data);
 
 
 
@@ -453,7 +450,7 @@ dissect_t124_H221NonStandardIdentifier(tvbuff_t *tvb _U_, int offset _U_, asn1_c
 
 static int
 dissect_t124_T_object(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
-  offset = dissect_per_object_identifier_str(tvb, offset, actx, tree, hf_index, &t124Identifier);
+  offset = dissect_per_object_identifier_str(tvb, offset, actx, tree, hf_index, &actx->external.direct_reference);
 
   return offset;
 }
@@ -573,19 +570,19 @@ dissect_t124_ExtraDiallingString(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *
 static int
 dissect_t124_T_value(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U_, proto_tree *tree _U_, int hf_index _U_) {
 #line 149 "../../asn1/t124/t124.cnf"
-    tvbuff_t	*next_tvb = NULL;
-    guint8      *ns = NULL;
+    tvbuff_t *next_tvb = NULL;
+    tvbuff_t *t124NSIdentifier = (tvbuff_t*)actx->private_data;
+    guint8   *ns = NULL;
 
   offset = dissect_per_octet_string(tvb, offset, actx, tree, hf_index,
                                        NO_BOUND, NO_BOUND, FALSE, &next_tvb);
 
 
-	if(next_tvb) {
+	if(next_tvb && t124NSIdentifier) {
 
-	ns = tvb_get_string_enc(NULL, t124NSIdentifier, 0, tvb_length(t124NSIdentifier), ENC_ASCII|ENC_NA);
+	ns = tvb_get_string_enc(wmem_packet_scope(), t124NSIdentifier, 0, tvb_reported_length(t124NSIdentifier), ENC_ASCII|ENC_NA);
 	if(ns != NULL) {
 		dissector_try_string(t124_ns_dissector_table, ns, next_tvb, actx->pinfo, top_tree, NULL);
-		g_free(ns);
 	}
 	}
 
@@ -1515,7 +1512,7 @@ dissect_t124_T_connectPDU(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
       /* Not sure why - but lets ignore the length. */
       /* We assume the OCTET STRING is all of the remaining bytes */
 
-      if(tvb_length(next_tvb) == 42) {
+      if(tvb_reported_length(next_tvb) == 42) {
          /* this is perhaps a naive ... */
 	 next_tvb = tvb_new_subset_remaining(tvb, (old_offset>>3)+1);
       }
@@ -2879,7 +2876,7 @@ dissect_t124_DomainMCSPDU(tvbuff_t *tvb _U_, int offset _U_, asn1_ctx_t *actx _U
 
 
 /*--- End of included file: packet-t124-fn.c ---*/
-#line 73 "../../asn1/t124/packet-t124-template.c"
+#line 70 "../../asn1/t124/packet-t124-template.c"
 
 static const per_sequence_t t124Heur_sequence[] = {
   { &hf_t124_t124Identifier , ASN1_NO_EXTENSIONS     , ASN1_NOT_OPTIONAL, dissect_t124_Key },
@@ -2941,13 +2938,13 @@ dissect_t124_new(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, voi
   col_set_str(pinfo->cinfo, COL_PROTOCOL, "T.124");
   col_clear(pinfo->cinfo, COL_INFO);
 
-  item = proto_tree_add_item(parent_tree, proto_t124, tvb, 0, tvb_length(tvb), ENC_NA);
+  item = proto_tree_add_item(parent_tree, proto_t124, tvb, 0, tvb_captured_length(tvb), ENC_NA);
   tree = proto_item_add_subtree(item, ett_t124);
 
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_PER, TRUE, pinfo);
   dissect_t124_ConnectData(tvb, 0, &asn1_ctx, tree, hf_t124_ConnectData);
 
-  return tvb_length(tvb);
+  return tvb_captured_length(tvb);
 }
 
 static void
@@ -2964,8 +2961,6 @@ dissect_t124_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, vo
 
   asn1_ctx_init(&asn1_ctx, ASN1_ENC_PER, TRUE, pinfo);
 
-  t124Identifier = NULL;
-
   /*
    * We must catch all the "ran past the end of the packet" exceptions
    * here and, if we catch one, just return FALSE.  It's too painful
@@ -2981,8 +2976,8 @@ dissect_t124_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *parent_tree, vo
     failed = TRUE;
   } ENDTRY;
 
-  if (!failed && ((t124Identifier != NULL) &&
-                  (strcmp(t124Identifier, "0.0.20.124.0.1") == 0))) {
+  if (!failed && ((asn1_ctx.external.direct_reference != NULL) &&
+                  (strcmp(asn1_ctx.external.direct_reference, "0.0.20.124.0.1") == 0))) {
     dissect_t124(tvb, pinfo, parent_tree);
 
     return TRUE;
@@ -3901,7 +3896,7 @@ void proto_register_t124(void) {
         NULL, HFILL }},
 
 /*--- End of included file: packet-t124-hfarr.c ---*/
-#line 202 "../../asn1/t124/packet-t124-template.c"
+#line 197 "../../asn1/t124/packet-t124-template.c"
   };
 
   /* List of subtrees */
@@ -4014,7 +4009,7 @@ void proto_register_t124(void) {
     &ett_t124_DomainMCSPDU,
 
 /*--- End of included file: packet-t124-ettarr.c ---*/
-#line 209 "../../asn1/t124/packet-t124-template.c"
+#line 204 "../../asn1/t124/packet-t124-template.c"
   };
 
   /* Register protocol */
@@ -4035,6 +4030,6 @@ proto_reg_handoff_t124(void) {
 
   register_ber_oid_dissector("0.0.20.124.0.1", dissect_t124, proto_t124, "Generic Conference Control");
 
-  heur_dissector_add("t125", dissect_t124_heur, proto_t124);
+  heur_dissector_add("t125", dissect_t124_heur, "T.124 over T.125", "t124_t125", proto_t124, HEURISTIC_ENABLE);
 
 }

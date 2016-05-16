@@ -2,10 +2,6 @@
 <!-- WSDG Chapter Introduction -->
 ++++++++++++++++++++++++++++++++++++++
 
-++++++++++++++++++++++++++++++++++++++
-<!-- $Id$ -->
-++++++++++++++++++++++++++++++++++++++
-
 [[ChapterIntroduction]]
 
 == Introduction
@@ -31,24 +27,23 @@ which will provide a lot of general information about it.
 === Supported Platforms
 
 Wireshark currently runs on most UNIX platforms and various Windows
-platforms. It requires GTK+, GLib, libpcap and some other libraries in
+platforms. It requires Qt, GLib, libpcap and some other libraries in
 order to run.
 
-As Wireshark is developed in a platform independent way and uses libraries
-(such as the GTK+ GUI library) which are available for a lot of different platforms,
+As Wireshark is developed in a platform independent way and uses libraries (such
+as the Qt GUI library) which are available for many different platforms,
 it's thus available on a wide variety of platforms.
 
 If a binary package is not available for your platform, you should
 download the source and try to build it. Please report your experiences
 to mailto:wireshark-dev-list-email:[][wireshark-dev-list-email:[]].
 
-Binary packages are available for at least the following platforms:
+Binary packages are available for the following platforms along with many
+others:
 
 ==== Unix
 
-* Apple Mac OS X
-
-* BeOS
+* Apple OS X
 
 * FreeBSD
 
@@ -60,15 +55,7 @@ Binary packages are available for at least the following platforms:
 
 * OpenBSD
 
-* SCO UnixWare/OpenUnix
-
-* SGI Irix
-
-* Sun Solaris/Intel
-
-* Sun Solaris/Sparc
-
-* Tru64 UNIX (formerly Digital UNIX)
+* Oracle Solaris
 
 ==== Linux
 
@@ -94,17 +81,14 @@ Binary packages are available for at least the following platforms:
 
 ==== Microsoft Windows
 
-Thanks to the Win32 API, development on all Windows platforms will be
-done in a very similar way. All Windows platforms referred to as Win32,
-Win or Windows may be used with the same meaning.
-Older Windows versions are no longer supported by Wireshark.
-As Windows CE differs a lot compared to the other Windows platforms
-mentioned, Wireshark will not run on Windows CE and there are no plans to
-support it.
+Wireshark supports Windows natively via the
+https://en.wikipedia.org/wiki/Windows_API[Windows API]. Note that in
+this documentation and elsewhere we tend to use the terms
+``Win32'', ``Win'', and ``Windows'' interchangeably to refer to the
+Windows API. Wireshark runs on and can be compiled on the following
+platforms:
 
-Also the 64 bit Windows version are now supported by Wireshark. Although
-not all libraries are made 64 bit ready yet, basic operations are all
-available.
+* Windows 10 / Windows Server 2016
 
 * Windows 8.1 / Windows Server 2012 R2
 
@@ -114,7 +98,8 @@ available.
 
 * Windows Vista / Windows Server 2008
 
-* Windows XP / Windows Server 2003
+Development on Windows XP, Server 2003, and older versions may be possible but
+is not supported.
 
 [[ChIntroDevelopment]]
 
@@ -202,11 +187,10 @@ wireshark-download-page:[].
 
 === Releases and distributions
 
-The officially released files can be found at: wireshark-download-page:[].  A new Wireshark version is released after
-significant changes compared to the last release are completed or a
-serious security issue is encountered. The typical release schedule is
-about every 4-8 weeks (although this may vary).
-
+The officially released files can be found at: wireshark-download-page:[]. A new
+Wireshark version is released after significant changes compared to the last
+release are completed or a serious security issue is encountered. The typical
+release schedule is about every 4-8 weeks (although this may vary).
 There are two kinds of distributions: binary and source; both have their
 advantages and disadvantages.
 
@@ -218,8 +202,8 @@ Binary distributions are usually easy to install (as simply starting
 the appropriate file is usually the only thing to do). They are available
 for the following systems:
 
-* Windows (.exe file). The typical Windows end user is used to get a setup.exe
-  file which will install all the required things for him.
+* Windows (.exe file). The typical Windows end user is used to getting
+  a setup.exe file which will install all the required things for him.
 
 * Win32 PAF (.paf.exe file). Another Windows end user method is to get a
   portable application file which will install all the required things for him.
@@ -228,13 +212,12 @@ for the following systems:
   obtains a .deb file from which the package manager checks the dependencies and
   installs the software.
 
-* Red Hat (.rpm file). A user of a Red Hat Package Manager (RPM) based system
+* Red Hat (.rpm file). A user of a RPM Package Manager (RPM) based system
   obtains an .rpm file from which the package manager checks the dependencies
   and installs the software.
 
-* MAC OS X (.dmg file). The typical MAC OS X end user is used to get a .dmg file
-  which will install all the required things for him. The other requirement is
-  to have the X11.app installed.
+* OS X (.dmg file). The typical OS X end user is used to getting a .dmg file
+  which will install all the required things for him.
 
 * Solaris. A Solaris user obtains a file from which the package manager (PKG)
   checks the dependencies and installs the software.
@@ -282,13 +265,13 @@ be spent on more interesting tasks.
   be narrowed down to a few commits, making a fix much easier.
 
 * "Health status" overview of the sources. A quick look at:
-  http://buildbot.wireshark.org/trunk/[] gives a good "feeling" if the sources
+  https://buildbot.wireshark.org/trunk/[] gives a good "feeling" if the sources
   are currently "well". On the other hand, if all is "red", an update of a
   personal source tree might better be done later ...
 
 * "Up to date" binary packages are available. After a change was committed to
   the repository, a binary package / installer is usually available within a few
-  hours at: http://www.wireshark.org/download/automated/[]. This can be quite
+  hours at: https://www.wireshark.org/download/automated/[]. This can be quite
   helpful, e.g. a bug reporter can easily verify a bugfix by installing a recent
   build.
 
@@ -317,19 +300,23 @@ console logfile, to get additional information.
 The Buildbot runs on a platform collection that represents the different
 "platform specialties" quite well:
 
-* Windows XP x86 (Win32, little endian, Visual Studion 2010)
+* Windows 8.1 x86 (Win32, little endian, Visual Studion 2013)
 
-* Windows 7 x86-64 (Win64, little endian, VS 2010)
+* Windows 7 x86-64 (Win64, little endian, VS 2013)
 
 * Ubuntu x86-64 (Linux, little endian, gcc)
 
 * Solaris SPARC (Solaris, big endian, gcc)
 
-* Mac OS-X PPC (BSD, big endian, gcc)
+* OS X x86 (BSD, little endian, Clang)
 
-* Mac OS-X x86 (BSD, little endian, Clang)
+* OS X x86-64 (BSD, little endian, Clang)
 
-* Mac OS-X x86-64 (BSD, little endian, Clang)
+and two buildslaves that run static code analysis to help spot coding issues:
+
+* Visual Studio Code Analysis (Win64, little endian, VS 2013)
+
+* Clang Code Analysis (Linux, little endian, Clang)
 
 Each platform is represented at the status page by a single column, the
 most recent entries are at the top.
@@ -347,12 +334,10 @@ course).
 
 ==== Website
 
-You will find lot's of useful information on the Wireshark homepage at
+You will find lots of useful information on the Wireshark homepage at
 wireshark-web-site:[].
 
-
 [[ChIntroWiki]]
-
 
 ==== Wiki
 
@@ -400,7 +385,8 @@ various other sources of information:
 .Read the README
 ====
 'README.developer' is packed full with all kinds of details relevant
-to the developer of Wireshark source code. It advices you around common
+to the developer of Wireshark source code. Its companion file
+'README.dissector' advises you around common
 pitfalls, shows you basic layout of dissector code, shows details of the
 APIs available to the dissector developer, etc.
 ====
@@ -568,9 +554,9 @@ mailto:wireshark-dev-list-email:[][wireshark-dev mailing list], or attach it to 
 
 You can download Windows debugging symbol files (.pdb) from the following locations:
 
-* 32-bit Windows: http://www.wireshark.org/download/win32/all-versions/
+* 32-bit Windows: https://www.wireshark.org/download/win32/all-versions/
 
-* 64-bit Windows: http://www.wireshark.org/download/win64/all-versions/
+* 64-bit Windows: https://www.wireshark.org/download/win64/all-versions/
 
 Files are named "Wireshark-pdb-win__bits__-_x_._y_._z_.zip" to match their
 corresponding "Wireshark-win__bits__-_x_._y_._z_.exe" installer packages.
@@ -580,4 +566,3 @@ corresponding "Wireshark-win__bits__-_x_._y_._z_.exe" installer packages.
 ++++++++++++++++++++++++++++++++++++++
 <!-- End of WSDG Chapter Introduction -->
 ++++++++++++++++++++++++++++++++++++++
-

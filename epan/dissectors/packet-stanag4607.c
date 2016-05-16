@@ -19,11 +19,8 @@
 #include "config.h"
 
 #include <math.h>
-#include <glib.h>
-
-#include <epan/expert.h>
 #include <epan/packet.h>
-#include <epan/proto.h>
+#include <epan/expert.h>
 
 #include <wiretap/stanag4607.h>
 
@@ -504,15 +501,15 @@ dissect_mission(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 	offset += 12;
 	proto_tree_add_item(seg_tree, hf_4607_mission_flight_plan, tvb, offset, 12, ENC_ASCII|ENC_NA);
 	offset += 12;
-	proto_tree_add_item(seg_tree, hf_4607_mission_platform, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_mission_platform, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 	proto_tree_add_item(seg_tree, hf_4607_mission_platform_config, tvb, offset, 10, ENC_ASCII|ENC_NA);
 	offset += 10;
 	proto_tree_add_item(seg_tree, hf_4607_mission_time_year, tvb, offset, 2, ENC_BIG_ENDIAN);
 	offset += 2;
-	proto_tree_add_item(seg_tree, hf_4607_mission_time_month, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_mission_time_month, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
-	proto_tree_add_item(seg_tree, hf_4607_mission_time_day, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_mission_time_day, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 
 	return offset;
@@ -585,15 +582,15 @@ dissect_target(tvbuff_t *tvb, proto_tree *seg_tree, gint offset, guint64 mask)
 		offset += 2;
 	}
 	if (SET(mask, D32_9)) {
-		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_snr, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_snr, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 	}
 	if (SET(mask, D32_10)) {
-		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_class, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_class, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 	}
 	if (SET(mask, D32_11)) {
-		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_prob, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_prob, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 	}
 	if (SET(mask, D32_12)) {
@@ -601,19 +598,19 @@ dissect_target(tvbuff_t *tvb, proto_tree *seg_tree, gint offset, guint64 mask)
 		offset += 2;
 		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_unc_cross, tvb, offset, 2, ENC_BIG_ENDIAN);
 		offset += 2;
-		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_unc_height, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_unc_height, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_unc_radial, tvb, offset, 2, ENC_BIG_ENDIAN);
 		offset += 2;
 	}
 	if (SET(mask, D32_16)) {
-		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_tag_app, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_tag_app, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_tag_entity, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
 	}
 	if (SET(mask, D32_18)) {
-		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_section, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(rpt_tree, hf_4607_dwell_report_section, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 	}
 
@@ -635,7 +632,7 @@ dissect_dwell(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 	offset += 2;
 	proto_tree_add_item(seg_tree, hf_4607_dwell_dwell_index, tvb, offset, 2, ENC_BIG_ENDIAN);
 	offset += 2;
-	proto_tree_add_item(seg_tree, hf_4607_dwell_last_dwell, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_dwell_last_dwell, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 
 	/* count of target reports */
@@ -670,11 +667,11 @@ dissect_dwell(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 		offset += 2;
 		proto_tree_add_item(seg_tree, hf_4607_dwell_speed, tvb, offset, 4, ENC_BIG_ENDIAN);
 		offset += 4;
-		proto_tree_add_item(seg_tree, hf_4607_dwell_vert_velocity, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(seg_tree, hf_4607_dwell_vert_velocity, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 	}
 	if (SET(mask, D18)) {
-		proto_tree_add_item(seg_tree, hf_4607_dwell_track_unc, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(seg_tree, hf_4607_dwell_track_unc, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 		proto_tree_add_item(seg_tree, hf_4607_dwell_speed_unc, tvb, offset, 2, ENC_BIG_ENDIAN);
 		offset += 2;
@@ -709,7 +706,7 @@ dissect_dwell(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 		offset += 2;
 	}
 	if (SET(mask, D31)) {
-		proto_tree_add_item(seg_tree, hf_4607_dwell_mdv, tvb, offset, 1, ENC_NA);
+		proto_tree_add_item(seg_tree, hf_4607_dwell_mdv, tvb, offset, 1, ENC_BIG_ENDIAN);
 		offset += 1;
 	}
 
@@ -726,13 +723,13 @@ dissect_jobdef(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 {
 	proto_tree_add_item(seg_tree, hf_4607_jobdef_job_id, tvb, offset, 4, ENC_BIG_ENDIAN);
 	offset += 4;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_sensor_type, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_sensor_type, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 	proto_tree_add_item(seg_tree, hf_4607_jobdef_sensor_model, tvb, offset, 6, ENC_ASCII|ENC_NA);
 	offset += 6;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_filter, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_filter, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_priority, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_priority, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 	proto_tree_add_item(seg_tree, hf_4607_jobdef_ba_lat_a, tvb, offset, 4, ENC_BIG_ENDIAN);
 	offset += 4;
@@ -750,7 +747,7 @@ dissect_jobdef(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 	offset += 4;
 	proto_tree_add_item(seg_tree, hf_4607_jobdef_ba_lon_d, tvb, offset, 4, ENC_BIG_ENDIAN);
 	offset += 4;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_radar_mode, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_radar_mode, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 	proto_tree_add_item(seg_tree, hf_4607_jobdef_revisit_interval, tvb, offset, 2, ENC_BIG_ENDIAN);
 	offset += 2;
@@ -760,7 +757,7 @@ dissect_jobdef(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 	offset += 2;
 	proto_tree_add_item(seg_tree, hf_4607_jobdef_unc_alt, tvb, offset, 2, ENC_BIG_ENDIAN);
 	offset += 2;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_unc_heading, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_unc_heading, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 	proto_tree_add_item(seg_tree, hf_4607_jobdef_unc_speed, tvb, offset, 2, ENC_BIG_ENDIAN);
 	offset += 2;
@@ -770,15 +767,15 @@ dissect_jobdef(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 	offset += 2;
 	proto_tree_add_item(seg_tree, hf_4607_jobdef_sense_vlos, tvb, offset, 2, ENC_BIG_ENDIAN);
 	offset += 2;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_sense_mdv, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_sense_mdv, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_sense_prob, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_sense_prob, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_sense_alarm, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_sense_alarm, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_terrain_model, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_terrain_model, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
-	proto_tree_add_item(seg_tree, hf_4607_jobdef_geoid_model, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_jobdef_geoid_model, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 
 	return offset;
@@ -799,7 +796,7 @@ dissect_platform_location(tvbuff_t *tvb, proto_tree *seg_tree, gint offset)
 	offset += 2;
 	proto_tree_add_item(seg_tree, hf_4607_platloc_speed, tvb, offset, 4, ENC_BIG_ENDIAN);
 	offset += 4;
-	proto_tree_add_item(seg_tree, hf_4607_platloc_vertical_velocity, tvb, offset, 1, ENC_NA);
+	proto_tree_add_item(seg_tree, hf_4607_platloc_vertical_velocity, tvb, offset, 1, ENC_BIG_ENDIAN);
 	offset += 1;
 	return offset;
 }
@@ -835,7 +832,7 @@ dissect_stanag4607(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 	guint8 seg_id = 0;
 
 	/* Basic length check */
-	if (tvb_length(tvb) < STANAG4607_MIN_LENGTH)
+	if (tvb_captured_length(tvb) < STANAG4607_MIN_LENGTH)
 		return;
 
 	col_set_str(pinfo->cinfo, COL_PROTOCOL, "S4607");
@@ -864,10 +861,10 @@ dissect_stanag4607(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 		proto_tree_add_item(hdr_tree, hf_4607_version, tvb, 0, 2, ENC_ASCII|ENC_NA);
 		ti = proto_tree_add_item(hdr_tree, hf_4607_packet_size, tvb, 2, 4, ENC_BIG_ENDIAN);
 		proto_tree_add_item(hdr_tree, hf_4607_nationality, tvb, 6, 2, ENC_ASCII|ENC_NA);
-		proto_tree_add_item(hdr_tree, hf_4607_sec_class, tvb, 8, 1, ENC_NA);
+		proto_tree_add_item(hdr_tree, hf_4607_sec_class, tvb, 8, 1, ENC_BIG_ENDIAN);
 		proto_tree_add_item(hdr_tree, hf_4607_sec_system, tvb, 9, 2, ENC_ASCII|ENC_NA);
 		proto_tree_add_item(hdr_tree, hf_4607_sec_code, tvb, 11, 2, ENC_BIG_ENDIAN);
-		proto_tree_add_item(hdr_tree, hf_4607_exercise_indicator, tvb, 13, 1, ENC_NA);
+		proto_tree_add_item(hdr_tree, hf_4607_exercise_indicator, tvb, 13, 1, ENC_BIG_ENDIAN);
 		proto_tree_add_item(hdr_tree, hf_4607_platform_id, tvb, 14, 10, ENC_ASCII|ENC_NA);
 		proto_tree_add_item(hdr_tree, hf_4607_mission_id, tvb, 24, 4, ENC_BIG_ENDIAN);
 		proto_tree_add_item(hdr_tree, hf_4607_job_id, tvb, 28, 4, ENC_BIG_ENDIAN);
@@ -889,7 +886,7 @@ dissect_stanag4607(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
 		proto_item * pi;
 		/* Segment header */
-		seg_type = proto_tree_add_item(hdr_tree, hf_4607_segment_type, tvb, offset, 1, ENC_NA);
+		seg_type = proto_tree_add_item(hdr_tree, hf_4607_segment_type, tvb, offset, 1, ENC_BIG_ENDIAN);
 		seg_id = tvb_get_guint8(tvb, offset);
 		offset += 1;
 
@@ -1048,38 +1045,38 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_time,
 			{ "Dwell Time", "s4607.dwell.time",
 			FT_UINT32, BASE_CUSTOM,
-			prt_millisec, 0x0,
+			CF_FUNC(prt_millisec), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_sensor_lat,
 			{ "Sensor Position Latitude", "s4607.dwell.sensor.lat",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_sensor_lon,
 			{ "Sensor Position Longitude", "s4607.dwell.sensor.lon",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_sensor_alt,
 			{ "Sensor Position Altitude", "s4607.dwell.sensor.alt",
 			FT_INT32, BASE_CUSTOM,
-			prt_centimeters, 0x0,
+			CF_FUNC(prt_centimeters), 0x0,
 			NULL, HFILL }
 		},
 		/* D10 */
 		{ &hf_4607_dwell_scale_lat,
 			{ "Scale Factor, Latitude", "s4607.dwell.scale.lat",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_scale_lon,
 			{ "Scale Factor, Longitude", "s4607.dwell.scale.lon",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1087,19 +1084,19 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_unc_along,
 			{ "Sensor Position Uncertainty Along Track", "s4607.dwell.unc.along",
 			FT_UINT32, BASE_CUSTOM,
-			prt_centimeters, 0x0,
+			CF_FUNC(prt_centimeters), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_unc_cross,
 			{ "Sensor Position Uncertainty Cross Track", "s4607.dwell.unc.cross",
 			FT_UINT32, BASE_CUSTOM,
-			prt_centimeters, 0x0,
+			CF_FUNC(prt_centimeters), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_unc_alt,
 			{ "Sensor Position Uncertainty Altitude", "s4607.dwell.unc.alt",
 			FT_UINT16, BASE_CUSTOM,
-			prt_centimeters, 0x0,
+			CF_FUNC(prt_centimeters), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1107,19 +1104,19 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_track,
 			{ "Sensor Track", "s4607.dwell.track",
 			FT_UINT16, BASE_CUSTOM,
-			prt_ba16, 0x0,
+			CF_FUNC(prt_ba16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_speed,
 			{ "Sensor Speed", "s4607.dwell.speed",
 			FT_UINT32, BASE_CUSTOM,
-			prt_speed, 0x0,
+			CF_FUNC(prt_speed), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_vert_velocity,
 			{ "Sensor Vertical Velocity", "s4607.dwell.vvel",
 			FT_INT8, BASE_CUSTOM,
-			prt_speed_deci, 0x0,
+			CF_FUNC(prt_speed_deci), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_track_unc,
@@ -1131,13 +1128,13 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_speed_unc,
 			{ "Sensor Speed Uncertainty", "s4607.dwell.speed.unc",
 			FT_UINT16, BASE_CUSTOM,
-			prt_speed, 0x0,
+			CF_FUNC(prt_speed), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_vv_unc,
 			{ "Sensor Vertical Velocity Uncertainty", "s4607.dwell.vvel.unc",
 			FT_UINT16, BASE_CUSTOM,
-			prt_speed_centi, 0x0,
+			CF_FUNC(prt_speed_centi), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1145,19 +1142,19 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_plat_heading,
 			{ "Platform Orientation Heading", "s4607.dwell.plat.heading",
 			FT_UINT16, BASE_CUSTOM,
-			prt_ba16, 0x0,
+			CF_FUNC(prt_ba16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_plat_pitch,
 			{ "Platform Orientation Pitch", "s4607.dwell.plat.pitch",
 			FT_INT16, BASE_CUSTOM,
-			prt_sa16, 0x0,
+			CF_FUNC(prt_sa16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_plat_roll,
 			{ "Platform Orientation Roll (Bank Angle)", "s4607.dwell.plat.roll",
 			FT_INT16, BASE_CUSTOM,
-			prt_sa16, 0x0,
+			CF_FUNC(prt_sa16), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1165,25 +1162,25 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_da_lat,
 			{ "Dwell Area Center Latitude", "s4607.dwell.da.lat",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_da_lon,
 			{ "Dwell Area Center Longitude", "s4607.dwell.da.lon",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_da_range,
 			{ "Dwell Area Range Half Extent", "s4607.dwell.da.range",
 			FT_UINT16, BASE_CUSTOM,
-			prt_kilo, 0x0,
+			CF_FUNC(prt_kilo), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_da_angle,
 			{ "Dwell Area Dwell Angle Half Extent", "s4607.dwell.da.angle",
 			FT_UINT16, BASE_CUSTOM,
-			prt_ba16, 0x0,
+			CF_FUNC(prt_ba16), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1191,25 +1188,25 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_sensor_heading,
 			{ "Sensor Orientation Heading", "s4607.dwell.sensor.heading",
 			FT_UINT16, BASE_CUSTOM,
-			prt_ba16, 0x0,
+			CF_FUNC(prt_ba16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_sensor_pitch,
 			{ "Sensor Orientation Pitch", "s4607.dwell.sensor.pitch",
 			FT_INT16, BASE_CUSTOM,
-			prt_sa16, 0x0,
+			CF_FUNC(prt_sa16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_sensor_roll,
 			{ "Sensor Orientation Roll (Bank Angle)", "s4607.dwell.sensor.roll",
 			FT_INT16, BASE_CUSTOM,
-			prt_sa16, 0x0,
+			CF_FUNC(prt_sa16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_mdv,
 			{ "Minimum Detectable Velocity (MDV)", "s4607.dwell.mdv",
 			FT_UINT8, BASE_CUSTOM,
-			prt_speed_deci, 0x0,
+			CF_FUNC(prt_speed_deci), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1226,13 +1223,13 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_report_lat,
 			{ "Target Location Hi-Res Latitude", "s4607.dwell.rpt.lat",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_report_lon,
 			{ "Target Location Hi-Res Longitude", "s4607.dwell.rpt.lon",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1254,7 +1251,7 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_report_height,
 			{ "Target Location Geodetic Height", "s4607.dwell.rpt.height",
 			FT_INT16, BASE_CUSTOM,
-			prt_meters, 0x0,
+			CF_FUNC(prt_meters), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1262,13 +1259,13 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_report_radial,
 			{ "Target Velocity Line of Sight Component", "s4607.dwell.rpt.radial",
 			FT_INT16, BASE_CUSTOM,
-			prt_speed_centi, 0x0,
+			CF_FUNC(prt_speed_centi), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_report_wrap,
 			{ "Target Wrap Velocity", "s4607.dwell.rpt.wrap",
 			FT_UINT16, BASE_CUSTOM,
-			prt_speed_centi, 0x0,
+			CF_FUNC(prt_speed_centi), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_report_snr,
@@ -1294,25 +1291,25 @@ proto_register_stanag4607(void)
 		{ &hf_4607_dwell_report_unc_slant,
 			{ "Target Measurement Uncertainty Slant Range", "s4607.dwell.rpt.unc.slant",
 			FT_UINT16, BASE_CUSTOM,
-			prt_centimeters, 0x0,
+			CF_FUNC(prt_centimeters), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_report_unc_cross,
 			{ "Target Measurement Uncertainty Cross Range", "s4607.dwell.rpt.unc.cross",
 			FT_UINT16, BASE_CUSTOM,
-			prt_decimeters, 0x0,
+			CF_FUNC(prt_decimeters), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_report_unc_height,
 			{ "Target Measurement Uncertainty Height", "s4607.dwell.rpt.unc.height",
 			FT_UINT8, BASE_CUSTOM,
-			prt_meters, 0x0,
+			CF_FUNC(prt_meters), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_dwell_report_unc_radial,
 			{ "Target Measurement Uncertainty Radial Velocity", "s4607.dwell.rpt.unc.radial",
 			FT_UINT16, BASE_CUSTOM,
-			prt_speed_centi, 0x0,
+			CF_FUNC(prt_speed_centi), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1373,50 +1370,50 @@ proto_register_stanag4607(void)
 		{ &hf_4607_jobdef_ba_lat_a,
 			{ "Bounding Area Point A Latitude", "s4607.job.ba.lat.a",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_ba_lon_a,
 			{ "Bounding Area Point A Longitude", "s4607.job.ba.lon.a",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 
 		{ &hf_4607_jobdef_ba_lat_b,
 			{ "Bounding Area Point B Latitude", "s4607.job.ba.lat.b",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_ba_lon_b,
 			{ "Bounding Area Point B Longitude", "s4607.job.ba.lon.b",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_ba_lat_c,
 			{ "Bounding Area Point C Latitude", "s4607.job.ba.lat.c",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_ba_lon_c,
 			{ "Bounding Area Point C Longitude", "s4607.job.ba.lon.c",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_ba_lat_d,
 			{ "Bounding Area Point D Latitude", "s4607.job.ba.lat.d",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_ba_lon_d,
 			{ "Bounding Area Point D Longitude", "s4607.job.ba.lon.d",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 
@@ -1436,68 +1433,68 @@ proto_register_stanag4607(void)
 		{ &hf_4607_jobdef_unc_along,
 			{ "Nominal Sensor Position Uncertainty Along Track", "s4607.job.unc.track",
 			FT_UINT16, BASE_CUSTOM,
-			prt_none16, 0x0,
+			CF_FUNC(prt_none16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_unc_cross,
 			{ "Nominal Sensor Position Uncertainty Cross Track", "s4607.job.unc.cross",
 			FT_UINT16, BASE_CUSTOM,
-			prt_none16, 0x0,
+			CF_FUNC(prt_none16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_unc_alt,
 			{ "Nominal Sensor Position Uncertainty Altitude", "s4607.job.unc.alt",
 			FT_UINT16, BASE_CUSTOM,
-			prt_none16, 0x0,
+			CF_FUNC(prt_none16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_unc_heading,
 			{ "Nominal Sensor Position Uncertainty Track Heading", "s4607.job.unc.heading",
 			FT_UINT8, BASE_CUSTOM,
-			prt_none8, 0x0,
+			CF_FUNC(prt_none8), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_unc_speed,
 			{ "Nominal Sensor Position Uncertainty Speed", "s4607.job.unc.speed",
 			FT_UINT16, BASE_CUSTOM,
-			prt_none16, 0x0,
+			CF_FUNC(prt_none16), 0x0,
 			NULL, HFILL }
 		},
 
 		{ &hf_4607_jobdef_sense_slant,
 			{ "Nominal Sensor Slant Range Standard Deviation", "s4607.job.sense.slant",
 			FT_UINT16, BASE_CUSTOM,
-			prt_none16, 0x0,
+			CF_FUNC(prt_none16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_sense_cross,
 			{ "Nominal Sensor Cross Range Standard Deviation", "s4607.job.sense.cross",
 			FT_UINT16, BASE_CUSTOM,
-			prt_ba16_none, 0x0,
+			CF_FUNC(prt_ba16_none), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_sense_vlos,
 			{ "Nominal Sensor Velocity Line-Of-Sight Std. Dev", "s4607.job.sense.vlos",
 			FT_UINT16, BASE_CUSTOM,
-			prt_none16, 0x0,
+			CF_FUNC(prt_none16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_sense_mdv,
 			{ "Nominal Sensor Minimum Dectectable Velocity (MDV)", "s4607.job.sense.mdv",
 			FT_UINT8, BASE_CUSTOM,
-			prt_none8, 0x0,
+			CF_FUNC(prt_none8), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_sense_prob,
 			{ "Nominal Sensor Detection Probability", "s4607.job.sense.prob",
 			FT_UINT8, BASE_CUSTOM,
-			prt_none8, 0x0,
+			CF_FUNC(prt_none8), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_sense_alarm,
 			{ "Nominal Sensor False Alarm Density", "s4607.job.sense.alarm",
 			FT_UINT8, BASE_CUSTOM,
-			prt_none8, 0x0,
+			CF_FUNC(prt_none8), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_jobdef_terrain_model,
@@ -1562,43 +1559,43 @@ proto_register_stanag4607(void)
 		{ &hf_4607_platloc_time,
 			{ "Platform Location Time", "s4607.ploc.time",
 			FT_UINT32, BASE_CUSTOM,
-			prt_millisec, 0x0,
+			CF_FUNC(prt_millisec), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_platloc_latitude,
 			{ "Platform Position Latitude", "s4607.ploc.lat",
 			FT_INT32, BASE_CUSTOM,
-			prt_sa32, 0x0,
+			CF_FUNC(prt_sa32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_platloc_longitude,
 			{ "Platform Position Longitude", "s4607.ploc.lon",
 			FT_UINT32, BASE_CUSTOM,
-			prt_ba32, 0x0,
+			CF_FUNC(prt_ba32), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_platloc_altitude,
 			{ "Platform Position Altitude", "s4607.ploc.alt",
 			FT_INT32, BASE_CUSTOM,
-			prt_centimeters, 0x0,
+			CF_FUNC(prt_centimeters), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_platloc_track,
 			{ "Platform Track", "s4607.ploc.track",
 			FT_UINT16, BASE_CUSTOM,
-			prt_ba16, 0x0,
+			CF_FUNC(prt_ba16), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_platloc_speed,
 			{ "Platform Speed", "s4607.ploc.speed",
 			FT_UINT32, BASE_CUSTOM,
-			prt_speed, 0x0,
+			CF_FUNC(prt_speed), 0x0,
 			NULL, HFILL }
 		},
 		{ &hf_4607_platloc_vertical_velocity,
 			{ "Platform Vertical Velocity", "s4607.ploc.velocity",
 			FT_INT8, BASE_CUSTOM,
-			prt_speed_deci, 0x0,
+			CF_FUNC(prt_speed_deci), 0x0,
 			NULL, HFILL }
 		},
 

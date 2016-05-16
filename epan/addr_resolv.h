@@ -26,7 +26,7 @@
  * However, take into account that when the packet dissection
  * completes, these buffers will be automatically reclaimed/freed.
  * If you need the buffer to remain for a longer scope than packet lifetime
- * you must copy the content to an se_alloc() buffer.
+ * you must copy the content to an wmem_file_scope() buffer.
  */
 
 #ifndef __RESOLV_H__
@@ -47,22 +47,30 @@ extern "C" {
 #define MAXNAMELEN  	64	/* max name length (hostname and port name) */
 #endif
 
+/**
+ * @brief Flags to control name resolution.
+ */
 typedef struct _e_addr_resolve {
-  gboolean mac_name;
-  gboolean network_name;
-  gboolean transport_name;
-  gboolean concurrent_dns;
-  gboolean use_external_net_name_resolver;
-  gboolean load_hosts_file_from_profile_only;
+  gboolean mac_name;                          /**< Whether to resolve Ethernet MAC to manufacturer names */
+  gboolean network_name;                      /**< Whether to resolve IPv4, IPv6, and IPX addresses into host names */
+  gboolean transport_name;                    /**< Whether to resolve TCP/UDP/DCCP/SCTP ports into service names */
+  gboolean concurrent_dns;                    /**< Whether to use concurrent DNS name resolution */
+  gboolean dns_pkt_addr_resolution;           /**< Whether to resolve addresses using captured DNS packets */
+  gboolean use_external_net_name_resolver;    /**< Whether to system's configured DNS server to resolve names */
+  gboolean load_hosts_file_from_profile_only; /**< Whether to only load the hosts in the current profile, not hosts files */
 } e_addr_resolve;
 
+#define ADDR_RESOLV_MACADDR(at) \
+    (((at)->type == AT_ETHER))
 
-typedef struct hashether {
-  guint             status;  /* (See above) */
-  guint8            addr[6];
-  char              hexaddr[6*3];
-  char              resolved_name[MAXNAMELEN];
-} hashether_t;
+#define ADDR_RESOLV_NETADDR(at) \
+    (((at)->type == AT_IPv4) || ((at)->type == AT_IPv6) || ((at)->type == AT_IPX))
+
+struct hashether;
+typedef struct hashether hashether_t;
+
+struct hashmanuf;
+typedef struct hashmanuf hashmanuf_t;
 
 typedef struct serv_port {
   gchar            *udp_name;
@@ -74,12 +82,12 @@ typedef struct serv_port {
 /*
  *
  */
-#define DUMMY_ADDRESS_ENTRY      1<<0
-#define TRIED_RESOLVE_ADDRESS    1<<1
-#define RESOLVED_ADDRESS_USED    1<<2
+#define DUMMY_ADDRESS_ENTRY      (1U<<0)
+#define TRIED_RESOLVE_ADDRESS    (1U<<1)
+#define RESOLVED_ADDRESS_USED    (1U<<2)
 
-#define DUMMY_AND_RESOLVE_FLGS   3
-#define USED_AND_RESOLVED_MASK   (1+4)
+#define DUMMY_AND_RESOLVE_FLGS   (DUMMY_ADDRESS_ENTRY | TRIED_RESOLVE_ADDRESS)
+#define USED_AND_RESOLVED_MASK   (DUMMY_ADDRESS_ENTRY | RESOLVED_ADDRESS_USED)
 typedef struct hashipv4 {
     guint             addr;
     guint8            flags;          /* B0 dummy_entry, B1 resolve, B2 If the address is used in the trace */
@@ -109,49 +117,35 @@ extern gchar *g_pipxnets_path;
 /* Functions in addr_resolv.c */
 
 /*
- * ep_udp_port_to_display() returns the port name corresponding to that UDP port,
+ * udp_port_to_display() returns the port name corresponding to that UDP port,
  * or the port number as a string if not found.
  */
-WS_DLL_PUBLIC gchar *ep_udp_port_to_display(guint port);
+WS_DLL_PUBLIC gchar *udp_port_to_display(wmem_allocator_t *allocator, guint port);
 
 /*
- * ep_tcp_port_to_display() returns the port name corresponding to that TCP port,
+ * tcp_port_to_display() returns the port name corresponding to that TCP port,
  * or the port number as a string if not found.
  */
-WS_DLL_PUBLIC gchar *ep_tcp_port_to_display(guint port);
+WS_DLL_PUBLIC gchar *tcp_port_to_display(wmem_allocator_t *allocator, guint port);
 
 /*
- * ep_dccp_port_to_display() returns the port name corresponding to that DCCP port,
+ * dccp_port_to_display() returns the port name corresponding to that DCCP port,
  * or the port number as a string if not found.
  */
-extern gchar *ep_dccp_port_to_display(guint port);
+extern gchar *dccp_port_to_display(wmem_allocator_t *allocator, guint port);
 
 /*
- * ep_sctp_port_to_display() returns the port name corresponding to that SCTP port,
+ * sctp_port_to_display() returns the port name corresponding to that SCTP port,
  * or the port number as a string if not found.
  */
-WS_DLL_PUBLIC gchar *ep_sctp_port_to_display(guint port);
+WS_DLL_PUBLIC gchar *sctp_port_to_display(wmem_allocator_t *allocator, guint port);
 
-/* ep_address_to_display takes as input an "address", as defined in address.h */
-/* it returns a string that contains: */
-/*  - if the address is of a type that can be translated into a name, and the user */
-/*    has activated name resolution, the translated name */
-/*  - if the address is of type AT_NONE, a pointer to the string "NONE" */
-/*  - if the address is of any other type, the result of ep_address_to_str on the argument, */
-/*    which should be a string representation for the answer -e.g. "10.10.10.10" for IPv4 */
-/*    address 10.10.10.10 */
-
-WS_DLL_PUBLIC
-const gchar *ep_address_to_display(const address *addr);
-
-/* get_addr_name_buf solves an address in the same way as ep_address_to_display above */
-/* The difference is that get_addr_name_buf takes as input a buffer, into which it puts */
-/* the result which is always NUL ('\0') terminated. The buffer should be large enough to */
-/* contain size characters including the terminator */
-
-void get_addr_name_buf(const address *addr, gchar *buf, gsize size);
-
-const gchar *get_addr_name(const address *addr);
+/*
+ * port_with_resolution_to_str_buf() prints the "<resolved> (<numerical>)" port
+ * string to 'buf'. Return value is the same as g_snprintf().
+ */
+WS_DLL_PUBLIC int port_with_resolution_to_str_buf(gchar *buf, gulong buf_size,
+                                        port_type port_typ, guint16 port_num);
 
 /*
  * Asynchronous host name lookup initialization, processing, and cleanup
@@ -160,6 +154,11 @@ const gchar *get_addr_name(const address *addr);
 /* Setup name resolution preferences */
 struct pref_module;
 extern void addr_resolve_pref_init(struct pref_module *nameres);
+
+/*
+ * disable_name_resolution() sets all relevant gbl_resolv_flags to FALSE.
+ */
+WS_DLL_PUBLIC void disable_name_resolution(void);
 
 /** If we're using c-ares or ADNS, process outstanding host name lookups.
  *  This is called from a GLIB timeout in Wireshark and before processing
@@ -181,6 +180,9 @@ WS_DLL_PUBLIC const gchar* get_hostname6(const struct e_in6_addr *ad);
    "<vendor>_%02x:%02x:%02x" if the vendor code is known else
    "%02x:%02x:%02x:%02x:%02x:%02x" */
 WS_DLL_PUBLIC gchar *get_ether_name(const guint8 *addr);
+
+/* Same as get_ether_name with tvb support */
+WS_DLL_PUBLIC gchar *tvb_get_ether_name(tvbuff_t *tvb, gint offset);
 
 /* get_ether_name returns the logical name if found in ethers files else NULL */
 gchar *get_ether_name_if_known(const guint8 *addr);
@@ -223,17 +225,20 @@ WS_DLL_PUBLIC const gchar *tvb_get_manuf_name(tvbuff_t *tvb, gint offset);
  */
 WS_DLL_PUBLIC const gchar *tvb_get_manuf_name_if_known(tvbuff_t *tvb, gint offset);
 
-/* ep_eui64_to_display returns "<vendor>_%02x:%02x:%02x:%02x:%02x:%02x" if the vendor code is known
+/* eui64_to_display returns "<vendor>_%02x:%02x:%02x:%02x:%02x:%02x" if the vendor code is known
    "%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x:%02x" */
-extern const gchar *ep_eui64_to_display(const guint64 addr);
-
-/* ep_eui64_to_display_if_known returns "<vendor>_%02x:%02x:%02x:%02x:%02x:%02x" if the vendor code is known else NULL */
-extern const gchar *ep_eui64_to_display_if_known(const guint64 addr);
-
+extern const gchar *eui64_to_display(wmem_allocator_t *allocator, const guint64 addr);
 
 /* get_ipxnet_name returns the logical name if found in an ipxnets file,
  * or a string formatted with "%X" if not */
-extern const gchar *get_ipxnet_name(const guint32 addr);
+extern const gchar *get_ipxnet_name(wmem_allocator_t *allocator, const guint32 addr);
+
+WS_DLL_PUBLIC guint get_hash_ether_status(hashether_t* ether);
+WS_DLL_PUBLIC char* get_hash_ether_hexaddr(hashether_t* ether);
+WS_DLL_PUBLIC char* get_hash_ether_resolved_name(hashether_t* ether);
+
+WS_DLL_PUBLIC char* get_hash_manuf_resolved_name(hashmanuf_t* manuf);
+
 
 /* returns the ethernet address corresponding to name or NULL if not known */
 extern guint8 *get_ether_addr(const gchar *name);
@@ -358,7 +363,10 @@ void addr_resolv_cleanup(void);
 WS_DLL_PUBLIC
 void manually_resolve_cleanup(void);
 
+WS_DLL_PUBLIC
 gboolean str_to_ip(const char *str, void *dst);
+
+WS_DLL_PUBLIC
 gboolean str_to_ip6(const char *str, void *dst);
 
 #ifdef __cplusplus

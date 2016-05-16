@@ -26,7 +26,6 @@
 #include "config.h"
 
 
-#include <glib.h>
 #include <epan/packet.h>
 #include "packet-dcerpc.h"
 
@@ -40,7 +39,7 @@ static int hf_cds_solicit_opnum = -1;
 static gint ett_cds_solicit = -1;
 
 
-static e_uuid_t uuid_cds_solicit = { 0xd5579459, 0x8bca, 0x11ca, { 0xb7, 0x71, 0x08, 0x00, 0x2b, 0x1c, 0x8f, 0x1f } };
+static e_guid_t uuid_cds_solicit = { 0xd5579459, 0x8bca, 0x11ca, { 0xb7, 0x71, 0x08, 0x00, 0x2b, 0x1c, 0x8f, 0x1f } };
 static guint16  ver_cds_solicit = 1;
 
 
@@ -73,3 +72,16 @@ proto_reg_handoff_cds_solicit (void)
 	/* Register the protocol as dcerpc */
 	dcerpc_init_uuid (proto_cds_solicit, ett_cds_solicit, &uuid_cds_solicit, ver_cds_solicit, cds_solicit_dissectors, hf_cds_solicit_opnum);
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 8
+ * tab-width: 8
+ * indent-tabs-mode: t
+ * End:
+ *
+ * vi: set shiftwidth=8 tabstop=8 noexpandtab:
+ * :indentSize=8:tabSize=8:noTabs=false:
+ */

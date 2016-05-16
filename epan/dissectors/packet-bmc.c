@@ -23,8 +23,6 @@
 
 #include "config.h"
 
-#include <glib.h>
-
 #include <epan/packet.h>
 #include <wsutil/bitswap.h>
 #include <epan/asn1.h> /* needed for packet-gsm_map.h */
@@ -100,7 +98,7 @@ dissect_bmc(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
     bmc_tree = proto_item_add_subtree(ti, ett_bmc);
 
     /* Needs bit-reversing. Create a new buffer, copy the message to it and bit-reverse */
-    len = tvb_length(tvb);
+    len = tvb_reported_length(tvb);
     reversing_buffer = (guint8 *)tvb_memdup(NULL, tvb, offset, len);
     bitswap_buf_inplace(reversing_buffer, len);
 
@@ -151,7 +149,7 @@ dissect_bmc_cbs_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tree)
 
     cell_broadcast_tvb = tvb_new_subset_remaining(tvb, offset);
     dissect_umts_cell_broadcast_message(cell_broadcast_tvb, pinfo, tree);
-    offset = tvb_length(cell_broadcast_tvb);
+    offset = tvb_reported_length(cell_broadcast_tvb);
 
     return offset;
 }
@@ -184,8 +182,8 @@ dissect_bmc_schedule_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *
     proto_tree_add_item(tree, hf_bmc_new_message_bitmap, tvb, offset, new_message_bitmap_len, ENC_NA);
     offset += new_message_bitmap_len;
 
-    ti = proto_tree_add_text(tree, tvb, offset, 0, "Message Description" );
-    message_description_tree = proto_item_add_subtree(ti, ett_bmc_message_description);
+    message_description_tree = proto_tree_add_subtree(tree, tvb, offset, 0,
+                    ett_bmc_message_description, &ti, "Message Description" );
     saved_offset = offset;
 
     bit=1;
@@ -213,7 +211,7 @@ dissect_bmc_schedule_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *
     }
     proto_item_set_len(ti, offset-saved_offset);
 
-    if (tvb_length_remaining(tvb,offset)) {
+    if (tvb_reported_length_remaining(tvb,offset)) {
         future_extension_bitmap = tvb_get_guint8(tvb,offset);
         proto_tree_add_item(tree, hf_bmc_future_extension_bitmap, tvb, offset, 1, ENC_BIG_ENDIAN);
         offset += 1;
@@ -243,8 +241,8 @@ dissect_bmc_cbs41_message(tvbuff_t *tvb, packet_info *pinfo _U_, proto_tree *tre
     proto_tree_add_item(tree, hf_bmc_broadcast_address, tvb, offset, 5, ENC_NA);
     offset += 5;
 
-    proto_tree_add_item(tree, hf_bmc_cb_data41, tvb, offset, tvb_length_remaining(tvb,offset), ENC_NA);
-    offset = tvb_length(tvb);
+    proto_tree_add_item(tree, hf_bmc_cb_data41, tvb, offset, tvb_reported_length_remaining(tvb,offset), ENC_NA);
+    offset = tvb_reported_length(tvb);
 
     return offset;
 }
@@ -255,7 +253,7 @@ proto_register_bmc(void)
     static hf_register_info hf[] = {
         { &hf_bmc_message_type,
             { "Message Type", "bmc.message_type",
-            FT_UINT8, BASE_DEC, message_type_vals, 0,
+            FT_UINT8, BASE_DEC, VALS(message_type_vals), 0,
             NULL, HFILL }
         },
         { &hf_bmc_message_id,
@@ -297,7 +295,7 @@ proto_register_bmc(void)
         },
         { &hf_bmc_message_description_type,
             { "Message Description Type", "bmc.message_description_type",
-            FT_UINT8, BASE_DEC, message_description_type_vals, 0,
+            FT_UINT8, BASE_DEC, VALS(message_description_type_vals), 0,
             NULL, HFILL }
         },
         { &hf_bmc_offset_to_ctch_bs_index_of_first_transmission,
@@ -343,3 +341,16 @@ proto_register_bmc(void)
     proto_register_field_array(proto_bmc, hf, array_length(hf));
     proto_register_subtree_array(ett, array_length(ett));
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

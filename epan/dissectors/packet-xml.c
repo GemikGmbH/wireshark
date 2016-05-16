@@ -27,25 +27,18 @@
 
 #include "config.h"
 
-#ifdef HAVE_DIRENT_H
-#include <dirent.h>
-#endif
-
 #include <string.h>
 #include <errno.h>
 
-#include <glib.h>
-
-#include <wsutil/str_util.h>
-#include <wsutil/report_err.h>
-
-#include <epan/wmem/wmem.h>
 #include <epan/packet.h>
 #include <epan/tvbparse.h>
 #include <epan/dtd.h>
 #include <wsutil/filesystem.h>
 #include <epan/prefs.h>
+#include <epan/expert.h>
 #include <epan/garrayfix.h>
+#include <wsutil/str_util.h>
+#include <wsutil/report_err.h>
 
 #include "packet-xml.h"
 
@@ -67,6 +60,10 @@ static int hf_xmlpi = -1;
 static int hf_dtd_tag = -1;
 static int hf_doctype = -1;
 
+static expert_field ei_xml_closing_unopened_tag = EI_INIT;
+static expert_field ei_xml_closing_unopened_xmpli_tag = EI_INIT;
+static expert_field ei_xml_unrecognized_text = EI_INIT;
+
 /* dissector handles */
 static dissector_handle_t xml_handle;
 
@@ -82,12 +79,6 @@ static xml_ns_t xml_ns     = {(gchar *)"xml",     "/", -1, -1, -1, NULL, NULL, N
 static xml_ns_t unknown_ns = {(gchar *)"unknown", "?", -1, -1, -1, NULL, NULL, NULL};
 static xml_ns_t *root_ns;
 
-static gboolean pref_heuristic_media      = FALSE;
-static gboolean pref_heuristic_tcp        = FALSE;
-static gboolean pref_heuristic_udp        = FALSE;
-static gboolean pref_heuristic_media_save = FALSE;
-static gboolean pref_heuristic_tcp_save   = FALSE;
-static gboolean pref_heuristic_udp_save   = FALSE;
 static gboolean pref_heuristic_unicode    = FALSE;
 
 static range_t *global_xml_tcp_range = NULL;
@@ -182,8 +173,8 @@ static void insert_xml_frame(xml_frame_t *parent, xml_frame_t *new_child)
     parent->last_child = new_child;
 }
 
-static void
-dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
+static int
+dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void* data _U_)
 {
     tvbparse_t       *tt;
     static GPtrArray *stack;
@@ -199,6 +190,7 @@ dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
     current_frame->name           = NULL;
     current_frame->name_orig_case = NULL;
     current_frame->value          = NULL;
+    current_frame->pinfo          = pinfo;
     insert_xml_frame(NULL, current_frame);
     g_ptr_array_add(stack, current_frame);
 
@@ -230,22 +222,25 @@ dissect_xml(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree)
 
     while(tvbparse_get(tt, want)) ;
 
-    pinfo->private_data = current_frame;  /* pass XML structure to the dissector calling XML */
+    /* Save XML structure in case it is useful for the caller (only XMPP for now) */
+    p_add_proto_data(pinfo->pool, pinfo, xml_ns.hf_tag, 0, current_frame);
+
+    return tvb_captured_length(tvb);
 }
 
-static gboolean dissect_xml_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _U_)
+static gboolean dissect_xml_heur(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data)
 {
     if (tvbparse_peek(tvbparse_init(tvb, 0, -1, NULL, want_ignore), want_heur)) {
-        dissect_xml(tvb, pinfo, tree);
+        dissect_xml(tvb, pinfo, tree, data);
         return TRUE;
     } else if (pref_heuristic_unicode) {
         /* XXX - UCS-2, or UTF-16? */
-        const guint8 *data_str    = tvb_get_string_enc(NULL, tvb, 0, tvb_length(tvb), ENC_UCS_2|ENC_LITTLE_ENDIAN);
-        tvbuff_t     *unicode_tvb = tvb_new_child_real_data(tvb, data_str, tvb_length(tvb)/2, tvb_length(tvb)/2);
+        const guint8 *data_str    = tvb_get_string_enc(NULL, tvb, 0, tvb_captured_length(tvb), ENC_UCS_2|ENC_LITTLE_ENDIAN);
+        tvbuff_t     *unicode_tvb = tvb_new_child_real_data(tvb, data_str, tvb_captured_length(tvb)/2, tvb_captured_length(tvb)/2);
         tvb_set_free_cb(unicode_tvb, g_free);
         if (tvbparse_peek(tvbparse_init(unicode_tvb, 0, -1, NULL, want_ignore), want_heur)) {
             add_new_data_source(pinfo, unicode_tvb, "UTF8");
-            dissect_xml(unicode_tvb, pinfo, tree);
+            dissect_xml(unicode_tvb, pinfo, tree, data);
             return TRUE;
         }
     }
@@ -334,13 +329,14 @@ static void after_token(void *tvbparse_data, const void *wanted_data _U_, tvbpar
         new_frame->type           = XML_FRAME_CDATA;
         new_frame->name           = NULL;
         new_frame->name_orig_case = NULL;
-        new_frame->value          = tvb_new_subset(tok->tvb, tok->offset, tok->len, tok->len);
+        new_frame->value          = tvb_new_subset_length(tok->tvb, tok->offset, tok->len);
         insert_xml_frame(current_frame, new_frame);
         new_frame->item           = pi;
         new_frame->last_item      = pi;
         new_frame->tree           = NULL;
         new_frame->start_offset   = tok->offset;
         new_frame->ns             = NULL;
+        new_frame->pinfo          = current_frame->pinfo;
     }
 }
 
@@ -351,7 +347,7 @@ static void before_xmpli(void *tvbparse_data, const void *wanted_data _U_, tvbpa
     proto_item      *pi;
     proto_tree      *pt;
     tvbparse_elem_t *name_tok      = tok->sub->next;
-    gchar           *name          = tvb_get_string(wmem_packet_scope(), name_tok->tvb, name_tok->offset, name_tok->len);
+    gchar           *name          = tvb_get_string_enc(wmem_packet_scope(), name_tok->tvb, name_tok->offset, name_tok->len, ENC_ASCII);
     xml_ns_t        *ns            = (xml_ns_t *)g_hash_table_lookup(xmpli_names, name);
     xml_frame_t     *new_frame;
 
@@ -384,6 +380,7 @@ static void before_xmpli(void *tvbparse_data, const void *wanted_data _U_, tvbpa
     new_frame->tree           = pt;
     new_frame->start_offset   = tok->offset;
     new_frame->ns             = ns;
+    new_frame->pinfo          = current_frame->pinfo;
 
     g_ptr_array_add(stack, new_frame);
 
@@ -399,8 +396,8 @@ static void after_xmlpi(void *tvbparse_data, const void *wanted_data _U_, tvbpar
     if (stack->len > 1) {
         g_ptr_array_remove_index_fast(stack, stack->len - 1);
     } else {
-        proto_tree_add_text(current_frame->tree, tok->tvb, tok->offset, tok->len,
-                            "[ ERROR: Closing an unopened xmpli tag ]");
+        proto_tree_add_expert(current_frame->tree, current_frame->pinfo, &ei_xml_closing_unopened_xmpli_tag,
+            tok->tvb, tok->offset, tok->len);
     }
 }
 
@@ -421,8 +418,8 @@ static void before_tag(void *tvbparse_data, const void *wanted_data _U_, tvbpars
         tvbparse_elem_t *leaf_tok = name_tok->sub->sub->next->next;
         xml_ns_t        *nameroot_ns;
 
-        root_name      = (gchar *)tvb_get_string(wmem_packet_scope(), root_tok->tvb, root_tok->offset, root_tok->len);
-        name           = (gchar *)tvb_get_string(wmem_packet_scope(), leaf_tok->tvb, leaf_tok->offset, leaf_tok->len);
+        root_name      = (gchar *)tvb_get_string_enc(wmem_packet_scope(), root_tok->tvb, root_tok->offset, root_tok->len, ENC_ASCII);
+        name           = (gchar *)tvb_get_string_enc(wmem_packet_scope(), leaf_tok->tvb, leaf_tok->offset, leaf_tok->len, ENC_ASCII);
         name_orig_case = name;
 
         nameroot_ns = (xml_ns_t *)g_hash_table_lookup(xml_ns.elements, root_name);
@@ -437,7 +434,7 @@ static void before_tag(void *tvbparse_data, const void *wanted_data _U_, tvbpars
         }
 
     } else {
-        name = tvb_get_string(wmem_packet_scope(), name_tok->tvb, name_tok->offset, name_tok->len);
+        name = tvb_get_string_enc(wmem_packet_scope(), name_tok->tvb, name_tok->offset, name_tok->len, ENC_ASCII);
         name_orig_case = wmem_strdup(wmem_packet_scope(), name);
         ascii_strdown_inplace(name);
 
@@ -472,6 +469,7 @@ static void before_tag(void *tvbparse_data, const void *wanted_data _U_, tvbpars
     new_frame->tree           = pt;
     new_frame->start_offset   = tok->offset;
     new_frame->ns             = ns;
+    new_frame->pinfo          = current_frame->pinfo;
 
     g_ptr_array_add(stack, new_frame);
 
@@ -495,7 +493,8 @@ static void after_closed_tag(void *tvbparse_data, const void *wanted_data _U_, t
     if (stack->len > 1) {
         g_ptr_array_remove_index_fast(stack, stack->len - 1);
     } else {
-        proto_tree_add_text(current_frame->tree, tok->tvb, tok->offset, tok->len, "[ ERROR: Closing an unopened tag ]");
+        proto_tree_add_expert(current_frame->tree, current_frame->pinfo, &ei_xml_closing_unopened_tag,
+                              tok->tvb, tok->offset, tok->len);
     }
 }
 
@@ -511,8 +510,8 @@ static void after_untag(void *tvbparse_data, const void *wanted_data _U_, tvbpar
     if (stack->len > 1) {
         g_ptr_array_remove_index_fast(stack, stack->len - 1);
     } else {
-        proto_tree_add_text(current_frame->tree, tok->tvb, tok->offset, tok->len,
-                            "[ ERROR: Closing an unopened tag ]");
+        proto_tree_add_expert(current_frame->tree, current_frame->pinfo, &ei_xml_closing_unopened_tag,
+            tok->tvb, tok->offset, tok->len);
     }
 }
 
@@ -530,9 +529,9 @@ static void before_dtd_doctype(void *tvbparse_data, const void *wanted_data _U_,
 
     new_frame = (xml_frame_t *)wmem_alloc(wmem_packet_scope(), sizeof(xml_frame_t));
     new_frame->type           = XML_FRAME_DTD_DOCTYPE;
-    new_frame->name           = (gchar *)tvb_get_string(wmem_packet_scope(), name_tok->tvb,
+    new_frame->name           = (gchar *)tvb_get_string_enc(wmem_packet_scope(), name_tok->tvb,
                                                                   name_tok->offset,
-                                                                  name_tok->len);
+                                                                  name_tok->len, ENC_ASCII);
     new_frame->name_orig_case = new_frame->name;
     new_frame->value          = NULL;
     insert_xml_frame(current_frame, new_frame);
@@ -541,6 +540,7 @@ static void before_dtd_doctype(void *tvbparse_data, const void *wanted_data _U_,
     new_frame->tree           = proto_item_add_subtree(dtd_item, ett_dtd);
     new_frame->start_offset   = tok->offset;
     new_frame->ns             = NULL;
+    new_frame->pinfo          = current_frame->pinfo;
 
     g_ptr_array_add(stack, new_frame);
 }
@@ -553,8 +553,8 @@ static void pop_stack(void *tvbparse_data, const void *wanted_data _U_, tvbparse
     if (stack->len > 1) {
         g_ptr_array_remove_index_fast(stack, stack->len - 1);
     } else {
-        proto_tree_add_text(current_frame->tree, tok->tvb, tok->offset, tok->len,
-                            "[ ERROR: Closing an unopened tag ]");
+        proto_tree_add_expert(current_frame->tree, current_frame->pinfo, &ei_xml_closing_unopened_tag,
+            tok->tvb, tok->offset, tok->len);
     }
 }
 
@@ -563,12 +563,12 @@ static void after_dtd_close(void *tvbparse_data, const void *wanted_data _U_, tv
     GPtrArray   *stack         = (GPtrArray *)tvbparse_data;
     xml_frame_t *current_frame = (xml_frame_t *)g_ptr_array_index(stack, stack->len - 1);
 
-    proto_tree_add_text(current_frame->tree, tok->tvb, tok->offset, tok->len, "%s",
-                        tvb_format_text(tok->tvb, tok->offset, tok->len));
+    proto_tree_add_format_text(current_frame->tree, tok->tvb, tok->offset, tok->len);
     if (stack->len > 1) {
         g_ptr_array_remove_index_fast(stack, stack->len - 1);
     } else {
-        proto_tree_add_text(current_frame->tree, tok->tvb, tok->offset, tok->len, "[ ERROR: Closing an unopened tag ]");
+        proto_tree_add_expert(current_frame->tree, current_frame->pinfo, &ei_xml_closing_unopened_tag,
+            tok->tvb, tok->offset, tok->len);
     }
 }
 
@@ -589,7 +589,7 @@ static void after_attrib(void *tvbparse_data, const void *wanted_data _U_, tvbpa
     proto_item      *pi;
     xml_frame_t     *new_frame;
 
-    name           = tvb_get_string(wmem_packet_scope(), tok->sub->tvb, tok->sub->offset, tok->sub->len);
+    name           = tvb_get_string_enc(wmem_packet_scope(), tok->sub->tvb, tok->sub->offset, tok->sub->len, ENC_ASCII);
     name_orig_case = wmem_strdup(wmem_packet_scope(), name);
     ascii_strdown_inplace(name);
 
@@ -610,14 +610,15 @@ static void after_attrib(void *tvbparse_data, const void *wanted_data _U_, tvbpa
     new_frame->type           = XML_FRAME_ATTRIB;
     new_frame->name           = name;
     new_frame->name_orig_case = name_orig_case;
-    new_frame->value          = tvb_new_subset(value_part->tvb, value_part->offset,
-                           value_part->len, value_part->len);
+    new_frame->value          = tvb_new_subset_length(value_part->tvb, value_part->offset,
+                           value_part->len);
     insert_xml_frame(current_frame, new_frame);
     new_frame->item           = pi;
     new_frame->last_item      = pi;
     new_frame->tree           = NULL;
     new_frame->start_offset   = tok->offset;
     new_frame->ns             = NULL;
+    new_frame->pinfo          = current_frame->pinfo;
 
 }
 
@@ -626,7 +627,8 @@ static void unrecognized_token(void *tvbparse_data, const void *wanted_data _U_,
     GPtrArray   *stack         = (GPtrArray *)tvbparse_data;
     xml_frame_t *current_frame = (xml_frame_t *)g_ptr_array_index(stack, stack->len - 1);
 
-    proto_tree_add_text(current_frame->tree, tok->tvb, tok->offset, tok->len, "[ ERROR: Unrecognized text ]");
+    proto_tree_add_expert(current_frame->tree, current_frame->pinfo, &ei_xml_unrecognized_text,
+                    tok->tvb, tok->offset, tok->len);
 
 }
 
@@ -924,7 +926,6 @@ static gchar *fully_qualified_name(GPtrArray *hier, gchar *name, gchar *proto_na
 {
     guint    i;
     GString *s = g_string_new(proto_name);
-    gchar   *str;
 
     g_string_append(s, ".");
 
@@ -933,10 +934,8 @@ static gchar *fully_qualified_name(GPtrArray *hier, gchar *name, gchar *proto_na
     }
 
     g_string_append(s, name);
-    str = s->str;
-    g_string_free(s, FALSE);
 
-    return str;
+    return g_string_free(s, FALSE);
 }
 
 
@@ -1056,13 +1055,13 @@ static void register_dtd(dtd_build_data_t *dtd_data, GString *errors)
         if (root_name == NULL)
             root_name = g_strdup(nl->name);
 
-        element->name		   = nl->name;
+        element->name          = nl->name;
         element->element_names = nl->list;
-        element->hf_tag		   = -1;
-        element->hf_cdata	   = -1;
-        element->ett		   = -1;
-        element->attributes	   = g_hash_table_new(g_str_hash, g_str_equal);
-        element->elements	   = g_hash_table_new(g_str_hash, g_str_equal);
+        element->hf_tag        = -1;
+        element->hf_cdata      = -1;
+        element->ett           = -1;
+        element->attributes    = g_hash_table_new(g_str_hash, g_str_equal);
+        element->elements      = g_hash_table_new(g_str_hash, g_str_equal);
 
         if( g_hash_table_lookup(elements, element->name) ) {
             g_string_append_printf(errors, "element %s defined more than once\n", element->name);
@@ -1355,44 +1354,10 @@ static void init_xml_names(void)
 
 static void apply_prefs(void)
 {
-    if (pref_heuristic_media_save != pref_heuristic_media) {
-        if (pref_heuristic_media) {
-            heur_dissector_add("http",  dissect_xml_heur, xml_ns.hf_tag);
-            heur_dissector_add("sip",   dissect_xml_heur, xml_ns.hf_tag);
-            heur_dissector_add("media", dissect_xml_heur, xml_ns.hf_tag);
-            pref_heuristic_media_save = TRUE;
-        } else {
-            heur_dissector_delete("http",  dissect_xml_heur, xml_ns.hf_tag);
-            heur_dissector_delete("sip",   dissect_xml_heur, xml_ns.hf_tag);
-            heur_dissector_delete("media", dissect_xml_heur, xml_ns.hf_tag);
-            pref_heuristic_media_save = FALSE;
-        }
-    }
-
-    if (pref_heuristic_tcp_save != pref_heuristic_tcp ) {
-        if (pref_heuristic_tcp) {
-            heur_dissector_add("tcp", dissect_xml_heur, xml_ns.hf_tag);
-            pref_heuristic_tcp_save = TRUE;
-        } else {
-            heur_dissector_delete("tcp", dissect_xml_heur, xml_ns.hf_tag);
-            pref_heuristic_tcp_save = FALSE;
-        }
-    }
-
-    if (pref_heuristic_udp_save != pref_heuristic_udp ) {
-        if (pref_heuristic_udp) {
-            heur_dissector_add("udp", dissect_xml_heur, xml_ns.hf_tag);
-            pref_heuristic_udp_save = TRUE;
-        } else {
-            heur_dissector_delete("udp", dissect_xml_heur, xml_ns.hf_tag);
-            pref_heuristic_udp_save = FALSE;
-        }
-    }
-
-	dissector_delete_uint_range("tcp.port", xml_tcp_range, xml_handle);
+    dissector_delete_uint_range("tcp.port", xml_tcp_range, xml_handle);
     g_free(xml_tcp_range);
     xml_tcp_range = range_copy(global_xml_tcp_range);
-	dissector_add_uint_range("tcp.port", xml_tcp_range, xml_handle);
+    dissector_add_uint_range("tcp.port", xml_tcp_range, xml_handle);
 }
 
 void
@@ -1447,7 +1412,15 @@ proto_register_xml(void)
            NULL, HFILL }
         }
     };
+
+    static ei_register_info ei[] = {
+        { &ei_xml_closing_unopened_tag, { "xml.closing_unopened_tag", PI_MALFORMED, PI_ERROR, "Closing an unopened tag", EXPFILL }},
+        { &ei_xml_closing_unopened_xmpli_tag, { "xml.closing_unopened_xmpli_tag", PI_MALFORMED, PI_ERROR, "Closing an unopened xmpli tag", EXPFILL }},
+        { &ei_xml_unrecognized_text, { "xml.unrecognized_text", PI_PROTOCOL, PI_WARN, "Unrecognized text", EXPFILL }},
+    };
+
     module_t *xml_module;
+    expert_module_t* expert_xml;
 
     hf_arr  = wmem_array_new(wmem_epan_scope(), sizeof(hf_register_info));
     ett_arr = g_array_new(FALSE, FALSE, sizeof(gint *));
@@ -1461,20 +1434,16 @@ proto_register_xml(void)
 
     proto_register_field_array(xml_ns.hf_tag, (hf_register_info*)wmem_array_get_raw(hf_arr), wmem_array_get_count(hf_arr));
     proto_register_subtree_array((gint **)g_array_data(ett_arr), ett_arr->len);
+    expert_xml = expert_register_protocol(xml_ns.hf_tag);
+    expert_register_field_array(expert_xml, ei, array_length(ei));
 
     xml_module = prefs_register_protocol(xml_ns.hf_tag, apply_prefs);
-    prefs_register_bool_preference(xml_module, "heuristic", "Use Heuristics for media types",
-                                   "Try to recognize XML for unknown media types",
-                                   &pref_heuristic_media);
-    prefs_register_bool_preference(xml_module, "heuristic_tcp", "Use Heuristics for TCP",
-                                   "Try to recognize XML for unknown TCP ports",
-                                   &pref_heuristic_tcp);
+    prefs_register_obsolete_preference(xml_module, "heuristic");
+    prefs_register_obsolete_preference(xml_module, "heuristic_tcp");
     prefs_register_range_preference(xml_module, "tcp.port", "TCP Ports",
                                     "TCP Ports range",
                                     &global_xml_tcp_range, 65535);
-    prefs_register_bool_preference(xml_module, "heuristic_udp", "Use Heuristics for UDP",
-                                   "Try to recognize XML for unknown UDP ports",
-                                   &pref_heuristic_udp);
+    prefs_register_obsolete_preference(xml_module, "heuristic_udp");
     /* XXX - UCS-2, or UTF-16? */
     prefs_register_bool_preference(xml_module, "heuristic_unicode", "Use Unicode in heuristics",
                                    "Try to recognize XML encoded in Unicode (UCS-2BE)",
@@ -1482,7 +1451,7 @@ proto_register_xml(void)
 
     g_array_free(ett_arr, TRUE);
 
-    register_dissector("xml", dissect_xml, xml_ns.hf_tag);
+    new_register_dissector("xml", dissect_xml, xml_ns.hf_tag);
 
     init_xml_parser();
 
@@ -1503,6 +1472,26 @@ proto_reg_handoff_xml(void)
     xml_handle = find_dissector("xml");
 
     g_hash_table_foreach(media_types, add_dissector_media, NULL);
-    heur_dissector_add("wtap_file", dissect_xml_heur, xml_ns.hf_tag);
+
+    heur_dissector_add("http",  dissect_xml_heur, "XML in HTTP", "xml_http", xml_ns.hf_tag, HEURISTIC_DISABLE);
+    heur_dissector_add("sip",   dissect_xml_heur, "XML in SIP", "xml_sip", xml_ns.hf_tag, HEURISTIC_DISABLE);
+    heur_dissector_add("media", dissect_xml_heur, "XML in media", "xml_media", xml_ns.hf_tag, HEURISTIC_DISABLE);
+    heur_dissector_add("tcp", dissect_xml_heur, "XML over TCP", "xml_tcp", xml_ns.hf_tag, HEURISTIC_DISABLE);
+    heur_dissector_add("udp", dissect_xml_heur, "XML over UDP", "xml_udp", xml_ns.hf_tag, HEURISTIC_DISABLE);
+
+    heur_dissector_add("wtap_file", dissect_xml_heur, "XML file", "xml_wtap", xml_ns.hf_tag, HEURISTIC_ENABLE);
 
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

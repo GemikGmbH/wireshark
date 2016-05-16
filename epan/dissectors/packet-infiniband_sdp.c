@@ -24,15 +24,13 @@
 
 #include "config.h"
 
-#include <glib.h>
+#include <stdlib.h>
+#include <errno.h>
 
 #include <epan/packet.h>
 #include <epan/prefs.h>
 #include <epan/addr_resolv.h>
 #include <epan/conversation.h>
-#include <epan/wmem/wmem.h>
-#include <stdlib.h>
-#include <errno.h>
 
 #include "packet-infiniband.h"
 
@@ -132,28 +130,28 @@ typedef enum {
 } message_by_mid_t;
 
 static const range_string mid_meanings[] = {
-        { Hello, Hello, "Hello" },
-        { HelloAck, HelloAck, "HelloAck" },
-        { DisConn, DisConn, "DisConn" },
-        { AbortConn, AbortConn, "AbortConn" },
-        { SendSm, SendSm, "SendSm" },
-        { RdmaWrCompl, RdmaWrCompl, "RdmaWrCompl" },
-        { RdmaRdCompl, RdmaRdCompl, "RdmaRdCompl" },
-        { ModeChange, ModeChange, "ModeChange" },
-        { SrcAvailCancel, SrcAvailCancel, "SrcAvailCancel" },
-        { SinkAvailCancel, SinkAvailCancel, "SinkAvailCancel" },
-        { SinkCancelAck, SinkCancelAck, "SinkCancelAck" },
-        { ChRcvBuf, ChRcvBuf, "ChRcvBuf" },
-        { ChRcvBufAck, ChRcvBufAck, "ChRcvBufAck" },
-        { SuspComm, SuspComm, "SuspComm" },
-        { SuspCommAck, SuspCommAck, "SuspCommAck" },
-        { SinkAvail, SinkAvail, "SinkAvail" },
-        { SrcAvail, SrcAvail, "SrcAvail" },
-        { Data, Data, "Data" },
-        { 0x00001111, 0x00111111, "Reserved" },
-        { 0x01000000, 0x01111111, "Experimental" },
-        { 0x10000000, 0x11111100, "Reserved" },
-        { 0, 0, NULL }
+    { Hello, Hello, "Hello" },
+    { HelloAck, HelloAck, "HelloAck" },
+    { DisConn, DisConn, "DisConn" },
+    { AbortConn, AbortConn, "AbortConn" },
+    { SendSm, SendSm, "SendSm" },
+    { RdmaWrCompl, RdmaWrCompl, "RdmaWrCompl" },
+    { RdmaRdCompl, RdmaRdCompl, "RdmaRdCompl" },
+    { ModeChange, ModeChange, "ModeChange" },
+    { SrcAvailCancel, SrcAvailCancel, "SrcAvailCancel" },
+    { SinkAvailCancel, SinkAvailCancel, "SinkAvailCancel" },
+    { SinkCancelAck, SinkCancelAck, "SinkCancelAck" },
+    { ChRcvBuf, ChRcvBuf, "ChRcvBuf" },
+    { ChRcvBufAck, ChRcvBufAck, "ChRcvBufAck" },
+    { SuspComm, SuspComm, "SuspComm" },
+    { SuspCommAck, SuspCommAck, "SuspCommAck" },
+    { SinkAvail, SinkAvail, "SinkAvail" },
+    { SrcAvail, SrcAvail, "SrcAvail" },
+    { Data, Data, "Data" },
+    { 0x00001111, 0x00111111, "Reserved" },
+    { 0x01000000, 0x01111111, "Experimental" },
+    { 0x10000000, 0x11111100, "Reserved" },
+    { 0, 0, NULL }
 };
 
 /* Code to actually dissect the packets */
@@ -172,7 +170,7 @@ dissect_ib_sdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
     conversation_infiniband_data *convo_data = NULL;
     dissector_handle_t infiniband_handle;
 
-    if (tvb_length(tvb) < 16)   /* check this has at least enough bytes for the BSDH */
+    if (tvb_captured_length(tvb) < 16)   /* check this has at least enough bytes for the BSDH */
         return 0;
 
     if (gPREF_MAN_EN) {
@@ -215,7 +213,7 @@ dissect_ib_sdp(tvbuff_t *tvb, packet_info *pinfo, proto_tree *tree, void *data _
     convo_data = (conversation_infiniband_data *)conversation_get_proto_data(conv, proto_infiniband);
 
     if (!convo_data)
-	    return 0;
+        return 0;
 
     if (!(convo_data->service_id & SERVICE_ID_MASK))
         return 0;   /* the service id doesn't match that of SDP - nothing for us to do here */
@@ -315,7 +313,7 @@ manual_override:
     col_append_fstr(pinfo->cinfo, COL_INFO, "(SDP %s)",
                     rval_to_str(mid, mid_meanings, "Unknown"));
 
-    return tvb_length(tvb);
+    return tvb_captured_length(tvb);
 }
 
 void
@@ -515,8 +513,8 @@ proto_reg_handoff_ib_sdp(void)
     static gboolean initialized = FALSE;
 
     if (!initialized) {
-        heur_dissector_add("infiniband.payload", dissect_ib_sdp, proto_ib_sdp);
-        heur_dissector_add("infiniband.mad.cm.private", dissect_ib_sdp, proto_ib_sdp);
+        heur_dissector_add("infiniband.payload", dissect_ib_sdp, "Infiniband SDP", "sdp_infiniband", proto_ib_sdp, HEURISTIC_ENABLE);
+        heur_dissector_add("infiniband.mad.cm.private", dissect_ib_sdp, "Infiniband SDP in PrivateData of CM packets", "sdp_ib_private", proto_ib_sdp, HEURISTIC_ENABLE);
 
         /* allocate enough space in the addresses to store the largest address (a GID) */
         manual_addr_data[0] = wmem_alloc(wmem_epan_scope(), GID_SIZE);
@@ -556,6 +554,18 @@ proto_reg_handoff_ib_sdp(void)
                 break;
             }
         }
-
     }
 }
+
+/*
+ * Editor modelines  -  http://www.wireshark.org/tools/modelines.html
+ *
+ * Local variables:
+ * c-basic-offset: 4
+ * tab-width: 8
+ * indent-tabs-mode: nil
+ * End:
+ *
+ * vi: set shiftwidth=4 tabstop=8 expandtab:
+ * :indentSize=4:tabSize=8:noTabs=true:
+ */

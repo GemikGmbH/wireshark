@@ -76,6 +76,7 @@ EXTRA_DIST = \
 	ScriptExec/ScriptExec_Prefix.pch	\
 	ScriptExec/version.plist	\
 	Scripts/chmodbpf-postinstall.sh	\
+	Scripts/cli-preinstall.sh	\
 	Scripts/cli-postinstall.sh	\
 	Scripts/wireshark-postinstall.sh	\
 	utility-launcher	\
@@ -90,8 +91,8 @@ EXTRA_DIST = \
 	Wireshark_package.pmdoc/index.xml.in
 
 
-COPYING.txt: ../../COPYING
-	cp $< $@
+COPYING.txt: $(top_srcdir)/COPYING
+	cp $(top_srcdir)/COPYING $@
 
 all: COPYING.txt
 

@@ -6,6 +6,8 @@
 #  ZLIB_INCLUDE_DIRS   - where to find zlib.h, etc.
 #  ZLIB_LIBRARIES      - List of libraries when using zlib.
 #  ZLIB_FOUND          - True if zlib found.
+#  ZLIB_DLL_DIR        - (Windows) Path to the zlib DLL.
+#  ZLIB_DLL            - (Windows) Name of the zlib DLL.
 #
 #  ZLIB_VERSION_STRING - The version of zlib found (x.y.z)
 #  ZLIB_VERSION_MAJOR  - The major version of zlib
@@ -32,34 +34,37 @@
 # (To distribute this file outside of CMake, substitute the full
 #  License text for the above reference.)
 
-INCLUDE(FindWSWinLibs)
-FindWSWinLibs("zlib" "ZLIB_HINTS")
+# We set these manually on Windows.
+#INCLUDE(FindWSWinLibs)
+#FindWSWinLibs("zlib" "ZLIB_HINTS")
 
-find_package(PkgConfig)
-pkg_search_module(ZLIB zlib)
+if (NOT ZLIB_INCLUDE_DIR OR NOT ZLIB_LIBRARY)
+    find_package(PkgConfig)
+    pkg_search_module(ZLIB zlib)
 
-FIND_PATH(ZLIB_INCLUDE_DIR
-    NAMES
-        zlib.h
-    HINTS
-        "${ZLIB_INCLUDEDIR}"
-        ${ZLIB_HINTS}/include
-        ${ZLIB_HINTS}
-    PATHS
-        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\GnuWin32\\Zlib;InstallPath]/include"
-)
+    FIND_PATH(ZLIB_INCLUDE_DIR
+        NAMES
+            zlib.h
+        HINTS
+            "${ZLIB_INCLUDEDIR}"
+            ${ZLIB_HINTS}/include
+            ${ZLIB_HINTS}
+        PATHS
+            "[HKEY_LOCAL_MACHINE\\SOFTWARE\\GnuWin32\\Zlib;InstallPath]/include"
+    )
 
-SET(ZLIB_NAMES z zlib zdll zlib1 zlibd zlibd1)
-FIND_LIBRARY(ZLIB_LIBRARY
-    NAMES
-        ${ZLIB_NAMES}
-    HINTS
-        "${ZLIB_LIBDIR}"
-        ${ZLIB_HINTS}/lib
-        ${ZLIB_HINTS}
-    PATHS
-        "[HKEY_LOCAL_MACHINE\\SOFTWARE\\GnuWin32\\Zlib;InstallPath]/lib"
-)
+    SET(ZLIB_NAMES z zlib zdll zlib1 zlibd zlibd1)
+    FIND_LIBRARY(ZLIB_LIBRARY
+        NAMES
+            ${ZLIB_NAMES}
+        HINTS
+            "${ZLIB_LIBDIR}"
+            ${ZLIB_HINTS}/lib
+            ${ZLIB_HINTS}
+        PATHS
+            "[HKEY_LOCAL_MACHINE\\SOFTWARE\\GnuWin32\\Zlib;InstallPath]/lib"
+    )
+endif()
 MARK_AS_ADVANCED(ZLIB_LIBRARY ZLIB_INCLUDE_DIR)
 
 IF(ZLIB_INCLUDE_DIR AND EXISTS "${ZLIB_INCLUDE_DIR}/zlib.h")
@@ -88,7 +93,7 @@ CHECK_FUNCTION_EXISTS("inflatePrime" HAVE_INFLATEPRIME)
 # reset
 SET(CMAKE_REQUIRED_LIBRARIES "")
 
-# handle the QUIETLY and REQUIRED arguments and set ZLIB_FOUND to TRUE if 
+# handle the QUIETLY and REQUIRED arguments and set ZLIB_FOUND to TRUE if
 # all listed variables are TRUE
 INCLUDE(FindPackageHandleStandardArgs)
 FIND_PACKAGE_HANDLE_STANDARD_ARGS(ZLIB REQUIRED_VARS ZLIB_LIBRARY ZLIB_INCLUDE_DIR
@@ -97,5 +102,22 @@ FIND_PACKAGE_HANDLE_STANDARD_ARGS(ZLIB REQUIRED_VARS ZLIB_LIBRARY ZLIB_INCLUDE_D
 IF(ZLIB_FOUND)
     SET(ZLIB_INCLUDE_DIRS ${ZLIB_INCLUDE_DIR})
     SET(ZLIB_LIBRARIES ${ZLIB_LIBRARY})
+    #if (WIN32)
+    #  set ( ZLIB_DLL_DIR "${ZLIB_HINTS}"
+    #    CACHE PATH "Path to the Zlib DLL"
+    #  )
+    #  file( GLOB _zlib_dll RELATIVE "${ZLIB_DLL_DIR}"
+    #    "${ZLIB_DLL_DIR}/zlib1.dll"
+    #  )
+    #  set ( ZLIB_DLL ${_zlib_dll}
+    #    # We're storing filenames only. Should we use STRING instead?
+    #    CACHE FILEPATH "Zlib DLL file name"
+    #  )
+    #  mark_as_advanced( ZLIB_DLL_DIR ZLIB_DLL )
+    #endif()
+ELSE()
+    SET(ZLIB_INCLUDE_DIRS )
+    SET(ZLIB_LIBRARIES )
+    SET(ZLIB_DLL_DIR )
+    SET(ZLIB_DLL )
 ENDIF()
-
