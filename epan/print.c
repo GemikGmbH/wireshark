@@ -66,12 +66,20 @@ typedef struct {
     epan_dissect_t  *edt;
 } write_field_data_t;
 
+typedef struct {
+    int             counter;
+    output_fields_t *fields;
+    epan_dissect_t  *edt;
+    FILE            *fh;
+} write_jsonfield_data_t;
+
 struct _output_fields {
     gboolean     print_header;
     gchar        separator;
     gchar        occurrence;
     gchar        aggregator;
     GPtrArray   *fields;
+    GPtrArray   *field_atts;
     GHashTable  *field_indicies;
     GPtrArray  **field_values;
     gchar        quote;
@@ -90,6 +98,8 @@ static void print_escaped_xml(FILE *fh, const char *unescaped_string);
 static void print_pdml_geninfo(proto_tree *tree, FILE *fh);
 
 static void proto_tree_get_node_field_values(proto_node *node, gpointer data);
+static void proto_tree_get_node_jsonfield_values(proto_node *node, gpointer data);
+static void proto_tree_get_node_jsonfield_root(proto_node *node, gpointer data);
 
 /* Cache the protocols and field handles that the print functionality needs
    This helps break explicit dependency on the dissectors. */
@@ -1042,6 +1052,12 @@ void output_fields_free(output_fields_t* fields)
             g_free(field);
         }
         g_ptr_array_free(fields->fields, TRUE);
+        
+        for(i = 0; i < fields->field_atts->len; ++i) {
+            gchar* att = (gchar *)g_ptr_array_index(fields->field_atts,i);
+            g_free(att);
+        }
+        g_ptr_array_free(fields->field_atts, TRUE);
     }
 
     g_free(fields);
@@ -1052,7 +1068,10 @@ void output_fields_free(output_fields_t* fields)
 void output_fields_add(output_fields_t *fields, const gchar *field)
 {
     gchar *field_copy;
-
+    gchar **field_split;
+    gchar *field_name = NULL;
+    gchar *field_att = NULL;
+    
     g_assert(fields);
     g_assert(field);
 
@@ -1061,10 +1080,27 @@ void output_fields_add(output_fields_t *fields, const gchar *field)
         fields->fields = g_ptr_array_new();
     }
 
+    if (NULL == fields->field_atts) {
+        fields->field_atts = g_ptr_array_new();
+    }
+    
     field_copy = g_strdup(field);
-
-    g_ptr_array_add(fields->fields, field_copy);
-
+    field_split = g_strsplit(field_copy,"::",2);
+    
+    if(field_split[0]==NULL || field_split[1]==NULL){ //0 or 1 part found
+        field_name=g_strdup(field_copy);
+    }
+    else{
+        field_att=g_strdup(field_split[0]);
+        field_name=g_strdup(field_split[1]);
+    }
+    
+    g_free(field_copy);
+    g_strfreev(field_split);
+    
+    g_ptr_array_add(fields->fields, field_name);
+    g_ptr_array_add(fields->field_atts, field_att);
+    
     /* See if we have a column as a field entry */
     if (!strncmp(field, COLUMN_FIELD_FILTER, strlen(COLUMN_FIELD_FILTER)))
         fields->includes_col_fields = TRUE;
@@ -1240,6 +1276,19 @@ void write_fields_preamble(output_fields_t* fields, FILE *fh)
     fputc('\n', fh);
 }
 
+void write_jsonfields_preamble(output_fields_t* fields, FILE *fh)
+{
+    g_assert(fields);
+    g_assert(fh);
+    g_assert(fields->fields);
+
+    if (!fields->print_header) {
+        return;
+    }
+    fputs("{\"packets\":[",fh);
+    fputc('\n', fh);
+}
+
 static void format_field_values(output_fields_t* fields, gpointer field_index, const gchar* value)
 {
     guint      indx;
@@ -1308,6 +1357,113 @@ static void proto_tree_get_node_field_values(proto_node *node, gpointer data)
     if (node->first_child != NULL) {
         proto_tree_children_foreach(node, proto_tree_get_node_field_values,
                                     call_data);
+    }
+}
+
+static void proto_tree_get_node_jsonfield_values(proto_node *node, gpointer data)
+{
+    write_jsonfield_data_t *call_data;
+    field_info *fi;
+    gpointer    field_index;
+
+    call_data = (write_jsonfield_data_t *)data;
+    fi = PNODE_FINFO(node);
+
+    /* dissection with an invisible proto tree? */
+    g_assert(fi);
+
+    field_index = g_hash_table_lookup(call_data->fields->field_indicies, fi->hfinfo->abbrev);
+    if (NULL != field_index) {
+        format_field_values(call_data->fields, field_index,
+                            get_node_field_value(fi, call_data->edt) /* g_ alloc'd string */
+            );
+    }
+
+    /* Recurse here. */
+    if (node->first_child != NULL) {
+        proto_tree_children_foreach(node, proto_tree_get_node_jsonfield_values,
+                                    call_data);
+    }
+}
+
+static void proto_tree_get_node_jsonfield_root(proto_node *node, gpointer data)
+{
+    gsize written=0;
+    gsize i;
+    write_jsonfield_data_t *call_data;
+    call_data = (write_jsonfield_data_t *)data;
+    field_info      *fi    = PNODE_FINFO(node);
+    
+    /* dissection with an invisible proto tree? */
+    g_assert(fi);
+    
+    if (NULL == call_data->fields->field_values)
+        call_data->fields->field_values = g_new0(GPtrArray*, call_data->fields->fields->len);  /* free'd at the end of function */
+    
+
+    proto_tree_children_foreach(node, proto_tree_get_node_jsonfield_values,
+                                    call_data);
+    
+    if(call_data->counter>0){
+        fputc(',',call_data->fh);
+    }
+    
+    fputc('{',call_data->fh); /*openning object*/
+    
+    fprintf(call_data->fh,"\"n\":\""); /*write protocol abbreviation*/
+    fprintf(call_data->fh,fi->hfinfo->abbrev);
+    fputc('\"',call_data->fh);
+    written++;
+    
+    //print_escaped_xml(pdata->fh, fi->hfinfo->abbrev);
+    
+     for(i = 0; i < call_data->fields->fields->len; ++i) {
+        if (NULL != call_data->fields->field_values[i]) {
+            GPtrArray *fv_p;
+            gchar * str;
+            gsize j;
+            fv_p = call_data->fields->field_values[i];
+         if (0 != written++) {
+            fputc(call_data->fields->separator, call_data->fh);
+         }
+            fprintf(call_data->fh, "\"F%d\":", i); /*writing field index*/
+            fputc('\"', call_data->fh); /*openning value qoute*/
+            
+            if(NULL != g_ptr_array_index(call_data->fields->field_atts,i)){
+            //TODO: actually we should compare value with jf:b64 too to see if it really is about converting to base64          
+                for (j = 0; j < g_ptr_array_len(fv_p); j++ ) {
+                    str = (gchar *)g_ptr_array_index(fv_p, j);
+                    if(NULL!=str && str[0]!='\0' && j%2==1 && str[0]==call_data->fields->aggregator){
+                        fputs(str, call_data->fh);
+                        g_free(str);
+                        continue;
+                    }
+                    size_t l=strlen(str);
+                    gchar* base64=g_base64_encode(str,l);
+                    fputs(base64, call_data->fh);
+                    g_free(base64);
+                    g_free(str);
+                }        
+            }else{
+                /* Output the array of (partial) field values */
+                for (j = 0; j < g_ptr_array_len(fv_p); j++ ) {
+                    str = (gchar *)g_ptr_array_index(fv_p, j);
+                    fputs(str, call_data->fh);
+                    g_free(str);
+                }
+            }
+            fputc('\"', call_data->fh); /*closing value qoute*/
+            
+            g_ptr_array_free(fv_p, TRUE);  /* get ready for the next packet */
+            call_data->fields->field_values[i] = NULL;
+        }
+    }
+    fputc('}',call_data->fh); /*closing object*/
+    
+    call_data->counter++; /*we are going to next main leaf*/
+    if (NULL != call_data->fields->field_values) {
+        g_free(call_data->fields->field_values);
+        call_data->fields->field_values = NULL;
     }
 }
 
@@ -1396,9 +1552,66 @@ void write_fields_proto_tree(output_fields_t *fields, epan_dissect_t *edt, colum
     }
 }
 
+void write_jsonfields_proto_tree(output_fields_t *fields, epan_dissect_t *edt, column_info *cinfo, FILE *fh)
+{
+    gsize     i;
+    //gint      col;
+    //gchar    *col_name;
+    //gpointer  field_index;
+
+    write_jsonfield_data_t data;
+
+    g_assert(fields);
+    g_assert(fields->fields);
+    g_assert(edt);
+    g_assert(fh);
+
+    data.fields = fields;
+    data.edt = edt;
+    data.fh = fh;
+    data.counter=0;
+    
+    if (NULL == fields->field_indicies) {
+        /* Prepare a lookup table from string abbreviation for field to its index. */
+        fields->field_indicies = g_hash_table_new(g_str_hash, g_str_equal);
+
+        i = 0;
+        while (i < fields->fields->len) {
+            gchar *field = (gchar *)g_ptr_array_index(fields->fields, i);
+            /* Store field indicies +1 so that zero is not a valid value,
+             * and can be distinguished from NULL as a pointer.
+             */
+            ++i;
+            g_hash_table_insert(fields->field_indicies, field, GUINT_TO_POINTER(i));
+        }
+    }
+    
+    fputs("{\"t\":[",fh);
+    proto_tree_children_foreach(edt->tree, proto_tree_get_node_jsonfield_root,
+                                &data);
+    fputs("]}",fh);
+                                
+    if (NULL == fields->field_values)
+        fields->field_values = g_new0(GPtrArray*, fields->fields->len);  /* free'd in output_fields_free() */
+}
+
 void write_fields_finale(output_fields_t* fields _U_ , FILE *fh _U_)
 {
     /* Nothing to do */
+}
+
+void write_jsonfields_finale(output_fields_t* fields _U_ , FILE *fh _U_)
+{
+    g_assert(fields);
+    g_assert(fh);
+    g_assert(fields->fields);
+
+    if (!fields->print_header) {
+        return;
+    }
+    
+    fputs("]}",fh);
+    /*fputc('\n', fh);*/
 }
 
 /* Returns an g_malloced string */
@@ -1494,6 +1707,7 @@ output_fields_t* output_fields_new(void)
     fields->aggregator          = ',';
     fields->fields              = NULL; /*Do lazy initialisation */
     fields->field_indicies      = NULL;
+    fields->field_atts          = NULL;
     fields->field_values        = NULL;
     fields->quote               ='\0';
     fields->includes_col_fields = FALSE;

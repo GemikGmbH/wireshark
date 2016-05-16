@@ -167,9 +167,11 @@ static gboolean perform_two_pass_analysis;
 typedef enum {
   WRITE_TEXT,   /* summary or detail text */
   WRITE_XML,    /* PDML or PSML */
-  WRITE_FIELDS  /* User defined list of fields */
+  WRITE_FIELDS,  /* User defined list of fields */
+  WRITE_JSON_FIELDS /*User defined list of fields in json format*/
   /* Add CSV and the like here */
 } output_action_e;
+
 
 static output_action_e output_action;
 static gboolean do_dissection;     /* TRUE if we have to dissect each packet */
@@ -1650,9 +1652,17 @@ DIAG_ON(cast-qual)
         output_action = WRITE_FIELDS;
         print_details = TRUE;   /* Need full tree info */
         print_summary = FALSE;  /* Don't allow summary */
-      } else {
+      } else if (strcmp(optarg, "jsonfields") == 0) {
+        output_action = WRITE_JSON_FIELDS;
+        print_details = TRUE;   /* Need full tree info */
+        print_summary = FALSE;  /* Don't allow summary */
+      }
+       else {
         cmdarg_err("Invalid -T parameter \"%s\"; it must be one of:", optarg);                   /* x */
-        cmdarg_err_cont("\t\"fields\" The values of fields specified with the -e option, in a form\n"
+        cmdarg_err_cont("\t\"jsonfields\" The values of fields specified with the -e option, in a form\n"
+                        "\t         specified by the -E option. fields can get exported as base64 by\n"
+                        "\t         prefixing specified fields with (jf:b64)\n"
+                        "\t\"fields\" The values of fields specified with the -e option, in a form\n"
                         "\t         specified by the -E option.\n"
                         "\t\"pdml\"   Packet Details Markup Language, an XML-based format for the\n"
                         "\t         details of a decoded packet. This information is equivalent to\n"
@@ -1754,12 +1764,12 @@ DIAG_ON(cast-qual)
   }
 
   /* If we specified output fields, but not the output field type... */
-  if (WRITE_FIELDS != output_action && 0 != output_fields_num_fields(output_fields)) {
+  if ((WRITE_FIELDS != output_action && WRITE_JSON_FIELDS != output_action) && 0 != output_fields_num_fields(output_fields)) {
         cmdarg_err("Output fields were specified with \"-e\", "
-            "but \"-Tfields\" was not specified.");
+            "but \"-Tfields\" or \"-Tjsonfields\" was not specified.");
         return 1;
-  } else if (WRITE_FIELDS == output_action && 0 == output_fields_num_fields(output_fields)) {
-        cmdarg_err("\"-Tfields\" was specified, but no fields were "
+  } else if ((WRITE_FIELDS == output_action || WRITE_JSON_FIELDS == output_action) && 0 == output_fields_num_fields(output_fields)) {
+        cmdarg_err("\"-Tfields\" or \"-Tjsonfields\" was specified, but no fields were "
                     "specified with \"-e\".");
 
         return 1;
@@ -3817,6 +3827,10 @@ write_preamble(capture_file *cf)
     write_fields_preamble(output_fields, stdout);
     return !ferror(stdout);
 
+  case WRITE_JSON_FIELDS: /*mark:TODO*/
+    write_jsonfields_preamble(output_fields, stdout);
+    return !ferror(stdout);
+    
   default:
     g_assert_not_reached();
     return FALSE;
@@ -4122,6 +4136,9 @@ print_packet(capture_file *cf, epan_dissect_t *edt)
       case WRITE_FIELDS: /*No non-verbose "fields" format */
         g_assert_not_reached();
         break;
+      case WRITE_JSON_FIELDS: /*mark:TODO*/ /*No non-verbose "fields" format */
+        g_assert_not_reached();
+        break;
       }
     }
   }
@@ -4158,6 +4175,10 @@ print_packet(capture_file *cf, epan_dissect_t *edt)
       write_fields_proto_tree(output_fields, edt, &cf->cinfo, stdout);
       printf("\n");
       return !ferror(stdout);
+     case WRITE_JSON_FIELDS: /*mark:TODO*/
+      write_jsonfields_proto_tree(output_fields, edt, &cf->cinfo, stdout);
+      printf("\n");
+      return !ferror(stdout);
     }
   }
   if (print_hex) {
@@ -4192,6 +4213,10 @@ write_finale(void)
     write_fields_finale(output_fields, stdout);
     return !ferror(stdout);
 
+  case WRITE_JSON_FIELDS: /*mark:TODO*/
+    write_jsonfields_finale(output_fields, stdout);
+    return !ferror(stdout);
+    
   default:
     g_assert_not_reached();
     return FALSE;
