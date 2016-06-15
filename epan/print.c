@@ -101,6 +101,8 @@ static void proto_tree_get_node_field_values(proto_node *node, gpointer data);
 static void proto_tree_get_node_jsonfield_values(proto_node *node, gpointer data);
 static void proto_tree_get_node_jsonfield_root(proto_node *node, gpointer data);
 
+static gchar* get_node_field_value_attr(field_info* fi, write_jsonfield_data_t *call_data, gpointer field_index);
+
 /* Cache the protocols and field handles that the print functionality needs
    This helps break explicit dependency on the dissectors. */
 static int proto_data = -1;
@@ -1375,7 +1377,7 @@ static void proto_tree_get_node_jsonfield_values(proto_node *node, gpointer data
     field_index = g_hash_table_lookup(call_data->fields->field_indicies, fi->hfinfo->abbrev);
     if (NULL != field_index) {
         format_field_values(call_data->fields, field_index,
-                            get_node_field_value(fi, call_data->edt) /* g_ alloc'd string */
+                            get_node_field_value_attr(fi, call_data,field_index) /* g_ alloc'd string */
             );
     }
 
@@ -1422,14 +1424,16 @@ static void proto_tree_get_node_jsonfield_root(proto_node *node, gpointer data)
             GPtrArray *fv_p;
             gchar * str;
             gsize j;
+			gchar* attr = g_ptr_array_index(call_data->fields->field_atts, i);
+
             fv_p = call_data->fields->field_values[i];
          if (0 != written++) {
             fputc(call_data->fields->separator, call_data->fh);
          }
+
             fprintf(call_data->fh, "\"F%d\":", i); /*writing field index*/
             fputc('\"', call_data->fh); /*openning value qoute*/
             
-            if(NULL != g_ptr_array_index(call_data->fields->field_atts,i)){
             //TODO: actually we should compare value with jf:b64 too to see if it really is about converting to base64          
                 for (j = 0; j < g_ptr_array_len(fv_p); j++ ) {
                     str = (gchar *)g_ptr_array_index(fv_p, j);
@@ -1659,6 +1663,31 @@ gchar* get_node_field_value(field_info* fi, epan_dissect_t* edt)
             }
         }
     }
+}
+
+/* Returns an g_malloced string */
+static gchar* get_node_field_value_attr(field_info* fi, write_jsonfield_data_t *call_data, gpointer field_index)
+{
+	guint indx = GPOINTER_TO_UINT(field_index) - 1;
+	gchar* attr = g_ptr_array_index(call_data->fields->field_atts, indx);
+
+	/*No attribute has been detected*/
+	if (NULL == attr)
+		return get_node_field_value(fi, call_data->edt);
+
+	/* Return "1" so that the presence of a field of type
+	* FT_NONE can be checked when using -T fields */
+	if (fi->hfinfo->type == FT_NONE)
+		return g_strdup("1");
+
+	if (call_data->edt->pi.data_src && g_strrstr(attr, "hex"))
+		return get_field_hex_value(call_data->edt->pi.data_src, fi);
+
+	if (fi->rep && g_strrstr(attr, "rep"))
+		return g_strdup(fi->rep->representation);
+
+	/*default behavior*/
+	return get_node_field_value(fi, call_data->edt);
 }
 
 static gchar*
