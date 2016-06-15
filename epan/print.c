@@ -1434,6 +1434,7 @@ static void proto_tree_get_node_jsonfield_root(proto_node *node, gpointer data)
             fprintf(call_data->fh, "\"F%d\":", i); /*writing field index*/
             fputc('\"', call_data->fh); /*openning value qoute*/
             
+			if (NULL != attr && (NULL != g_strrstr(attr, "base64") || NULL != g_strrstr(attr, "b64"))){
             //TODO: actually we should compare value with jf:b64 too to see if it really is about converting to base64          
                 for (j = 0; j < g_ptr_array_len(fv_p); j++ ) {
                     str = (gchar *)g_ptr_array_index(fv_p, j);
