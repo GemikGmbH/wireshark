@@ -160,6 +160,8 @@ static frame_data prev_cap_frame;
 static const char* prev_display_dissector_name = NULL;
 
 static gboolean perform_two_pass_analysis;
+static guint32 epan_auto_reset_count = 0;
+static gboolean epan_auto_reset = FALSE;
 
 /*
  * The way the packet decode is to be written.
@@ -220,6 +222,8 @@ static void report_counts_siginfo(int);
 static char *output_file_name;
 
 #endif /* HAVE_LIBPCAP */
+
+static void reset_epan_mem(capture_file *cf, epan_dissect_t *edt, gboolean tree, gboolean visual);
 
 static int load_cap_file(capture_file *, char *, int, gboolean, int, gint64);
 static gboolean process_packet(capture_file *cf, epan_dissect_t *edt, gint64 offset,
@@ -352,6 +356,7 @@ print_usage(FILE *output)
   fprintf(output, "\n");
   fprintf(output, "Processing:\n");
   fprintf(output, "  -2                       perform a two-pass analysis\n");
+  fprintf(output, "  -M <packet count>        perform session auto reset\n");
   fprintf(output, "  -R <read filter>         packet Read filter in Wireshark display filter syntax\n");
   fprintf(output, "  -Y <display filter>      packet displaY filter in Wireshark display filter\n");
   fprintf(output, "                           syntax\n");
@@ -1044,7 +1049,7 @@ DIAG_ON(cast-qual)
  * We do *not* use a leading - because the behavior of a leading - is
  * platform-dependent.
  */
-#define OPTSTRING "+2" OPTSTRING_CAPTURE_COMMON "C:d:e:E:F:gG:hH:" "K:lnN:o:O:PqQr:R:S:t:T:u:vVw:W:xX:Y:z:"
+#define OPTSTRING "+2" OPTSTRING_CAPTURE_COMMON "M:C:d:e:E:F:gG:hH:" "K:lnN:o:O:PqQr:R:S:t:T:u:vVw:W:xX:Y:z:"
 
   static const char    optstring[] = OPTSTRING;
 
@@ -1401,6 +1406,10 @@ DIAG_ON(cast-qual)
     case '2':        /* Perform two pass analysis */
       perform_two_pass_analysis = TRUE;
       break;
+	case 'M':
+		epan_auto_reset_count = get_positive_int(optarg, "epan reset count");
+		epan_auto_reset = TRUE;
+		break;
     case 'a':        /* autostop criteria */
     case 'b':        /* Ringbuffer option */
     case 'c':        /* Capture x packets */
@@ -2808,6 +2817,9 @@ capture_input_new_packets(capture_session *cap_session, int to_read)
     while (to_read-- && cf->wth) {
       wtap_cleareof(cf->wth);
       ret = wtap_read(cf->wth, &err, &err_info, &data_offset);
+
+	  reset_epan_mem(cf, edt, create_proto_tree, print_packet_info && print_details);
+
       if (ret == FALSE) {
         /* read from file failed, tell the capture child to stop */
         sync_pipe_stop(cap_session);
@@ -2825,7 +2837,6 @@ capture_input_new_packets(capture_session *cap_session, int to_read)
     }
 
     epan_dissect_free(edt);
-
   } else {
     /*
      * Dumpcap's doing all the work; we're not doing any dissection.
@@ -3476,13 +3487,13 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
     tshark_debug("tshark: done with second pass");
   }
   else {
+	gboolean create_proto_tree;
     /* !perform_two_pass_analysis */
     framenum = 0;
 
     tshark_debug("tshark: perform one pass analysis, do_dissection=%s", do_dissection ? "TRUE" : "FALSE");
 
     if (do_dissection) {
-      gboolean create_proto_tree;
 
       if (cf->rfcode || cf->dfcode || print_details || filtering_tap_listeners ||
           (tap_flags & TL_REQUIRES_PROTO_TREE) || have_custom_cols(&cf->cinfo))
@@ -3503,6 +3514,8 @@ load_cap_file(capture_file *cf, char *save_file, int out_file_type,
       framenum++;
 
       tshark_debug("tshark: processing packet #%d", framenum);
+
+	  reset_epan_mem(cf, edt, create_proto_tree, print_packet_info && print_details);
 
       if (process_packet(cf, edt, data_offset, wtap_phdr(cf->wth),
                          wtap_buf_ptr(cf->wth),
@@ -4526,6 +4539,27 @@ failure_message_cont(const char *msg_format, va_list ap)
   fprintf(stderr, "\n");
 }
 
+static void reset_epan_mem(capture_file *cf,epan_dissect_t *edt, gboolean tree, gboolean visual){
+
+	//fprintf(stderr, "p count is %d.", cf->count);
+	epan_t* session=NULL;
+
+	if (!epan_auto_reset || (cf->count < epan_auto_reset_count))
+		return;
+
+	fprintf(stderr, "reseting epan.\n");
+	fflush(stderr);
+	//epan_dissect_free(edt);
+	epan_dissect_cleanup(edt);
+	epan_free(cf->epan);
+	cf->epan = NULL;
+
+	session = tshark_epan_new(cf);
+	cf->epan = session;
+	edt = epan_dissect_init(edt,cf->epan, tree, visual);
+
+	cf->count = 0;
+}
 /*
  * Editor modelines  -  https://www.wireshark.org/tools/modelines.html
  *
