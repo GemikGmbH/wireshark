@@ -5864,7 +5864,7 @@ gchar *dissect_radius_user_loc(proto_tree * tree, tvbuff_t * tvb, packet_info* p
              * CGI is defined in sub-clause 4.3.1 of 3GPP TS 23.003 [2].
              */
             /* Use gsm_a's function to dissect Geographic Location by faking disc ( last 0) */
-            be_cell_id_aux(tvb, tree, pinfo, offset, length - 1, NULL, 0, 0);
+            be_cell_id_type(tvb, tree, pinfo, offset, length - 1, NULL, 0, 0, E212_CGI);
             break;
         case 1:
             /* Geographic Location field included and it holds the Service
@@ -5872,7 +5872,7 @@ gchar *dissect_radius_user_loc(proto_tree * tree, tvbuff_t * tvb, packet_info* p
              * SAI is defined in sub-clause 9.2.3.9 of 3GPP TS 25.413 [7].
              */
             /* Use gsm_a's function to dissect Geographic Location by faking disc ( last 4) */
-            be_cell_id_aux(tvb, tree, pinfo, offset, length - 1, NULL, 0, 4);
+            be_cell_id_type(tvb, tree, pinfo, offset, length - 1, NULL, 0, 4, E212_SAI);
             offset = offset + 5;
             proto_tree_add_item(tree, hf_gtp_ext_sac, tvb, offset, 2, ENC_BIG_ENDIAN);
             break;
@@ -5893,7 +5893,7 @@ gchar *dissect_radius_user_loc(proto_tree * tree, tvbuff_t * tvb, packet_info* p
              * Area Identity (TAI) of where the user currently is registered.
              * TAI is defined in sub-clause 8.21.4 of 3GPP TS 29.274.
              */
-            dissect_e212_mcc_mnc(tvb, pinfo, tree, offset, E212_NONE, TRUE);
+            dissect_e212_mcc_mnc(tvb, pinfo, tree, offset, E212_TAI, TRUE);
             offset+=3;
             proto_tree_add_item(tree, hf_gtp_tac, tvb, offset, 2, ENC_BIG_ENDIAN);
             break;
@@ -5902,7 +5902,7 @@ gchar *dissect_radius_user_loc(proto_tree * tree, tvbuff_t * tvb, packet_info* p
              * Global Identifier (ECGI) of where the user currently is registered.
              * ECGI is defined in sub-clause 8.21.5 of 3GPP TS 29.274.
              */
-            dissect_e212_mcc_mnc(tvb, pinfo, tree, offset, E212_NONE, TRUE);
+            dissect_e212_mcc_mnc(tvb, pinfo, tree, offset, E212_ECGI, TRUE);
             offset+=3;
             proto_tree_add_item(tree, hf_gtp_eci, tvb, offset, 4, ENC_BIG_ENDIAN);
             break;
@@ -5913,11 +5913,11 @@ gchar *dissect_radius_user_loc(proto_tree * tree, tvbuff_t * tvb, packet_info* p
              * TAI is defined in sub-clause 8.21.4 of 3GPP TS 29.274.
              * ECGI is defined in sub-clause 8.21.5 of 3GPP TS 29.274.
              */
-            dissect_e212_mcc_mnc(tvb, pinfo, tree, offset, E212_NONE, TRUE);
+            dissect_e212_mcc_mnc(tvb, pinfo, tree, offset, E212_TAI, TRUE);
             offset+=3;
             proto_tree_add_item(tree, hf_gtp_tac, tvb, offset, 2, ENC_BIG_ENDIAN);
             offset += 2;
-            dissect_e212_mcc_mnc(tvb, pinfo, tree, offset, E212_NONE, TRUE);
+            dissect_e212_mcc_mnc(tvb, pinfo, tree, offset, E212_ECGI, TRUE);
             offset+=3;
             proto_tree_add_item(tree, hf_gtp_eci, tvb, offset, 4, ENC_BIG_ENDIAN);
             break;
@@ -5962,7 +5962,7 @@ decode_gtp_usr_loc_inf(tvbuff_t * tvb, int offset, packet_info * pinfo, proto_tr
              * CGI is defined in sub-clause 4.3.1 of 3GPP TS 23.003 [2].
              */
             /* Use gsm_a's function to dissect Geographic Location by faking disc ( last 0) */
-            be_cell_id_aux(tvb, ext_tree, pinfo, offset, length - 1, NULL, 0, 0);
+            be_cell_id_type(tvb, ext_tree, pinfo, offset, length - 1, NULL, 0, 0, E212_CGI);
             break;
         case 1:
             /* Geographic Location field included and it holds the Service
@@ -5970,7 +5970,7 @@ decode_gtp_usr_loc_inf(tvbuff_t * tvb, int offset, packet_info * pinfo, proto_tr
              * SAI is defined in sub-clause 9.2.3.9 of 3GPP TS 25.413 [7].
              */
             /* Use gsm_a's function to dissect Geographic Location by faking disc ( last 4) */
-            be_cell_id_aux(tvb, ext_tree, pinfo, offset, length - 1, NULL, 0, 4);
+            be_cell_id_type(tvb, ext_tree, pinfo, offset, length - 1, NULL, 0, 4, E212_SAI);
             offset = offset + 5;
             proto_tree_add_item(ext_tree, hf_gtp_ext_sac, tvb, offset, 2, ENC_BIG_ENDIAN);
             break;
