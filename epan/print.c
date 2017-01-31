@@ -1295,6 +1295,8 @@ static void format_field_values(output_fields_t* fields, gpointer field_index, c
 {
     guint      indx;
     GPtrArray* fv_p;
+    gchar*     attr;
+    gchar      selector;
 
     if (NULL == value)
         return;
@@ -1306,12 +1308,28 @@ static void format_field_values(output_fields_t* fields, gpointer field_index, c
         fields->field_values[indx] = g_ptr_array_new();
     }
 
+    attr = g_ptr_array_index(fields->field_atts, indx);
+
+    selector= fields->occurrence;
+
+    /*Overriding selector based on specified attribute, vf:firset value, vl: last value, va: all values*/
+
+    if(NULL != attr){
+        if(NULL != g_strrstr(attr, "va"))
+            selector='a';
+        else if(NULL != g_strrstr(attr, "vl"))
+            selector='l';
+        else if(NULL != g_strrstr(attr, "vf"))
+            selector='f';
+    }
+
+    attr=NULL;
     /* Essentially: fieldvalues[indx] is a 'GPtrArray *' with each array entry */
     /*  pointing to a string which is (part of) the final output string.       */
 
     fv_p = fields->field_values[indx];
 
-    switch (fields->occurrence) {
+    switch (selector) {
     case 'f':
         /* print the value of only the first occurrence of the field */
         if (g_ptr_array_len(fv_p) != 0)
