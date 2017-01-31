@@ -1297,6 +1297,7 @@ static void format_field_values(output_fields_t* fields, gpointer field_index, c
     GPtrArray* fv_p;
     gchar*     attr;
     gchar      selector;
+    gchar*     old_value;
 
     if (NULL == value)
         return;
@@ -1332,12 +1333,21 @@ static void format_field_values(output_fields_t* fields, gpointer field_index, c
     switch (selector) {
     case 'f':
         /* print the value of only the first occurrence of the field */
-        if (g_ptr_array_len(fv_p) != 0)
+        if (g_ptr_array_len(fv_p) != 0){
+            g_free((gpointer)value); //not used we have to free it
             return;
+        }
         break;
     case 'l':
         /* print the value of only the last occurrence of the field */
+
+        if (g_ptr_array_len(fv_p) > 0) {
+            old_value = g_ptr_array_index(fv_p, 0);
+            g_free((gpointer)old_value);
+        }
+
         g_ptr_array_set_size(fv_p, 0);
+        
         break;
     case 'a':
         /* print the value of all accurrences of the field */
