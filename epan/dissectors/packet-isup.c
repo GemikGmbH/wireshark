@@ -2716,6 +2716,15 @@ static int proto_bicc = -1;
 
 static gboolean isup_show_cic_in_info = TRUE;
 
+/* backport from v2.4 */
+/*=================== */
+static int hf_isup_location_number = -1;
+static int hf_isup_connected_number = -1;
+static int hf_isup_original_called_number = -1;
+
+static expert_field ei_isup_too_many_digits = EI_INIT;
+/*=================== */
+
 static int hf_isup_called = -1;
 static int hf_isup_calling = -1;
 static int hf_isup_redirecting = -1;
@@ -3205,6 +3214,105 @@ static char number_to_char(int number)
 /* ------------------------------------------------------------------
  Dissector Parameter circuit validation response indicator
  */
+
+/* backport from v2.4 */
+static char *
+dissect_isup_digits_common(tvbuff_t *tvb, gint offset, packet_info *pinfo _U_, proto_tree *tree, proto_item *item,
+                           const char *param_name, gint hf_number, gint hf_odd_digit, gint hf_even_digit,
+                           gboolean even_indicator, e164_number_type_t number_type, guint nature_of_address)
+{
+  gint           i = 0;
+  gint           reported_length, captured_length;
+  proto_item    *digits_item;
+  proto_tree    *digits_tree;
+  guint8         digit_pair = 0;
+  wmem_strbuf_t *strbuf_number;
+  char          *number;
+  e164_info_t    e164_info;
+  gint           start_offset = offset;
+
+  reported_length = tvb_reported_length_remaining(tvb, offset);
+  if (reported_length == 0) {
+    expert_add_info(pinfo, item, &ei_isup_empty_number);
+    proto_item_append_text(item, "%s: (empty)", param_name);
+    return NULL;
+  }
+
+  strbuf_number = wmem_strbuf_sized_new(wmem_packet_scope(), MAXDIGITS+1, 0);
+
+  /* Make the digit string, looping on captured length (in case a snaplen was set) */
+  captured_length = tvb_captured_length_remaining(tvb, offset);
+  while (captured_length > 0) {
+    if (++i > MAXDIGITS) {
+      break;
+    }
+    digit_pair = tvb_get_guint8(tvb, offset);
+    wmem_strbuf_append_c(strbuf_number, number_to_char(digit_pair & ISUP_ODD_ADDRESS_SIGNAL_DIGIT_MASK));
+
+    if ((captured_length - 1) > 0) {
+      if (++i > MAXDIGITS) {
+        break;
+      }
+      wmem_strbuf_append_c(strbuf_number, number_to_char((digit_pair & ISUP_EVEN_ADDRESS_SIGNAL_DIGIT_MASK) / 0x10));
+    }
+
+    offset += 1;
+    captured_length -= 1;
+  }
+
+  if  (even_indicator && (tvb_captured_length(tvb) > 0) && (++i < MAXDIGITS)) {
+    /* Even Indicator set -> last (even) digit is valid and has be displayed */
+    wmem_strbuf_append_c(strbuf_number, number_to_char((digit_pair & ISUP_EVEN_ADDRESS_SIGNAL_DIGIT_MASK) / 0x10));
+  }
+
+  number = wmem_strbuf_finalize(strbuf_number);
+
+  /* Now make the tree */
+  offset = start_offset;
+  i = 0;
+  digits_item = proto_tree_add_string(tree, hf_number, tvb, offset, -1, number);
+  digits_tree = proto_item_add_subtree(digits_item, ett_isup_address_digits);
+
+  while (reported_length > 0) {
+    if (++i > MAXDIGITS) {
+      expert_add_info(pinfo, digits_item, &ei_isup_too_many_digits);
+      break;
+    }
+    proto_tree_add_item(digits_tree, hf_odd_digit, tvb, offset, 1, ENC_NA);
+
+    if ((reported_length - 1) > 0) {
+      if (++i > MAXDIGITS) {
+        expert_add_info(pinfo, digits_item, &ei_isup_too_many_digits);
+        break;
+      }
+      proto_tree_add_item(digits_tree, hf_even_digit, tvb, offset, 1, ENC_NA);
+    }
+
+    offset += 1;
+    reported_length -= 1;
+  }
+
+  if  (even_indicator && (tvb_reported_length(tvb) > 0)) {
+    if (++i < MAXDIGITS) {
+      /* Even Indicator set -> last (even) digit is valid and has be displayed */
+      proto_tree_add_item(digits_tree, hf_even_digit, tvb, offset - 1, 1, ENC_NA);
+    } else {
+      expert_add_info(pinfo, digits_item, &ei_isup_too_many_digits);
+    }
+  }
+
+  if (number_type != NONE) {
+    e164_info.e164_number_type = number_type;
+    e164_info.nature_of_address = nature_of_address;
+    e164_info.E164_number_str = number;
+    e164_info.E164_number_length = i - 1;
+    dissect_e164_number(tvb, digits_tree, 2, (offset - 2), e164_info);
+  }
+
+  proto_item_append_text(item, "%s: %s", param_name, number);
+
+  return number;
+}
 
 static void
 dissect_isup_cvr_response_ind_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree, proto_item *parameter_item)
@@ -5261,6 +5369,38 @@ dissect_isup_calling_party_number_parameter(tvbuff_t *parameter_tvb, proto_tree 
   proto_item_set_text(parameter_item, "Calling Party Number: %s", calling_number);
   tap_calling_number = wmem_strdup(wmem_packet_scope(), calling_number);
 }
+
+/* ------------------------------------------------------------------
+  Dissector Parameter Original called  number (backport from v2.4)
+ */
+void
+dissect_isup_original_called_number_parameter_v24(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *parameter_tree, proto_item *parameter_item)
+{
+  guint8      indicators1;
+  gint        offset = 0;
+  static const int * indicators1_fields[] = {
+    &hf_isup_odd_even_indicator,
+    &hf_isup_calling_party_nature_of_address_indicator,
+    NULL
+  };
+  static const int * indicators2_fields[] = {
+    &hf_isup_numbering_plan_indicator,
+    &hf_isup_address_presentation_restricted_indicator,
+    NULL
+  };
+
+
+  proto_tree_add_bitmask_list(parameter_tree, parameter_tvb, 0, 1, indicators1_fields, ENC_NA);
+  indicators1 = tvb_get_guint8(parameter_tvb, 0);
+  proto_tree_add_bitmask_list(parameter_tree, parameter_tvb, 1, 1, indicators2_fields, ENC_NA);
+  offset = 2;
+
+  dissect_isup_digits_common(parameter_tvb, offset, pinfo, parameter_tree, parameter_item,
+                             "Original Called Number", hf_isup_original_called_number,
+                             hf_isup_calling_party_odd_address_signal_digit,
+                             hf_isup_calling_party_even_address_signal_digit,
+                             ((indicators1 & 0x80) == 0), NONE, 0);
+}
 /* ------------------------------------------------------------------
   Dissector Parameter Original called  number
  */
@@ -5578,19 +5718,13 @@ dissect_isup_signalling_point_code_parameter(tvbuff_t *parameter_tvb, proto_tree
   proto_item_set_text(parameter_item, "Signalling point code: %u", spc);
 }
 /* ------------------------------------------------------------------
-  Dissector Parameter Connected number
+  Dissector Parameter Connected number (backport from v2.4)
  */
 static void
-dissect_isup_connected_number_parameter(tvbuff_t *parameter_tvb, proto_tree *parameter_tree, proto_item *parameter_item)
+dissect_isup_connected_number_parameter(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *parameter_tree, proto_item *parameter_item)
 {
-  proto_item *address_digits_item;
-  proto_tree *address_digits_tree;
   guint8      indicators1;
-  guint8      address_digit_pair = 0;
   gint        offset = 0;
-  gint        i = 0;
-  gint        length;
-  char        calling_number[MAXDIGITS + 1] = "";
   static const int * indicators1_fields[] = {
     &hf_isup_odd_even_indicator,
     &hf_isup_calling_party_nature_of_address_indicator,
@@ -5603,50 +5737,15 @@ dissect_isup_connected_number_parameter(tvbuff_t *parameter_tvb, proto_tree *par
     NULL
   };
 
-
   proto_tree_add_bitmask_list(parameter_tree, parameter_tvb, 0, 1, indicators1_fields, ENC_NA);
   indicators1 = tvb_get_guint8(parameter_tvb, 0);
   proto_tree_add_bitmask_list(parameter_tree, parameter_tvb, 1, 1, indicators2_fields, ENC_NA);
   offset = 2;
 
-  length = tvb_reported_length_remaining(parameter_tvb, offset);
-  if (length == 0)
-    return; /* empty connected number */
-  address_digits_tree = proto_tree_add_subtree(parameter_tree, parameter_tvb,
-                                            offset, -1, ett_isup_address_digits, &address_digits_item,
-                                            "Connected Number");
-
-  while (length > 0) {
-    address_digit_pair = tvb_get_guint8(parameter_tvb, offset);
-    proto_tree_add_uint(address_digits_tree, hf_isup_calling_party_odd_address_signal_digit,
-                        parameter_tvb, offset, 1, address_digit_pair);
-    calling_number[i++] = number_to_char(address_digit_pair & ISUP_ODD_ADDRESS_SIGNAL_DIGIT_MASK);
-    if (i > MAXDIGITS)
-      THROW(ReportedBoundsError);
-    if ((length - 1) > 0) {
-      proto_tree_add_uint(address_digits_tree, hf_isup_calling_party_even_address_signal_digit,
-                          parameter_tvb, offset, 1, address_digit_pair);
-      calling_number[i++] = number_to_char((address_digit_pair & ISUP_EVEN_ADDRESS_SIGNAL_DIGIT_MASK) / 0x10);
-      if (i > MAXDIGITS)
-        THROW(ReportedBoundsError);
-    }
-    offset += 1;
-    length = tvb_reported_length_remaining(parameter_tvb, offset);
-  }
-
-  if  (((indicators1 & 0x80) == 0) && (tvb_reported_length(parameter_tvb) > 0)) {
-    /* Even Indicator set -> last even digit is valid & has be displayed */
-    proto_tree_add_uint(address_digits_tree, hf_isup_calling_party_even_address_signal_digit,
-                        parameter_tvb, offset - 1, 1, address_digit_pair);
-    calling_number[i++] = number_to_char((address_digit_pair & ISUP_EVEN_ADDRESS_SIGNAL_DIGIT_MASK) / 0x10);
-    if (i > MAXDIGITS)
-      THROW(ReportedBoundsError);
-  }
-  calling_number[i] = '\0';
-
-  proto_item_append_text(address_digits_item, ": %s", calling_number);
-  proto_item_set_text(parameter_item, "Connected Number: %s", calling_number);
-
+  dissect_isup_digits_common(parameter_tvb, offset, pinfo, parameter_tree, parameter_item,
+                             "Connected Number", hf_isup_connected_number, hf_isup_calling_party_odd_address_signal_digit,
+                             hf_isup_calling_party_even_address_signal_digit, ((indicators1 & 0x80) == 0),
+                             NONE, 0);
 }
 /* ------------------------------------------------------------------
   Dissector Transit network selection
@@ -6345,6 +6444,48 @@ dissect_isup_transmission_medium_requirement_prime_parameter(tvbuff_t *parameter
                                            "spare/reserved"));
 }
 
+/* ------------------------------------------------------------------
+  Dissector Parameter location number (backport from v2.4)
+ */
+void dissect_isup_location_number_parameter_v24(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *parameter_tree, proto_item *parameter_item)
+{
+  guint8      indicators1, indicators2;
+  gint        offset = 0;
+  static const int * indicators1_fields[] = {
+    &hf_isup_odd_even_indicator,
+    &hf_isup_calling_party_nature_of_address_indicator,
+    NULL
+  };
+
+  proto_tree_add_bitmask_list(parameter_tree, parameter_tvb, 0, 1, indicators1_fields, ENC_NA);
+  indicators1 = tvb_get_guint8(parameter_tvb, 0);
+  indicators2 = tvb_get_guint8(parameter_tvb, 1);
+  proto_tree_add_boolean(parameter_tree, hf_isup_inn_indicator, parameter_tvb, 1, 1, indicators2);
+  proto_tree_add_uint(parameter_tree, hf_isup_numbering_plan_indicator, parameter_tvb, 1, 1, indicators2);
+  if ((indicators2 & GFE_8BIT_MASK) == 0x50) {
+    proto_tree_add_uint_format_value(parameter_tree, hf_isup_number_different_meaning, parameter_tvb, 1, 1, indicators2 & GFE_8BIT_MASK,
+                                     "Numbering plan indicator = private numbering plan");
+  }
+  proto_tree_add_uint(parameter_tree, hf_isup_address_presentation_restricted_indicator, parameter_tvb, 1, 1, indicators2);
+  proto_tree_add_uint(parameter_tree, hf_isup_screening_indicator, parameter_tvb, 1, 1, indicators2);
+
+   /* NOTE  When the address presentation restricted indicator indicates address not available, the
+    * subfields in items a), b), c) and d) are coded with 0's, and the screening indicator is set to 11
+    * (network provided).
+    * BUG 938 - Just check if there is someting more to dissect.
+    */
+  if (tvb_reported_length_remaining(parameter_tvb, offset) < 3) {
+    proto_item_append_text(parameter_item, " : address not available");
+    return;
+  }
+
+  offset = 2;
+
+  dissect_isup_digits_common(parameter_tvb, offset, pinfo, parameter_tree, parameter_item,
+                             "Location number", hf_isup_location_number, hf_isup_calling_party_odd_address_signal_digit,
+                             hf_isup_calling_party_even_address_signal_digit, ((indicators1 & 0x80) == 0),
+                             NONE, 0);
+}
 /* ------------------------------------------------------------------
   Dissector Parameter location number
  */
@@ -8462,7 +8603,7 @@ dissect_isup_optional_parameter(tvbuff_t *optional_parameters_tvb, packet_info *
             dissect_isup_user_to_user_information_parameter(parameter_tvb, pinfo, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_CONNECTED_NR:
-            dissect_isup_connected_number_parameter(parameter_tvb, parameter_tree, parameter_item);
+            dissect_isup_connected_number_parameter(parameter_tvb, pinfo, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_SUSP_RESUME_IND:
             dissect_isup_suspend_resume_indicators_parameter(parameter_tvb, parameter_tree, parameter_item);
@@ -8483,7 +8624,7 @@ dissect_isup_optional_parameter(tvbuff_t *optional_parameters_tvb, packet_info *
             dissect_isup_automatic_congestion_level_parameter(parameter_tvb, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_ORIG_CALLED_NR:
-            dissect_isup_original_called_number_parameter(parameter_tvb, pinfo, parameter_tree, parameter_item);
+            dissect_isup_original_called_number_parameter_v24(parameter_tvb, pinfo, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_OPT_BACKW_CALL_IND:
             dissect_isup_optional_backward_call_indicators_parameter(parameter_tvb, parameter_tree, parameter_item);
@@ -8552,7 +8693,7 @@ dissect_isup_optional_parameter(tvbuff_t *optional_parameters_tvb, packet_info *
             dissect_isup_transmission_medium_requirement_prime_parameter(parameter_tvb, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_LOCATION_NR:
-            dissect_isup_location_number_parameter(parameter_tvb, parameter_tree, parameter_item);
+            dissect_isup_location_number_parameter_v24(parameter_tvb, pinfo, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_REDIR_NR_RSTRCT:
             dissect_isup_redirection_number_restriction_parameter(parameter_tvb, parameter_tree, parameter_item);
@@ -8820,7 +8961,7 @@ dissect_ansi_isup_optional_parameter(tvbuff_t *optional_parameters_tvb, packet_i
             dissect_isup_user_to_user_information_parameter(parameter_tvb, pinfo, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_CONNECTED_NR:
-            dissect_isup_connected_number_parameter(parameter_tvb, parameter_tree, parameter_item);
+            dissect_isup_connected_number_parameter(parameter_tvb, pinfo, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_SUSP_RESUME_IND:
             dissect_isup_suspend_resume_indicators_parameter(parameter_tvb, parameter_tree, parameter_item);
@@ -8841,7 +8982,7 @@ dissect_ansi_isup_optional_parameter(tvbuff_t *optional_parameters_tvb, packet_i
             dissect_isup_automatic_congestion_level_parameter(parameter_tvb, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_ORIG_CALLED_NR:
-            dissect_isup_original_called_number_parameter(parameter_tvb, pinfo, parameter_tree, parameter_item);
+            dissect_isup_original_called_number_parameter_v24(parameter_tvb, pinfo, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_OPT_BACKW_CALL_IND:
             dissect_isup_optional_backward_call_indicators_parameter(parameter_tvb, parameter_tree, parameter_item);
@@ -8913,7 +9054,7 @@ dissect_ansi_isup_optional_parameter(tvbuff_t *optional_parameters_tvb, packet_i
             dissect_isup_transmission_medium_requirement_prime_parameter(parameter_tvb, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_LOCATION_NR:
-            dissect_isup_location_number_parameter(parameter_tvb, parameter_tree, parameter_item);
+            dissect_isup_location_number_parameter_v24(parameter_tvb, pinfo, parameter_tree, parameter_item);
             break;
           case PARAM_TYPE_REDIR_NR_RSTRCT:
             dissect_isup_redirection_number_restriction_parameter(parameter_tvb, parameter_tree, parameter_item);
@@ -10945,6 +11086,25 @@ proto_register_isup(void)
 {
 /* Setup list of header fields  See Section 1.6.1 for details*/
   static hf_register_info hf[] = {
+
+/* backport from v2.4 */
+/* ================== */
+    { &hf_isup_location_number,
+      { "Location Number",  "isup.location_number",
+        FT_STRING, ENC_ASCII, NULL, 0x0,
+        NULL, HFILL }},
+
+    { &hf_isup_connected_number,
+      { "Connected Number",  "isup.connected_number",
+        FT_STRING, ENC_ASCII, NULL, 0x0,
+        NULL, HFILL }},
+
+    { &hf_isup_original_called_number,
+      { "Original Called Number",  "isup.original_called_number",
+        FT_STRING, ENC_ASCII, NULL, 0x0,
+        NULL, HFILL }},
+/* ================== */
+
     { &hf_isup_cic,
       { "CIC",           "isup.cic",
         FT_UINT16, BASE_DEC, NULL, 0x0,
@@ -12362,6 +12522,7 @@ proto_register_isup(void)
     { &ei_isup_status_subfield_not_present, { "isup.status_subfield_not_present", PI_PROTOCOL, PI_NOTE, "Status subfield is not present with this message type", EXPFILL }},
     { &ei_isup_message_type_no_optional_parameters, { "isup.message_type.no_optional_parameters", PI_PROTOCOL, PI_WARN, "No optional parameters are possible with this message type", EXPFILL }},
     { &ei_isup_empty_number, { "isup.empty_number", PI_PROTOCOL, PI_NOTE, "(empty) number", EXPFILL }},
+    { &ei_isup_too_many_digits, { "isup.too_many_digits", PI_MALFORMED, PI_ERROR, "Too many digits", EXPFILL }} /*backport from v2.4*/
   };
 
   static const enum_val_t isup_variants[] = {

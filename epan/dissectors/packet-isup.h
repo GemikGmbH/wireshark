@@ -190,4 +190,8 @@ void dissect_isup_generic_number_parameter(tvbuff_t *parameter_tvb, packet_info 
 void dissect_japan_isup_additonal_user_cat(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *parameter_tree, proto_item *parameter_item);
 extern int dissect_codec_mode(proto_tree *tree, tvbuff_t *tvb, int offset, int len);
 
+/* backport from v2.4 (these functions are used in other dissectors, hence we didn't replace prevent any change in them) */
+void dissect_isup_location_number_parameter_v24(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *parameter_tree, proto_item *parameter_item);
+WS_DLL_PUBLIC
+void dissect_isup_original_called_number_parameter_v24(tvbuff_t *parameter_tvb, packet_info *pinfo, proto_tree *parameter_tree, proto_item *parameter_item);
 #endif  /* PACKET_ISUP_H */
